@@ -507,12 +507,23 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 		class_id == Class::Monk ||
 		class_id == Class::Beastlord ||
 		class_id == Class::Berserker ||
+		GetSkill(EQ::skills::SkillKick) > 0 ||   // AoTv4: any class that trained the skill
 		allowed_kick_classes & GetPlayerClassBit(class_id)
+	);
+
+	// AoTv4: the monk special attacks are otherwise Monk-only; let any class that has trained
+	// the skill use them too (skill-gated, like the rest of this server's cross-class abilities).
+	const bool is_monk_special = (
+		ca_atk->m_skill == EQ::skills::SkillFlyingKick  ||
+		ca_atk->m_skill == EQ::skills::SkillDragonPunch ||
+		ca_atk->m_skill == EQ::skills::SkillEagleStrike ||
+		ca_atk->m_skill == EQ::skills::SkillTigerClaw   ||
+		ca_atk->m_skill == EQ::skills::SkillRoundKick
 	);
 
 	bool found_skill = false;
 
-	if (class_id == Class::Monk) {
+	if (class_id == Class::Monk || is_monk_special) {
 		reuse_time = MonkSpecialAttack(GetTarget(), ca_atk->m_skill) - 1 - skill_reduction;
 
 		// Live AA - Technique of Master Wu
@@ -601,7 +612,7 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 	if (
 		ca_atk->m_atk == 100 &&
 		ca_atk->m_skill == EQ::skills::SkillBackstab &&
-		class_id == Class::Rogue
+		(class_id == Class::Rogue || GetSkill(EQ::skills::SkillBackstab) > 0)  // AoTv4: skill-gated, not Rogue-only
 	) {
 		reuse_time = BackstabReuseTime - 1 - skill_reduction;
 		TryBackstab(GetTarget(), reuse_time);
