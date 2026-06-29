@@ -55,6 +55,12 @@ bool areAllClassesCasters = false;
 // uifiles/default/EQUI_SpellChoiceWnd.xml installed + referenced in EQUI.xml.
 bool areSpellChoiceWindowEnabled = true;
 
+// areAAChoiceWindowEnabled if set to true shows a SEPARATE AA-choice window driven by the
+// server's "AACHOICEDATA <banked>^name|icon|cost|cls^..." chat line (death-driven AA rewards).
+// Shows banked AA points + each choice's cost + a class marker; a pick "/say aapick N". Shares
+// the spell window's chat + ProcessGameEvents hooks.
+bool areAAChoiceWindowEnabled = true;
+
 // areSkillsUnlocked if set to true patches CSkillMgr::GetSkillCap so a 0 (class-can't-have)
 // cap becomes a usable cap, letting EVERY class see/use EVERY skill -- the skill analogue
 // of areAllClassesCasters. Lets a Bard pick up Riposte/Block/Triple Attack/2H/etc. Server

@@ -15,6 +15,7 @@
 
 local pool      = require("spell_pool")
 local icons     = require("spell_icons")     -- id -> spellbook icon index (for the DLL window)
+local spelldesc = require("spell_desc")      -- id -> description text (for the DLL window hover)
 local skills    = require("skill_pool")      -- combat skill rewards: id -> {name, icon}
 local blacklist = require("spell_blacklist") -- spell ids never offered (rez, enchant, ...)
 
@@ -127,16 +128,19 @@ function M.offer(e)
 
 	-- store typed, ordered tokens so the pick is validated server-side:
 	--   "S:<spellid>" = spell/discipline,  "K:<skillid>" = combat skill
-	local toks, names = {}, {}
+	local toks, names, descs = {}, {}, {}
 	for _, c in ipairs(choices) do
 		toks[#toks + 1]  = (c.kind == "skill" and "K:" or "S:") .. c.id
 		names[#names + 1] = c.name .. "|" .. tostring(c.icon or 0)  -- "name|icon" for the window
+		local d = (c.kind == "spell" and spelldesc[c.id]) or "A combat skill."
+		descs[#descs + 1] = (d:gsub("[%^|]", " "))                  -- ^ and | are delimiters
 	end
 	eq.set_data(bucket_key(client), table.concat(toks, ","))
 
 	-- ---- DLL window trigger: hidden chat line the eq-core-dll window parses.
 	if USE_DLL_TRIGGER then
 		client:Message(MT.NPCQuestSay, "SPELLCHOICEDATA " .. table.concat(names, "^"))
+		client:Message(MT.NPCQuestSay, "SPELLDESCDATA " .. table.concat(descs, "^"))
 	end
 
 	-- ---- Saylink fallback: works with no client mod.

@@ -23,4 +23,5 @@ void InitOptions() {
 	if (areAllClassesCasters) EnableAllClassesCasters();
 	if (areSkillsUnlocked) EnableSkillUnlock();
 	if (areSpellChoiceWindowEnabled) EnableSpellChoiceWindow();
+	if (areAAChoiceWindowEnabled) EnableAAChoiceWindow();
 }

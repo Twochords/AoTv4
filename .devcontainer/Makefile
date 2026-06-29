@@ -68,6 +68,8 @@ sync-custom:
 	   .devcontainer/repo/quests/lua_modules/spell_choice.lua \
 	   .devcontainer/repo/quests/lua_modules/spell_icons.lua \
 	   .devcontainer/repo/quests/lua_modules/spell_pool.lua \
+	   .devcontainer/repo/quests/lua_modules/aa_choice.lua \
+	   .devcontainer/repo/quests/lua_modules/aa_pool.lua \
 	   .devcontainer/custom/quests/lua_modules/
 	cp .devcontainer/repo/eq-core-dll/src/EQClasses.h \
 	   .devcontainer/repo/eq-core-dll/src/_options.h \

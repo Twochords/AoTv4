@@ -13,13 +13,14 @@ so it works on a **vanilla RoF2 client — no MacroQuest/E3 required**.
 - `/src` (dev container) == `C:\AoTv3\AoTv4` (Windows, 9p mount). The EQ **client** is a
   separate RoF2 install on Windows; the dev container holds the **server + sources**.
 - Server build/run dir: `/src/build/bin` (config symlinked from `.devcontainer/override/`).
-- **Server C++ source:** `/src/zone`, `/src/world`, `/src/common`, … (rebuildable; see §7).
+- **Server C++ source:** `/src/zone`, `/src/world`, `/src/common`, … (rebuildable; see §8).
 - Quests / Lua: `/src/.devcontainer/repo/quests/` (symlinked into `build/bin/quests`).
   - `quests/global/global_player.lua` — global player event hooks.
   - `quests/lua_modules/` — `spell_choice.lua` (core logic), `spell_pool.lua` (gen),
     `spell_icons.lua` (gen), `skill_pool.lua` (combat-ability rewards), `spell_blacklist.lua` (gen).
 - Client mod source: `/src/.devcontainer/repo/eq-core-dll/` (builds `dinput8.dll`).
-  - `core_spellwindow.cpp` — the window **and** the skill-unlock hook (they share a chat hook).
+  - `core_spellwindow.cpp` — the spell window, the **AA window** (§6), **and** the skill-unlock
+    hook; all three share the `dsp_chat` + `ProcessGameEvents` detours.
   - `core_skillunlock.h` — declares `EnableSkillUnlock()` (impl is in `core_spellwindow.cpp`).
   - `_options.h` — feature flags; `core_init.h` — wires them in `InitOptions()`.
 
@@ -119,7 +120,7 @@ skill): Kick (added `GetSkill(SkillKick) > 0` to `can_use_kick`), the monk strik
 `is_monk_special`, not just `class == Monk`), Backstab (`|| GetSkill(SkillBackstab) > 0`).
 Disarm/Taunt/Frenzy were already skill-gated; Bash needs a shield. `MonkSpecialAttack` has no
 internal class checks (damage = `GetBaseSkillDamage`), so it's safe cross-class. **Requires a
-zone rebuild** (§7).
+zone rebuild** (§8).
 
 ## 5. Spell pool & blacklist (era / junk filtering)
 
@@ -145,7 +146,76 @@ runtime in `spell_choice.gather_candidates`. Criteria:
 > No expansion column exists in `spells_new`, and Allakhazam/EQ-Resource are JS-rendered (can't
 > crawl). So era filtering is the `id<10000` + level approximation, not a surgical classic list.
 
-## 6. Database setup
+## 6. Death-driven AA rewards (roguelite)
+
+A second progression layer parallel to the level-up window. **On death, ALL of the run's
+experience is banked as Alternate Advancement and the character is reset to level 1** — AAs are
+the permanent meta-progression; levels are per-run. A second random picker (its own chat channel,
+so it can drive a separate dll window) then spends the banked points.
+
+### Server side (Lua)
+- `global_player.lua` `event_death(e)`: `SetLevel(1)`, `SetEXP(0, GetAAExp())`, then bank
+  `floor(total_xp / divisor)` points by calling `aa_choice.grant_picks(e, banked)`. **The points go
+  into a PRIVATE data bucket (`aa_bank_<charid>`), NOT the native unspent pool** — so the native AA
+  (V) window shows 0 spendable points and the player can't bypass the picker to buy AAs directly.
+  Picks are granted **free** (`ignore_cost=true`) and the cost is deducted from the bucket.
+  **Diminishing returns:** `divisor = AA_XP_BASE * (1 + GetSpentAA()*AA_SCALE)` — the more AAs you
+  own, the more XP each new point costs (`AA_XP_BASE=15M` ≈ 10 points at a level-50 death;
+  `AA_SCALE=0.005`). `event_say` calls `aa_choice.handle_say(e)` (alongside `spell_choice`).
+- `aa_choice.lua` — **budget-driven** picker. The player's *unspent* pool (`GetAAPoints`) IS the
+  budget. Each pop offers `CHOICE_COUNT` (3) random AAs that are **affordable** (`cost ≤ budget`)
+  **and prereq-satisfied**, emits `AACHOICEDATA <banked>^name|icon|cost|cls^…` + a sibling
+  `AADESCDATA d1^d2^d3` line (drives the dll window) **plus** chat saylinks (work with no client
+  mod). Picking trains the next rank **free** (`GrantAlternateAdvancementAbility(id, cur+1, true)`)
+  and deducts the cost from the private bank; it keeps popping until nothing is affordable
+  (`MAX_PICKS=30` cap). Tunables at top. Buckets: `aa_bank_/aa_choice_/aa_seed_/aa_pcount_<charid>`.
+  Seed RNG on a per-offer counter (post-death `GetEXP`/level are 0).
+  **Per-AA cap (`RANK_BUDGET=10`):** an AA is only offered while its *total* investment
+  (`next_rank * cost`) stays within the cap, so no single AA needs more than ~one death's bank —
+  cheap AAs (cost 2) still reach ~rank 5 (enough for rank≤3 prereqs), a cost-9 AA stays rank 1.
+  Keep `RANK_BUDGET` in step with the per-death bank (`AA_XP_BASE`); raise BOTH as the level cap rises.
+- **dll window** (`core_spellwindow.cpp`, `areAAChoiceWindowEnabled`): a SECOND layered GDI window
+  (cool slate theme, lower-third placement) parallel to the spell window. It **shares the same two
+  detours** (`dsp_chat`, `ProcessGameEvents`) — both can't re-hook the same address, so the AA code
+  lives in those bodies, gated by feature flags. Shows **banked AA in the header**, each choice's
+  **cost**, a Train button → `/say aapick N` (echo swallowed like `spellpick`), and a **bottom
+  description panel** that shows the hovered row's text. Both windows have the hover/desc panel
+  (`DrawDescPanel` + `RowAtY`, fed by `SPELLDESCDATA`/`AADESCDATA`).
+- `aa_pool.lua` (**generated**) — `pool[level]={ {id=,name=,icon=,cls=,cost=,desc=,pr={{a=,r=}}}, … }`.
+  `icon` = cast-spell `new_icon`, else a thematic fallback by name (heal/caster/melee/defense/song/
+  craft). `cost` = first-rank cost, `desc` = `db_str` type 4 (truncated), `pr` = first-rank prereqs.
+  Generated from the **Bard-tagged** (`classes&128`) set — which the migration restricts to **classic
+  (expansion ≤4), level ≤60, real-named, deduped-by-name** AAs (so no "Unknown DB String"/modern
+  clutter). `spell_desc.lua` (gen, `db_str` type 6) feeds the spell window's hover the same way.
+  The picker's `prereqs_met` mirrors the server's prereq loop so it never offers a rejectable AA.
+- **Hiding untrained from the native window:** the tagged set is also flagged `grant_only=1`. The
+  native AA window then lists each only once **trained** and can't buy it there (the picker grants
+  via `ignore_cost=true` → `CanPurchase` `check_grant=false`, so `grant_only` doesn't block us).
+
+### Three things had to agree (like combat skills)
+1. **Class-agnostic.** Migration `aa_ability.classes |= 128` adds the Bard bit. The AA loader does
+   `a->classes = e.classes << 1` (zone/aa.cpp:1792), so the DB's `1<<(class-1)` (Bard=128) becomes
+   `1<<class` (256) in memory — which is exactly what the **stock** gate `classes & (1<<GetClass())`
+   checks. ⚠️ **Do NOT "fix" that line to `GetPlayerClassBit`** — the `<<1` makes it correct;
+   "fixing" it breaks every narrow-class AA. `aa.cpp` stays **stock**.
+2. **Expansion.** AAs start in Luclin (`aa_ranks.expansion ≥ 3`). With classic theming
+   (`Expansion:CurrentExpansion=0`), the rule **`Expansion:UseCurrentExpansionAAOnly` blocks ALL
+   AAs** — set it **`false`**; expansion gating is done by the pool instead (like spells). The
+   per-char `m_pp.expansions` check still applies (it = `RuleI(World, ExpansionSettings)` = all).
+3. **Level gate.** Migration lowers `aa_ranks.level_req` `1..60 → 1` (deps preserved) so normal
+   ranks are buyable at the always-level-1 post-death state. Ranks with original `level_req > 60`
+   stay gated (unreachable while picking at level 1 — acceptable; they're raid-tier).
+
+### Reset AAs for testing (char must be at **character select**)
+```sql
+SET @cid:=(SELECT id FROM character_data WHERE name='Ashrem');
+DELETE FROM character_alternate_abilities WHERE id=@cid;
+UPDATE character_data SET aa_points=0, aa_points_spent=0, aa_exp=0 WHERE id=@cid;
+```
+GM `#resetaa aa` only *refunds* spent → unspent (doesn't zero the pool). The migration +
+`UseCurrentExpansionAAOnly` live in `.devcontainer/custom/sql/aotv4_aa.sql`.
+
+## 7. Database setup
 - **Every char is a Bard** (`character_data.class = 8`; also forced in `event_connect`).
 - **`spells_new.classes8`** = the spell's min learnable level (Bard-usable + pool index).
 - **Bard `skill_caps`** (`class_id=8`) raised so skills scale; client also needs the exported
@@ -155,7 +225,7 @@ runtime in `spell_choice.gather_candidates`. Criteria:
   `UPDATE character_skills SET value=0 WHERE id=<charid> AND skill_id IN (...)` — only sticks
   while that char is at **character select**, else the live zone saves over it.)
 
-## 7. Building
+## 8. Building
 
 **`dinput8.dll`** (Windows, Visual Studio): project
 `eq-core-dll/src/eq-core-dll-vs2022.vcxproj` (toolset **v143**). Non-default settings for the
@@ -167,9 +237,9 @@ defines `_CRT_SECURE_NO_WARNINGS;_WINSOCK_DEPRECATED_NO_WARNINGS`. `core_spellwi
 ```bash
 cd /src/build && ninja zone     # ~minutes; relinks bin/zone
 ```
-After a server-code change you MUST restart **every** booted zone (see §9), not just the pool.
+After a server-code change you MUST restart **every** booted zone (see §10), not just the pool.
 
-## 8. Porting elsewhere
+## 9. Porting elsewhere
 
 **To a player's CLIENT:** copy `dinput8.dll` next to `eqgame.exe`; run **windowed**; stock
 `uifiles/default/spellsNN.tga` provide icons. Install the exported `SkillCaps.txt` (+ optionally
@@ -178,11 +248,13 @@ offsets (`0x51F1A0`, `0x539E60`, `0x51FCE0`, `0x5BAEC0`) are for this exact RoF2
 different build needs them re-derived. (`EQUI_SpellChoiceWnd.xml` is dead — overlay is self-drawn.)
 
 **To another SERVER:** copy the `quests/lua_modules/*` + the `global_player.lua` hooks;
-regenerate `spell_pool.lua`/`spell_icons.lua`/`spell_blacklist.lua` from that DB; apply the
-`special_attacks.cpp` patches and rebuild zone; set the DB (Bard class, `classes8`, skill caps,
-expansion). The window itself is generic (`SPELLCHOICEDATA name|icon` out, `spellpick N` back).
+regenerate `spell_pool.lua`/`spell_icons.lua`/`spell_blacklist.lua` **and** `aa_pool.lua` from
+that DB; apply the `special_attacks.cpp` patches and rebuild zone; run `custom/sql/aotv4_aa.sql`
+(AA class/level migration) and set `Expansion:UseCurrentExpansionAAOnly=false`; set the DB (Bard
+class, `classes8`, skill caps, expansion). The windows are generic (`SPELLCHOICEDATA name|icon` /
+`spellpick N`; `AACHOICEDATA name|icon|cost` / `aapick N`). `aa.cpp` stays stock.
 
-## 9. Gotchas / lessons learned
+## 10. Gotchas / lessons learned
 - **Lua + server-code reloads:** `#reloadquest` does NOT reload `require`d Lua modules, and a
   rebuilt `zone` binary only takes effect in **freshly-booted** zones. After a Lua or C++ change,
   kill **all** zone procs (`for p in $(pgrep -x zone); do kill -9 $p; done`) so `eqlaunch`
@@ -200,3 +272,17 @@ expansion). The window itself is generic (`SPELLCHOICEDATA name|icon` out, `spel
   width, don't assume 6.
 - **Bazaar** — RoF2 only ships the revamped (DoN) bazaar; the old Luclin bazaar is unobtainable
   on a vanilla client.
+- **AA class bitmask is shifted** — `aa_ability.classes` is loaded as `classes << 1`
+  (zone/aa.cpp), so the gate `classes & (1<<GetClass())` is correct *as-is*. Tag Bard with the DB
+  bit **128** (`classes | 128`), NOT 256, and **don't** rewrite the gate to `GetPlayerClassBit`.
+  Symptom of getting it wrong: 65535 (all-class) AAs grant but narrow-class AAs silently fail.
+- **AAs aren't in shared memory** — the zone loads `aa_ability`/`aa_ranks` straight from the DB at
+  boot, so DB edits just need a zone restart (no `./shared_memory` rebuild). Rules are also read at
+  boot — a `rule_values` change (e.g. `UseCurrentExpansionAAOnly`) needs a restart, not a reload.
+- **`small` is a Windows macro** — `<rpcndr.h>` does `#define small char`, so a local named
+  `small` (e.g. `HFONT small`) miscompiles into `HFONT char` with a cascade of bogus errors. Avoid
+  `small`/`hyper` as identifiers in the dll.
+- **AA grant rejected silently** — `GrantAlternateAdvancementAbility(...false)` returns false (no
+  message) if any of: class bit, `rank->expansion` vs `UseCurrentExpansionAAOnly`, `level_req`,
+  cost > unspent, or unmet `aa_rank_prereqs`. The picker pre-filters on affordability + prereqs so
+  only grantable AAs are ever offered.

@@ -133,11 +133,52 @@ static volatile int    g_pendingPick = -1;     // 1..3 set by click, consumed on
 static volatile bool   g_overlayStarted = false;
 static HWND            g_overlayHwnd = nullptr;
 
+// ----------------------------------------------------------------- AA window state
+// A parallel, separate window for the death-driven AA picker. Shares the art helpers
+// (LoadTGA/GetSheet/BlitIcon/DrawShadow) and the two detours below, but has its own state,
+// window, thread and message loop so it can show alongside the spell window.
+static volatile bool   g_aaVisible = false;
+static char            g_aaNames[3][160] = { {0}, {0}, {0} };
+static int             g_aaIcons[3] = { 0, 0, 0 };   // cast-spell icon (0 = none)
+static int             g_aaCosts[3] = { 0, 0, 0 };   // AA point cost of the choice
+static int             g_aaCls[3]   = { 0, 0, 0 };   // original class bitmask (for the marker)
+static int             g_aaCount  = 0;
+static int             g_aaBanked = 0;               // unspent AA points (shown in the header)
+static int             g_aaPosX = 0, g_aaPosY = 0;
+static bool            g_aaPositioned = false;
+static bool            g_aaDragging = false;
+static int             g_aaDragDX = 0, g_aaDragDY = 0;
+static volatile int    g_aaPendingPick = -1;
+static volatile bool   g_aaOverlayStarted = false;
+static HWND            g_aaHwnd = nullptr;
+
+// which features are on (set by Enable*); the shared detours check these.
+static bool            g_spellChoiceEnabled = false;
+static bool            g_aaChoiceEnabled    = false;
+static bool            g_choiceHooksInstalled = false;
+
+// per-choice description text (server-sent) shown on hover; *DescSel = row the cursor is over.
+static char            g_spellDesc[3][320] = { {0}, {0}, {0} };
+static int             g_spellDescSel = -1;
+static char            g_aaDesc[3][320]    = { {0}, {0}, {0} };
+static int             g_aaDescSel = -1;
+
 // window box (overlay-client pixels)
 static const int WIN_W  = 440;
 static const int TOP_H  = 34;
 static const int ROW_H  = 52;
-static const int WIN_H  = TOP_H + 3 * ROW_H + 12;
+static const int DESC_H = 90;                        // bottom description panel
+static const int ROWS_B = TOP_H + 3 * ROW_H + 12;    // y where the desc panel begins
+static const int WIN_H  = ROWS_B + DESC_H;
+
+// which choice row (0..count-1) the cursor is over within the rows band, else -1
+static int RowAtY(int y, int count)
+{
+	if (y < TOP_H || y >= TOP_H + 3 * ROW_H) return -1;
+	int i = (y - TOP_H) / ROW_H;
+	return (i >= 0 && i < count) ? i : -1;
+}
+static void DescRect(RECT& r) { r.left = 10; r.top = ROWS_B; r.right = WIN_W - 10; r.bottom = WIN_H - 8; }
 
 static void ButtonRect(int i, RECT& r)
 {
@@ -198,19 +239,100 @@ static bool HandleChat(const char* msg)
 	return true; // swallow our trigger line
 }
 
+// ----------------------------------------------------------------- AA chat trigger
+// "AACHOICEDATA <banked>^name|icon|cost|cls^name|icon|cost|cls^..." -- first ^-field is the
+// player's unspent AA pool; each following field is one choice.
+static const char* AACHOICE_TAG = "AACHOICEDATA ";
+
+static bool AAHandleChat(const char* msg)
+{
+	if (!msg) return false;
+	const char* tag = strstr(msg, AACHOICE_TAG);
+	if (!tag) return false;
+	tag += strlen(AACHOICE_TAG);
+
+	g_aaCount  = 0;
+	g_aaBanked = 0;
+	int field = 0;            // 0 = banked total, 1.. = choices
+	std::string cur;
+	for (const char* p = tag; ; ++p) {
+		if (*p == '^' || *p == 0 || *p == '\n' || *p == '\r') {
+			if (field == 0) {
+				g_aaBanked = atoi(cur.c_str());
+			} else if (!cur.empty() && g_aaCount < 3) {
+				// "name|icon|cost|cls"
+				std::string parts[4]; int pi = 0;
+				for (size_t k = 0; k < cur.size() && pi < 4; ++k) {
+					if (cur[k] == '|') ++pi; else parts[pi] += cur[k];
+				}
+				strncpy_s(g_aaNames[g_aaCount], sizeof(g_aaNames[g_aaCount]), parts[0].c_str(), _TRUNCATE);
+				g_aaIcons[g_aaCount] = atoi(parts[1].c_str());
+				g_aaCosts[g_aaCount] = atoi(parts[2].c_str());
+				g_aaCls[g_aaCount]   = atoi(parts[3].c_str());
+				g_aaCount++;
+			}
+			cur.clear();
+			++field;
+			if (*p == 0 || *p == '\n' || *p == '\r') break;
+		} else {
+			cur += *p;
+		}
+	}
+	g_aaVisible = (g_aaCount > 0);
+	return true;  // swallow our trigger line
+}
+
+// ----------------------------------------------------------------- description lines
+// Sibling lines to the *CHOICEDATA lines: "SPELLDESCDATA d1^d2^d3" / "AADESCDATA d1^d2^d3".
+// Descriptions are server-sanitized to contain no ^ or |.
+static void ParseDescs(const char* s, char dst[3][320])
+{
+	for (int i = 0; i < 3; ++i) dst[i][0] = 0;
+	int idx = 0;
+	std::string cur;
+	for (const char* p = s; ; ++p) {
+		if (*p == '^' || *p == 0 || *p == '\n' || *p == '\r') {
+			if (idx < 3) strncpy_s(dst[idx], 320, cur.c_str(), _TRUNCATE);
+			cur.clear(); ++idx;
+			if (*p == 0 || *p == '\n' || *p == '\r') break;
+		} else {
+			cur += *p;
+		}
+	}
+}
+static bool HandleSpellDesc(const char* msg)
+{
+	if (!msg) return false;
+	const char* t = strstr(msg, "SPELLDESCDATA ");
+	if (!t) return false;
+	ParseDescs(t + strlen("SPELLDESCDATA "), g_spellDesc);
+	return true;
+}
+static bool HandleAADesc(const char* msg)
+{
+	if (!msg) return false;
+	const char* t = strstr(msg, "AADESCDATA ");
+	if (!t) return false;
+	ParseDescs(t + strlen("AADESCDATA "), g_aaDesc);
+	return true;
+}
+
 // CEverQuest::dsp_chat (RoF2 0x51F1A0) detour -- thiscall, detoured as __fastcall.
 void __fastcall SpellChat_Detour(void* thisptr, void* edx, const char* msg, int color, bool eqlog, bool pct);
 DETOUR_TRAMPOLINE_EMPTY(void __fastcall SpellChat_Tramp(void* thisptr, void* edx, const char* msg, int color, bool eqlog, bool pct));
 void __fastcall SpellChat_Detour(void* thisptr, void* edx, const char* msg, int color, bool eqlog, bool pct)
 {
-	// Hide the pick command echo. Selecting a choice issues "/say spellpick N", which
-	// the client would otherwise show as  You say, 'spellpick N'  (and broadcast to
-	// nearby players). Since every player runs this dll, swallowing any line containing
-	// "spellpick" hides it on the speaker's screen AND on every listener's screen.
-	if (msg && strstr(msg, "spellpick")) return;
+	// Hide the pick command echoes. Selecting a choice issues "/say spellpick N" or
+	// "/say aapick N", which the client would otherwise show as  You say, '...'  (and
+	// broadcast to nearby players). Since every player runs this dll, swallowing any line
+	// containing the trigger hides it on the speaker's screen AND on every listener's.
+	if (msg && (strstr(msg, "spellpick") || strstr(msg, "aapick"))) return;
 
-	if (SkillUnlock_HandleChat(msg)) return;  // swallow SKILLUNLOCKDATA (updates earned set)
-	if (HandleChat(msg)) return;  // swallow SPELLCHOICEDATA (window shows the choices)
+	if (SkillUnlock_HandleChat(msg)) return;             // swallow SKILLUNLOCKDATA (earned set)
+	if (g_spellChoiceEnabled && HandleChat(msg)) return; // swallow SPELLCHOICEDATA
+	if (g_spellChoiceEnabled && HandleSpellDesc(msg)) return; // swallow SPELLDESCDATA
+	if (g_aaChoiceEnabled && AAHandleChat(msg)) return;  // swallow AACHOICEDATA
+	if (g_aaChoiceEnabled && HandleAADesc(msg)) return;  // swallow AADESCDATA
 	SpellChat_Tramp(thisptr, edx, msg, color, eqlog, pct);
 }
 
@@ -340,6 +462,21 @@ static void DrawShadow(HDC dc, const char* s, RECT r, UINT fmt, COLORREF col, CO
 	DrawTextA(dc, s, -1, &r, fmt);
 }
 
+// Bottom description panel (word-wrapped). Shows `desc` (the hovered row's text) or a hint.
+static void DrawDescPanel(HDC mem, HFONT smallFont, const char* desc,
+	COLORREF panelBg, COLORREF border, COLORREF ink)
+{
+	RECT dr; DescRect(dr);
+	HBRUSH bg = CreateSolidBrush(panelBg); FillRect(mem, &dr, bg); DeleteObject(bg);
+	HBRUSH bd = CreateSolidBrush(border);  FrameRect(mem, &dr, bd); DeleteObject(bd);
+	RECT tr = dr; InflateRect(&tr, -7, -5);
+	HFONT old = (HFONT)SelectObject(mem, smallFont);
+	SetTextColor(mem, ink);
+	const char* txt = (desc && desc[0]) ? desc : "Hover an option for its description.";
+	DrawTextA(mem, txt, -1, &tr, DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
+	SelectObject(mem, old);
+}
+
 // ----------------------------------------------------------------- layered window
 static void PaintOverlay(HWND hwnd)
 {
@@ -378,6 +515,9 @@ static void PaintOverlay(HWND hwnd)
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
 		DEFAULT_PITCH | FF_DONTCARE, "Arial");
 	HFONT oldFont = (HFONT)SelectObject(mem, font);
+	HFONT smallFont = CreateFontA(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+		DEFAULT_PITCH | FF_DONTCARE, "Arial");
 	SetBkMode(mem, TRANSPARENT);
 
 	// title (dark ink with a light highlight = embossed look on parchment)
@@ -412,10 +552,15 @@ static void PaintOverlay(HWND hwnd)
 			RGB(255, 248, 228), RGB(40, 28, 12));
 	}
 
+	// hovered-choice description panel (parchment tones)
+	const char* sd = (g_spellDescSel >= 0 && g_spellDescSel < g_count) ? g_spellDesc[g_spellDescSel] : nullptr;
+	DrawDescPanel(mem, smallFont, sd, RGB(232, 222, 196), RGB(150, 120, 70), RGB(60, 42, 18));
+
 	BitBlt(hdc, 0, 0, WIN_W, WIN_H, mem, 0, 0, SRCCOPY);
 
 	SelectObject(mem, oldFont);
 	DeleteObject(font);
+	DeleteObject(smallFont);
 	SelectObject(mem, old);
 	DeleteObject(bmp);
 	DeleteDC(mem);
@@ -448,6 +593,9 @@ static LRESULT CALLBACK OverlayWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
 			g_posY = cur.y - g_dragDY;
 			g_positioned = true;
 			SetWindowPos(hwnd, HWND_TOPMOST, g_posX, g_posY, WIN_W, WIN_H, SWP_NOACTIVATE);
+		} else {
+			int row = RowAtY((short)HIWORD(lp), g_count);   // hover -> show that row's description
+			if (row != g_spellDescSel) { g_spellDescSel = row; InvalidateRect(hwnd, nullptr, FALSE); }
 		}
 		return 0;
 	}
@@ -537,17 +685,240 @@ static DWORD WINAPI OverlayThreadProc(LPVOID)
 	return 0;
 }
 
+// ----------------------------------------------------------------- AA window paint/input
+static void PaintAAOverlay(HWND hwnd)
+{
+	PAINTSTRUCT ps;
+	HDC hdc = BeginPaint(hwnd, &ps);
+
+	HDC     mem = CreateCompatibleDC(hdc);
+	HBITMAP bmp = CreateCompatibleBitmap(hdc, WIN_W, WIN_H);
+	HBITMAP old = (HBITMAP)SelectObject(mem, bmp);
+
+	RECT full = { 0, 0, WIN_W, WIN_H };
+	// Cooler slate/blue parchment to distinguish the AA window from the (warm) spell window.
+	for (int y = 0; y < WIN_H; ++y) {
+		float t = (float)y / (float)WIN_H;
+		int r = (int)(40 + 18 * t);
+		int g = (int)(52 + 22 * t);
+		int b = (int)(74 + 30 * t);
+		HBRUSH line = CreateSolidBrush(RGB(r, g, b));
+		RECT lr = { 0, y, WIN_W, y + 1 };
+		FillRect(mem, &lr, line);
+		DeleteObject(line);
+	}
+
+	HBRUSH brdOuter = CreateSolidBrush(RGB(20, 26, 40));
+	FrameRect(mem, &full, brdOuter);
+	DeleteObject(brdOuter);
+	RECT inner = { 2, 2, WIN_W - 2, WIN_H - 2 };
+	HBRUSH brdInner = CreateSolidBrush(RGB(120, 150, 200));
+	FrameRect(mem, &inner, brdInner);
+	DeleteObject(brdInner);
+
+	HFONT font = CreateFontA(-17, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+		DEFAULT_PITCH | FF_DONTCARE, "Arial");
+	HFONT oldFont = (HFONT)SelectObject(mem, font);
+	HFONT smallFont = CreateFontA(-13, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+		DEFAULT_PITCH | FF_DONTCARE, "Arial");
+	SetBkMode(mem, TRANSPARENT);
+
+	// title (left) + banked points (right)
+	RECT tr = { 14, 6, WIN_W - 150, TOP_H };
+	DrawShadow(mem, "Choose an Alternate Ability", tr, DT_LEFT | DT_SINGLELINE | DT_VCENTER,
+		RGB(225, 235, 250), RGB(18, 24, 38));
+	char bk[48]; sprintf_s(bk, "Banked: %d AA", g_aaBanked);
+	RECT br0 = { WIN_W - 150, 6, WIN_W - 12, TOP_H };
+	DrawShadow(mem, bk, br0, DT_RIGHT | DT_SINGLELINE | DT_VCENTER,
+		RGB(255, 226, 140), RGB(18, 24, 38));
+	HBRUSH div = CreateSolidBrush(RGB(120, 150, 200));
+	RECT dr = { 12, TOP_H - 2, WIN_W - 12, TOP_H - 1 };
+	FillRect(mem, &dr, div);
+	DeleteObject(div);
+
+	for (int i = 0; i < g_aaCount; ++i) {
+		RECT ir; IconRect(i, ir);
+		BlitIcon(mem, g_aaIcons[i], ir);
+		HBRUSH ifr = CreateSolidBrush(RGB(20, 26, 40));
+		FrameRect(mem, &ir, ifr);
+		DeleteObject(ifr);
+
+		RECT nr; NameRect(i, nr);
+		RECT nameLine = nr; nameLine.bottom = nr.top + 24;
+		RECT subLine  = nr; subLine.top    = nr.top + 22;
+
+		SelectObject(mem, font);
+		DrawShadow(mem, g_aaNames[i], nameLine, DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS,
+			RGB(232, 240, 252), RGB(16, 22, 34));
+
+		char sub[64];
+		sprintf_s(sub, "Cost: %d AA", g_aaCosts[i]);
+		SelectObject(mem, smallFont);
+		DrawShadow(mem, sub, subLine, DT_LEFT | DT_TOP | DT_SINGLELINE,
+			RGB(255, 226, 140), RGB(16, 22, 34));
+
+		RECT br; ButtonRect(i, br);
+		HBRUSH btn = CreateSolidBrush(RGB(58, 78, 116));
+		FillRect(mem, &br, btn);
+		DeleteObject(btn);
+		HBRUSH btnEdge = CreateSolidBrush(RGB(20, 26, 40));
+		FrameRect(mem, &br, btnEdge);
+		DeleteObject(btnEdge);
+		SelectObject(mem, font);
+		DrawShadow(mem, "Train", br, DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+			RGB(240, 248, 255), RGB(14, 20, 32));
+	}
+
+	// hovered-choice description panel (slate tones)
+	const char* ad = (g_aaDescSel >= 0 && g_aaDescSel < g_aaCount) ? g_aaDesc[g_aaDescSel] : nullptr;
+	DrawDescPanel(mem, smallFont, ad, RGB(30, 40, 58), RGB(120, 150, 200), RGB(216, 228, 245));
+
+	BitBlt(hdc, 0, 0, WIN_W, WIN_H, mem, 0, 0, SRCCOPY);
+
+	SelectObject(mem, oldFont);
+	DeleteObject(font);
+	DeleteObject(smallFont);
+	SelectObject(mem, old);
+	DeleteObject(bmp);
+	DeleteDC(mem);
+	EndPaint(hwnd, &ps);
+}
+
+static LRESULT CALLBACK AAOverlayWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+{
+	switch (msg) {
+	case WM_PAINT:
+		PaintAAOverlay(hwnd);
+		return 0;
+
+	case WM_LBUTTONDOWN: {
+		POINT pt = { (short)LOWORD(lp), (short)HIWORD(lp) };
+		if (pt.y < TOP_H) {
+			g_aaDragging = true;
+			g_aaDragDX = pt.x; g_aaDragDY = pt.y;
+			SetCapture(hwnd);
+		}
+		return 0;
+	}
+
+	case WM_MOUSEMOVE: {
+		if (g_aaDragging) {
+			POINT cur; GetCursorPos(&cur);
+			g_aaPosX = cur.x - g_aaDragDX;
+			g_aaPosY = cur.y - g_aaDragDY;
+			g_aaPositioned = true;
+			SetWindowPos(hwnd, HWND_TOPMOST, g_aaPosX, g_aaPosY, WIN_W, WIN_H, SWP_NOACTIVATE);
+		} else {
+			int row = RowAtY((short)HIWORD(lp), g_aaCount);  // hover -> show that row's description
+			if (row != g_aaDescSel) { g_aaDescSel = row; InvalidateRect(hwnd, nullptr, FALSE); }
+		}
+		return 0;
+	}
+
+	case WM_LBUTTONUP: {
+		if (g_aaDragging) { g_aaDragging = false; ReleaseCapture(); return 0; }
+		POINT pt = { (short)LOWORD(lp), (short)HIWORD(lp) };
+		for (int i = 0; i < g_aaCount; ++i) {
+			RECT r; ButtonRect(i, r);
+			if (PtInRect(&r, pt)) {
+				g_aaPendingPick = i + 1;   // consumed by the ProcessGameEvents hook
+				g_aaVisible = false;
+				ShowWindow(hwnd, SW_HIDE);
+				break;
+			}
+		}
+		return 0;
+	}
+
+	case WM_TIMER: {
+		HWND eq = EQADDR_HWND ? *(HWND*)EQADDR_HWND : nullptr;
+		HWND fg = GetForegroundWindow();
+		bool active = (fg == eq) || (fg == hwnd);
+		if (g_aaVisible && active) {
+			if (!g_aaPositioned && eq) {
+				// first show: lower third (so it doesn't overlap a spell window up top)
+				RECT cr; GetClientRect(eq, &cr);
+				POINT tl = { cr.left, cr.top };
+				ClientToScreen(eq, &tl);
+				int cw = cr.right - cr.left, ch = cr.bottom - cr.top;
+				g_aaPosX = tl.x + (cw - WIN_W) / 2;
+				g_aaPosY = tl.y + (ch - WIN_H) * 2 / 3;
+				g_aaPositioned = true;
+			}
+			if (g_aaPositioned) {
+				SetWindowPos(hwnd, HWND_TOPMOST, g_aaPosX, g_aaPosY, WIN_W, WIN_H, SWP_NOACTIVATE);
+				if (!IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+				InvalidateRect(hwnd, nullptr, FALSE);
+			}
+		} else if (IsWindowVisible(hwnd)) {
+			ShowWindow(hwnd, SW_HIDE);
+		}
+		return 0;
+	}
+
+	case WM_DESTROY:
+		return 0;
+	}
+	return DefWindowProcA(hwnd, msg, wp, lp);
+}
+
+static DWORD WINAPI AAOverlayThreadProc(LPVOID)
+{
+	InitAssets();
+	HINSTANCE hInst = GetModuleHandleA(nullptr);
+
+	WNDCLASSEXA wc = { sizeof(wc) };
+	wc.lpfnWndProc   = AAOverlayWndProc;
+	wc.hInstance     = hInst;
+	wc.hCursor       = LoadCursorA(nullptr, IDC_ARROW);
+	wc.lpszClassName = "AoTAAChoiceOverlay";
+	RegisterClassExA(&wc);
+
+	g_aaHwnd = CreateWindowExA(
+		WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+		"AoTAAChoiceOverlay", "", WS_POPUP,
+		0, 0, WIN_W, WIN_H, nullptr, nullptr, hInst, nullptr);
+	if (!g_aaHwnd) return 0;
+
+	SetLayeredWindowAttributes(g_aaHwnd, 0, 240, LWA_ALPHA);
+	SetTimer(g_aaHwnd, 1, 60, nullptr);
+
+	MSG m;
+	while (GetMessageA(&m, nullptr, 0, 0) > 0) {
+		TranslateMessage(&m);
+		DispatchMessageA(&m);
+	}
+	return 0;
+}
+
 // ----------------------------------------------------------------- game-thread hook
 // ProcessGameEvents (RoF2 0x539E60) runs every frame on the main thread. We use it to
 // (a) lazily spawn the overlay thread once the game is up, and (b) run the chosen pick
 // command on the game thread (calling InterpretCmd from the overlay thread is unsafe).
+// Run a slash command on the game thread via CEverQuest::InterpretCmd (0x51FCE0). Calling this
+// from the overlay thread is unsafe, so picks are queued and dispatched here.
+static void RunGameCommand(const char* cmd)
+{
+	if (pEverQuest && pLocalPlayer) {
+		typedef void (__thiscall *fInterpretCmd)(void* pThis, void* pChar, const char* cmd);
+		auto fn = (fInterpretCmd)((((DWORD)0x51FCE0 - 0x400000) + baseAddress));
+		fn((void*)pEverQuest, (void*)pLocalPlayer, cmd);
+	}
+}
+
 BOOL __cdecl ProcessGameEvents_Detour();
 DETOUR_TRAMPOLINE_EMPTY(BOOL __cdecl ProcessGameEvents_Tramp());
 BOOL __cdecl ProcessGameEvents_Detour()
 {
-	if (!g_overlayStarted) {
+	if (g_spellChoiceEnabled && !g_overlayStarted) {
 		g_overlayStarted = true;
 		CreateThread(nullptr, 0, OverlayThreadProc, nullptr, 0, nullptr);
+	}
+	if (g_aaChoiceEnabled && !g_aaOverlayStarted) {
+		g_aaOverlayStarted = true;
+		CreateThread(nullptr, 0, AAOverlayThreadProc, nullptr, 0, nullptr);
 	}
 
 	int pick = g_pendingPick;
@@ -555,26 +926,47 @@ BOOL __cdecl ProcessGameEvents_Detour()
 		g_pendingPick = -1;
 		char cmd[40];
 		sprintf_s(cmd, "/say spellpick %d", pick);
-		if (pEverQuest && pLocalPlayer) {
-			typedef void (__thiscall *fInterpretCmd)(void* pThis, void* pChar, const char* cmd);
-			auto fn = (fInterpretCmd)((((DWORD)0x51FCE0 - 0x400000) + baseAddress));
-			fn((void*)pEverQuest, (void*)pLocalPlayer, cmd);
-		}
+		RunGameCommand(cmd);
+	}
+
+	int aapick = g_aaPendingPick;
+	if (aapick > 0) {
+		g_aaPendingPick = -1;
+		char cmd[40];
+		sprintf_s(cmd, "/say aapick %d", aapick);
+		RunGameCommand(cmd);
 	}
 
 	return ProcessGameEvents_Tramp();
 }
 
 // ----------------------------------------------------------------- entry
-void EnableSpellChoiceWindow()
+// The spell and AA windows SHARE the two detours (you can't detour an address twice). Install
+// them once; each Enable* just flips its feature flag, which the detour bodies check.
+static void InstallChoiceHooks()
 {
+	if (g_choiceHooksInstalled) return;
+	g_choiceHooksInstalled = true;
+
 	// Both detours are pure in-memory byte patches -- safe under DllMain's loader lock.
-	// The overlay window/thread is created LATER (first ProcessGameEvents tick), well
+	// The overlay window(s)/thread(s) are created LATER (first ProcessGameEvents tick), well
 	// after load, because window creation under loader lock hard-fails startup.
 
-	// swallow the server's SPELLCHOICEDATA chat line (CEverQuest::dsp_chat)
+	// swallow the server's SPELLCHOICEDATA / AACHOICEDATA chat lines (CEverQuest::dsp_chat)
 	EzDetour((((DWORD)0x51F1A0 - 0x400000) + baseAddress), &SpellChat_Detour, &SpellChat_Tramp);
 
-	// per-frame main-thread heartbeat: spawn overlay + dispatch picks (ProcessGameEvents)
+	// per-frame main-thread heartbeat: spawn overlay(s) + dispatch picks (ProcessGameEvents)
 	EzDetour((((DWORD)0x539E60 - 0x400000) + baseAddress), &ProcessGameEvents_Detour, &ProcessGameEvents_Tramp);
+}
+
+void EnableSpellChoiceWindow()
+{
+	g_spellChoiceEnabled = true;
+	InstallChoiceHooks();
+}
+
+void EnableAAChoiceWindow()
+{
+	g_aaChoiceEnabled = true;
+	InstallChoiceHooks();
 }

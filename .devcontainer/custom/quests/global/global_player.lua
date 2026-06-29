@@ -2,6 +2,14 @@
 
 local don = require("dragons_of_norrath")
 local spell_choice = require("spell_choice")
+local aa_choice = require("aa_choice")
+
+-- AA-on-death tuning (roguelite: death banks xp as AA and resets the character to level 1).
+-- Diminishing returns: cost per banked AA point = AA_XP_BASE * (1 + owned_AA * AA_SCALE),
+-- so the more AA you already have, the slower each death's AA gain. AA_XP_BASE is tuned so a
+-- level-50 run with no AA yet banks ~10 (level-50 total XP ~= 71M / 7M = ~10).
+local AA_XP_BASE  = 15000000  -- base XP per banked AA point (level-50 total XP ~= 155M => ~10)
+local AA_SCALE    = 0.005     -- each owned AA point raises the XP cost per new AA point
 
 function event_enter_zone(e)
 	mysterious_voice(e)
@@ -423,9 +431,32 @@ function event_level_up(e)
   spell_choice.offer(e)
 end
 
+-- On death, bank ALL experience as Alternate Advancement and restart at level 1 (roguelite).
+-- The random AA window then pops; banked AA scales with how far the run got.
+function event_death(e)
+  local client = e.self
+  local total  = client:GetEXP()
+
+  -- ROGUELITE: every death banks ALL experience as AA and restarts the run at level 1.
+  -- SetEXP takes (normal_exp, aa_exp) -- zero normal XP, keep AA exp.
+  client:SetLevel(1)
+  client:SetEXP(0, client:GetAAExp())
+
+  -- diminishing returns: the more AA you already own, the more XP each new point costs.
+  local owned   = client:GetSpentAA() or 0
+  local divisor = AA_XP_BASE * (1 + owned * AA_SCALE)
+  local banked  = math.floor(total / divisor)
+  if banked >= 1 then                 -- (no farming: a near-0-XP death banks nothing)
+    -- Bank into aa_choice's PRIVATE bucket (not the native unspent pool) so the random picker
+    -- is the ONLY way to spend -- the native AA window shows 0 spendable points.
+    aa_choice.grant_picks(e, banked)
+  end
+end
+
 function event_say(e)
-  -- consume "spellpick <N>" picks from the level-up spell choice window
+  -- consume "spellpick <N>" (spell window) and "aapick <N>" (AA window) picks
   spell_choice.handle_say(e)
+  aa_choice.handle_say(e)
 end
 
 test_items = {
