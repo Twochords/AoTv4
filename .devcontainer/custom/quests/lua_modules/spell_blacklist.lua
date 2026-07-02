@@ -4,7 +4,9 @@
 --   * Enchant-<material>        (name 'Enchant %')
 --   * curse-counter cures       (effect 116 with negative base = clears curse counters)
 --   * LDoN dungeon-object spells (targettype 34 -- Iony's/Reebo's appraise/disarm/unlock lines)
-return {
+--   * LDoN adventure-merchant utility lines, ids 4252-4287 (Appraisal/Augury/Discombobulation/Exorcism/
+--     Extrication/Cleansing, effects 164-166) -- added via the loop below.  [manual; re-add on regen]
+local bl = {
 [353]=true,
 [388]=true,
 [391]=true,
@@ -311,3 +313,6 @@ return {
 [40832]=true,
 [42125]=true,
 }
+-- LDoN adventure-merchant utility block (appraise/augury/disarm/unlock/extricate/cleanse) -- never a reward
+for id = 4252, 4287 do bl[id] = true end
+return bl

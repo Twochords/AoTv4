@@ -7,6 +7,7 @@ local pok_travel = require("pok_travel")
 local death_loss = require("death_loss")
 local era_system = require("era_system")   -- server-wide expansion unlock progression
 local bazaar_broker = require("bazaar_broker")  -- player-shop vendor window (vpset/vshop/vclose)
+local autobuff = require("autobuff")            -- memmed beneficial buffs/songs become permanent auras
 
 -- AA-on-death tuning (roguelite: death banks xp as AA and resets the character to level 1).
 -- Diminishing returns: cost per banked AA point = AA_XP_BASE * (1 + owned_AA * AA_SCALE),
@@ -21,6 +22,8 @@ function event_enter_zone(e)
 	mysterious_voice(e)
 	era_system.sync_zone()                          -- point this zone's expansion rule at the unlocked era
 	e.self:Message(MT.NPCQuestSay, "PORTALCLOSE")   -- dismiss the Portal window on any zone change
+	autobuff.sync(e.self)                           -- memmed beneficial buffs/songs -> permanent auras
+	e.self:SetTimer("autobuff", 3)                  -- keep them in sync every 3s (catches mem changes)
 
 	if eq.is_lost_dungeons_of_norrath_enabled() and eq.get_zone_short_name() == "lavastorm" and e.self:GetGMStatus() >= 80 then 
 		e.self:Message(MT.DimGray, "There are GM commands available for Dragons of Norrath, use " .. eq.say_link("#don") .. " to get started")
@@ -316,6 +319,15 @@ function event_connect(e)
 
 	-- hand over coin earned while the player's (permanent) shop sold items offline
 	bazaar_broker.pay_escrow(e.self)
+
+	autobuff.sync(e.self)                -- apply permanent auras for already-memmed beneficial buffs/songs
+end
+
+-- repeating "autobuff" timer (started in event_enter_zone): reconcile permanent buff auras with the bar
+function event_timer(e)
+	if e.timer == "autobuff" then
+		autobuff.sync(e.self)
+	end
 end
 
 function grant_veteran_aa(e)
@@ -475,6 +487,7 @@ function event_death(e)
   -- then report what was lost (chat + the "what you lost" dll window via LOSTDATA).
   local lost = death_loss.process(client)
   death_loss.announce(client, lost)
+  spell_choice.clear_pending(client)  -- drop any un-picked offers so the new run starts clean
   spell_choice.send_unlocks(client)   -- re-hide the now-reset combat skills on the client
 end
 

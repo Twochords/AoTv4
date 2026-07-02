@@ -2297,6 +2297,7 @@ BOOL __cdecl ProcessGameEvents_Detour()
 		RunGameCommand(cmd);
 	}
 
+	bool did_pick = false;
 	int pick = g_pendingPick;
 	if (pick > 0) {
 		g_pendingPick = -1;
@@ -2304,6 +2305,7 @@ BOOL __cdecl ProcessGameEvents_Detour()
 		char cmd[40];
 		sprintf_s(cmd, "/say spellpick %d", pick);
 		RunGameCommand(cmd);
+		did_pick = true;
 	}
 
 	int aapick = g_aaPendingPick;
@@ -2313,6 +2315,15 @@ BOOL __cdecl ProcessGameEvents_Detour()
 		char cmd[40];
 		sprintf_s(cmd, "/say aapick %d", aapick);
 		RunGameCommand(cmd);
+		did_pick = true;
+	}
+
+	// Clicking the choice window's "Select" button activated the overlay, sending EQ to the background
+	// (which throttles its frame rate). Hand foreground back to EQ right after the pick. We're on the
+	// game thread (EQ owns the process), so SetForegroundWindow succeeds without focus-lock issues.
+	if (did_pick) {
+		HWND eq = EQADDR_HWND ? *(HWND*)EQADDR_HWND : nullptr;
+		if (eq) SetForegroundWindow(eq);
 	}
 
 	return ProcessGameEvents_Tramp();

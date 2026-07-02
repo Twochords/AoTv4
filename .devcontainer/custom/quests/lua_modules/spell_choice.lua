@@ -87,18 +87,82 @@ local function skill_target(client, id)
 	return math.floor((client:MaxSkill(id) or 0) * SKILL_GRANT_PCT)
 end
 
--- Combat skills worth offering: the player can have it, it has a cap, and its current
--- value is still below the grant target (so the reward would actually raise it). As the
--- player levels, caps rise, so mastered skills re-enter the pool with a higher target.
+-- Combat skills worth offering: the player CAN have it, it has a cap, and they DON'T HAVE IT YET
+-- (raw value 0). Each activated ability is offered at most once -- once earned it never re-appears, so
+-- the reward window stays free of duplicates. (It keeps improving through use after that.)
 local function gather_skill_candidates(client)
 	local out = {}
 	for id, info in pairs(skills) do
 		if client:CanHaveSkill(id) and client:MaxSkill(id) > 0
-		   and client:GetRawSkill(id) < skill_target(client, id) then
+		   and client:GetRawSkill(id) <= 0 then
 			out[#out + 1] = { kind = "skill", id = id, name = info.name, icon = info.icon }
 		end
 	end
 	return out
+end
+
+-- Send the window data (SPELLCHOICEDATA + SPELLDESCDATA) + saylink fallback for ONE offer, given its
+-- comma-separated token string ("S:id,S:id,K:id"). Names/icons/descs are reconstructed from the tokens
+-- so the queue only needs to store the tokens.
+local function send_offer(client, offer_str)
+	if not offer_str or offer_str == "" then return end
+	local names, descs, labels = {}, {}, {}
+	for tok in offer_str:gmatch("[^,]+") do
+		local kind, id = tok:match("^(%a):(%d+)$"); id = tonumber(id)
+		local nm, ic, ds
+		if kind == "K" then
+			local info = skills[id]
+			nm = (info and info.name) or ("skill " .. id); ic = (info and info.icon) or 0; ds = "A combat skill."
+		else
+			nm = eq.get_spell_name(id) or ("spell " .. id); ic = icons[id] or 0; ds = spelldesc[id] or ""
+		end
+		names[#names + 1]  = nm .. "|" .. tostring(ic)
+		descs[#descs + 1]  = (ds:gsub("[%^|]", " "))
+		labels[#labels + 1] = nm
+	end
+	if #names == 0 then return end
+	if USE_DLL_TRIGGER then
+		client:Message(MT.NPCQuestSay, "SPELLCHOICEDATA " .. table.concat(names, "^"))
+		client:Message(MT.NPCQuestSay, "SPELLDESCDATA "  .. table.concat(descs, "^"))
+	end
+	if SHOW_SAYLINKS then
+		client:Message(MT.Yellow, "Choose a new reward:")
+		for i, nm in ipairs(labels) do
+			client:Message(MT.LightBlue, string.format("  %d) %s   %s", i, nm,
+				eq.say_link(SAY_TRIGGER .. " " .. i, true, "[ Select " .. nm .. " ]")))
+		end
+	end
+end
+
+-- Prune already-earned rewards from the FRONT offer, drop offers that become empty, save the queue, then
+-- show the (pruned) front. Queued offers can go stale -- a spell/ability offered at level N may be learned
+-- from a different offer before this one is resolved -- so we re-check right before showing, guaranteeing
+-- you're never shown (or able to pick) a spell you already have OR a combat ability you already earned.
+local function already_have(client, kind, id)
+	if kind == "K" then return client:GetRawSkill(id) > 0 end   -- combat ability already trained
+	return already_known(client, id)                            -- spell scribed / discipline learned
+end
+
+local function refresh_and_show(client, key)
+	local q = eq.get_data(key) or ""
+	while q ~= "" do
+		local front, rest = q:match("^([^;]*);?(.*)$")
+		local kept = {}
+		for tok in front:gmatch("[^,]+") do
+			local kind, id = tok:match("^(%a):(%d+)$"); id = tonumber(id)
+			if id and not already_have(client, kind, id) then
+				kept[#kept + 1] = tok
+			end
+		end
+		if #kept > 0 then
+			q = (rest == "") and table.concat(kept, ",") or (table.concat(kept, ",") .. ";" .. rest)
+			eq.set_data(key, q)
+			send_offer(client, table.concat(kept, ","))
+			return
+		end
+		q = rest   -- entire front offer is already-known -> discard it and try the next queued offer
+	end
+	eq.set_data(key, "")   -- nothing left to offer
 end
 
 ------------------------------------------------------------------- public API
@@ -130,31 +194,28 @@ function M.offer(e)
 	if #choices == 0 then return end
 	choices = pick_random(choices, #choices)  -- shuffle order
 
-	-- store typed, ordered tokens so the pick is validated server-side:
+	-- typed, ordered tokens so the pick is validated server-side:
 	--   "S:<spellid>" = spell/discipline,  "K:<skillid>" = combat skill
-	local toks, names, descs = {}, {}, {}
+	local toks = {}
 	for _, c in ipairs(choices) do
-		toks[#toks + 1]  = (c.kind == "skill" and "K:" or "S:") .. c.id
-		names[#names + 1] = c.name .. "|" .. tostring(c.icon or 0)  -- "name|icon" for the window
-		local d = (c.kind == "spell" and spelldesc[c.id]) or "A combat skill."
-		descs[#descs + 1] = (d:gsub("[%^|]", " "))                  -- ^ and | are delimiters
-	end
-	eq.set_data(bucket_key(client), table.concat(toks, ","))
-
-	-- ---- DLL window trigger: hidden chat line the eq-core-dll window parses.
-	if USE_DLL_TRIGGER then
-		client:Message(MT.NPCQuestSay, "SPELLCHOICEDATA " .. table.concat(names, "^"))
-		client:Message(MT.NPCQuestSay, "SPELLDESCDATA " .. table.concat(descs, "^"))
+		toks[#toks + 1] = (c.kind == "skill" and "K:" or "S:") .. c.id
 	end
 
-	-- ---- Saylink fallback: works with no client mod.
-	if SHOW_SAYLINKS then
-		client:Message(MT.Yellow, "You have gained a level! Choose a new reward:")
-		for i, c in ipairs(choices) do
-			local link = eq.say_link(SAY_TRIGGER .. " " .. i, true, "[ Select " .. c.name .. " ]")
-			client:Message(MT.LightBlue, string.format("  %d) %s   %s", i, c.name, link))
-		end
-	end
+	-- APPEND this offer to the pending QUEUE (offers separated by ";") rather than overwriting, so an
+	-- un-picked offer from an earlier level-up is never lost. The window always shows the FRONT (oldest);
+	-- picking one pops it and reveals the next.
+	local q = eq.get_data(bucket_key(client)) or ""
+	local this_offer = table.concat(toks, ",")
+	q = (q == "") and this_offer or (q .. ";" .. this_offer)
+	eq.set_data(bucket_key(client), q)
+
+	refresh_and_show(client, bucket_key(client))   -- prune known spells, then show the oldest pending offer
+end
+
+-- Discard any un-picked reward offers still queued. Call on death (roguelite reset) so a new run doesn't
+-- inherit a stale high-level offer from the previous life.
+function M.clear_pending(client)
+	eq.set_data(bucket_key(client), "")
 end
 
 -- Tell the client (eq-core-dll skill-unlock hook) which combat skills the player has EARNED
@@ -176,14 +237,16 @@ function M.handle_say(e)
 
 	local client = e.self
 	local key  = bucket_key(client)
-	local data = eq.get_data(key)
-	if not data or data == "" then
+	local q    = eq.get_data(key)
+	if not q or q == "" then
 		client:Message(MT.Red, "You have no spell choice pending.")
 		return true
 	end
 
+	-- the window shows the FRONT offer (oldest); the rest stay queued
+	local front, rest = q:match("^([^;]*);?(.*)$")
 	local toks = {}
-	for s in data:gmatch("([^,]+)") do toks[#toks + 1] = s end
+	for s in front:gmatch("([^,]+)") do toks[#toks + 1] = s end
 	local tok = toks[idx]
 	if not tok then
 		client:Message(MT.Red, "That is not a valid choice.")
@@ -198,13 +261,14 @@ function M.handle_say(e)
 	end
 
 	if kind == "K" then
-		-- combat skill reward: raise the skill to its level-scaled grant target
+		-- combat skill reward: granted ONCE (offered only while unearned). Reject if already trained.
 		local info   = skills[id]
 		local sname  = info and info.name or ("skill " .. id)
-		local target = skill_target(client, id)
-		if client:GetRawSkill(id) < target then
-			client:SetSkill(id, target)
+		if client:GetRawSkill(id) > 0 then
+			client:Message(MT.Red, "You already have " .. sname .. ".")
+			return true  -- leave the choice pending so they can pick another
 		end
+		client:SetSkill(id, skill_target(client, id))
 		client:Message(MT.Yellow, "You have trained " .. sname .. "!")
 		M.send_unlocks(client)  -- reveal the newly-earned skill on the client
 	else
@@ -229,7 +293,9 @@ function M.handle_say(e)
 		end
 	end
 
-	eq.set_data(key, "")  -- consume the pending choice
+	-- resolved: drop the front offer, keep the queued rest, then prune + reveal the next pending offer
+	eq.set_data(key, rest)
+	refresh_and_show(client, key)
 	return true
 end
 
