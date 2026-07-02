@@ -185,11 +185,21 @@ void QuestManager::me(const char *str) {
 	entity_list.MessageClose(owner, false, 200, 10, str);
 }
 
+// AoTv4: quest-rewarded gear comes out Mythic. If a Mythic tier (base id + 2,000,000) exists for
+// the rewarded item, hand out that instead -- so e.g. epic-quest gear is never the native tier.
+// Only equippable gear in the tiered set has a +2,000,000 row, so non-gear rewards are unaffected.
+uint32 AoTv4MythicReward(uint32 item_id) {
+	if (item_id < 1000000 && database.GetItem(item_id + 2000000)) {
+		return item_id + 2000000;
+	}
+	return item_id;
+}
+
 void QuestManager::summonitem(uint32 itemid, int16 charges) {
 	QuestManagerCurrentQuestVars();
 	if(!initiator)
 		return;
-	initiator->SummonItem(itemid, charges);
+	initiator->SummonItem(AoTv4MythicReward(itemid), charges);
 }
 
 void QuestManager::write(const char *file, const char *str) {

@@ -938,49 +938,52 @@ void Lua_Client::DeleteItemInInventory(int slot_id, int quantity, bool update_cl
 	self->DeleteItemInInventory(slot_id, quantity, update_client);
 }
 
+// AoTv4: Lua quest grants are upgraded to the Mythic tier too (see QuestManager::summonitem).
+uint32 AoTv4MythicReward(uint32 item_id);
+
 void Lua_Client::SummonItem(uint32 item_id) {
 	Lua_Safe_Call_Void();
-	self->SummonItem(item_id);
+	self->SummonItem(AoTv4MythicReward(item_id));
 }
 
 void Lua_Client::SummonItem(uint32 item_id, int charges) {
 	Lua_Safe_Call_Void();
-	self->SummonItem(item_id, charges);
+	self->SummonItem(AoTv4MythicReward(item_id), charges);
 }
 
 void Lua_Client::SummonItem(uint32 item_id, int charges, uint32 aug1) {
 	Lua_Safe_Call_Void();
-	self->SummonItem(item_id, charges, aug1);
+	self->SummonItem(AoTv4MythicReward(item_id), charges, aug1);
 }
 
 void Lua_Client::SummonItem(uint32 item_id, int charges, uint32 aug1, uint32 aug2) {
 	Lua_Safe_Call_Void();
-	self->SummonItem(item_id, charges, aug1, aug2);
+	self->SummonItem(AoTv4MythicReward(item_id), charges, aug1, aug2);
 }
 
 void Lua_Client::SummonItem(uint32 item_id, int charges, uint32 aug1, uint32 aug2, uint32 aug3) {
 	Lua_Safe_Call_Void();
-	self->SummonItem(item_id, charges, aug1, aug2, aug3);
+	self->SummonItem(AoTv4MythicReward(item_id), charges, aug1, aug2, aug3);
 }
 
 void Lua_Client::SummonItem(uint32 item_id, int charges, uint32 aug1, uint32 aug2, uint32 aug3, uint32 aug4) {
 	Lua_Safe_Call_Void();
-	self->SummonItem(item_id, charges, aug1, aug2, aug3, aug4);
+	self->SummonItem(AoTv4MythicReward(item_id), charges, aug1, aug2, aug3, aug4);
 }
 
 void Lua_Client::SummonItem(uint32 item_id, int charges, uint32 aug1, uint32 aug2, uint32 aug3, uint32 aug4, uint32 aug5) {
 	Lua_Safe_Call_Void();
-	self->SummonItem(item_id, charges, aug1, aug2, aug3, aug4, aug5);
+	self->SummonItem(AoTv4MythicReward(item_id), charges, aug1, aug2, aug3, aug4, aug5);
 }
 
 void Lua_Client::SummonItem(uint32 item_id, int charges, uint32 aug1, uint32 aug2, uint32 aug3, uint32 aug4, uint32 aug5, bool attuned) {
 	Lua_Safe_Call_Void();
-	self->SummonItem(item_id, charges, aug1, aug2, aug3, aug4, aug5, 0, attuned);
+	self->SummonItem(AoTv4MythicReward(item_id), charges, aug1, aug2, aug3, aug4, aug5, 0, attuned);
 }
 
 void Lua_Client::SummonItem(uint32 item_id, int charges, uint32 aug1, uint32 aug2, uint32 aug3, uint32 aug4, uint32 aug5, bool attuned, int to_slot) {
 	Lua_Safe_Call_Void();
-	self->SummonItem(item_id, charges, aug1, aug2, aug3, aug4, aug5, 0, attuned, to_slot);
+	self->SummonItem(AoTv4MythicReward(item_id), charges, aug1, aug2, aug3, aug4, aug5, 0, attuned, to_slot);
 }
 
 void Lua_Client::SetStats(int type, int value) {
@@ -1350,6 +1353,51 @@ bool Lua_Client::GrantAlternateAdvancementAbility(int aa_id, int points) {
 bool Lua_Client::GrantAlternateAdvancementAbility(int aa_id, int points, bool ignore_cost) {
 	Lua_Safe_Call_Bool();
 	return self->GrantAlternateAdvancementAbility(aa_id, points, ignore_cost);
+}
+
+int Lua_Client::StartPlayerTrader(int default_mult) {
+	Lua_Safe_Call_Int();
+	return self->StartPlayerTrader(default_mult);
+}
+
+std::string Lua_Client::GetTraderSatchelItemIDs() {
+	Lua_Safe_Call_String();
+	return self->GetTraderSatchelItemIDs();
+}
+
+void Lua_Client::StopPlayerTrader() {
+	Lua_Safe_Call_Void();
+	self->TraderEndTrader();
+}
+
+void Lua_Client::ReclaimOfflineShop() {
+	Lua_Safe_Call_Void();
+	self->ReclaimOfflineShop();
+}
+
+std::string Lua_Client::GetSellableInventory() {
+	Lua_Safe_Call_String();
+	return self->GetSellableInventory();
+}
+
+std::string Lua_Client::GetMyShopListing() {
+	Lua_Safe_Call_String();
+	return self->GetMyShopListing();
+}
+
+int Lua_Client::AddItemsToShop(std::string csv) {
+	Lua_Safe_Call_Int();
+	return self->AddItemsToShop(csv);
+}
+
+int Lua_Client::PullShopItem(int serial) {
+	Lua_Safe_Call_Int();
+	return self->PullShopItem(serial);
+}
+
+bool Lua_Client::IsTrader() {
+	Lua_Safe_Call_Bool();
+	return self->IsTrader();
 }
 
 void Lua_Client::ResetAlternateAdvancementRank(int aa_id) {
@@ -3931,6 +3979,15 @@ luabind::scope lua_register_client() {
 	.def("GrantAllAAPoints", (void(Lua_Client::*)(uint8,bool))&Lua_Client::GrantAllAAPoints)
 	.def("GrantAlternateAdvancementAbility", (bool(Lua_Client::*)(int, int))&Lua_Client::GrantAlternateAdvancementAbility)
 	.def("GrantAlternateAdvancementAbility", (bool(Lua_Client::*)(int, int, bool))&Lua_Client::GrantAlternateAdvancementAbility)
+	.def("StartPlayerTrader", &Lua_Client::StartPlayerTrader)
+	.def("GetTraderSatchelItemIDs", &Lua_Client::GetTraderSatchelItemIDs)
+	.def("StopPlayerTrader", &Lua_Client::StopPlayerTrader)
+	.def("ReclaimOfflineShop", &Lua_Client::ReclaimOfflineShop)
+	.def("GetSellableInventory", &Lua_Client::GetSellableInventory)
+	.def("GetMyShopListing", &Lua_Client::GetMyShopListing)
+	.def("AddItemsToShop", &Lua_Client::AddItemsToShop)
+	.def("PullShopItem", &Lua_Client::PullShopItem)
+	.def("IsTrader", &Lua_Client::IsTrader)
 	.def("GrantNameChange", &Lua_Client::GrantNameChange)
 	.def("GuildID", (uint32(Lua_Client::*)(void))&Lua_Client::GuildID)
 	.def("GuildRank", (int(Lua_Client::*)(void))&Lua_Client::GuildRank)

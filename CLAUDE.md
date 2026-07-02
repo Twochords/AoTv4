@@ -19,8 +19,8 @@ so it works on a **vanilla RoF2 client — no MacroQuest/E3 required**.
   - `quests/lua_modules/` — `spell_choice.lua` (core logic), `spell_pool.lua` (gen),
     `spell_icons.lua` (gen), `skill_pool.lua` (combat-ability rewards), `spell_blacklist.lua` (gen).
 - Client mod source: `/src/.devcontainer/repo/eq-core-dll/` (builds `dinput8.dll`).
-  - `core_spellwindow.cpp` — the spell window, the **AA window** (§6), **and** the skill-unlock
-    hook; all three share the `dsp_chat` + `ProcessGameEvents` detours.
+  - `core_spellwindow.cpp` — the spell window, the **AA window** (§6), the **Portal window** (§11),
+    **and** the skill-unlock hook; all share the `dsp_chat` + `ProcessGameEvents` detours.
   - `core_skillunlock.h` — declares `EnableSkillUnlock()` (impl is in `core_spellwindow.cpp`).
   - `_options.h` — feature flags; `core_init.h` — wires them in `InitOptions()`.
 
@@ -279,6 +279,27 @@ class, `classes8`, skill caps, expansion). The windows are generic (`SPELLCHOICE
 - **AAs aren't in shared memory** — the zone loads `aa_ability`/`aa_ranks` straight from the DB at
   boot, so DB edits just need a zone restart (no `./shared_memory` rebuild). Rules are also read at
   boot — a `rule_values` change (e.g. `UseCurrentExpansionAAOnly`) needs a restart, not a reload.
+- **`items` (and `spells_new`) ARE in shared memory** — unlike AAs, item edits need a full rebuild:
+  stop world+zones, `cd build/bin && ./shared_memory`, restart world (zones reboot on demand). Do it
+  with world DOWN, or world keeps the stale mmap.
+- **Gear tiers** (`custom/sql/aotv4_gear_tiers.sql`): two tiers above native, generated from
+  obtainable equippable gear (slots>0, in lootdrop_entries/merchantlist, **base ids <1,000,000** —
+  never re-tier our own rows). **Hallowed = base id +1,000,000** (stats/resists/dmg ×2, hp/mana/end
+  ×2, AC ×1.5, int→.5 spelldmg, wis→.5 healamt, str/agi/dex /10 → attack/strikethrough/accuracy,
+  instruments ×1.5, tradeable). **Mythic = +2,000,000** (hp/mana/end ×2.5, AC ×2, int/wis→1×
+  spelldmg/healamt, +½ heroic on every stat+resist, instruments ×2, **No Drop**). All three tiers:
+  classes/races=65535, not-lore; **native + Hallowed tradeable, only Mythic No Drop**. Derived stats
+  use the scaled (×2) values.
+  Two C++ hooks (tracked patches): `NPC::AddLootDropTable` (loot.cpp) rolls **25% Hallowed / 5%
+  Mythic** per base drop (mode-independent, since `lootdrop_entries.chance` is a weight in the
+  dominant weighted loot mode); `AoTv4MythicReward` (questmgr.cpp + lua_client.cpp) upgrades
+  **quest-reward** gear to its Mythic tier (epics never hand out native). Re-run the SQL → rebuild
+  shared memory → restart.
+- **Never run `make zone`** — that Makefile target is NOT a build; it runs a **bare `./zone`** (no
+  instance args), which registers with world as an unmanaged static zone ("Zone started with name
+  [.] by launcher [NONE]") and **breaks zone routing** (clients time out on enter-world). To rebuild
+  the zone binary use `cd /src/build && ninja zone`. If clients can't zone in, check for rogue bare
+  `./zone` procs and **exactly one** `eqlaunch` (`pgrep -x eqlaunch`); kill extras + restart world.
 - **`small` is a Windows macro** — `<rpcndr.h>` does `#define small char`, so a local named
   `small` (e.g. `HFONT small`) miscompiles into `HFONT char` with a cascade of bogus errors. Avoid
   `small`/`hyper` as identifiers in the dll.
@@ -286,3 +307,114 @@ class, `classes8`, skill caps, expansion). The windows are generic (`SPELLCHOICE
   message) if any of: class bit, `rank->expansion` vs `UseCurrentExpansionAAOnly`, `level_req`,
   cost > unspent, or unmet `aa_rank_prereqs`. The picker pre-filters on affordability + prereqs so
   only grantable AAs are ever offered.
+- **Orphaned zones = "characters time out on login."** If you restart `eqlaunch` while old `zone`
+  procs are still alive, those zones become orphans still registered with world; world routes clients
+  to a dead zone → login timeout. Tell-tale: many `zone` procs with **pids lower than the current
+  `eqlaunch`**. Fix: kill ALL `zone` + `eqlaunch` + `world`, then restart world → eqlaunch (exactly
+  one eqlaunch). Prefer **not** restarting eqlaunch at all — kill zones and let the current eqlaunch
+  respawn them.
+- **Detach long-running procs or a shell timeout kills them.** Start world/eqlaunch with
+  `setsid nohup ./world > log 2>&1 < /dev/null &` — a plain `nohup … &` still dies when the foreground
+  shell that launched it times out (SIGTERM hits the whole process group).
+- **Bazaar seller double-pay** — the native `ServerOP_BazaarPurchase` flow **already pays the seller**
+  (`trader_pc->AddMoneyToPP` in the seller's zone). Do NOT also pay in `BuyTraderItemOutsideBazaar`;
+  the single authoritative payout is the **world** handler (online → route to seller's zone; offline →
+  escrow bucket). See §13.
+- **Trader item serials aren't stable across relog** (`GetNextItemInstSerialNumber` is a runtime
+  counter). Anything that must survive a relog (e.g. the shop's `item_sn` handle) needs a persistent
+  key — the player shop uses a `shopsn_<charid>` counter bucket, not the item serial.
+
+## 11. Discovered-PoK-book travel network
+
+A personal fast-travel system over the Plane of Knowledge books.
+- **Discover** — `global_player.lua` `event_click_door`: clicking any door whose destination is
+  `poknowledge` calls `pok_travel.discover(zone)` AND **`return 1`** (cancels the door's `HandleClick`
+  so the book does NOT teleport you to PoK — `Handle_OP_ClickDoor` skips `HandleClick` when the event
+  returns non-zero). Books are pure discovery markers.
+- **Ungated** — the PoK books are PoP-era (`doors.min_expansion 4/7/9`), so on a Classic server
+  (`CurrentExpansion=0`) they'd be content-filtered out. `custom/sql/aotv4_pok_travel.sql` sets
+  `min_expansion=max_expansion=-1` on all `dest_zone='poknowledge'` doors so they always spawn.
+  Doors load from the DB at zone boot (NOT shared memory) → restart zones after.
+- **Lua** — `pok_travel.lua` + `pok_portals.lua` (gen: short→{id,x,y,z,h,long} for the 33 book-zones,
+  landing = the PoK-side return door's dest). Discovered set in bucket `pok_found_<charid>`.
+  Chat protocol: `PORTALDATA short|Long^…` out; `/say portalgo <short>` travels (`MovePC`);
+  `/say portalreq` = silent list refresh (dll); `/say portals` = list + saylinks (no-mod fallback).
+- **Opening** — clicking a PoK book opens the window: `event_click_door` calls `pok_travel.open`
+  which sends **`PORTALOPEN`**; the dll's chat detour sets `g_portalVisible=true`. (So you open the
+  menu *at a book* — no hotkey.) `pok_travel.discover` still fires on the same click (attune if new).
+- **dll window** (`core_spellwindow.cpp`, `arePortalWindowEnabled`): a 3rd layered window (teal).
+  Scrollable list (mouse-wheel + title-bar **Up/Dn** page buttons, `PORTAL_VIS=9`) of discovered
+  zones; a row's **Travel** button queues `g_portalPendingShort` → `/say portalgo <short>` on the
+  game thread. **Closes** on: right-click, Travel, EQ losing foreground, a **20s idle timeout**
+  (`PORTAL_TIMEOUT_MS`, reset on any interaction → covers walking away), or `PORTALCLOSE` which
+  `event_enter_zone` sends on any zone change. Swallows `PORTALDATA`/`PORTALOPEN`/`PORTALCLOSE` +
+  `portalgo`/`portalreq` echoes.
+
+## 12. Expansion-unlock-on-AA-maxout (era progression)
+
+A server-wide progression race: the **first character to MAX every AA in the current era's tier
+unlocks the next expansion for EVERYONE** (Classic → Omens of War). Plan/ceilings/cadence live in
+`AOTV4_EXPANSION_PLAN.md`. Source of truth = the **GLOBAL** data bucket `aotv4_era` (0..8); every
+zone reads it, so gating is consistent and survives restarts.
+
+- **`era_system.lua`** — the era table (`name/expansion/cap/cap_exp` per era 0-8), `current()`,
+  `level_cap()`, `check_unlock(client)` (maxout test + advance + `eq.world_emote` broadcast +
+  `eq.set_rule` content bump), `clamp_level(client)`, `sync_zone()`.
+- **Maxout test** = *every AA with `era <= current` is at its max picker rank* (`aa.mr` in the
+  pool). This is authoritative — robust to the picker's floored-cost accounting and escalating
+  native rank costs (so `GetSpentAA()` is NOT used as the threshold).
+- **`aa_pool.lua`** is now **era-tiered**: 353 AAs (Classic..OoW), all at `pool[1]`, each with
+  `era` (0-8 unlock tier) + `mr` (max picker rank). Regenerated from the DB; greedy-filled by
+  native expansion to the plan's cumulative ceilings. `aa_choice.gather_affordable` offers only
+  `aa.era <= era_system.current()`.
+- **Level cap** is enforced LIVE in `global_player.event_level_up` via `era_system.clamp_level`
+  (Lua, no rule restart): holds the character at the era cap and pins exp at `cap_exp` so a death
+  banks the tuned amount (not an ever-growing pile from grinding at cap). The cap also gates the
+  **spell** pool for free (the spell picker only offers <= player level).
+- **Detection** is in `aa_choice.handle_say` after a successful pick → `era_system.check_unlock`.
+  The first char to max the current tier advances `aotv4_era`; others already past that bar don't
+  re-trigger (next ceiling is higher). A single char can cascade tiers across picks (still gated by
+  their own death-spending).
+- **Live vs restart**: level/spell/AA gating is fully live off the bucket. The **content** side
+  (zones/items/doors that filter at zone BOOT via `Expansion:CurrentExpansion`) only fully opens
+  after the rule is persisted + world restarted — `aa_choice` bumps the rule live per-zone as a
+  best-effort, and `event_enter_zone` calls `sync_zone()`. See `aotv4_aa.sql` step 4.
+- **DB**: `aotv4_aa.sql` tags the 353-AA set Bard (`classes|128`) + `grant_only`, lowers
+  `level_req 1-70 → 1`, sets `CurrentExpansion=0`. AAs load at zone boot (not shared memory) → a
+  **zone restart** applies DB changes. **Reset the race**: `DELETE FROM data_buckets WHERE` key
+  `='aotv4_era'`.
+
+> ⚠️ Keep the `aa_pool.lua` generator's WHERE in step with `aotv4_aa.sql` step 2 (same filter:
+> enabled, type 1-5, real-named, `expansion 0-8`, first-rank `level_req <= 70`, dedup by name) so
+> **pool == tagged set**. An AA in the pool but not tagged Bard → its grant silently fails.
+
+## 13. Player shop (permanent escrow trader) — `/shop`
+
+An AFK player shop that works from **any city** (no Bazaar zone, no NPC, no Trader's Satchel), documented
+in full in **`HANDOFF.md`**. Items are **escrowed** (they leave your bags when listed → no dupe), searchable
+via the native `/bazaar`, delivered by parcel, and paid to the seller on sale (instantly if online, else
+banked to next login). Managed by a **two-tab dll window** (`/shop`).
+
+- **Protocol (chat, dll swallows all of it):** `/shop` → dll rewrites to `/say shopopen`; server replies
+  `SHOPINVDATA slot|itemid|name|vendor^…` (Add-Items tab: your droppable bag items) + `MYSHOPDATA
+  itemsn|itemid|name|cost^…` (My-Shop tab: current listings). dll → `/say shopadd slot:copper,…` (escrow
+  into shop), `/say shoppull <itemsn>` (unlist → cursor), `/say shoprefresh`.
+- **Server (`zone/trading.cpp`, `Client::` + Lua-bound):** `GetSellableInventory`, `AddItemsToShop`
+  (**insert rows FIRST, then delete items** — loss-safe; unique `item_sn` from the `shopsn_<charid>`
+  counter because item serials change across relog), `GetMyShopListing`, `PullShopItem`. Rows persist in
+  the `trader` table across logout/reboot (searchable while offline).
+- **Payout is ONE place — `world/zoneserver.cpp` `ServerOP_BazaarPurchase`:** seller online (any zone) →
+  native `trader_pc->AddMoneyToPP` in their zone; seller offline → bank `shop_escrow_<charid>` (paid on
+  login by `bazaar_broker.pay_escrow`). ⚠️ **Never also pay in the zone buy path** — that was a 2× bug.
+- **Lua:** `quests/lua_modules/bazaar_broker.lua` (backend, no NPC despite the name) + `global_player.lua`
+  (`event_say` → `handle_global_say`; `event_connect` → `pay_escrow`).
+- **dll (`core_spellwindow.cpp`):** the two-tab window (reuses the coin-field/scroll code); shared
+  `DrawCloseX`/`CloseXRect` put a red **[X]** on the Journal/Portal/Shop windows; `IsInGame()`
+  (`pinstLocalPlayer` @ `0xDD2630`) gates every overlay `WM_TIMER` so they **auto-hide off char-select**.
+  `IsAoTOverlay(fg)` (window-class prefix `AoT`) makes the overlays treat **each other** as the same app
+  in that `active` check, so focusing one overlay doesn't hide the others — **multiple overlays coexist**.
+  The shop window is draggable across its whole top strip. `/shop` intercept is in `core_bazaar.h`
+  (`areTradeAnywhereEnabled=true`).
+- **Do NOT resurrect** (removed on request): the Bazaar Broker NPC (2000050), the Shopkeeper stand-in NPC
+  (2000051), the Trader's-Satchel `vpset/vshop` flow, or `Bazaar:UseAlternateBazaarSearch` (keep it false —
+  it's Bazaar-zone-sharded, the opposite of trader-anywhere).

@@ -18,10 +18,14 @@ void InitOptions() {
 	if (areCustomNPCsEnabled) InjectCustomNPCs();
 	if (areCustomOldAnimationsEnabled) InjectCustomOldAnimations();
 	if (isBazaarWindowDisabled) DisableCBazaarSearchWnd();
+	if (areTradeAnywhereEnabled) EnableTradeAnywhere();   // /trader + /buyer in any city (needs CXWnd__Show_x)
 	if (isEQGOverrideEnabled) InjectEQGOrderLoading();
 	if (areCustomShieldsEnabled) InjectCustomShields();
 	if (areAllClassesCasters) EnableAllClassesCasters();
 	if (areSkillsUnlocked) EnableSkillUnlock();
-	if (areSpellChoiceWindowEnabled) EnableSpellChoiceWindow();
-	if (areAAChoiceWindowEnabled) EnableAAChoiceWindow();
+	// Spell / AA / Lost are now tabs of the single Reward Journal window (it enables their chat
+	// parsers itself), so we wire the journal instead of the three old standalone windows.
+	if (areJournalWindowEnabled) EnableJournalWindow();
+	if (areVendorWindowEnabled) EnableVendorWindow();
+	if (arePortalWindowEnabled) EnablePortalWindow();
 }

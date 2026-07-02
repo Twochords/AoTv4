@@ -731,7 +731,7 @@ Client::~Client() {
 		merc->Depop();
 
 	if(IsTrader()) {
-		TraderEndTrader();
+		TraderEndTrader(true);   // AoTv4: persist listings so the shop stays open while offline
 	}
 
 	if(IsBuyer()) {

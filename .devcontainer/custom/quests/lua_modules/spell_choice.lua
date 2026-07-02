@@ -107,8 +107,12 @@ function M.offer(e)
 	local client = e.self
 	local level  = client:GetLevel()
 
-	-- deterministic-per-(character,level) variety without relying on os.time
-	math.randomseed(client:CharacterID() * 2654435761 + level + 1)
+	-- Vary the offer EACH level-up. A per-(char,level) seed repeats the same 3 spells every run
+	-- (roguelite re-levels constantly), so mix in a per-offer counter (bucket) -- like aa_choice.
+	local sk = "spell_seed_" .. client:CharacterID()
+	local n  = (tonumber(eq.get_data(sk)) or 0) + 1
+	eq.set_data(sk, tostring(n))
+	math.randomseed(client:CharacterID() * 2654435761 + level * 7919 + n * 104729)
 
 	-- Mostly spells with ~1 combat skill: reserve one slot for a skill (when eligible),
 	-- fill the rest with level-appropriate spells, then shuffle so the skill isn't last.

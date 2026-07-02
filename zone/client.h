@@ -300,7 +300,10 @@ public:
 	void TraderShowItems();
 	void Trader_CustomerBrowsing(Client *Customer);
 
-	void TraderEndTrader();
+	// AoTv4 offline shop: when a Trader logs off we KEEP their `trader` rows (searchable/buyable while
+	// offline) instead of deleting them; char_entity_id is left as the shop-open value so the Bazaar's
+	// exact-match trader filter still resolves the shop. See TraderEndTrader / Handle_OP_TraderShop.
+	void TraderEndTrader(bool persist_listings = false);
 	void TraderPriceUpdate(const EQApplicationPacket *app);
 	void SendBazaarDone(uint32 trader_id);
 	void SendBulkBazaarTraders();
@@ -311,6 +314,14 @@ public:
 
 	void SendTraderMode(BazaarTraderBarterActions status);
 	void TraderStartTrader(const EQApplicationPacket *app);
+	int  StartPlayerTrader(uint32 default_mult);   // AoTv4: server-side trader start from satchel (Bazaar Broker NPC)
+	std::string GetTraderSatchelItemIDs();         // AoTv4: CSV of item ids in the Trader's Satchel (for the Broker popup)
+	void ReclaimOfflineShop();                     // AoTv4: on login, clear any listings left running while offline
+	// AoTv4 permanent escrow shop (add-from-any-bag; managed via the dll "My Shop" tab):
+	std::string GetSellableInventory();            // "slot|itemid|name|vendor^..." droppable items to add
+	std::string GetMyShopListing();                // "item_sn|itemid|name|cost^..." current shop rows
+	int  AddItemsToShop(std::string csv);          // "slot:price,..." -> escrow items out of bags into rows
+	int  PullShopItem(uint32 serial);              // unlist one row -> item back to cursor
 //	void TraderPriceUpdate(const EQApplicationPacket *app);
 	uint8 WithCustomer(uint16 NewCustomer);
 	std::vector<uint32> GetKeyRing() { return keyring; }

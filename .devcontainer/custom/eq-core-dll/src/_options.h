@@ -25,6 +25,11 @@ bool areLuclinModelsDisabled = false;
 // isBazaarWindowDisabled if set to true will disable the bazaar window in game by doing a soft patch.
 bool isBazaarWindowDisabled = false;
 
+// areTradeAnywhereEnabled if set to true installs the InterpretCmd hook that makes "/shop" open the
+// Set-Up-Shop vendor window from anywhere (it routes to the server as "/say shopopen"; the server
+// replies with VENDORDATA which the dll turns into the window). See core_bazaar.h.
+bool areTradeAnywhereEnabled = true;
+
 // isHeroicDisabled if set to true will make heroic stats not display
 bool isHeroicDisabled = false;
 
@@ -60,6 +65,29 @@ bool areSpellChoiceWindowEnabled = true;
 // Shows banked AA points + each choice's cost + a class marker; a pick "/say aapick N". Shares
 // the spell window's chat + ProcessGameEvents hooks.
 bool areAAChoiceWindowEnabled = true;
+
+// arePortalWindowEnabled if set to true shows a "Discovered Portals" window driven by the server's
+// "PORTALDATA short|Long^..." chat line (PoK-book travel network). Opened by CLICKING a discovered
+// Plane of Knowledge book (server sends "PORTALOPEN"); right-click to dismiss; clicking a row sends
+// "/say portalgo <short>". Shares the spell/AA window hooks.
+bool arePortalWindowEnabled = true;
+
+// areLostWindowEnabled if set to true shows a "You Lost" window on death listing everything that
+// was destroyed, driven by the server's "LOSTDATA name^name^..." chat line. Scrollable; right-click
+// or wait to dismiss. Shares the spell/AA window hooks.
+// NOTE: now subsumed by the Reward Journal (areJournalWindowEnabled) -- this flag's standalone
+// window is no longer spawned; the Spell/AA/Lost chat parsers are turned on by the journal.
+bool areLostWindowEnabled = true;
+
+// areJournalWindowEnabled if set to true shows the "Reward Journal" -- one Quest-Journal-styled
+// tabbed window holding the Spell, AA, and Lost panels (replacing the three standalone windows).
+// Auto-opens on level-up/death to the relevant tab; toggles with Ctrl+W. Portal stays separate.
+bool areJournalWindowEnabled = true;
+
+// areVendorWindowEnabled if set to true shows the "Set Up Shop" vendor price window, driven by the
+// server's "VENDORDATA id|name|vendorvalue^..." chat line (Bazaar Broker NPC). Scrollable satchel
+// list with +/- price tiers shown in real platinum; Open/Close Shop send "/say vpset.../vshop/vclose".
+bool areVendorWindowEnabled = true;
 
 // areSkillsUnlocked if set to true patches CSkillMgr::GetSkillCap so a 0 (class-can't-have)
 // cap becomes a usable cap, letting EVERY class see/use EVERY skill -- the skill analogue

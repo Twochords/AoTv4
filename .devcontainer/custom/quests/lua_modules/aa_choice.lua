@@ -16,6 +16,7 @@
 -- A chat saylink fallback also works with no client mod (for testing before the dll window exists).
 
 local aapool = require("aa_pool")
+local era    = require("era_system")   -- AAs are gated by the server-wide unlocked expansion era
 
 local M = {}
 
@@ -41,6 +42,34 @@ local function count_key(client)  return "aa_pcount_" .. client:CharacterID() en
 
 local function get_num(key) local v = eq.get_data(key); return tonumber(v) or 0 end
 
+-- A few EQ AAs (Origin, Harm Touch, Lay on Hands, Hunter's Attack Power) have a real first-rank
+-- cost of 0 in aa_ranks -- they're class "freebies". In the roguelite picker every reward should
+-- cost at least 1 banked point, so we floor the cost here. Used everywhere the cost is read (offer
+-- fields, affordability, the stored "id:cost" the deduction reads) so all three stay consistent.
+local function aa_cost(aa) local c = tonumber(aa.cost) or 1; return c < 1 and 1 or c end
+
+-- Reverse id -> name from the pool (built once), so the pick confirmation can name the AA. The
+-- engine's own "gained the ability ... at a cost of 0" line is misleading (we grant ignore_cost,
+-- so it always says 0); the dll hides it and we print the REAL banked cost instead.
+local aa_name_by_id
+local function name_of(id)
+	if not aa_name_by_id then
+		aa_name_by_id = {}
+		for _, list in pairs(aapool) do
+			for _, aa in ipairs(list) do aa_name_by_id[aa.id] = aa.name end
+		end
+	end
+	return aa_name_by_id[id] or ("ability " .. tostring(id))
+end
+
+-- Push the banked total to the dll with NO choices, so its header updates when the picker STOPS
+-- (everything spent / nothing affordable). The dll only auto-opens the journal when choices > 0,
+-- so this just corrects the "Banked: N" number (e.g. back to 0) without re-popping the window --
+-- otherwise the header keeps showing the last offer's banked count after the final pick.
+local function send_bank_update(client, budget)
+	client:Message(MT.NPCQuestSay, "AACHOICEDATA " .. tostring(budget))
+end
+
 -- The player satisfies an AA's first-rank prerequisites (so the server won't reject it). Mirrors
 -- CanPurchaseAlternateAdvancementRank's prereq loop: needs `r` ranks of each required ability `a`.
 local function prereqs_met(client, aa)
@@ -56,18 +85,18 @@ end
 -- the player has trained what they require -- so dependency chains unlock progressively.
 local function gather_affordable(client, level, budget)
 	local out = {}
+	local cur_era = era.current()      -- only AAs from unlocked expansion eras are offered
 	for lv = 1, level do
 		local list = aapool[lv]
 		if list then
 			for _, aa in ipairs(list) do
-				local cost = aa.cost or 1
+				local cost = aa_cost(aa)
 				local next_rank = (client:GetAAByAAID(aa.id) or 0) + 1
-				-- per-AA cap: total invested (next_rank * cost) must stay within RANK_BUDGET; a
-				-- free (cost 0) AA is a one-time pick. Plus it must be affordable now + prereq-met.
-				local within_cap
-				if cost == 0 then within_cap = (next_rank <= 1)
-				else                within_cap = (next_rank * cost <= RANK_BUDGET) end
-				if cost <= budget and within_cap and prereqs_met(client, aa) then
+				-- per-AA cap: total invested (next_rank * cost) must stay within RANK_BUDGET.
+				-- Plus: era-unlocked, affordable now, prereq-met.
+				local within_cap = (next_rank * cost <= RANK_BUDGET)
+				if (aa.era or 0) <= cur_era and cost <= budget and within_cap
+				   and prereqs_met(client, aa) then
 					out[#out + 1] = aa
 				end
 			end
@@ -107,6 +136,7 @@ function M.offer(e)
 
 	if get_num(count_key(client)) >= MAX_PICKS then
 		eq.set_data(choice_key(client), "")
+		send_bank_update(client, budget)
 		client:Message(MT.Yellow, string.format(
 			"That is enough training for now -- %d AA point(s) remain banked.", budget))
 		return
@@ -114,6 +144,7 @@ function M.offer(e)
 
 	if budget < 1 then
 		eq.set_data(choice_key(client), "")
+		send_bank_update(client, 0)
 		if get_num(count_key(client)) > 0 then
 			client:Message(MT.Yellow, "You have spent all of your banked AA points.")
 		end
@@ -123,6 +154,7 @@ function M.offer(e)
 	local pool = gather_affordable(client, client:GetLevel(), budget)
 	if #pool == 0 then
 		eq.set_data(choice_key(client), "")
+		send_bank_update(client, budget)
 		client:Message(MT.Yellow, string.format(
 			"You have %d AA point(s) banked -- nothing else is affordable right now.", budget))
 		return
@@ -137,9 +169,10 @@ function M.offer(e)
 	local choices = pick_random(pool, CHOICE_COUNT)
 	local ids, fields, descs = {}, {}, {}
 	for _, aa in ipairs(choices) do
-		ids[#ids + 1]    = tostring(aa.id) .. ":" .. tostring(aa.cost or 1)  -- "id:cost"
+		local cost = aa_cost(aa)
+		ids[#ids + 1]    = tostring(aa.id) .. ":" .. tostring(cost)  -- "id:cost"
 		fields[#fields + 1] = aa.name .. "|" .. tostring(aa.icon or 0) .. "|" ..
-			tostring(aa.cost or 1) .. "|" .. tostring(aa.cls or 0)
+			tostring(cost) .. "|" .. tostring(aa.cls or 0)
 		descs[#descs + 1] = ((aa.desc or ""):gsub("[%^|]", " "))               -- ^ and | are delimiters
 	end
 	eq.set_data(choice_key(client), table.concat(ids, ","))
@@ -155,7 +188,7 @@ function M.offer(e)
 			"Death has tempered you (%d AA banked) -- choose an Alternate Ability:", budget))
 		for i, aa in ipairs(choices) do
 			local link = eq.say_link(SAY_TRIGGER .. " " .. i, true, "[ Train " .. aa.name .. " ]")
-			client:Message(MT.LightBlue, string.format("  %d) %s  (cost %d)  %s", i, aa.name, aa.cost or 1, link))
+			client:Message(MT.LightBlue, string.format("  %d) %s  (cost %d)  %s", i, aa.name, aa_cost(aa), link))
 		end
 	end
 end
@@ -195,9 +228,14 @@ function M.handle_say(e)
 	eq.set_data(count_key(client), tostring(get_num(count_key(client)) + 1))
 
 	if ok then
-		local left = get_num(bank_key(client)) - (costs[idx] or 0)
+		local spent = costs[idx] or 0
+		local left  = get_num(bank_key(client)) - spent
 		if left < 0 then left = 0 end
 		eq.set_data(bank_key(client), tostring(left))
+		-- Accurate confirmation (the engine's "at a cost of 0" line is hidden by the dll).
+		client:Message(MT.Yellow, string.format(
+			"You train %s for %d AA. (%d banked.)", name_of(aa_id), spent, left))
+		era.check_unlock(client)   -- maxed the era's tier? -> unlock the next expansion server-wide
 	else
 		client:Message(MT.Red, "You cannot train that ability any further right now.")
 	end

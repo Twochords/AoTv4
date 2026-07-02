@@ -84,9 +84,10 @@ void Client::SendPathPacket(const std::vector<FindPerson_Point> &points) {
 			return;
 		}
 		
-		if (Admin() > AccountStatus::Steward) {
-			Message(Chat::System, "Total points %u", points.size());
-		}
+		// AoTv4: silenced -- this leftover debug spammed "Total points N" into GM chat on every Find.
+		// if (Admin() > AccountStatus::Steward) {
+		//	Message(Chat::System, "Total points %u", points.size());
+		// }
 		
 		int len = sizeof(FindPersonResult_Struct) + (points.size() + 1) * sizeof(FindPerson_Point);
 		auto outapp = new EQApplicationPacket(OP_FindPersonReply, len);

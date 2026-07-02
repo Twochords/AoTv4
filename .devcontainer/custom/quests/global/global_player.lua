@@ -3,16 +3,24 @@
 local don = require("dragons_of_norrath")
 local spell_choice = require("spell_choice")
 local aa_choice = require("aa_choice")
+local pok_travel = require("pok_travel")
+local death_loss = require("death_loss")
+local era_system = require("era_system")   -- server-wide expansion unlock progression
+local bazaar_broker = require("bazaar_broker")  -- player-shop vendor window (vpset/vshop/vclose)
 
 -- AA-on-death tuning (roguelite: death banks xp as AA and resets the character to level 1).
 -- Diminishing returns: cost per banked AA point = AA_XP_BASE * (1 + owned_AA * AA_SCALE),
--- so the more AA you already have, the slower each death's AA gain. AA_XP_BASE is tuned so a
--- level-50 run with no AA yet banks ~10 (level-50 total XP ~= 71M / 7M = ~10).
-local AA_XP_BASE  = 15000000  -- base XP per banked AA point (level-50 total XP ~= 155M => ~10)
-local AA_SCALE    = 0.005     -- each owned AA point raises the XP cost per new AA point
+-- so the more AA you already have, the slower each death's AA gain. A no-AA L50 death banks ~18
+-- (L50 Bard total XP ~= 164.7M; 164.7M / 8.8M ~= 18). The gentle 0.003 taper -- combined with the
+-- planned per-era level-cap raises that lift XP/death -- keeps every expansion era to <=20 deaths
+-- to clear its AA tier (see AOTV4_EXPANSION_PLAN.md). Keep both in step as the cap rises.
+local AA_XP_BASE  = 8800000   -- base XP per banked AA point (no-AA level-50 death => ~18)
+local AA_SCALE    = 0.003     -- each owned AA point raises the XP cost per new AA point (gentle taper)
 
 function event_enter_zone(e)
 	mysterious_voice(e)
+	era_system.sync_zone()                          -- point this zone's expansion rule at the unlocked era
+	e.self:Message(MT.NPCQuestSay, "PORTALCLOSE")   -- dismiss the Portal window on any zone change
 
 	if eq.is_lost_dungeons_of_norrath_enabled() and eq.get_zone_short_name() == "lavastorm" and e.self:GetGMStatus() >= 80 then 
 		e.self:Message(MT.DimGray, "There are GM commands available for Dragons of Norrath, use " .. eq.say_link("#don") .. " to get started")
@@ -301,9 +309,13 @@ function event_connect(e)
 
 	grant_veteran_aa(e)
 	don.fix_invalid_faction_state(e.self)
+	pok_travel.send_list(e.self, true)   -- warm the dll Portal window with discovered zones
 
 	-- tell the client which combat skills are already earned (so the unlock hook reveals them)
 	spell_choice.send_unlocks(e.self)
+
+	-- hand over coin earned while the player's (permanent) shop sold items offline
+	bazaar_broker.pay_escrow(e.self)
 end
 
 function grant_veteran_aa(e)
@@ -401,6 +413,13 @@ end
 ]]--
 
 function event_level_up(e)
+  -- Era level cap: hold the character at the current expansion's cap. Clamping returns early so we
+  -- don't offer spells above the cap (the spell picker is already level-bounded, so the cap also
+  -- gates the spell pool). At the cap, XP keeps flowing into the death-bank (held at the threshold).
+  if era_system.clamp_level(e.self) then
+    return
+  end
+
   -- Auto-grant ONLY casting / singing / utility skills so spells and songs work. Combat/melee
   -- skills are deliberately NOT here -- they are reward-gated (see skill_pool.lua): a combat
   -- skill stays at 0 until the player picks it in the level-up window.
@@ -451,12 +470,31 @@ function event_death(e)
     -- is the ONLY way to spend -- the native AA window shows 0 spendable points.
     aa_choice.grant_picks(e, banked)
   end
+
+  -- ROGUELITE LOSS: destroy carried gear/inventory/money + wipe spells (bank + epics are safe),
+  -- then report what was lost (chat + the "what you lost" dll window via LOSTDATA).
+  local lost = death_loss.process(client)
+  death_loss.announce(client, lost)
+  spell_choice.send_unlocks(client)   -- re-hide the now-reset combat skills on the client
 end
 
 function event_say(e)
   -- consume "spellpick <N>" (spell window) and "aapick <N>" (AA window) picks
   spell_choice.handle_say(e)
   aa_choice.handle_say(e)
+  pok_travel.handle_say(e)        -- "portals" (list) + "portalgo <short>" (travel)
+  bazaar_broker.handle_global_say(e)  -- vendor window: "vpset .../vshop/vclose"
+end
+
+-- Discover a Plane of Knowledge portal by clicking that zone's PoK book (a door to poknowledge).
+-- Return 1 to CANCEL the door's normal teleport -- the book only attunes/discovers; actual travel
+-- is via the Portal window. (Handle_OP_ClickDoor skips HandleClick when the event returns non-zero.)
+function event_click_door(e)
+  if e.door and e.door:GetDestinationZoneName() == "poknowledge" then
+    pok_travel.discover(e.self, eq.get_zone_short_name())  -- attune (first click)
+    pok_travel.open(e.self)                                -- open the Portal window
+    return 1
+  end
 end
 
 test_items = {

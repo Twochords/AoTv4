@@ -361,6 +361,15 @@ public:
 	void IncrementAA(int aa);
 	bool GrantAlternateAdvancementAbility(int aa_id, int points);
 	bool GrantAlternateAdvancementAbility(int aa_id, int points, bool ignore_cost);
+	int StartPlayerTrader(int default_mult);
+	std::string GetTraderSatchelItemIDs();
+	void StopPlayerTrader();
+	void ReclaimOfflineShop();
+	std::string GetSellableInventory();
+	std::string GetMyShopListing();
+	int AddItemsToShop(std::string csv);
+	int PullShopItem(int serial);
+	bool IsTrader();
 	void ResetAlternateAdvancementRank(int aa_id);
 	void MarkSingleCompassLoc(float in_x, float in_y, float in_z);
 	void MarkSingleCompassLoc(float in_x, float in_y, float in_z, int count);
