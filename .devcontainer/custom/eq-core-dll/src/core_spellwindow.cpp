@@ -1302,6 +1302,7 @@ static LRESULT CALLBACK PortalOverlayWndProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
 	case WM_MOUSEMOVE: {
 		g_portalIdleTick = GetTickCount();           // interacting -> keep open
+		if (GetForegroundWindow() != hwnd) SetForegroundWindow(hwnd);  // hovering grabs focus so a scroll never reaches EQ's camera
 		if (g_pDragging) {
 			POINT cur; GetCursorPos(&cur);
 			g_pPosX = cur.x - g_pDragDX; g_pPosY = cur.y - g_pDragDY; g_pPositioned = true;
@@ -1334,6 +1335,7 @@ static LRESULT CALLBACK PortalOverlayWndProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
 	case WM_MOUSEWHEEL: {
 		g_portalIdleTick = GetTickCount();
+		if (GetForegroundWindow() != hwnd) SetForegroundWindow(hwnd);  // grab focus so EQ stops zooming
 		int d = GET_WHEEL_DELTA_WPARAM(wp);
 		g_portalScroll += (d > 0) ? -1 : 1;
 		int maxs = g_portalCount - PORTAL_VIS; if (maxs < 0) maxs = 0;
@@ -1821,6 +1823,7 @@ static LRESULT CALLBACK JournalWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
 		return 0;
 
 	case WM_MOUSEWHEEL: {
+		if (GetForegroundWindow() != hwnd) SetForegroundWindow(hwnd);  // grab focus so EQ stops zooming
 		if (g_journalTab == JTAB_LOST) {
 			int d = GET_WHEEL_DELTA_WPARAM(wp);
 			g_jLostScroll += (d > 0) ? -1 : 1;
@@ -2100,6 +2103,7 @@ static LRESULT CALLBACK VendorWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 	case WM_LBUTTONUP: if (g_vDragging) { g_vDragging = false; ReleaseCapture(); } return 0;
 	case WM_RBUTTONUP: g_vendorVisible = false; ShowWindow(hwnd, SW_HIDE); return 0;
 	case WM_MOUSEWHEEL: {
+		if (GetForegroundWindow() != hwnd) SetForegroundWindow(hwnd);  // grab focus so EQ stops zooming
 		int d = GET_WHEEL_DELTA_WPARAM(wp); int& scroll = VScroll(); scroll += (d > 0) ? -1 : 1;
 		int mx = VCount() - VVIS; if (mx < 0) mx = 0;
 		if (scroll < 0) scroll = 0; if (scroll > mx) scroll = mx;

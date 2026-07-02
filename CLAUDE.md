@@ -335,10 +335,17 @@ A personal fast-travel system over the Plane of Knowledge books.
   (`CurrentExpansion=0`) they'd be content-filtered out. `custom/sql/aotv4_pok_travel.sql` sets
   `min_expansion=max_expansion=-1` on all `dest_zone='poknowledge'` doors so they always spawn.
   Doors load from the DB at zone boot (NOT shared memory) → restart zones after.
-- **Lua** — `pok_travel.lua` + `pok_portals.lua` (gen: short→{id,x,y,z,h,long} for the 33 book-zones,
-  landing = the PoK-side return door's dest). Discovered set in bucket `pok_found_<charid>`.
-  Chat protocol: `PORTALDATA short|Long^…` out; `/say portalgo <short>` travels (`MovePC`);
-  `/say portalreq` = silent list refresh (dll); `/say portals` = list + saylinks (no-mod fallback).
+- **Lua** — `pok_travel.lua` + `pok_portals.lua` (gen: short→{id,x,y,z,h,long} for the 33 book-zones).
+  Discovered set in bucket `pok_found_<charid>`. Chat protocol: `PORTALDATA short|Long^…` out; `/say
+  portalgo <short>` travels (`MovePC`); `/say portalreq` = silent list refresh (dll); `/say portals` =
+  list + saylinks (no-mod fallback).
+  - ⚠️ **Landing-coord rule (regeneration):** landing = the PoK-side **return** door's dest **when one
+    exists** (game-tuned, lands ~by the book). **14 of the 33 zones have NO PoK→zone return book**
+    (bazaar, feerrott2, freeportwest, freportw, innothule, innothuleb, mistythicket, shadowrest,
+    steamfont, steamfontmts, tox, toxxulia, weddingchapel, weddingchapeldark) — for those the landing
+    MUST be the zone's **own book position** (`doors.pos_x/y/z` where `dest_zone='poknowledge'`), NOT
+    the zone **safe point**. The generator originally used the safe point → those 14 dropped you at
+    map-center; they're hand-corrected in `pok_portals.lua` (each tagged `-- book … (no return door)`).
 - **Opening** — clicking a PoK book opens the window: `event_click_door` calls `pok_travel.open`
   which sends **`PORTALOPEN`**; the dll's chat detour sets `g_portalVisible=true`. (So you open the
   menu *at a book* — no hotkey.) `pok_travel.discover` still fires on the same click (attune if new).
