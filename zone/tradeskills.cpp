@@ -252,6 +252,61 @@ void Object::HandleAugmentation(Client* user, const AugmentItem_Struct* in_augme
 	}
 }
 
+// AoTv4 "Refining Crucible" (item 2000060): a generic upgrade bag. Any 4 identical items whose next
+// gear tier exists are consumed into 1 of that next tier (Hallowed = base id +1,000,000, Mythic =
+// +2,000,000, so each step is +1,000,000). Handles several distinct 4-stacks in one combine. The
+// crucible itself is never consumed. Gated by item id (NOT bagtype) so real bagtype-30 quest
+// containers are untouched.
+static const uint32 AOTV4_REFINE_BAG_ID = 2000060;
+static const uint32 AOTV4_TIER_STEP     = 1000000;   // native->Hallowed and Hallowed->Mythic
+
+static void AoTv4RefineCombine(Client* user, EQ::ItemInstance* container, int container_slot)
+{
+	const EQ::ItemData *bag = container ? container->GetItem() : nullptr;
+	if (!bag) {
+		return;
+	}
+
+	// group the bag's contents by item id, remembering each item's bag slot
+	std::map<uint32, std::vector<uint8>> by_id;
+	for (uint8 s = 0; s < bag->BagSlots; ++s) {
+		const EQ::ItemInstance *it = container->GetItem(s);
+		if (it && it->GetItem()) {
+			by_id[it->GetItem()->ID].push_back(s);
+		}
+	}
+
+	int produced = 0;
+	for (auto &kv : by_id) {
+		uint32 id = kv.first;
+		auto  &ss = kv.second;
+		if (ss.size() < 4 || id >= 2 * AOTV4_TIER_STEP) {   // need 4+; Mythic is already top tier
+			continue;
+		}
+		uint32 next = id + AOTV4_TIER_STEP;
+		if (!database.GetItem(next)) {                       // no higher-quality version of this item
+			continue;
+		}
+		int sets = (int) (ss.size() / 4);
+		for (int i = 0; i < sets * 4; ++i) {                 // consume 4 per produced item
+			user->DeleteItemInInventory(EQ::InventoryProfile::CalcSlotId(container_slot, ss[i]), 0, true);
+		}
+		for (int i = 0; i < sets; ++i) {                     // hand out the upgrades (to cursor)
+			user->SummonItem(next);
+		}
+		produced += sets;
+	}
+
+	if (produced > 0) {
+		user->Message(Chat::LightBlue,
+			fmt::format("The crucible refines your goods into {} higher-quality item(s).", produced).c_str());
+	}
+	else {
+		user->Message(Chat::Yellow,
+			"Place 4 of the same item (one that has a higher-quality version) in the crucible, then Combine.");
+	}
+}
+
 // Perform tradeskill combine
 void Object::HandleCombine(Client* user, const NewCombine_Struct* in_combine, Object *worldo)
 {
@@ -378,6 +433,15 @@ void Object::HandleCombine(Client* user, const NewCombine_Struct* in_combine, Ob
 		else if (inst) {
 			user->MessageString(Chat::LightBlue, DETRANSFORM_FAILED, inst->GetItem()->Name);
 		}
+		auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
+		user->QueuePacket(outapp);
+		safe_delete(outapp);
+		return;
+	}
+
+	// AoTv4 Refining Crucible: intercept before the recipe lookup and run the generic 4->next-tier combine.
+	if (container->GetItem() && container->GetItem()->ID == AOTV4_REFINE_BAG_ID) {
+		AoTv4RefineCombine(user, container, in_combine->container_slot);
 		auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
 		user->QueuePacket(outapp);
 		safe_delete(outapp);
