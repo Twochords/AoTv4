@@ -246,6 +246,26 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 #ifdef SPELL_EFFECT_SPAM
 		effect_desc[0] = 0;
 #endif
+
+		// AoTv4 (solo server): NPCs cannot crowd-control players/bots. Skip just the CC effect index
+		// (stun/charm/mez/fear/dispel) when an NPC is the caster -- any damage or other effects on the
+		// same spell still land. Player-cast versions are unaffected. Melee stun is blocked in Client::Stun.
+		if (caster && caster->IsNPC() && (IsClient() || IsBot())) {
+			switch (effect) {
+			case SpellEffect::Stun:
+			case SpellEffect::Charm:
+			case SpellEffect::Mez:
+			case SpellEffect::Fear:
+			case SpellEffect::Fearstun:
+			case SpellEffect::CancelMagic:
+			case SpellEffect::DispelDetrimental:
+			case SpellEffect::DispelBeneficial:
+				continue;
+			default:
+				break;
+			}
+		}
+
 		switch(effect)
 		{
 			case SpellEffect::CurrentHP:	// nukes, heals; also regen/dot if a buff

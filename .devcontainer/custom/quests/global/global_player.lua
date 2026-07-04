@@ -9,14 +9,15 @@ local era_system = require("era_system")   -- server-wide expansion unlock progr
 local bazaar_broker = require("bazaar_broker")  -- player-shop vendor window (vpset/vshop/vclose)
 local autobuff = require("autobuff")            -- memmed beneficial buffs/songs become permanent auras
 
--- AA-on-death tuning (roguelite: death banks xp as AA and resets the character to level 1).
--- Diminishing returns: cost per banked AA point = AA_XP_BASE * (1 + owned_AA * AA_SCALE),
--- so the more AA you already have, the slower each death's AA gain. A no-AA L50 death banks ~18
--- (L50 Bard total XP ~= 164.7M; 164.7M / 8.8M ~= 18). The gentle 0.003 taper -- combined with the
--- planned per-era level-cap raises that lift XP/death -- keeps every expansion era to <=20 deaths
--- to clear its AA tier (see AOTV4_EXPANSION_PLAN.md). Keep both in step as the cap rises.
-local AA_XP_BASE  = 8800000   -- base XP per banked AA point (no-AA level-50 death => ~18)
-local AA_SCALE    = 0.003     -- each owned AA point raises the XP cost per new AA point (gentle taper)
+-- AA-on-death tuning (roguelite: death banks AA and resets the character to level 1).
+-- Reward tracks XP EFFORT below the cap, then JUMPS at the era level cap to reward the last push.
+-- NO owned-AA taper -- the per-death reward is FIXED by how far you got, so these values are exact:
+--     below cap:  banked = floor( (run_xp / cap_exp) * cap * DEATH_AA_SUB_CAP )   -- XP-effort ramp
+--     at cap:     banked = floor( cap * DEATH_AA_AT_CAP )                          -- big final-push bonus
+-- Classic (cap 50): L30 ~3, L40 ~7, L49 ~14, and dying AT 50 banks 20 -- a big jump for the last level.
+-- run_xp is per-run (reset on death); everything scales with the era cap (Kunark cap 60 -> 24 at cap).
+local DEATH_AA_AT_CAP  = 0.40   -- AA for dying AT the era cap = cap * this  (L50 -> 20, L60 -> 24)
+local DEATH_AA_SUB_CAP = 0.32   -- XP-effort scale below the cap = cap * this  (L49 -> ~14)
 
 function event_enter_zone(e)
 	mysterious_voice(e)
@@ -321,6 +322,21 @@ function event_connect(e)
 	bazaar_broker.pay_escrow(e.self)
 
 	autobuff.sync(e.self)                -- apply permanent auras for already-memmed beneficial buffs/songs
+
+	-- daily Hot Zone welcome: the midnight roll publishes the list to the GLOBAL bucket
+	-- "aotv4_hotzone_list" (read live, never cached). Printed as clean per-line chat because the RoF2
+	-- MOTD control won't render line breaks. Bucket format: longname|mult^longname|mult^...
+	local hz = eq.get_data("aotv4_hotzone_list")
+	if hz and hz ~= "" then
+		e.self:Message(MT.LightBlue, "----- Welcome to AoTv4!  Today's Hot Zones (bonus EXP) -----")
+		for entry in string.gmatch(hz, "([^%^]+)") do
+			local name, mult = entry:match("^(.-)|(%d+)$")
+			if name then
+				e.self:Message(mult == "3" and MT.Lime or MT.Yellow,
+					string.format("   %s  -  %sx EXP", name, mult))
+			end
+		end
+	end
 end
 
 -- repeating "autobuff" timer (started in event_enter_zone): reconcile permanent buff auras with the bar
@@ -466,18 +482,36 @@ end
 -- The random AA window then pops; banked AA scales with how far the run got.
 function event_death(e)
   local client = e.self
-  local total  = client:GetEXP()
+  local death_level = client:GetLevel()   -- capture BEFORE the roguelite reset to level 1 below
+  local run_xp      = client:GetEXP()     -- XP earned THIS run (effort); also captured pre-reset
 
-  -- ROGUELITE: every death banks ALL experience as AA and restarts the run at level 1.
+  -- server-wide death announcement: who died, what killed them, at what level, and lifetime deaths.
+  -- Death count persists in the per-character bucket "deaths_<charid>".
+  local cid    = client:CharacterID()
+  local deaths = (tonumber(eq.get_data("deaths_" .. cid)) or 0) + 1
+  eq.set_data("deaths_" .. cid, tostring(deaths))
+  local killer = (e.other and e.other:GetCleanName()) or "the world"
+  eq.world_emote(MT.Red, string.format("%s has been slain by %s at level %d!  They have now died %d %s.",
+    client:GetCleanName(), killer, death_level, deaths, deaths == 1 and "time" or "times"))
+
+  -- ROGUELITE: every death banks AA (scaled by the level reached) and restarts the run at level 1.
   -- SetEXP takes (normal_exp, aa_exp) -- zero normal XP, keep AA exp.
   client:SetLevel(1)
   client:SetEXP(0, client:GetAAExp())
 
-  -- diminishing returns: the more AA you already own, the more XP each new point costs.
-  local owned   = client:GetSpentAA() or 0
-  local divisor = AA_XP_BASE * (1 + owned * AA_SCALE)
-  local banked  = math.floor(total / divisor)
-  if banked >= 1 then                 -- (no farming: a near-0-XP death banks nothing)
+  -- XP-effort bank below the cap, with a big bonus for dying AT the cap (see the tuning block on top).
+  -- No owned-AA taper: the reward is fixed by the level/XP you reached this run.
+  local cap     = era_system.level_cap()
+  local cap_exp = era_system.def(era_system.current()).cap_exp or 1
+  local base
+  if death_level >= cap then
+    base = cap * DEATH_AA_AT_CAP                              -- reached the cap: big final-push reward
+  else
+    base = (run_xp / cap_exp) * (cap * DEATH_AA_SUB_CAP)     -- XP-effort ramp below the cap
+  end
+  -- CATCH-UP: +25% per era the server is ahead of this player's AA tier (0 in Classic; see era_system).
+  local banked = math.floor(base * era_system.catchup_bonus(client))
+  if banked >= 1 then                 -- (no farming: low-XP early deaths bank little/nothing)
     -- Bank into aa_choice's PRIVATE bucket (not the native unspent pool) so the random picker
     -- is the ONLY way to spend -- the native AA window shows 0 spendable points.
     aa_choice.grant_picks(e, banked)

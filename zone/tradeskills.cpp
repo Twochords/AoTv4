@@ -15,6 +15,7 @@
 	You should have received a copy of the GNU General Public License
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
+#include <unordered_set>
 #include "client.h"
 
 #include "common/events/player_event_logs.h"
@@ -260,6 +261,8 @@ void Object::HandleAugmentation(Client* user, const AugmentItem_Struct* in_augme
 static const uint32 AOTV4_REFINE_BAG_ID = 2000060;
 static const uint32 AOTV4_TIER_STEP     = 1000000;   // native->Hallowed and Hallowed->Mythic
 
+static bool AoTv4IsEpicItem(uint32 id);   // defined below; used to keep epics out of the crucible
+
 static void AoTv4RefineCombine(Client* user, EQ::ItemInstance* container, int container_slot)
 {
 	const EQ::ItemData *bag = container ? container->GetItem() : nullptr;
@@ -281,6 +284,9 @@ static void AoTv4RefineCombine(Client* user, EQ::ItemInstance* container, int co
 		uint32 id = kv.first;
 		auto  &ss = kv.second;
 		if (ss.size() < 4 || id >= 2 * AOTV4_TIER_STEP) {   // need 4+; Mythic is already top tier
+			continue;
+		}
+		if (AoTv4IsEpicItem(id)) {   // the crucible never refines epics -- epics come only from quests (Mythic)
 			continue;
 		}
 		uint32 next = id + AOTV4_TIER_STEP;
@@ -1339,6 +1345,31 @@ void Client::CheckIncreaseTradeskill(int16 bonusstat, int16 stat_modifier, float
 	LogTradeskills("Stage2 chance was: [{}] percent. 0 percent means stage1 failed", chance_stage2);
 }
 
+// AoTv4: tier items (Hallowed = base+1,000,000, Mythic = base+2,000,000) count as their base item when
+// matching tradeskill recipes, so a combine works with any quality tier of a required component (the
+// combine analog of the any-quality quest turn-in). Ids outside the reserved band pass through.
+static uint32 AoTv4TierBaseId(uint32 id) {
+	return (id >= 1000000 && id < 3000000) ? (id % 1000000) : id;
+}
+
+// AoTv4: is this item id an epic (items.epicitem<>0)? The runtime EQ::ItemData doesn't carry the epic
+// flag, so we cache the id set once from the DB (rebuilt on zone restart, which item edits require
+// anyway). Used to gate the Mythic upgrade of combine OUTPUTS to epics only.
+static bool AoTv4IsEpicItem(uint32 id) {
+	static std::unordered_set<uint32> epic_ids;
+	static bool loaded = false;
+	if (!loaded) {
+		auto results = database.QueryDatabase("SELECT id FROM items WHERE epicitem <> 0");
+		if (results.Success()) {
+			for (auto row : results) {
+				epic_ids.insert(Strings::ToUnsignedInt(row[0]));
+			}
+		}
+		loaded = true;
+	}
+	return epic_ids.find(id) != epic_ids.end();
+}
+
 bool ZoneDatabase::GetTradeRecipe(
 	const EQ::ItemInstance* container,
 	uint8 c_type,
@@ -1389,14 +1420,16 @@ bool ZoneDatabase::GetTradeRecipe(
 			continue;
 		}
 
+		// AoTv4: match tier items (Hallowed/Mythic) as their base id so any-quality components combine.
+		const uint32 match_id = AoTv4TierBaseId(item->ID);
 		if (first) {
-			buf2 += fmt::format("{}", item->ID);
+			buf2 += fmt::format("{}", match_id);
 			first = false;
 		} else {
-			buf2 += fmt::format(", {}", item->ID);
+			buf2 += fmt::format(", {}", match_id);
 		}
 
-		sum += item->ID;
+		sum += match_id;
 		count++;
 
 		LogTradeskills(
@@ -1675,8 +1708,13 @@ bool ZoneDatabase::GetTradeRecipe(
 
 	spec->onsuccess.clear();
 	for(auto row : results) {
-		const uint32 item_id       = Strings::ToUnsignedInt(row[0]);
+		uint32       item_id       = Strings::ToUnsignedInt(row[0]);
 		const uint8  success_count = Strings::ToUnsignedInt(row[1]);
+		// AoTv4: an EPIC produced by a combine comes out Mythic, same as summonitem quest rewards.
+		// Gated to epics only (via the cached epicitem set) so ordinary tradeskilling is unaffected.
+		if (AoTv4IsEpicItem(item_id) && GetItem(item_id + 2000000)) {
+			item_id += 2000000;
+		}
 		spec->onsuccess.emplace_back(std::pair<uint32, uint8>(item_id, success_count));
 	}
 

@@ -50,6 +50,27 @@ local function era_maxed(client, era)
 	return true
 end
 
+-- The lowest era whose AAs the player has NOT fully maxed = the tier they're still working on.
+-- (If they've maxed every unlocked tier, this returns the current server era = fully caught up.)
+function M.player_era(client)
+	local cur = M.current()
+	for era = 0, cur do
+		if not era_maxed(client, era) then return era end
+	end
+	return cur
+end
+
+-- CATCH-UP bonus applied to death-AA banking: +CATCHUP_PER_ERA for each era the server has unlocked
+-- BEYOND the player's own AA tier. Once Kunark opens, anyone still finishing Classic AAs banks +25%;
+-- two eras behind banks +50%; a caught-up player gets nothing (and a Classic-only server = no bonus
+-- for anyone). Lets latecomers close the gap without touching the leaders' rate.
+local CATCHUP_PER_ERA = 0.25
+function M.catchup_bonus(client)
+	local behind = M.current() - M.player_era(client)
+	if behind < 1 then return 1.0 end
+	return 1.0 + behind * CATCHUP_PER_ERA
+end
+
 -- Best-effort: point THIS zone's content-expansion rule at the unlocked era. Runtime expansion
 -- checks pick it up; a FULL content open (zones/items that filter at zone BOOT) still needs the
 -- rule persisted in rule_values + a world restart -- see AOTV4_EXPANSION_PLAN.md 5d / custom SQL.
