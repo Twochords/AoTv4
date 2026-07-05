@@ -1061,13 +1061,15 @@ std::string Client::GetSellableInventory()
 		csv += fmt::format("{}|{}|{}|{}^", slot, d->ID, name, d->Price);
 	};
 
+	// AoTv4: only items placed INSIDE a Trader's Satchel are sellable -- not loose inventory or other
+	// bags. Skip top-level items entirely; descend only into satchels.
 	for (int16 i = EQ::invslot::GENERAL_BEGIN; i <= EQ::invslot::GENERAL_END; i++) {
 		const EQ::ItemInstance *top = GetInv().GetItem(i);
-		consider(i);
-		if (top && top->IsClassBag()) {
-			for (uint8 x = EQ::invbag::SLOT_BEGIN; x <= EQ::invbag::SLOT_END; x++) {
-				consider(EQ::InventoryProfile::CalcSlotId(i, x));
-			}
+		if (!top || !top->IsClassBag() || top->GetItem()->BagType != EQ::item::BagTypeTradersSatchel) {
+			continue;
+		}
+		for (uint8 x = EQ::invbag::SLOT_BEGIN; x <= EQ::invbag::SLOT_END; x++) {
+			consider(EQ::InventoryProfile::CalcSlotId(i, x));
 		}
 	}
 	return csv;
@@ -1118,6 +1120,13 @@ int Client::AddItemsToShop(std::string csv)
 		const EQ::ItemInstance *it = GetInv().GetItem(slot);
 		if (!it || !it->GetItem() || it->GetItem()->NoDrop == 0 || it->IsClassBag()) {
 			continue;   // stale slot / No-Drop / container -- skip
+		}
+		// AoTv4: the item must live INSIDE a Trader's Satchel (validate server-side, not just the dll).
+		int16                   parent     = EQ::InventoryProfile::CalcSlotId(slot);
+		const EQ::ItemInstance *parent_bag = (parent < 0) ? nullptr : GetInv().GetItem(parent);
+		if (!parent_bag || !parent_bag->GetItem() ||
+			parent_bag->GetItem()->BagType != EQ::item::BagTypeTradersSatchel) {
+			continue;
 		}
 
 		TraderRepository::Trader r{};

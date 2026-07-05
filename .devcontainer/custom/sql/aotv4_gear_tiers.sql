@@ -42,7 +42,8 @@ UPDATE tmp_hallowed SET
   damage = damage*2,
   ac = FLOOR(ac * 1.5),                        -- AC: 1.5x native
   bardvalue = FLOOR(bardvalue * 1.5),
-  procrate = IF(proceffect > 0 AND procrate = 0, 10, procrate),
+  procrate = IF(proceffect > 0, GREATEST(10, procrate * 2), procrate),   -- Hallowed procs 2x native (min 10)
+  recastdelay = IF(clickeffect > 0 AND recastdelay > 0, FLOOR(recastdelay / 2), recastdelay),  -- click reuse /2
   nodrop = 1,                                  -- tradeable (only Mythic is No Drop)
   classes = 65535, races = 65535, loregroup = 0,
   Name = CONCAT('Hallowed ', Name),
@@ -77,7 +78,8 @@ UPDATE tmp_mythic SET
   damage = damage*2,
   ac = FLOOR(ac * 2),                          -- AC: 2x native
   bardvalue = FLOOR(bardvalue * 2),
-  procrate = IF(proceffect > 0 AND procrate = 0, 20, procrate),
+  procrate = IF(proceffect > 0, GREATEST(20, procrate * 4), procrate),   -- Mythic procs 4x native = 2x Hallowed (min 20)
+  recastdelay = IF(clickeffect > 0 AND recastdelay > 0, FLOOR(recastdelay / 4), recastdelay),  -- click reuse /4
   nodrop = 0,                                  -- No Drop
   classes = 65535, races = 65535, loregroup = 0,
   Name = CONCAT('Mythic ', Name),

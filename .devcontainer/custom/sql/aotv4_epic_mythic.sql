@@ -53,7 +53,8 @@ UPDATE tmp_epic_mythic SET
   damage = damage*2,
   ac = FLOOR(ac * 2),
   bardvalue = FLOOR(bardvalue * 2),
-  procrate = IF(proceffect > 0 AND procrate = 0, 20, procrate),
+  procrate = IF(proceffect > 0, GREATEST(20, procrate * 4), procrate),   -- Mythic procs 4x native (min 20)
+  recastdelay = IF(clickeffect > 0 AND recastdelay > 0, FLOOR(recastdelay / 4), recastdelay),  -- click reuse /4
   nodrop = 0,                                  -- No Drop
   classes = 65535, races = 65535, loregroup = 0,
   Name = CONCAT('Mythic ', Name),
