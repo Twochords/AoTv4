@@ -69,3 +69,9 @@ compile_flags.txt
 # CMake Files
 cmake-build-relwithdebinfo/*
 skill-caps.diff
+
+# AoTv4 custom overlay: .devcontainer/custom/ holds the project's own source (custom Lua
+# modules, global_player.lua edits, eq-core-dll source) which the Makefile applies onto the
+# bootstrapped clones. Track it -- including the dll .vcxproj that the global *.vcxproj rule
+# above would otherwise hide.
+!.devcontainer/custom/**/*.vcxproj

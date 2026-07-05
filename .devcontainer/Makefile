@@ -30,6 +30,12 @@ prep: is-vscode
 	cd .devcontainer/repo && if [ ! -d "quests" ]; then cd ../../.devcontainer/repo/ && git clone https://github.com/ProjectEQ/projecteqquests.git quests; fi
 	cd .devcontainer/repo && if [ ! -d "eqemu-definitions" ]; then cd ../../.devcontainer/repo/ && git clone https://github.com/xackery/eqemu-definitions.git eqemu-definitions; fi
 	cd .devcontainer/repo && if [ ! -d "maps" ]; then cd ../../ && make maps; fi
+	cd .devcontainer/repo && if [ ! -d "eq-core-dll" ]; then cd ../../.devcontainer/repo/ && git clone https://github.com/xackery/eq-core-dll.git eq-core-dll; fi
+
+	@echo "Applying AoTv4 custom overlay (tracked source over the bootstrapped clones)..."
+	cp -R .devcontainer/custom/quests/. .devcontainer/repo/quests/
+	cp -R .devcontainer/custom/eq-core-dll/. .devcontainer/repo/eq-core-dll/
+
 	@if [ -d build/bin/quests ]; then unlink build/bin/quests; fi
 	cd build/bin && ln -s ../../.devcontainer/repo/quests quests
 	@if [ -d build/bin/maps ]; then unlink build/bin/maps; fi
@@ -50,6 +56,31 @@ prep: is-vscode
 	cd build/bin && ln -s ../../.devcontainer/repo/quests/plugins plugins
 
 	@echo "Eqemu is prepared. Edit build/bin/eqemu_config.json to configure."
+
+# Refresh the tracked .devcontainer/custom overlay from the LIVE repo/ files. Run this before
+# committing so the version-controlled copies match what you've been editing/testing in repo/.
+.PHONY: sync-custom
+sync-custom:
+	@echo "Syncing live repo customizations -> tracked .devcontainer/custom overlay..."
+	cp .devcontainer/repo/quests/global/global_player.lua .devcontainer/custom/quests/global/
+	cp .devcontainer/repo/quests/lua_modules/skill_pool.lua \
+	   .devcontainer/repo/quests/lua_modules/spell_blacklist.lua \
+	   .devcontainer/repo/quests/lua_modules/spell_choice.lua \
+	   .devcontainer/repo/quests/lua_modules/spell_icons.lua \
+	   .devcontainer/repo/quests/lua_modules/spell_pool.lua \
+	   .devcontainer/repo/quests/lua_modules/aa_choice.lua \
+	   .devcontainer/repo/quests/lua_modules/aa_pool.lua \
+	   .devcontainer/custom/quests/lua_modules/
+	cp .devcontainer/repo/eq-core-dll/src/EQClasses.h \
+	   .devcontainer/repo/eq-core-dll/src/_options.h \
+	   .devcontainer/repo/eq-core-dll/src/core_init.h \
+	   .devcontainer/repo/eq-core-dll/src/core_allcasters.h \
+	   .devcontainer/repo/eq-core-dll/src/core_skillunlock.h \
+	   .devcontainer/repo/eq-core-dll/src/core_spellchoice.h \
+	   .devcontainer/repo/eq-core-dll/src/core_spellwindow.cpp \
+	   .devcontainer/repo/eq-core-dll/src/eq-core-dll-vs2022.vcxproj \
+	   .devcontainer/custom/eq-core-dll/src/
+	@echo "Synced. Review with: git diff .devcontainer/custom"
 
 is-vscode:
 	@if [ -z "$$REMOTE_CONTAINERS" ]; then \

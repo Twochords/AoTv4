@@ -1,0 +1,97 @@
+-- ==========================================================================================
+-- AoTv4 gear tiers. Adds two tiers ABOVE native gear:
+--   Hallowed  = base item id + 1,000,000,  name "Hallowed <name>"
+--   Mythic    = base item id + 2,000,000,  name "Mythic <name>"   (No Drop)
+-- Scope: "currently-obtainable" equippable items (slots>0, referenced by lootdrop_entries
+--        or merchantlist). Native rows are edited in place only for all/all + not-lore.
+-- Derived stats use the tier's SCALED stats (e.g. Hallowed spelldmg = (2*int)*0.5).
+-- Items live in SHARED MEMORY -- after running this, rebuild ./shared_memory + restart world/zones.
+-- Idempotent: re-running rebuilds the +1M/+2M rows (that id band holds nothing else).
+-- ==========================================================================================
+
+-- ---- scope: obtainable equippable base items ------------------------------------------------
+DROP TEMPORARY TABLE IF EXISTS aotv4_scope;
+CREATE TEMPORARY TABLE aotv4_scope (id INT PRIMARY KEY);
+INSERT INTO aotv4_scope
+  SELECT DISTINCT i.id FROM items i
+  WHERE i.slots > 0
+    AND i.id < 1000000   -- base items only; never re-tier our own +1M/+2M rows (or orphan refs to them)
+    AND (i.id IN (SELECT item_id FROM lootdrop_entries) OR i.id IN (SELECT item FROM merchantlist));
+
+-- clear any prior tier rows so re-runs are clean (this band holds only our generated tiers)
+DELETE FROM items WHERE id BETWEEN 1000000 AND 2999999;
+
+-- ============================== HALLOWED (base + 1,000,000) =================================
+DROP TEMPORARY TABLE IF EXISTS tmp_hallowed;
+CREATE TEMPORARY TABLE tmp_hallowed LIKE items;
+INSERT INTO tmp_hallowed SELECT * FROM items WHERE id IN (SELECT id FROM aotv4_scope);
+
+-- (1) derived stats from the SCALED (x2) stats, computed while base columns are still original
+UPDATE tmp_hallowed SET
+  spelldmg      = FLOOR((aint * 2) * 0.5),     -- 1 int  -> .5 spell power
+  healamt       = FLOOR((awis * 2) * 0.5),     -- 1 wis  -> .5 healing power
+  attack        = FLOOR((astr * 2) / 10),      -- 1:10 str -> attack
+  strikethrough = FLOOR((aagi * 2) / 10),      -- 1:10 agi -> strikethrough
+  accuracy      = FLOOR((adex * 2) / 10);      -- 1:10 dex -> accuracy
+
+-- (2) scale base stats x2, hp/mana/endur x2, instruments x1.5, set proc/flags/name/id
+UPDATE tmp_hallowed SET
+  hp = FLOOR(hp*2), mana = FLOOR(mana*2), endur = FLOOR(endur*2),
+  astr=astr*2, asta=asta*2, aagi=aagi*2, adex=adex*2, awis=awis*2, aint=aint*2, acha=acha*2,
+  fr=fr*2, cr=cr*2, mr=mr*2, dr=dr*2, pr=pr*2, svcorruption=svcorruption*2,
+  damage = damage*2,
+  ac = FLOOR(ac * 1.5),                        -- AC: 1.5x native
+  bardvalue = FLOOR(bardvalue * 1.5),
+  procrate = IF(proceffect > 0, GREATEST(10, procrate * 2), procrate),   -- Hallowed procs 2x native (min 10)
+  recastdelay = IF(clickeffect > 0 AND recastdelay > 0, FLOOR(recastdelay / 2), recastdelay),  -- click reuse /2
+  nodrop = 1,                                  -- tradeable (only Mythic is No Drop)
+  classes = 65535, races = 65535, loregroup = 0,
+  Name = CONCAT('Hallowed ', Name),
+  id = id + 1000000;
+INSERT INTO items SELECT * FROM tmp_hallowed;
+
+-- ================================ MYTHIC (base + 2,000,000) =================================
+DROP TEMPORARY TABLE IF EXISTS tmp_mythic;
+CREATE TEMPORARY TABLE tmp_mythic LIKE items;
+INSERT INTO tmp_mythic SELECT * FROM items WHERE id IN (SELECT id FROM aotv4_scope);
+
+-- (1) derived + heroic from the SCALED (x2) stats (computed against original base columns)
+UPDATE tmp_mythic SET
+  spelldmg      = FLOOR((aint * 2) * 1.0),     -- 1 int -> 1 spell power
+  healamt       = FLOOR((awis * 2) * 1.0),     -- 1 wis -> 1 healing power
+  attack        = FLOOR((astr * 2) / 10),
+  strikethrough = FLOOR((aagi * 2) / 10),
+  accuracy      = FLOOR((adex * 2) / 10),
+  heroic_str = FLOOR((astr*2)*0.5), heroic_sta = FLOOR((asta*2)*0.5),
+  heroic_agi = FLOOR((aagi*2)*0.5), heroic_dex = FLOOR((adex*2)*0.5),
+  heroic_wis = FLOOR((awis*2)*0.5), heroic_int = FLOOR((aint*2)*0.5),
+  heroic_cha = FLOOR((acha*2)*0.5),
+  heroic_fr = FLOOR((fr*2)*0.5), heroic_cr = FLOOR((cr*2)*0.5), heroic_mr = FLOOR((mr*2)*0.5),
+  heroic_dr = FLOOR((dr*2)*0.5), heroic_pr = FLOOR((pr*2)*0.5),
+  heroic_svcorrup = FLOOR((svcorruption*2)*0.5);
+
+-- (2) scale bases (stats x2, hp/mana/endur x2.5), instruments x2, No Drop, flags/name/id
+UPDATE tmp_mythic SET
+  hp = FLOOR(hp*2.5), mana = FLOOR(mana*2.5), endur = FLOOR(endur*2.5),
+  astr=astr*2, asta=asta*2, aagi=aagi*2, adex=adex*2, awis=awis*2, aint=aint*2, acha=acha*2,
+  fr=fr*2, cr=cr*2, mr=mr*2, dr=dr*2, pr=pr*2, svcorruption=svcorruption*2,
+  damage = damage*2,
+  ac = FLOOR(ac * 2),                          -- AC: 2x native
+  bardvalue = FLOOR(bardvalue * 2),
+  procrate = IF(proceffect > 0, GREATEST(20, procrate * 4), procrate),   -- Mythic procs 4x native = 2x Hallowed (min 20)
+  recastdelay = IF(clickeffect > 0 AND recastdelay > 0, FLOOR(recastdelay / 4), recastdelay),  -- click reuse /4
+  nodrop = 0,                                  -- No Drop
+  classes = 65535, races = 65535, loregroup = 0,
+  Name = CONCAT('Mythic ', Name),
+  id = id + 2000000;
+INSERT INTO items SELECT * FROM tmp_mythic;
+
+-- ================================ NATIVE (in place) =========================================
+-- all/all + not-lore + tradeable for the obtainable native gear. (Tier drop rules: native + Hallowed
+-- tradeable, only Mythic is No Drop.)
+UPDATE items SET classes = 65535, races = 65535, loregroup = 0, nodrop = 1
+WHERE id IN (SELECT id FROM aotv4_scope);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_scope;
+DROP TEMPORARY TABLE IF EXISTS tmp_hallowed;
+DROP TEMPORARY TABLE IF EXISTS tmp_mythic;

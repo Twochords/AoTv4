@@ -958,6 +958,10 @@ bool Client::HandleEnterWorldPacket(const EQApplicationPacket *app) {
 	}
 
 	auto outapp = new EQApplicationPacket(OP_MOTD);
+	// AoTv4: the MOTD variable is refreshed out-of-band (the daily hot-zone roll writes variables.MOTD
+	// directly via SQL), so re-load the variable cache here to serve the CURRENT MOTD on each login
+	// instead of the value cached at world boot.
+	database.LoadVariables();
 	std::string motd = RuleS(World, MOTD);
 	if (!motd.empty()) {
 		outapp->size    = motd.length() + 1;

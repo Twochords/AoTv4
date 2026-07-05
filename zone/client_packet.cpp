@@ -15764,9 +15764,11 @@ void Client::Handle_OP_TraderShop(const EQApplicationPacket *app)
 			);
 			auto data          = (TraderClick_Struct *) outapp->pBuffer;
 			auto trader_client = entity_list.GetClientByID(in->TraderID);
+			uint32 browse_char_id = 0;
 
-			if (trader_client) {
+			if (trader_client && trader_client->IsTrader()) {
 				data->Approval = trader_client->WithCustomer(GetID());
+				browse_char_id = trader_client->CharacterID();
 				LogTrading("Client::Handle_OP_TraderShop: Shop Request ([{}]) to ([{}]) with Approval: [{}]",
 						   GetCleanName(),
 						   trader_client->GetCleanName(),
@@ -15774,10 +15776,20 @@ void Client::Handle_OP_TraderShop(const EQApplicationPacket *app)
 				);
 			}
 			else {
-				LogTrading("Client::Handle_OP_TraderShop: entity_list.GetClientByID(tcs->traderid)"
-						   " returned a nullptr pointer"
-				);
-				return;
+				// AoTv4 offline shop: no live trader entity (the owner logged off, so their shop-open
+				// entity id is stale). Resolve the seller from the persisted `trader` table by the entity
+				// id the buyer clicked and serve the browse straight from the DB -- no customer locking
+				// needed since there's no live trader to conflict with.
+				auto rows = TraderRepository::GetWhere(
+					database, fmt::format("`char_entity_id` = '{}' LIMIT 1", in->TraderID));
+				if (rows.empty()) {
+					LogTrading("Client::Handle_OP_TraderShop: no live trader and no offline listing for entity [{}]",
+							   in->TraderID);
+					return;
+				}
+				browse_char_id = rows.front().char_id;
+				data->Approval = 1;
+				LogTrading("Client::Handle_OP_TraderShop: OFFLINE shop browse for char_id [{}]", browse_char_id);
 			}
 
 			data->Code       = ClickTrader;
@@ -15786,8 +15798,10 @@ void Client::Handle_OP_TraderShop(const EQApplicationPacket *app)
 			QueuePacket(outapp.get());
 
 			if (data->Approval) {
-				BulkSendTraderInventory(trader_client->CharacterID());
-				trader_client->Trader_CustomerBrowsing(this);
+				BulkSendTraderInventory(browse_char_id);
+				if (trader_client) {
+					trader_client->Trader_CustomerBrowsing(this);
+				}
 				SetTraderID(in->TraderID);
 				LogTrading("Client::Handle_OP_TraderShop: Trader Inventory Sent to [{}] from [{}]",
 						   GetID(),

@@ -18,6 +18,7 @@
 #include "client.h"
 
 #include "common/bazaar.h"
+#include "common/data_bucket.h"
 #include "common/eq_packet_structs.h"
 #include "common/eqemu_logsys.h"
 #include "common/events/player_event_logs.h"
@@ -918,7 +919,7 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 	LogTrading("Trader Mode ON for Player [{}] with client version {}.", GetCleanName(), (uint32) ClientVersion());
 }
 
-void Client::TraderEndTrader()
+void Client::TraderEndTrader(bool persist_listings)
 {
 	if (IsThereACustomer()) {
 		auto customer = entity_list.GetClientByID(GetCustomerID());
@@ -928,13 +929,379 @@ void Client::TraderEndTrader()
 		}
 	}
 
-	TraderRepository::DeleteWhere(database, fmt::format("`char_id` = '{}'", CharacterID()));
+	if (!persist_listings) {
+		TraderRepository::DeleteWhere(database, fmt::format("`char_id` = '{}'", CharacterID()));
+	}
+	// else: AoTv4 offline shop -- keep the listings so the shop stays searchable/buyable while the
+	// owner is logged off. We deliberately leave char_entity_id AS-IS (the small shop-open entity id):
+	// the Bazaar's per-trader filter does an EXACT match on char_entity_id (common/bazaar.cpp), so a big
+	// synthetic marker would be truncated by the client and match nothing. A browsing buyer with no live
+	// entity is instead resolved from the DB (see Handle_OP_TraderShop). Coin from offline sales is
+	// banked to shop_escrow_<charid> and handed over on the seller's next login (global_player.lua).
 
 	SendBecomeTraderToWorld(this, TraderOff);
 	SendTraderMode(TraderOff);
 
 	WithCustomer(0);
 	SetTrader(false);
+}
+
+// AoTv4 offline shop: called on login (global_player.lua event_connect). Reconciles the owner's
+// Trader's Satchel against what actually sold while they were offline, then closes the listing.
+// The offline rows are stamped with kOfflineTraderEntityBase; `shop_listed_<charid>` holds the serials
+// that were listed at shop-open. For each listed serial: if no row survives it fully sold (remove the
+// item); if a row survives and the item is stackable, remove just the quantity that sold; a surviving
+// row for a non-stackable means it's unsold (leave it). Coin from offline sales is paid separately via
+// the shop_escrow_<charid> bucket (bazaar_broker.pay_escrow).
+void Client::ReclaimOfflineShop()
+{
+	std::string listed_key = fmt::format("shop_listed_{}", CharacterID());
+	std::string listed     = DataBucket::GetData(&database, listed_key);
+
+	if (!listed.empty()) {
+		// quantity of an item_id represented by a listing/row: a stack counts its charges, anything
+		// else counts as 1 unit.
+		auto qty_of = [this](uint32 item_id, int32 charges) -> int32 {
+			const EQ::ItemData *d = database.GetItem(item_id);
+			if (d && d->Stackable) {
+				return charges > 0 ? charges : 1;
+			}
+			return 1;
+		};
+
+		// listed at shop-open, vs. what survives now (unsold); the difference sold while offline
+		std::map<uint32, int32> listed_qty;
+		std::map<uint32, int32> remaining_qty;
+
+		for (const auto &tok : Strings::Split(listed, ",")) {
+			if (tok.empty()) {
+				continue;
+			}
+			auto kv = Strings::Split(tok, ":");
+			if (kv.size() < 2) {
+				continue;
+			}
+			uint32 iid = Strings::ToUnsignedInt(kv[0]);
+			int32  chg = Strings::ToInt(kv[1]);
+			listed_qty[iid] += qty_of(iid, chg);
+		}
+
+		auto rows = TraderRepository::GetWhere(database, fmt::format("`char_id` = '{}'", CharacterID()));
+		for (const auto &r : rows) {
+			remaining_qty[r.item_id] += qty_of(r.item_id, r.item_charges);
+		}
+
+		for (const auto &kv : listed_qty) {
+			uint32 item_id = kv.first;
+			int32  sold    = kv.second - remaining_qty[item_id];   // 0 for unsold, >0 for what sold
+			if (sold <= 0) {
+				continue;
+			}
+			// remove `sold` units of item_id from the Trader's Satchel (matched by item_id since serials
+			// are unstable across relog); stacks are decremented, non-stackables deleted whole
+			for (int i = EQ::invslot::GENERAL_BEGIN; i <= EQ::invslot::GENERAL_END && sold > 0; i++) {
+				const EQ::ItemInstance *bag = GetInv().GetItem(i);
+				if (!bag || bag->GetItem()->BagType != EQ::item::BagTypeTradersSatchel) {
+					continue;
+				}
+				for (int x = EQ::invbag::SLOT_BEGIN; x <= EQ::invbag::SLOT_END && sold > 0; x++) {
+					uint16                  sid = EQ::InventoryProfile::CalcSlotId(i, x);
+					const EQ::ItemInstance *it  = GetInv().GetItem(sid);
+					if (!it || it->GetItem()->ID != item_id) {
+						continue;
+					}
+					if (it->IsStackable()) {
+						int32 have = it->GetCharges() > 0 ? it->GetCharges() : 1;
+						int32 take = have < sold ? have : sold;
+						DeleteItemInInventory(sid, take, true, true);
+						sold -= take;
+					}
+					else {
+						DeleteItemInInventory(sid, 0, true, true);   // 0 -> delete the whole item
+						sold -= 1;
+					}
+					LogTrading("AoTv4 offline shop: removed sold item_id [{}] from [{}]'s satchel on login",
+							   item_id, GetName());
+				}
+			}
+		}
+
+		DataBucket::SetData(&database, listed_key, "");    // reconciled -> clear the record
+	}
+
+	// close the offline listing; the owner re-opens to sell again (unsold goods remain in the satchel).
+	// On login the player is not trading yet, so any surviving rows for them are leftover offline
+	// listings -- safe to clear wholesale.
+	TraderRepository::DeleteWhere(database, fmt::format("`char_id` = '{}'", CharacterID()));
+}
+
+// ===== AoTv4 permanent escrow shop ==========================================================
+// A player's shop is a set of `trader` rows that are ESCROWED: when an item is added it is removed from
+// the player's bags and lives only as a row, so it can never be stashed/duped. Rows are searchable via
+// the native Bazaar (offline-trader style) and bought via the DB/parcel path; a sale credits the seller
+// (immediately if online, else shop_escrow_<charid> paid on next login). The player manages the shop
+// through the dll window's "My Shop" tab (list + pull). No Trader's Satchel involved.
+
+// Sellable (droppable, non-container) items across the player's main inventory + its bags, as a CSV of
+// "slot|item_id|name|vendor_value" -- feeds the dll "Add Items" browser. Skips bank/equipped/cursor.
+std::string Client::GetSellableInventory()
+{
+	std::string csv;
+	auto        consider = [&](int16 slot) {
+		const EQ::ItemInstance *it = GetInv().GetItem(slot);
+		if (!it || !it->GetItem()) {
+			return;
+		}
+		const EQ::ItemData *d = it->GetItem();
+		if (d->NoDrop == 0 || it->IsClassBag()) {   // No-Drop can't list; don't sell containers
+			return;
+		}
+		std::string name = d->Name;
+		for (auto &ch : name) { if (ch == '|' || ch == '^') { ch = ' '; } }
+		csv += fmt::format("{}|{}|{}|{}^", slot, d->ID, name, d->Price);
+	};
+
+	// AoTv4: only items placed INSIDE a Trader's Satchel are sellable -- not loose inventory or other
+	// bags. Skip top-level items entirely; descend only into satchels.
+	for (int16 i = EQ::invslot::GENERAL_BEGIN; i <= EQ::invslot::GENERAL_END; i++) {
+		const EQ::ItemInstance *top = GetInv().GetItem(i);
+		if (!top || !top->IsClassBag() || top->GetItem()->BagType != EQ::item::BagTypeTradersSatchel) {
+			continue;
+		}
+		for (uint8 x = EQ::invbag::SLOT_BEGIN; x <= EQ::invbag::SLOT_END; x++) {
+			consider(EQ::InventoryProfile::CalcSlotId(i, x));
+		}
+	}
+	return csv;
+}
+
+// The player's current shop rows as "item_sn|item_id|name|unit_cost" CSV -- feeds the dll "My Shop" tab.
+std::string Client::GetMyShopListing()
+{
+	auto        rows = TraderRepository::GetWhere(database, fmt::format("`char_id` = '{}'", CharacterID()));
+	std::string csv;
+	for (const auto &r : rows) {
+		const EQ::ItemData *d    = database.GetItem(r.item_id);
+		std::string         name = d ? d->Name : fmt::format("item {}", r.item_id);
+		for (auto &ch : name) { if (ch == '|' || ch == '^') { ch = ' '; } }
+		csv += fmt::format("{}|{}|{}|{}^", r.item_sn, r.item_id, name, r.item_cost);
+	}
+	return csv;
+}
+
+// Add inventory items to the shop. `csv` = "slot:price,slot:price,..." (price is absolute copper). Each
+// item is escrowed OUT of the player's bags into a `trader` row with a unique per-character item_sn.
+// Returns the number added.
+int Client::AddItemsToShop(std::string csv)
+{
+	// unique, monotonic serial per character (survives restarts, unlike runtime item serials)
+	uint32      next_sn = 1;
+	std::string sn_key  = fmt::format("shopsn_{}", CharacterID());
+	std::string sn_prev = DataBucket::GetData(&database, sn_key);
+	if (!sn_prev.empty()) {
+		next_sn = (uint32) Strings::ToUnsignedInt(sn_prev);
+	}
+
+	std::vector<TraderRepository::Trader> rows;
+	std::vector<int16>                    slots;   // items to escrow -- deleted ONLY after the rows persist
+	for (const auto &tok : Strings::Split(csv, ",")) {
+		if (tok.empty()) {
+			continue;
+		}
+		auto kv = Strings::Split(tok, ":");
+		if (kv.size() < 2) {
+			continue;
+		}
+		int16  slot  = (int16) Strings::ToInt(kv[0]);
+		uint32 price = (uint32) Strings::ToUnsignedInt(kv[1]);
+		if (price == 0) {
+			continue;
+		}
+		const EQ::ItemInstance *it = GetInv().GetItem(slot);
+		if (!it || !it->GetItem() || it->GetItem()->NoDrop == 0 || it->IsClassBag()) {
+			continue;   // stale slot / No-Drop / container -- skip
+		}
+		// AoTv4: the item must live INSIDE a Trader's Satchel (validate server-side, not just the dll).
+		int16                   parent     = EQ::InventoryProfile::CalcSlotId(slot);
+		const EQ::ItemInstance *parent_bag = (parent < 0) ? nullptr : GetInv().GetItem(parent);
+		if (!parent_bag || !parent_bag->GetItem() ||
+			parent_bag->GetItem()->BagType != EQ::item::BagTypeTradersSatchel) {
+			continue;
+		}
+
+		TraderRepository::Trader r{};
+		r.id                    = 0;
+		r.char_entity_id        = GetID();
+		r.char_id               = CharacterID();
+		r.char_zone_id          = GetZoneID();
+		r.char_zone_instance_id = GetInstanceID();
+		r.item_charges          = it->GetCharges() == 0 ? 1 : it->GetCharges();
+		r.item_cost             = price;
+		r.item_id               = it->GetID();
+		r.item_sn               = next_sn++;
+		r.slot_id               = (uint8) rows.size();
+		r.listing_date          = time(nullptr);
+		auto augs = it->GetAugmentIDs();   // const-safe; all 0 when not augmented
+		if (augs.size() >= 6) {
+			r.aug_slot_1 = augs[0];
+			r.aug_slot_2 = augs[1];
+			r.aug_slot_3 = augs[2];
+			r.aug_slot_4 = augs[3];
+			r.aug_slot_5 = augs[4];
+			r.aug_slot_6 = augs[5];
+		}
+		rows.emplace_back(r);
+		slots.push_back(slot);
+	}
+
+	if (rows.empty()) {
+		return 0;
+	}
+
+	// Persist the listings FIRST; only if that succeeds do we take the items from the player's bags.
+	// This ordering means a DB failure can never destroy items (worst case: nothing happens).
+	if (TraderRepository::InsertMany(database, rows) == 0) {
+		Message(Chat::Red, "Could not list your items right now -- nothing was taken from your bags.");
+		return 0;
+	}
+	for (int16 s : slots) {
+		DeleteItemInInventory(s, 0, true, true);   // ESCROW: the item now lives only as its row
+	}
+	DataBucket::SetData(&database, sn_key, std::to_string(next_sn));
+
+	// register as a trader so the shop shows in Bazaar search (rows alone are DB-searchable, but this
+	// keeps the world's trader view consistent). Buys route through the DB/parcel path.
+	SetTrader(true);
+	SendBecomeTraderToWorld(this, TraderOn);
+	return (int) rows.size();
+}
+
+// Pull one listing back out of the shop to the player's cursor (unlist). Returns 1 on success.
+int Client::PullShopItem(uint32 serial)
+{
+	auto row = TraderRepository::GetItemBySerialNumber(database, serial, CharacterID());
+	if (!row.id) {
+		Message(Chat::Yellow, "That item isn't in your shop.");
+		return 0;
+	}
+
+	EQ::ItemInstance *inst = database.CreateItem(
+		row.item_id, row.item_charges,
+		row.aug_slot_1, row.aug_slot_2, row.aug_slot_3, row.aug_slot_4, row.aug_slot_5, row.aug_slot_6
+	);
+	if (!inst) {
+		Message(Chat::Red, "Could not pull that item.");
+		return 0;
+	}
+	std::string name = inst->GetItem()->Name;
+	PushItemOnCursor(*inst, true);
+	safe_delete(inst);
+
+	TraderRepository::DeleteOne(database, row.id);
+
+	// if the shop is now empty, drop trader status
+	auto left = TraderRepository::GetWhere(database, fmt::format("`char_id` = '{}' LIMIT 1", CharacterID()));
+	if (left.empty() && IsTrader()) {
+		SetTrader(false);
+		SendBecomeTraderToWorld(this, TraderOff);
+	}
+
+	Message(Chat::Yellow, fmt::format("Pulled {} from your shop to your cursor.", name).c_str());
+	return 1;
+}
+// ============================================================================================
+
+// AoTv4 player-shop: start Bazaar trader mode SERVER-SIDE so a "Bazaar Broker" NPC can open a
+// player's shop on a click in ANY city (the native /trader window is zone-gated to the Bazaar).
+// Reads the player's Trader's Satchel and prices each item at its per-item multiplier -- stored by
+// the Broker popup in data bucket "shopmult_<charid>_<itemid>", else `default_mult` -- times the
+// item's vendor value, then synthesizes the native ClickTrader packet so TraderStartTrader does all
+// the real work (no-drop validation, DB registration, the searchable trader spawn). Buyers find the
+// shop via the native global "all traders" bazaar search + parcel delivery. Returns items listed.
+int Client::StartPlayerTrader(uint32 default_mult)
+{
+	if (IsTrader()) {
+		Message(Chat::Yellow, "Your shop is already open.");
+		return 0;
+	}
+	if (default_mult < 1) {
+		default_mult = 1;
+	}
+
+	auto inv = GetTraderItems();
+	auto app = new EQApplicationPacket(OP_Trader, sizeof(ClickTrader_Struct));
+	auto ct  = (ClickTrader_Struct *) app->pBuffer;
+	ct->action = TraderOn;
+
+	uint32 max_items = GetInv().GetLookup()->InventoryTypeSize.Bazaar;
+	int    listed    = 0;
+	for (uint32 i = 0; i < max_items && i < EQ::invtype::BAZAAR_SIZE; ++i) {
+		if (inv->items[i] == 0 || inv->serial_number[i] == 0) {
+			continue;
+		}
+
+		const EQ::ItemData *item   = database.GetItem(inv->items[i]);
+		uint32              vendor = item ? item->Price : 0;
+		uint32              price  = vendor * default_mult;   // default = default_mult x vendor value (copper)
+
+		// absolute per-item price (copper) set in the vendor window, else the default above
+		std::string pb = DataBucket::GetData(&database, fmt::format("shopprice_{}_{}", CharacterID(), inv->items[i]));
+		if (!pb.empty()) {
+			int p = Strings::ToInt(pb);
+			if (p > 0) {
+				price = (uint32) p;
+			}
+		}
+
+		ct->serial_number[i] = inv->serial_number[i];
+		ct->item_cost[i]     = price;                // 0 -> native loop skips it
+		if (ct->item_cost[i] > 0) {
+			++listed;
+		}
+	}
+	safe_delete(inv);
+
+	TraderStartTrader(app);   // native: validates no-drop, writes trader table, spawns the searchable trader
+	safe_delete(app);
+
+	// AoTv4 offline shop: record what got listed as `item_id:charges` pairs (read back from the rows the
+	// native call just wrote, so it reflects no-drop/price filtering). On the owner's next login,
+	// ReclaimOfflineShop compares this against the surviving rows to remove exactly what SOLD while
+	// offline. We key on item_id+quantity, NOT serial number -- item instance serials are runtime-
+	// generated (item_instance.cpp) and change across a relog, so a serial from this session won't
+	// match the reloaded item next login.
+	{
+		auto rows = TraderRepository::GetWhere(database, fmt::format("`char_id` = '{}'", CharacterID()));
+		std::string csv;
+		for (const auto &r : rows) {
+			csv += fmt::format("{}:{},", r.item_id, r.item_charges);
+		}
+		DataBucket::SetData(&database, fmt::format("shop_listed_{}", CharacterID()), csv);
+	}
+	return listed;
+}
+
+// AoTv4 player-shop: CSV of "itemid:vendorvalue" for each item in the player's Trader's Satchel, so
+// the Bazaar Broker can drive the vendor price window (which shows real platinum = vendorvalue x the
+// chosen tier). Duplicates possible (multiple stacks) -- the Lua side dedups. Empty = nothing to sell.
+std::string Client::GetTraderSatchelItemIDs()
+{
+	auto        inv       = GetTraderItems();
+	uint32      max_items = GetInv().GetLookup()->InventoryTypeSize.Bazaar;
+	std::string out;
+	for (uint32 i = 0; i < max_items && i < EQ::invtype::BAZAAR_SIZE; ++i) {
+		if (inv->items[i] == 0) {
+			continue;
+		}
+		const EQ::ItemData *item   = database.GetItem(inv->items[i]);
+		uint32              vendor = item ? item->Price : 0;
+		if (!out.empty()) {
+			out += ",";
+		}
+		out += std::to_string(inv->items[i]) + ":" + std::to_string(vendor);
+	}
+	safe_delete(inv);
+	return out;
 }
 
 void Client::SendTraderItem(uint32 ItemID, uint16 Quantity, TraderRepository::Trader &t) {
@@ -3089,6 +3456,11 @@ void Client::BuyTraderItemOutsideBazaar(TraderBuy_Struct *tbs, const EQApplicati
 			trader_item.item_charges - tbs->quantity
 		);
 	}
+
+	// AoTv4 shop payout: DO NOT pay the seller here. The native ServerOP_BazaarPurchase below routes to
+	// the seller (any zone) and pays them via trader_pc->AddMoneyToPP -- paying here too would DOUBLE it.
+	// The only gap is an OFFLINE seller (world can't route to them): that case is banked to
+	// shop_escrow_<char_id> in the WORLD handler (world/zoneserver.cpp), paid out on next login.
 
 	SendParcelDeliveryToWorld(ps);
 

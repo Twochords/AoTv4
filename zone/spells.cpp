@@ -5800,14 +5800,10 @@ void Mob::UnStun() {
 // Stuns "this"
 void Client::Stun(int duration)
 {
-	Mob::Stun(duration);
-
-	auto outapp = new EQApplicationPacket(OP_Stun, sizeof(Stun_Struct));
-	Stun_Struct* stunon = (Stun_Struct*) outapp->pBuffer;
-	stunon->duration = duration;
-	outapp->priority = 5;
-	QueuePacket(outapp);
-	safe_delete(outapp);
+	// AoTv4 (solo server): players are immune to stun from every source -- melee bash/kick, procs, and
+	// spell stun alike. Being locked out of control while soloing is game-breaking. NPCs remain
+	// stunnable by the player (Mob::Stun / NPC::Stun are untouched).
+	(void)duration;
 }
 
 void Client::UnStun() {

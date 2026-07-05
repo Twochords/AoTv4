@@ -2036,6 +2036,11 @@ bool IsEffectIgnoredInStacking(int effect_id)
 {
 	// this should match RoF2
 	switch (effect_id) {
+		// AoTv4: let melee/ranged/defensive proc-buffs (SPA 85/201/323) stack, so a Bard can run every
+		// class's proc line at once (Vampiric Embrace + Call of Sky + ...) instead of them overwriting.
+		case SpellEffect::WeaponProc:
+		case SpellEffect::RangedProc:
+		case SpellEffect::DefensiveProc:
 		case SpellEffect::SeeInvis:
 		case SpellEffect::DiseaseCounter:
 		case SpellEffect::PoisonCounter:

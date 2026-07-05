@@ -29,6 +29,7 @@
 #include "common/repositories/player_event_logs_repository.h"
 #include "common/repositories/trader_repository.h"
 #include "common/server_reload_types.h"
+#include "common/data_bucket.h"
 #include "common/shared_tasks.h"
 #include "common/skill_caps.h"
 #include "common/strings.h"
@@ -1686,6 +1687,21 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 			auto trader = ClientList::Instance()->FindCLEByCharacterID(in->trader_buy_struct.trader_id);
 			if (trader) {
 				ZSList::Instance()->SendPacket(trader->zone(), trader->instance(), pack);
+			}
+			else {
+				// AoTv4 permanent shop: the seller is OFFLINE, so the zone-side handler that pays them
+				// (trader_pc->AddMoneyToPP) never runs. Bank the sale price to shop_escrow_<char_id>;
+				// global_player.lua pays it out on the seller's next login.
+				uint64      total = (uint64) in->trader_buy_struct.price * (uint64) in->trader_buy_struct.quantity;
+				std::string key   = fmt::format("shop_escrow_{}", in->trader_buy_struct.trader_id);
+				uint64      banked = 0;
+				std::string prior  = DataBucket::GetData(&database, key);
+				if (!prior.empty()) {
+					banked = Strings::ToUnsignedBigInt(prior);
+				}
+				DataBucket::SetData(&database, key, std::to_string(banked + total));
+				LogTrading("AoTv4 shop: seller [{}] offline -> banked [{}] copper (total [{}])",
+						   in->trader_buy_struct.trader_id, total, banked + total);
 			}
 
 			break;
