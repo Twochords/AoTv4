@@ -493,8 +493,10 @@ function event_death(e)
   local deaths = (tonumber(eq.get_data("deaths_" .. cid)) or 0) + 1
   eq.set_data("deaths_" .. cid, tostring(deaths))
   local killer = (e.other and e.other:GetCleanName()) or "the world"
-  eq.world_emote(MT.Red, string.format("%s has been slain by %s at level %d!  They have now died %d %s.",
-    client:GetCleanName(), killer, death_level, deaths, deaths == 1 and "time" or "times"))
+  local times  = deaths == 1 and "time" or "times"
+  -- server-wide broadcast; MT.Yellow reliably renders in the main chat window (MT.Red can get filtered)
+  eq.world_emote(MT.Yellow, string.format("%s has been slain by %s at level %d!  They have now died %d %s.",
+    client:GetCleanName(), killer, death_level, deaths, times))
 
   -- ROGUELITE: every death banks AA (scaled by the level reached) and restarts the run at level 1.
   -- SetEXP takes (normal_exp, aa_exp) -- zero normal XP, keep AA exp.
@@ -525,6 +527,17 @@ function event_death(e)
   death_loss.announce(client, lost)
   spell_choice.clear_pending(client)  -- drop any un-picked offers so the new run starts clean
   spell_choice.send_unlocks(client)   -- re-hide the now-reset combat skills on the client
+
+  -- Personal death recap: the dying player's own client can swallow the world_emote during its death
+  -- sequence, so guarantee they see their own line here (after the reset settles).
+  client:Message(MT.Yellow, string.format("You were slain by %s at level %d.  You have now died %d %s.",
+    killer, death_level, deaths, times))
+
+  -- STARTER WEAPON: the wipe strips equipped weapons (epics excepted), so a fresh run would otherwise
+  -- be fists-only. Guarantee a basic weapon to swing whenever the Primary slot ends up empty.
+  if (client:GetItemIDAt(13) or 0) == 0 then   -- slot 13 = Primary
+    client:SummonItem(5013)                    -- Rusty Short Sword (dmg 4 / dly 28, no level req, Bard-usable)
+  end
 end
 
 function event_say(e)

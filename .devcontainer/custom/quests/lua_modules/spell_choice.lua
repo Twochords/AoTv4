@@ -53,7 +53,10 @@ local function gather_candidates(client, level)
 			local list = pool[lv]
 			if list then
 				for _, sp in ipairs(list) do
-					if not seen[sp.id] and not blacklist[sp.id] and not already_known(client, sp.id) then
+					-- AoTv4: reject enchant-MATERIAL spells by name. The id blacklist only caught
+					-- "Enchant <metal>"; the "Mass Enchant <metal>" line slipped through. Both are junk.
+					local is_enchant = sp.name and (sp.name:match("^Enchant ") or sp.name:match("^Mass Enchant "))
+					if not seen[sp.id] and not blacklist[sp.id] and not already_known(client, sp.id) and not is_enchant then
 						seen[sp.id] = true
 						cand[#cand + 1] = sp
 					end
@@ -155,6 +158,23 @@ local function refresh_and_show(client, key)
 			end
 		end
 		if #kept > 0 then
+			-- AoTv4: pruning already-known/stale tokens can leave fewer than CHOICE_COUNT. Top the offer
+			-- back up with FRESH candidates so the player ALWAYS gets a full set of choices -- never a
+			-- short 1-2 option window because one option was learned from an earlier offer.
+			if #kept < CHOICE_COUNT then
+				local in_offer = {}
+				for _, t in ipairs(kept) do
+					local k, i = t:match("^(%a):(%d+)$")
+					if i then in_offer[k .. i] = true end
+				end
+				for _, sp in ipairs(pick_random(gather_candidates(client, client:GetLevel()), CHOICE_COUNT)) do
+					if #kept >= CHOICE_COUNT then break end
+					if not in_offer["S" .. sp.id] then
+						kept[#kept + 1] = "S:" .. sp.id
+						in_offer["S" .. sp.id] = true
+					end
+				end
+			end
 			q = (rest == "") and table.concat(kept, ",") or (table.concat(kept, ",") .. ";" .. rest)
 			eq.set_data(key, q)
 			send_offer(client, table.concat(kept, ","))
