@@ -1185,28 +1185,21 @@ void Client::OPMemorizeSpell(const EQApplicationPacket* app)
 
 	switch (m->scribing) {
 		case memSpellScribing: {
-			const auto* inst = m_inv[EQ::invslot::slotCursor];
+			// AoTv4: spells are learned ONLY through the level-up reward window. That path scribes via
+			// Lua -> Client::ScribeSpell (a direct call that never reaches this opcode), so blocking all
+			// player-initiated scroll scribing here stops vendor/looted/traded scrolls from bypassing the
+			// reward system, without touching spells_new.classes8 (which the casting engine relies on).
+			Message(Chat::Yellow, "Spells are learned only by leveling up here -- scrolls cannot be scribed.");
 
-			if (inst && inst->IsClassCommon()) {
-				const auto* item = inst->GetItem();
-
-				if (
-					item &&
-					RuleB(Character, RestrictSpellScribing) &&
-					!item->IsEquipable(GetRace(), GetClass())
-				) {
-					MessageString(Chat::Red, CANNOT_USE_ITEM);
-					break;
-				}
-
-				if (item && item->Scroll.Effect == static_cast<int32>(m->spell_id)) {
-					ScribeSpell(m->spell_id, m->slot);
-					DeleteItemInInventory(EQ::invslot::slotCursor, 1, true);
-				} else {
-					Message(Chat::Red, "Scribing spell: Item Instance exists but item does not or spell ids do not match.");
-				}
-			} else {
-				Message(Chat::Red, "Scribing a spell without an Item Instance on your cursor?");
+			// The scroll is sitting on the cursor mid-scribe. If we just bail, the RoF2 client wedges its
+			// cursor -- the (unconsumed, still-sellable) scroll can't be re-bagged or deleted. Pop it and
+			// re-push a fresh copy so the client resyncs. Mirrors the guild-bank-deposit reject path;
+			// PushCursor clones the instance, so we free the detached original to avoid a leak.
+			EQ::ItemInstance* cursor_inst = GetInv().GetItem(EQ::invslot::slotCursor);
+			if (cursor_inst && ClientVersion() >= EQ::versions::ClientVersion::RoF) {
+				GetInv().PopItem(EQ::invslot::slotCursor);
+				PushItemOnCursor(*cursor_inst, true);
+				safe_delete(cursor_inst);
 			}
 			break;
 		}
@@ -1931,7 +1924,14 @@ void Client::OPGMSummon(const EQApplicationPacket *app)
 }
 
 void Client::DoHPRegen() {
-	SetHP(GetHP() + CalcHPRegen());
+	int64 regen = CalcHPRegen();
+	// AoTv4: fast out-of-combat recovery -- at least 20% of max per 6s tick when nothing is engaged on
+	// you (~full in ~5 ticks / ~30s). In combat, normal regen applies. GetAggroCount()==0 = out of combat.
+	if (GetAggroCount() == 0) {
+		int64 fast = GetMaxHP() / 5;
+		if (fast > regen) regen = fast;
+	}
+	SetHP(GetHP() + regen);
 	SendHPUpdate();
 }
 
@@ -1942,7 +1942,13 @@ void Client::DoManaRegen() {
 	if (GetMana() < max_mana && (IsSitting() || CanMedOnHorse()) && HasSkill(EQ::skills::SkillMeditate))
 		CheckIncreaseSkill(EQ::skills::SkillMeditate, nullptr, -5);
 
-	SetMana(GetMana() + CalcManaRegen());
+	int64 regen = CalcManaRegen();
+	// AoTv4: fast out-of-combat mana recovery -- at least 20% of max per tick when out of combat.
+	if (GetAggroCount() == 0) {
+		int64 fast = max_mana / 5;
+		if (fast > regen) regen = fast;
+	}
+	SetMana(GetMana() + regen);
 	CheckManaEndUpdate();
 }
 
@@ -1994,6 +2000,12 @@ void Client::DoEnduranceRegen()
 {
 	// endurance has some negative mods that could result in a negative regen when starved
 	int64 regen = CalcEnduranceRegen();
+
+	// AoTv4: fast out-of-combat endurance recovery -- at least 20% of max per tick when out of combat.
+	if (GetAggroCount() == 0) {
+		int64 fast = GetMaxEndurance() / 5;
+		if (fast > regen) regen = fast;
+	}
 
 	if (regen < 0 || (regen > 0 && GetEndurance() < GetMaxEndurance()))
 		SetEndurance(GetEndurance() + regen);

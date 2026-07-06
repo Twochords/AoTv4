@@ -3857,6 +3857,34 @@ snare has both of them negative, yet their range should work the same:
 
 void Mob::BuffProcess()
 {
+	// AoTv4: cleanse-on-peace. A mob that is NOT in combat drops lingering detrimental buffs (DoTs,
+	// snares, slows, stat/resist debuffs) before they can tick -- nothing bleeds you out or limps you
+	// home after a fight, for NPCs and players alike. Pairs with fast out-of-combat regen. Combat =
+	// NPC hate list (IsEngaged) for NPCs/pets/bots/mercs, or NPCs actively engaged on a client.
+	// EXEMPT the crowd-control / pull line (mez, charm, fear, root, lull/pacify/harmony): those are
+	// tools a player applies to a mob ON PURPOSE and must survive the mob being "at peace" (e.g. a
+	// lull-pulled mob must stay pacified). Mirrors BuffFadeDetrimental's fade-then-recalc-once pattern.
+	bool in_combat = IsEngaged() || (IsClient() && CastToClient()->GetAggroCount() > 0);
+	if (!in_combat) {
+		int  cleanse_slots = GetMaxTotalSlots();
+		bool recalc        = false;
+		for (int i = 0; i < cleanse_slots; i++) {
+			uint16 sid = buffs[i].spellid;
+			if (!IsValidSpell(sid) || !IsDetrimentalSpell(sid)) {
+				continue;
+			}
+			if (IsMesmerizeSpell(sid) || IsCharmSpell(sid) || IsFearSpell(sid) ||
+				IsHarmonySpell(sid) || IsEffectInSpell(sid, SpellEffect::Root)) {
+				continue;   // keep control / pull effects
+			}
+			BuffFadeBySlot(i, false);
+			recalc = true;
+		}
+		if (recalc) {
+			CalcBonuses();
+		}
+	}
+
 	int buff_count = GetMaxTotalSlots();
 
 	for (int buffs_i = 0; buffs_i < buff_count; ++buffs_i)

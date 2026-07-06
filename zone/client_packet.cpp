@@ -9594,6 +9594,7 @@ void Client::Handle_OP_ItemVerifyRequest(const EQApplicationPacket *app)
 					MemorizeSpellFromItem(item->ID);
 					return;
 				} else {
+						Message(Chat::Yellow, "Spells are learned only by leveling up here -- scrolls cannot be scribed.");
 					return;
 				}
 			}

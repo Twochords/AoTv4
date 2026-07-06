@@ -14,10 +14,12 @@ local autobuff = require("autobuff")            -- memmed beneficial buffs/songs
 -- NO owned-AA taper -- the per-death reward is FIXED by how far you got, so these values are exact:
 --     below cap:  banked = floor( (run_xp / cap_exp) * cap * DEATH_AA_SUB_CAP )   -- XP-effort ramp
 --     at cap:     banked = floor( cap * DEATH_AA_AT_CAP )                          -- big final-push bonus
--- Classic (cap 50): L30 ~3, L40 ~7, L49 ~14, and dying AT 50 banks 20 -- a big jump for the last level.
+-- Classic (cap 50): L30 ~2, L40 ~8, L49 ~17, and dying AT 50 banks 20 -- the last push always wins,
+-- but only slightly (SUB_CAP is kept just under AT_CAP so at-cap is the best death, not a huge cliff).
 -- run_xp is per-run (reset on death); everything scales with the era cap (Kunark cap 60 -> 24 at cap).
 local DEATH_AA_AT_CAP  = 0.40   -- AA for dying AT the era cap = cap * this  (L50 -> 20, L60 -> 24)
-local DEATH_AA_SUB_CAP = 0.32   -- XP-effort scale below the cap = cap * this  (L49 -> ~14)
+local DEATH_AA_SUB_CAP = 0.38   -- XP-effort scale below the cap = cap * this; ceiling = 0.95 * at-cap
+                                --   so a near-cap death is ~95% of dying AT cap (L59 Kunark ~19 vs 24)
 
 function event_enter_zone(e)
 	mysterious_voice(e)

@@ -1094,6 +1094,23 @@ std::string Client::GetMyShopListing()
 // Returns the number added.
 int Client::AddItemsToShop(std::string csv)
 {
+	// AoTv4: no listing while in combat. The shop escrow is death-safe (survives the roguelite wipe),
+	// so a player could dodge the death penalty by dumping gear into the shop mid-fight. GetAggroCount()
+	// > 0 means NPCs are actively engaged on you.
+	if (GetAggroCount() > 0) {
+		Message(Chat::Red, "You cannot list items in your shop while in combat.");
+		return 0;
+	}
+
+	// AoTv4: hard-cap the shop at SHOP_MAX listings (server-authoritative; the dll window shows up to 80).
+	const int SHOP_MAX  = 40;
+	int       shop_have = (int) TraderRepository::GetWhere(
+		database, fmt::format("`char_id` = '{}'", CharacterID())).size();
+	if (shop_have >= SHOP_MAX) {
+		Message(Chat::Red, fmt::format("Your shop is full ({} item limit).", SHOP_MAX).c_str());
+		return 0;
+	}
+
 	// unique, monotonic serial per character (survives restarts, unlike runtime item serials)
 	uint32      next_sn = 1;
 	std::string sn_key  = fmt::format("shopsn_{}", CharacterID());
@@ -1104,6 +1121,7 @@ int Client::AddItemsToShop(std::string csv)
 
 	std::vector<TraderRepository::Trader> rows;
 	std::vector<int16>                    slots;   // items to escrow -- deleted ONLY after the rows persist
+	bool                                  hit_cap = false;
 	for (const auto &tok : Strings::Split(csv, ",")) {
 		if (tok.empty()) {
 			continue;
@@ -1129,6 +1147,12 @@ int Client::AddItemsToShop(std::string csv)
 			continue;
 		}
 
+		// stop once the shop hits the cap (existing listings + what we've queued this batch)
+		if (shop_have + (int) rows.size() >= SHOP_MAX) {
+			hit_cap = true;
+			break;
+		}
+
 		TraderRepository::Trader r{};
 		r.id                    = 0;
 		r.char_entity_id        = GetID();
@@ -1139,7 +1163,7 @@ int Client::AddItemsToShop(std::string csv)
 		r.item_cost             = price;
 		r.item_id               = it->GetID();
 		r.item_sn               = next_sn++;
-		r.slot_id               = (uint8) rows.size();
+		r.slot_id               = (uint8) (shop_have + rows.size());   // global slot, not per-batch (avoids collisions)
 		r.listing_date          = time(nullptr);
 		auto augs = it->GetAugmentIDs();   // const-safe; all 0 when not augmented
 		if (augs.size() >= 6) {
@@ -1173,6 +1197,11 @@ int Client::AddItemsToShop(std::string csv)
 	// keeps the world's trader view consistent). Buys route through the DB/parcel path.
 	SetTrader(true);
 	SendBecomeTraderToWorld(this, TraderOn);
+
+	if (hit_cap) {
+		Message(Chat::Yellow, fmt::format(
+			"Some items were not listed -- your shop is limited to {} items.", SHOP_MAX).c_str());
+	}
 	return (int) rows.size();
 }
 
