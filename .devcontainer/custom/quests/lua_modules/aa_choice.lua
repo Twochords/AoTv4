@@ -85,18 +85,17 @@ end
 -- the player has trained what they require -- so dependency chains unlock progressively.
 local function gather_affordable(client, level, budget)
 	local out = {}
-	local cur_era = era.current()      -- only AAs from unlocked expansion eras are offered
 	for lv = 1, level do
 		local list = aapool[lv]
 		if list then
 			for _, aa in ipairs(list) do
 				local cost = aa_cost(aa)
 				local next_rank = (client:GetAAByAAID(aa.id) or 0) + 1
-				-- per-AA cap: total invested (next_rank * cost) must stay within RANK_BUDGET.
-				-- Plus: era-unlocked, affordable now, prereq-met.
+				-- AoTv4: whole pool is offered randomly -- NO era/expansion gating. An AA is offered when
+				-- it's affordable now, within the per-AA rank cap (next_rank*cost <= RANK_BUDGET), and its
+				-- PREREQS are owned (prereqs_met) -- so dependency chains still unlock in order.
 				local within_cap = (next_rank * cost <= RANK_BUDGET)
-				if (aa.era or 0) <= cur_era and cost <= budget and within_cap
-				   and prereqs_met(client, aa) then
+				if cost <= budget and within_cap and prereqs_met(client, aa) then
 					out[#out + 1] = aa
 				end
 			end
