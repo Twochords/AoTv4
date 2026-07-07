@@ -533,9 +533,19 @@ function event_death(e)
   client:Message(MT.Yellow, string.format("You were slain by %s at level %d.  You have now died %d %s.",
     killer, death_level, deaths, times))
 
-  -- STARTER WEAPON: the wipe strips equipped weapons (epics excepted), so a fresh run would otherwise
-  -- be fists-only. Guarantee a basic weapon to swing whenever the Primary slot ends up empty.
-  if (client:GetItemIDAt(13) or 0) == 0 then   -- slot 13 = Primary
+  -- NOTE: the STARTER WEAPON is granted in event_death_complete, NOT here. event_death fires BEFORE
+  -- the death corpse is built (attack.cpp: EVENT_DEATH ~1833, `new Corpse` ~2065) -- anything summoned
+  -- to the cursor here gets swept into that corpse and lost. death_complete fires after the corpse.
+end
+
+-- STARTER WEAPON: the wipe (death_loss) strips equipped weapons (epics excepted), so a fresh run would
+-- otherwise be fists-only. Grant a basic weapon whenever the Primary slot ends up empty. Done in
+-- death_complete (fires AFTER the corpse is built) so the summoned item lands on the cursor and stays.
+function event_death_complete(e)
+  local client = e.self
+  -- GetItemIDAt returns INVALID_ID (-1), NOT 0, for an empty slot -- test `<= 0`, not `== 0`.
+  local primary = client:GetItemIDAt(13)       -- slot 13 = Primary
+  if not primary or primary <= 0 then
     client:SummonItem(5013)                    -- Rusty Short Sword (dmg 4 / dly 28, no level req, Bard-usable)
   end
 end
