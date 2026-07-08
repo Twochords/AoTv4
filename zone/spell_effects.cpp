@@ -338,6 +338,14 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 					break; //no messages are given on live if this fails.
 				}
 
+				// AoTv4: a heal-once component (SE_CurrentHPOnce) inside a BUFF heals every time the buff is
+				// (re)applied. On a free-cast Bard server that is an infinite-heal exploit -- click the buff
+				// off, recast, get healed. Suppress the heal-on-apply for buffs (buffslot >= 0); genuine
+				// instant heals (no buff slot) and once-damage effects are unaffected.
+				if (buffslot >= 0 && effect_value > 0) {
+					break;
+				}
+
 				// hack fix for client health not reflecting server value
 				last_hp = 0;
 				int64 dmg = effect_value;
@@ -3857,15 +3865,20 @@ snare has both of them negative, yet their range should work the same:
 
 void Mob::BuffProcess()
 {
-	// AoTv4: cleanse-on-peace. A mob that is NOT in combat drops lingering detrimental buffs (DoTs,
-	// snares, slows, stat/resist debuffs) before they can tick -- nothing bleeds you out or limps you
-	// home after a fight, for NPCs and players alike. Pairs with fast out-of-combat regen. Combat =
-	// NPC hate list (IsEngaged) for NPCs/pets/bots/mercs, or NPCs actively engaged on a client.
-	// EXEMPT the crowd-control / pull line (mez, charm, fear, root, lull/pacify/harmony): those are
-	// tools a player applies to a mob ON PURPOSE and must survive the mob being "at peace" (e.g. a
-	// lull-pulled mob must stay pacified). Mirrors BuffFadeDetrimental's fade-then-recalc-once pattern.
-	bool in_combat = IsEngaged() || (IsClient() && CastToClient()->GetAggroCount() > 0);
-	if (!in_combat) {
+	// AoTv4: cleanse-on-peace. A PLAYER-SIDE entity that is NOT in combat drops lingering detrimental
+	// buffs (DoTs, snares, slows, stat/resist debuffs) before they can tick -- nothing bleeds you out or
+	// limps you home after a fight. Pairs with fast out-of-combat regen.
+	// LIMITED TO player-side entities (clients + their pets/bots/mercs). WILD NPCs are excluded: their
+	// "not in combat" state (empty hate list) happens constantly -- returning home, roaming, mid-pull,
+	// feign-split -- and cleansing there stripped player-applied DoTs/snares/slows, breaking pulling,
+	// kiting and DoT damage. So NPCs keep their debuffs like normal EQ.
+	// Combat = own hate list (IsEngaged) for pets/bots/mercs, or NPCs actively engaged on a client
+	// (GetAggroCount). EXEMPT the crowd-control / pull line (mez, charm, fear, root, lull/pacify/harmony):
+	// those are applied ON PURPOSE and must survive being "at peace". Mirrors BuffFadeDetrimental's
+	// fade-then-recalc-once pattern.
+	bool player_side = IsClient() || IsBot() || IsMerc() || IsPet();
+	bool in_combat   = IsEngaged() || (IsClient() && CastToClient()->GetAggroCount() > 0);
+	if (player_side && !in_combat) {
 		int  cleanse_slots = GetMaxTotalSlots();
 		bool recalc        = false;
 		for (int i = 0; i < cleanse_slots; i++) {

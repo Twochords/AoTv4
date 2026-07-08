@@ -528,6 +528,11 @@ function event_death(e)
   spell_choice.clear_pending(client)  -- drop any un-picked offers so the new run starts clean
   spell_choice.send_unlocks(client)   -- re-hide the now-reset combat skills on the client
 
+  -- RESET QUESTS: the roguelite wipe destroys quest items, which would otherwise strand a player
+  -- mid-quest (e.g. a half-finished Tutorial task they can no longer hand in). Cancel every active
+  -- task on death so the quest is cleared and can be re-taken fresh on the new run.
+  client:CancelAllTasks()
+
   -- Personal death recap: the dying player's own client can swallow the world_emote during its death
   -- sequence, so guarantee they see their own line here (after the reset settles).
   client:Message(MT.Yellow, string.format("You were slain by %s at level %d.  You have now died %d %s.",

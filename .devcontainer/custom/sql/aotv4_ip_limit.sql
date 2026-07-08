@@ -16,3 +16,10 @@ INSERT INTO rule_values (ruleset_id, rule_name, rule_value, notes) VALUES
 INSERT INTO rule_values (ruleset_id, rule_name, rule_value, notes) VALUES
   (1, 'World:ExemptMaxClientsStatus', '250', 'AoTv4: GMs/admins (status >= 250) exempt from the IP limit')
   ON DUPLICATE KEY UPDATE rule_value = VALUES(rule_value), notes = VALUES(notes);
+
+-- Over-limit action: DISCONNECT ALL sessions on the offending IP (both the existing session AND the new
+-- one), instead of merely refusing the new login. So logging a second client over your first immediately
+-- boots the whole IP -- a hard anti-box measure. GMs (>= ExemptMaxClientsStatus) are still uncounted/exempt.
+INSERT INTO rule_values (ruleset_id, rule_name, rule_value, notes) VALUES
+  (1, 'World:IPLimitDisconnectAll', 'true', 'AoTv4: over-limit -> disconnect every session on that IP')
+  ON DUPLICATE KEY UPDATE rule_value = VALUES(rule_value), notes = VALUES(notes);

@@ -859,14 +859,29 @@ bool IsBardSong(uint16 spell_id)
 
 	const auto& spell = spells[spell_id];
 
-	if (
-		spell.classes[Class::Bard - 1] < UINT8_MAX &&
-		!spell.is_discipline
-	) {
-		return true;
+	if (spell.is_discipline) {
+		return false;
 	}
 
-	return false;
+	if (spell.classes[Class::Bard - 1] >= UINT8_MAX) {
+		return false;
+	}
+
+	// AoTv4: every character is a Bard, so the reward pool gives Bards spells from every class. The
+	// stock test (has a Bard class level) would classify ALL of them as bard songs -- breaking their
+	// gem refresh, buff window, recast, etc. A REAL bard song always uses a Singing/instrument skill,
+	// so gate on that: only genuine songs get song behavior (twist, move-while-cast, song window);
+	// repurposed caster spells fall through and behave as normal spells.
+	switch (spell.skill) {
+		case EQ::skills::SkillSinging:
+		case EQ::skills::SkillPercussionInstruments:
+		case EQ::skills::SkillStringedInstruments:
+		case EQ::skills::SkillWindInstruments:
+		case EQ::skills::SkillBrassInstruments:
+			return true;
+		default:
+			return false;
+	}
 }
 
 bool IsEffectInSpell(uint16 spell_id, int effect_id)

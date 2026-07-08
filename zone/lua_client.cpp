@@ -1465,6 +1465,13 @@ void Lua_Client::FailTask(int task) {
 	self->FailTask(task);
 }
 
+void Lua_Client::CancelAllTasks() {
+	Lua_Safe_Call_Void();
+	if (self->HasTaskState()) {
+		self->GetTaskState()->CancelAllTasks(self);
+	}
+}
+
 bool Lua_Client::IsTaskCompleted(int task_id) {
 	Lua_Safe_Call_Bool();
 	return self->IsTaskCompleted(task_id);
@@ -3805,6 +3812,7 @@ luabind::scope lua_register_client() {
 	.def("EndSharedTask", (void(Lua_Client::*)(bool))&Lua_Client::EndSharedTask)
 	.def("Escape", (void(Lua_Client::*)(void))&Lua_Client::Escape)
 	.def("FailTask", (void(Lua_Client::*)(int))&Lua_Client::FailTask)
+	.def("CancelAllTasks", (void(Lua_Client::*)(void))&Lua_Client::CancelAllTasks)
 	.def("FilteredMessage", &Lua_Client::FilteredMessage)
 	.def("FindEmptyMemSlot", (int(Lua_Client::*)(void))&Lua_Client::FindEmptyMemSlot)
 	.def("FindMemmedSpellBySlot", (uint16(Lua_Client::*)(int))&Lua_Client::FindMemmedSpellBySlot)

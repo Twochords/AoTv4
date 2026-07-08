@@ -385,6 +385,7 @@ public:
 	void AssignTask(int task_id, int npc_id);
 	void AssignTask(int task_id, int npc_id, bool enforce_level_requirement);
 	void FailTask(int task);
+	void CancelAllTasks();
 	bool IsTaskCompleted(int task_id);
 	bool IsTaskActive(int task);
 	bool IsTaskActivityActive(int task, int activity);
