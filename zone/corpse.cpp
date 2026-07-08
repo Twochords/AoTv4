@@ -937,19 +937,25 @@ void Corpse::RemoveItemByID(uint32 item_id, int quantity)
 		return;
 	}
 
-	int       removed_count = 0;
-	for (auto current_item  = m_item_list.begin(); current_item != m_item_list.end(); ++current_item) {
+	// AoTv4 fix: the stock loop did `m_item_list.erase(current_item)` and then the for-loop's
+	// `++current_item` on the ERASED (invalidated) iterator -> next `*current_item` derefs garbage and
+	// segfaults. Use erase()'s return value and only advance when we did NOT erase. (Surfaced by the
+	// Advanced Loot window, the first caller of Corpse::RemoveItemByID.)
+	int removed_count = 0;
+	for (auto current_item = m_item_list.begin(); current_item != m_item_list.end(); ) {
 		LootItem *sitem = *current_item;
 		if (removed_count == quantity) {
 			break;
 		}
 
+		bool erased = false;
 		if (sitem && sitem->item_id == item_id) {
 			int stack_size = sitem->charges > 1 ? sitem->charges : 1;
 			if ((removed_count + stack_size) <= quantity) {
 				removed_count += stack_size;
 				m_is_corpse_changed = true;
-				m_item_list.erase(current_item);
+				current_item = m_item_list.erase(current_item);
+				erased = true;
 			}
 			else {
 				int amount_left = (quantity - removed_count);
@@ -961,10 +967,14 @@ void Corpse::RemoveItemByID(uint32 item_id, int quantity)
 					}
 					else if (stack_size == amount_left) {
 						removed_count += amount_left;
-						m_item_list.erase(current_item);
+						current_item = m_item_list.erase(current_item);
+						erased = true;
 					}
 				}
 			}
+		}
+		if (!erased) {
+			++current_item;
 		}
 	}
 }

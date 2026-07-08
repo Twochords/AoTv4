@@ -1472,6 +1472,34 @@ void Lua_Client::CancelAllTasks() {
 	}
 }
 
+// AoTv4: grant an item WITHOUT the AoTv4MythicReward upgrade wrapper that Lua_Client::SummonItem applies.
+// The Advanced Loot window uses this so looted items are delivered as the exact item that dropped (a
+// looted normal item must not silently become its Mythic tier).
+void Lua_Client::SummonRawItem(uint32 item_id) {
+	Lua_Safe_Call_Void();
+	// Deliver into a free BAG slot (stacking first), falling back to the cursor only if the inventory is
+	// full -- looted items should land in your bags, not on the cursor. Raw id (no AoTv4MythicReward).
+	// charges = -1 (item default) -- matches the quest-reward callers; an explicit stack count faults the
+	// TryStacking path on stackable items.
+	self->SummonItemIntoInventory(item_id, -1, 0, 0, 0, 0, 0, 0, false);
+}
+
+// AoTv4: open the client's native item-inspection window for an item_id (identical to what the server
+// does when a player clicks an item link in chat -- see Handle_OP_BazaarInspect). The Advanced Loot
+// window calls this so players can inspect a dropped item from the loot window itself.
+void Lua_Client::InspectItem(uint32 item_id) {
+	Lua_Safe_Call_Void();
+	const EQ::ItemData *item = database.GetItem(item_id);
+	if (!item) {
+		return;
+	}
+	EQ::ItemInstance *inst = database.CreateItem(item);
+	if (inst) {
+		self->SendItemPacket(0, inst, ItemPacketViewLink);
+		safe_delete(inst);
+	}
+}
+
 bool Lua_Client::IsTaskCompleted(int task_id) {
 	Lua_Safe_Call_Bool();
 	return self->IsTaskCompleted(task_id);
@@ -3813,6 +3841,8 @@ luabind::scope lua_register_client() {
 	.def("Escape", (void(Lua_Client::*)(void))&Lua_Client::Escape)
 	.def("FailTask", (void(Lua_Client::*)(int))&Lua_Client::FailTask)
 	.def("CancelAllTasks", (void(Lua_Client::*)(void))&Lua_Client::CancelAllTasks)
+	.def("SummonRawItem", (void(Lua_Client::*)(uint32))&Lua_Client::SummonRawItem)
+	.def("InspectItem", (void(Lua_Client::*)(uint32))&Lua_Client::InspectItem)
 	.def("FilteredMessage", &Lua_Client::FilteredMessage)
 	.def("FindEmptyMemSlot", (int(Lua_Client::*)(void))&Lua_Client::FindEmptyMemSlot)
 	.def("FindMemmedSpellBySlot", (uint16(Lua_Client::*)(int))&Lua_Client::FindMemmedSpellBySlot)

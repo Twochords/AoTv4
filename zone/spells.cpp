@@ -1572,7 +1572,11 @@ void Mob::CastedSpellFinished(uint16 spell_id, uint32 target_id, CastingSlot slo
 
 	// Check for consumables and Reagent focus items
 	// first check for component reduction
-	if(IsClient()) {
+	// AoTv4: ALL spell reagent/component requirements and consumption are removed server-wide. No cast is
+	// blocked for a missing component and nothing is consumed (Peridots, bat wings, emeralds, etc.). The
+	// `false &&` short-circuits the entire check+consume block below. Combat-ability item costs (thrown
+	// axes / ammo) are removed separately in special_attacks.cpp.
+	if(false && IsClient()) {
 		int reg_focus = CastToClient()->GetFocusEffect(focusReagentCost,spell_id);//Client only
 		/* it seems something causes some items not to consume reagents, it's not click type or temp flag
 		 * it maybe cast time being instant, which I had a hard time disproving, so lets do that

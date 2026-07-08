@@ -8,6 +8,7 @@ local death_loss = require("death_loss")
 local era_system = require("era_system")   -- server-wide expansion unlock progression
 local bazaar_broker = require("bazaar_broker")  -- player-shop vendor window (vpset/vshop/vclose)
 local autobuff = require("autobuff")            -- memmed beneficial buffs/songs become permanent auras
+local loot_tracker = require("loot_tracker")    -- Advanced Loot System (ALS) personal loot window
 
 -- AA-on-death tuning (roguelite: death banks AA and resets the character to level 1).
 -- Reward tracks XP EFFORT below the cap, then JUMPS at the era level cap to reward the last push.
@@ -305,7 +306,29 @@ vet_aa = {
 }
 
 
+-- Auto-grant casting/singing/utility + the PASSIVE combat skills whose skill_caps cap is already > 0 at
+-- the player's current level. Combat ACTIVATED skills stay reward-gated (skill_pool.lua). The cap curve
+-- is the level gate: Dual Wield (22) caps from level 1, Double Attack (20) from 32, Triple Attack (76)
+-- from 58 -- so a skill is only granted once the player is high enough (MaxSkill > 0). Run on BOTH connect
+-- (so a level-1 char has Dual Wield immediately, not only after their first ding) and level up.
+local FREE_SKILLS = {
+	4,5,13,14,18,24,          -- casting (Abjuration/Alteration/Channeling/Conjuration/Divination/Evocation)
+	43,44,45,46,47,           -- casting specializations
+	12,41,49,54,70,           -- singing + instruments (Bard)
+	9,17,25,29,31,32,39,42,67,-- utility (Bind Wound/Disarm Traps/Feign Death/Hide/Meditate/Mend/Safe Fall/Sneak/Begging)
+	0,1,2,3,36,28,7,51,       -- weapon proficiencies (1H/2H Blunt+Slash, 1H Pierce, H2H, Archery, Throwing)
+	33,15,19,34,37,11,20,76,22,71 -- passive combat: Offense/Defense/Dodge/Parry/Riposte/Block/Double(20)+Triple(76) Attack/Dual Wield(22)/Intimidation
+}
+local function grant_free_skills(c)
+	for _, v in ipairs(FREE_SKILLS) do
+		if c:MaxSkill(v) > 0 and c:GetRawSkill(v) < 1 and c:CanHaveSkill(v) then
+			c:SetSkill(v, 1)
+		end
+	end
+end
+
 function event_connect(e)
+	loot_tracker.reset(e.self)   -- ALS: last session's loot list is stale (corpses gone) -- start empty
 	-- Bard-only server: every character is a Bard (native spellbook + gems + mana + melee).
 	-- Force-converts anyone not already a Bard; takes full effect on their next relog.
 	if e.self:GetClass() ~= Class.BARD then
@@ -323,6 +346,7 @@ function event_connect(e)
 	-- hand over coin earned while the player's (permanent) shop sold items offline
 	bazaar_broker.pay_escrow(e.self)
 
+	grant_free_skills(e.self)            -- level-1 chars get Dual Wield etc. now, not only after first ding
 	autobuff.sync(e.self)                -- apply permanent auras for already-memmed beneficial buffs/songs
 
 	-- daily Hot Zone welcome: the midnight roll publishes the list to the GLOBAL bucket
@@ -450,23 +474,10 @@ function event_level_up(e)
     return
   end
 
-  -- Auto-grant ONLY casting / singing / utility skills so spells and songs work. Combat/melee
-  -- skills are deliberately NOT here -- they are reward-gated (see skill_pool.lua): a combat
-  -- skill stays at 0 until the player picks it in the level-up window.
-  local free_skills = {
-    4,5,13,14,18,24,          -- casting (Abjuration/Alteration/Channeling/Conjuration/Divination/Evocation)
-    43,44,45,46,47,           -- casting specializations
-    12,41,49,54,70,           -- singing + instruments (Bard)
-    9,17,25,29,31,32,39,42,67,-- utility (Bind Wound/Disarm Traps/Feign Death/Hide/Meditate/Mend/Safe Fall/Sneak/Begging)
-    0,1,2,3,36,28,7,51,       -- weapon proficiencies (1H/2H Blunt+Slash, 1H Pierce, H2H, Archery, Throwing)
-    33,15,19,34,37,11,20,76,22,71 -- passive combat: Offense/Defense/Dodge/Parry/Riposte/Block/Double+Triple Attack/Dual Wield/Intimidation
-  };
-
-  for k,v in ipairs(free_skills) do
-    if ( e.self:MaxSkill(v) > 0 and e.self:GetRawSkill(v) < 1 and e.self:CanHaveSkill(v) ) then
-      e.self:SetSkill(v, 1);
-    end
-  end
+  -- Auto-grant casting/singing/utility + passive combat skills newly unlocked at this level (their
+  -- skill_caps cap just crossed 0 -- e.g. Double Attack @32, Triple Attack @58). Combat ACTIVATED
+  -- skills stay reward-gated (skill_pool.lua). Same grant used on connect. See grant_free_skills above.
+  grant_free_skills(e.self)
 
   if e.self:GetLevel() == 5 then
     eq.popup("", "<c \"#F0F000\">Welcome to level 5.</c><br><br>You have just been granted a new ability called '<c \"#F0F000\">Origin</c>' which allows you to teleport back to your starting city.<br><br>Open the Alternate Advancement window by pressing the '<c \"#F0F000\">V</c>' key, look in the '<c \"#F0F000\">General' tab</c>, and find the '<c \"#F0F000\">Origin</c>' ability and select it.<br><br>Now press the '<c \"#F0F000\">Hotkey</c>' button to create a hotkey you can place on your hot bar.");
@@ -533,6 +544,9 @@ function event_death(e)
   -- task on death so the quest is cleared and can be re-taken fresh on the new run.
   client:CancelAllTasks()
 
+  -- ALS: clear the loot window on death -- a dead run's loot must not stay claimable at level 1.
+  loot_tracker.reset(client)
+
   -- Personal death recap: the dying player's own client can swallow the world_emote during its death
   -- sequence, so guarantee they see their own line here (after the reset settles).
   client:Message(MT.Yellow, string.format("You were slain by %s at level %d.  You have now died %d %s.",
@@ -561,6 +575,15 @@ function event_say(e)
   aa_choice.handle_say(e)
   pok_travel.handle_say(e)        -- "portals" (list) + "portalgo <short>" (travel)
   bazaar_broker.handle_global_say(e)  -- vendor window: "vpset .../vshop/vclose"
+  loot_tracker.handle_say(e)      -- ALS: "alspick <eid> loot|leave" + "alslootall"
+end
+
+-- ALS: when the Replace model is on, cancel native corpse looting so all loot flows through the
+-- loot window. (Return 1 from event_loot cancels the native loot -- corpse.cpp Handle EVENT_LOOT.)
+function event_loot(e)
+  if loot_tracker.block_native(e) then
+    return 1
+  end
 end
 
 -- Discover a Plane of Knowledge portal by clicking that zone's PoK book (a door to poknowledge).

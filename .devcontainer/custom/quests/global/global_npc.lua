@@ -1,3 +1,11 @@
+local loot_tracker = require("loot_tracker")  -- Advanced Loot System: capture kills into the ALS list
+
+-- ALS: every NPC death funnels its loot into the killer's personal loot list (fires after the corpse
+-- is built, so the loot is on the corpse). GM-gated in Phase 1.
+function event_death_complete(e)
+    loot_tracker.on_kill(e)
+end
+
 function event_spawn(e)
     -- peq_halloween
     if (eq.is_content_flag_enabled("peq_halloween")) then
