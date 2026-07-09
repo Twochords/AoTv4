@@ -611,7 +611,10 @@ public:
 			mob_movement_manager->SendCommandToClients(mob, 0.0, 0.0, 0.0, 0.0, 0, ClientRangeCloseMedium);
 		}
 
-		mob->BuffFadeAll();
+		// AoTv4: do NOT wipe buffs on evade. Stock EQEmu clears every buff here, which stripped
+		// player-applied DETRIMENTAL effects (DoTs, snares, slows, resist/stat debuffs) the instant a mob
+		// evaded/reset -- players saw the debuff land and its icon vanish immediately. The mob still drops
+		// aggro and heals; it just keeps whatever's on it, so debuffs stick like normal EQ.
 		mob->WipeHateList();
 		mob->RestoreHealth();
 

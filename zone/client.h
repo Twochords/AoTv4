@@ -1222,6 +1222,12 @@ public:
 	virtual void ThrowingAttack(Mob* other, bool CanDoubleAttack = false);
 	void DoClassAttacks(Mob *ca_target, uint16 skill = -1, bool IsRiposte=false);
 
+	// AoTv4: #autoskill -- auto-fire enabled combat skills while auto-attacking (see gm_commands/autoskill.cpp)
+	const bool GetAutoSkillStatus(EQ::skills::SkillType skill_id);
+	void SetAutoSkillStatus(EQ::skills::SkillType skill_id, bool enabled);
+	const std::vector<EQ::skills::SkillType> GetAutoSkillsList() const;
+	const std::vector<EQ::skills::SkillType> GetAvailableAutoSkills() const;
+
 	void ClearZoneFlag(uint32 zone_id);
 	inline std::set<uint32> GetZoneFlags() { return zone_flags; } ;
 	bool HasZoneFlag(uint32 zone_id) const;
@@ -2067,6 +2073,7 @@ private:
 	uint16 duel_target;
 	bool duelaccepted;
 	std::vector<uint32> keyring;
+	std::map<EQ::skills::SkillType, bool> m_autoskill;   // AoTv4: #autoskill per-skill on/off cache
 	bool tellsoff; // GM /toggle
 	bool gm_hide_me;
 	bool LFG;

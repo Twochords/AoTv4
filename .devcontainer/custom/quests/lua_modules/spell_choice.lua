@@ -247,6 +247,16 @@ function M.send_unlocks(client)
 		if client:GetRawSkill(id) > 0 then earned[#earned + 1] = tostring(id) end
 	end
 	client:Message(MT.NPCQuestSay, "SKILLUNLOCKDATA " .. table.concat(earned, ","))
+
+	-- Nudge the client to REBUILD its Combat Abilities list. The client builds that list at zone-in,
+	-- BEFORE the SKILLUNLOCKDATA chat line above reaches the dll, so earned combat abilities stayed
+	-- invisible/unusable until the player forced a rebuild (jumping did it). Re-sending each earned
+	-- skill's own value (OP_SkillUpdate, no skill-up spam) triggers that rebuild now that the dll has
+	-- the earned set -- so abilities appear on login without the jump.
+	for id, _ in pairs(skills) do
+		local v = client:GetRawSkill(id)
+		if v > 0 then client:SetSkill(id, v) end
+	end
 end
 
 -- Resolve a pick. Call from event_say; returns true if it consumed the message.

@@ -20,7 +20,8 @@ return {
   ["fieldofbone"]={id=78,x=1845.00,y=-2980.00,z=11.00,h=259,long="The Field of Bone"},
   ["firiona"]={id=84,x=4673.00,y=-455.00,z=9.00,h=128,long="Firiona Vie"},
   ["freportw"]={id=9,x=77.37,y=-682.06,z=-34.80,h=0,long="West Freeport"},                     -- book POKTELE500 (no return door)
-  ["gfaydark"]={id=54,x=-734.00,y=-188.00,z=-3.00,h=430,long="The Greater Faydark"},
+  ["gfaydark"]={id=54,x=-734.00,y=-188.00,z=-3.00,h=430,long="Kelethin"},                     -- gfaydark book by Kelethin (doorid 109)
+  ["felwithe"]={id=54,x=-1820.60,y=-2260.50,z=-1.70,h=17,long="Felwithe"},                     -- SECOND gfaydark book, by the Felwithe zone line (doorid 108); lands in gfaydark near Felwithe
   ["greatdivide"]={id=118,x=-1813.22,y=0.00,z=393.44,h=0,long="The Great Divide"},
   ["guildlobby"]={id=344,x=18.00,y=-46.00,z=6.00,h=492,long="Guild Lobby"},
   ["gunthak"]={id=224,x=-1030.00,y=1780.00,z=60.00,h=0,long="The Gulf of Gunthak"},

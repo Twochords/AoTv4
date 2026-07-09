@@ -1694,6 +1694,7 @@ protected:
 
 	Timer attack_timer;
 	Timer attack_dw_timer;
+	Timer attack_autoskill_timer;   // AoTv4: #autoskill poll (500ms) while auto-attacking
 	Timer ranged_timer;
 	float attack_speed; //% increase/decrease in attack speed (not haste)
 	int attack_delay; //delay between attacks in 10ths of seconds

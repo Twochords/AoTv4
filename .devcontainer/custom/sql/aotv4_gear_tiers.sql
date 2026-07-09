@@ -18,6 +18,17 @@ INSERT INTO aotv4_scope
     AND i.id < 1000000   -- base items only; never re-tier our own +1M/+2M rows (or orphan refs to them)
     AND (i.id IN (SELECT item_id FROM lootdrop_entries) OR i.id IN (SELECT item FROM merchantlist));
 
+-- AoTv4: also tier TUTORIAL quest-reward GEAR. These are quest-only (not in lootdrop_entries/merchantlist),
+-- so the scope above misses them and AoTv4MythicReward silently no-ops when the tutorial hands them out.
+-- Explicit list from quests/tutorialb/*.pl (weapons/armor/rings only -- spell scrolls & consumables excluded).
+INSERT IGNORE INTO aotv4_scope (id) VALUES
+  (38005),(38026),(38047),(38068),(38089),(38110),(38131),(38152),(38173),(38194),(38215),(38236),
+  (38257),(38278),(38299),(38320),                                       -- class "Ring (Test)" starter items
+  (54230),(54232),(54233),(54235),(54237),(54238),(59950),(59951),(59952),(59953),  -- newbie weapons
+  (59943),                                                                -- Kobold Skull Charm
+  (67104),(67111),(67118),(67125),                                       -- Kobold sleeves
+  (82929),(82930),(82936),(82937),(82943),(82944),(82950),(82951);       -- Gloom body/legs armor
+
 -- clear any prior tier rows so re-runs are clean (this band holds only our generated tiers)
 DELETE FROM items WHERE id BETWEEN 1000000 AND 2999999;
 

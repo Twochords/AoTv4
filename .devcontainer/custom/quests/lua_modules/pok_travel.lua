@@ -20,6 +20,13 @@ local SHOW_SAYLINKS = true
 
 local function found_key(client) return "pok_found_" .. client:CharacterID() end
 
+-- Some zones hold MORE THAN ONE PoK book, so the zone short name alone can't tell them apart. Map the
+-- clicked book's doorid -> its own waypoint key. gfaydark has two: doorid 109 by Kelethin, doorid 108 by
+-- the Felwithe zone line. Any zone/doorid not listed falls back to the zone short name (the common case).
+local book_override = {
+	gfaydark = { [109] = "gfaydark", [108] = "felwithe" },
+}
+
 -- discovered zones the player has, de-duped and validated against the portal table (so only real
 -- PoK-book zones count -- "discovered zones that also have a poknowledge book").
 local function get_found(client)
@@ -31,15 +38,19 @@ local function get_found(client)
 	return out
 end
 
--- Record the current zone as discovered (only if it has a portal entry).
-function M.discover(client, zone_short)
-	if not zone_short or not portals[zone_short] then return end
+-- Record the clicked book as discovered (only if it maps to a portal entry). doorid disambiguates zones
+-- with more than one book (e.g. gfaydark's Kelethin vs Felwithe books); otherwise the zone short is used.
+function M.discover(client, zone_short, doorid)
+	local short = zone_short
+	local ov = book_override[zone_short]
+	if ov and doorid and ov[doorid] then short = ov[doorid] end
+	if not short or not portals[short] then return end
 	local key  = found_key(client)
 	local data = eq.get_data(key) or ""
-	for s in data:gmatch("([^,]+)") do if s == zone_short then return end end   -- already known
-	eq.set_data(key, data == "" and zone_short or (data .. "," .. zone_short))
+	for s in data:gmatch("([^,]+)") do if s == short then return end end        -- already known
+	eq.set_data(key, data == "" and short or (data .. "," .. short))
 	client:Message(MT.Yellow, string.format(
-		"You attune to the Plane of Knowledge book here: %s.", portals[zone_short].long))
+		"You attune to the Plane of Knowledge book here: %s.", portals[short].long))
 	M.send_list(client, true)                                                    -- silent push to the dll
 end
 

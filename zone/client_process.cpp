@@ -492,6 +492,33 @@ bool Client::Process() {
 			}
 		}
 
+		// AoTv4: #autoskill -- auto-fire the player's enabled combat skills while auto-attacking a non-client
+		// target. DoClassAttacks(skill) runs the normal special-attack path (damage/procs/skillups) and
+		// returns SILENTLY when the shared combat-ability reuse timer isn't ready, so there's no cooldown
+		// spam. Taunt has no damage path, so we queue OP_Taunt (respecting pTimerTaunt) only while the
+		// player isn't already top of the target's hate list. Check() is last so the timer only ticks in combat.
+		if ((AutoAttackEnabled() || AutoFireEnabled()) && auto_attack_target != nullptr && may_use_attacks
+			&& !auto_attack_target->IsClient() && attack_autoskill_timer.Check()) {
+			for (const auto skill : GetAutoSkillsList()) {
+				if (!GetAutoSkillStatus(skill)) {
+					continue;
+				}
+				if (skill == EQ::skills::SkillTaunt) {
+					if (!p_timers.Expired(&database, pTimerTaunt, false)) {
+						continue;
+					}
+					Mob *hate_top = auto_attack_target->GetHateTop();
+					if (hate_top && hate_top->GetID() != GetID()) {
+						auto outapp = new EQApplicationPacket(OP_Taunt);
+						QueuePacket(outapp);
+						safe_delete(outapp);
+					}
+					continue;
+				}
+				DoClassAttacks(auto_attack_target, skill, false);
+			}
+		}
+
 		if (viral_timer.Check() && !dead) {
 			VirusEffectProcess();
 		}

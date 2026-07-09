@@ -7,8 +7,6 @@ local pok_travel = require("pok_travel")
 local death_loss = require("death_loss")
 local era_system = require("era_system")   -- server-wide expansion unlock progression
 local bazaar_broker = require("bazaar_broker")  -- player-shop vendor window (vpset/vshop/vclose)
-local autobuff = require("autobuff")            -- memmed beneficial buffs/songs become permanent auras
-local loot_tracker = require("loot_tracker")    -- Advanced Loot System (ALS) personal loot window
 
 -- AA-on-death tuning (roguelite: death banks AA and resets the character to level 1).
 -- Reward tracks XP EFFORT below the cap, then JUMPS at the era level cap to reward the last push.
@@ -26,8 +24,7 @@ function event_enter_zone(e)
 	mysterious_voice(e)
 	era_system.sync_zone()                          -- point this zone's expansion rule at the unlocked era
 	e.self:Message(MT.NPCQuestSay, "PORTALCLOSE")   -- dismiss the Portal window on any zone change
-	autobuff.sync(e.self)                           -- memmed beneficial buffs/songs -> permanent auras
-	e.self:SetTimer("autobuff", 3)                  -- keep them in sync every 3s (catches mem changes)
+	e.self:SetTimer("skillsync", 2)                 -- one-shot: re-reveal earned combat abilities after the UI builds (no jump)
 
 	if eq.is_lost_dungeons_of_norrath_enabled() and eq.get_zone_short_name() == "lavastorm" and e.self:GetGMStatus() >= 80 then 
 		e.self:Message(MT.DimGray, "There are GM commands available for Dragons of Norrath, use " .. eq.say_link("#don") .. " to get started")
@@ -328,7 +325,6 @@ local function grant_free_skills(c)
 end
 
 function event_connect(e)
-	loot_tracker.reset(e.self)   -- ALS: last session's loot list is stale (corpses gone) -- start empty
 	-- Bard-only server: every character is a Bard (native spellbook + gems + mana + melee).
 	-- Force-converts anyone not already a Bard; takes full effect on their next relog.
 	if e.self:GetClass() ~= Class.BARD then
@@ -347,7 +343,6 @@ function event_connect(e)
 	bazaar_broker.pay_escrow(e.self)
 
 	grant_free_skills(e.self)            -- level-1 chars get Dual Wield etc. now, not only after first ding
-	autobuff.sync(e.self)                -- apply permanent auras for already-memmed beneficial buffs/songs
 
 	-- daily Hot Zone welcome: the midnight roll publishes the list to the GLOBAL bucket
 	-- "aotv4_hotzone_list" (read live, never cached). Printed as clean per-line chat because the RoF2
@@ -365,10 +360,12 @@ function event_connect(e)
 	end
 end
 
--- repeating "autobuff" timer (started in event_enter_zone): reconcile permanent buff auras with the bar
 function event_timer(e)
-	if e.timer == "autobuff" then
-		autobuff.sync(e.self)
+	if e.timer == "skillsync" then
+		-- one-shot: fire ~2s after zone-in, once the client has finished building its Combat Abilities
+		-- list, then (re)send the earned-skill set + nudge a rebuild so abilities show without jumping.
+		e.self:StopTimer("skillsync")
+		spell_choice.send_unlocks(e.self)
 	end
 end
 
@@ -544,9 +541,6 @@ function event_death(e)
   -- task on death so the quest is cleared and can be re-taken fresh on the new run.
   client:CancelAllTasks()
 
-  -- ALS: clear the loot window on death -- a dead run's loot must not stay claimable at level 1.
-  loot_tracker.reset(client)
-
   -- Personal death recap: the dying player's own client can swallow the world_emote during its death
   -- sequence, so guarantee they see their own line here (after the reset settles).
   client:Message(MT.Yellow, string.format("You were slain by %s at level %d.  You have now died %d %s.",
@@ -575,15 +569,6 @@ function event_say(e)
   aa_choice.handle_say(e)
   pok_travel.handle_say(e)        -- "portals" (list) + "portalgo <short>" (travel)
   bazaar_broker.handle_global_say(e)  -- vendor window: "vpset .../vshop/vclose"
-  loot_tracker.handle_say(e)      -- ALS: "alspick <eid> loot|leave" + "alslootall"
-end
-
--- ALS: when the Replace model is on, cancel native corpse looting so all loot flows through the
--- loot window. (Return 1 from event_loot cancels the native loot -- corpse.cpp Handle EVENT_LOOT.)
-function event_loot(e)
-  if loot_tracker.block_native(e) then
-    return 1
-  end
 end
 
 -- Discover a Plane of Knowledge portal by clicking that zone's PoK book (a door to poknowledge).
@@ -591,7 +576,7 @@ end
 -- is via the Portal window. (Handle_OP_ClickDoor skips HandleClick when the event returns non-zero.)
 function event_click_door(e)
   if e.door and e.door:GetDestinationZoneName() == "poknowledge" then
-    pok_travel.discover(e.self, eq.get_zone_short_name())  -- attune (first click)
+    pok_travel.discover(e.self, eq.get_zone_short_name(), e.door:GetDoorID())  -- attune (first click); doorid splits multi-book zones
     pok_travel.open(e.self)                                -- open the Portal window
     return 1
   end

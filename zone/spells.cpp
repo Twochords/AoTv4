@@ -2988,6 +2988,15 @@ int Mob::CalcBuffDuration(Mob *caster, Mob *target, uint16 spell_id, int32 caste
 		res = 10000; // ~16h override
 	}
 
+	// AoTv4: BENEFICIAL buffs and bard songs on player-side targets are PERMANENT -- cast once and keep it,
+	// no re-buffing or re-singing. Only affects spells that already have a buff duration (res > 0) and are
+	// beneficial; DETRIMENTAL effects are untouched and still expire normally. (-1000 = PERMANENT_BUFF_DURATION,
+	// which the buff tic loop never decrements; SpellEffect treats a negative CalcBuffDuration as perma.)
+	if (res > 0 && IsBeneficialSpell(spell_id) && target &&
+		(target->IsClient() || target->IsBot() || target->IsMerc() || target->IsPet())) {
+		res = PERMANENT_BUFF_DURATION;
+	}
+
 	LogSpells("Spell [{}]: Casting level [{}], formula [{}], base_duration [{}]: result [{}]",
 		spell_id, castlevel, formula, duration, res);
 

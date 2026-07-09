@@ -104,6 +104,7 @@ Mob::Mob(
 ) :
 	attack_timer(2000),
 	attack_dw_timer(2000),
+	attack_autoskill_timer(500),
 	ranged_timer(2000),
 	hp_regen_per_second_timer(1000),
 	m_z_clip_check_timer(1000),

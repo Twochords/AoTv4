@@ -928,13 +928,6 @@ std::string lua_get_item_name(uint32 item_id) {
 	return quest_manager.getitemname(item_id);
 }
 
-// AoTv4: the Advanced Loot window needs each item's icon number to draw it (decoded from spellsNN.tga
-// the same way as spell icons). Returns 0 if the item id is unknown.
-uint32 lua_get_item_icon(uint32 item_id) {
-	const EQ::ItemData *item = database.GetItem(item_id);
-	return item ? item->Icon : 0;
-}
-
 std::string lua_say_link(std::string  text) {
 	return Saylink::Create(text);
 }
@@ -6092,7 +6085,6 @@ luabind::scope lua_register_general() {
 		luabind::def("get_item_comment", (std::string(*)(uint32))&lua_get_item_comment),
 		luabind::def("get_item_lore", (std::string(*)(uint32))&lua_get_item_lore),
 		luabind::def("get_item_name", (std::string(*)(uint32))&lua_get_item_name),
-		luabind::def("get_item_icon", (uint32(*)(uint32))&lua_get_item_icon),
 		luabind::def("say_link", (std::string(*)(std::string))&lua_say_link),
 		luabind::def("say_link", (std::string(*)(std::string,bool))&lua_say_link),
 		luabind::def("say_link", (std::string(*)(std::string,bool,std::string))&lua_say_link),

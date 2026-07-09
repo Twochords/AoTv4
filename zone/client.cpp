@@ -4819,6 +4819,62 @@ bool Client::KeyRingRemove(uint32 item_id)
 	);
 }
 
+// AoTv4: #autoskill -- auto-fire enabled combat skills while auto-attacking. Per-skill on/off persists in
+// a character-scoped data bucket ("autoskill.<id>") and is cached in m_autoskill.
+const bool Client::GetAutoSkillStatus(EQ::skills::SkillType skill_id)
+{
+	auto it = m_autoskill.find(skill_id);
+	if (it != m_autoskill.end()) {
+		return it->second;
+	}
+
+	auto k = GetScopedBucketKeys();
+	k.key = fmt::format("autoskill.{}", static_cast<int>(skill_id));
+	auto b = DataBucket::GetData(&database, k);
+	bool status = Strings::ToBool(b.value);
+
+	m_autoskill[skill_id] = status;
+	return status;
+}
+
+void Client::SetAutoSkillStatus(EQ::skills::SkillType skill_id, bool enabled)
+{
+	m_autoskill[skill_id] = enabled;
+
+	auto k = GetScopedBucketKeys();
+	k.key   = fmt::format("autoskill.{}", static_cast<int>(skill_id));
+	k.value = enabled ? "1" : "0";
+	DataBucket::SetData(&database, k);
+}
+
+const std::vector<EQ::skills::SkillType> Client::GetAvailableAutoSkills() const
+{
+	// activated combat specials only (matches skill_pool.lua / OPCombatAbility gating).
+	return {
+		EQ::skills::SkillBackstab,
+		EQ::skills::SkillBash,
+		EQ::skills::SkillTigerClaw,
+		EQ::skills::SkillEagleStrike,
+		EQ::skills::SkillDragonPunch,
+		EQ::skills::SkillFlyingKick,
+		EQ::skills::SkillRoundKick,
+		EQ::skills::SkillKick,
+		EQ::skills::SkillFrenzy,
+		EQ::skills::SkillTaunt
+	};
+}
+
+const std::vector<EQ::skills::SkillType> Client::GetAutoSkillsList() const
+{
+	std::vector<EQ::skills::SkillType> client_skills;
+	for (const auto &skill : GetAvailableAutoSkills()) {
+		if (HasSkill(skill)) {
+			client_skills.push_back(skill);
+		}
+	}
+	return client_skills;
+}
+
 bool Client::IsNameChangeAllowed() {
 	if (RuleB(Character, AlwaysAllowNameChange)) {
 		return true;
