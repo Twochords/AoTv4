@@ -4238,12 +4238,12 @@ bool NPC::IsGuildmasterForClient(Client *c) {
 	return false;
 }
 
-// AoTv4: quest turn-ins accept ANY quality tier. Our gear tiers are Hallowed = base id + 1,000,000 and
-// Mythic = base id + 2,000,000, so a tier item reduces to its base id (id % 1,000,000) within the
-// reserved 1,000,000..2,999,999 band. Native ids (< 1M) and anything >= 3M are returned unchanged.
+// AoTv4: quest turn-ins accept ANY quality tier. Our gear tiers are Hallowed = base id + 300,000 and
+// Mythic = base id + 600,000, so a tier item reduces to its base id (id % 300,000) within the
+// reserved 300,000..899,999 band. Native ids (< 300k) and anything >= 900k are returned unchanged.
 // This lets a player hand in the Mythic (or Hallowed) version of a required item and have it count.
 static uint32 AoTv4TierBase(uint32 id) {
-	return (id >= 1000000 && id < 3000000) ? (id % 1000000) : id;
+	return (id >= 300000 && id < 900000) ? (id % 300000) : id;
 }
 static uint32 AoTv4TierBaseFromStr(const std::string &id) {
 	return Strings::IsNumber(id) ? AoTv4TierBase((uint32) Strings::ToUnsignedInt(id)) : 0;

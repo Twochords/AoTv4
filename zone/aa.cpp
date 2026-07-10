@@ -828,7 +828,7 @@ void Client::InspectBuffs(Client* Inspector, int Rank)
 			continue;
 		ib->spell_id[packet_index] = buffs[i].spellid;
 		if (Rank > 1)
-			ib->tics_remaining[packet_index] = spells[buffs[i].spellid].buff_duration_formula == DF_Permanent ? 0xFFFFFFFF : buffs[i].ticsremaining;
+			ib->tics_remaining[packet_index] = (spells[buffs[i].spellid].buff_duration_formula == DF_Permanent || buffs[i].ticsremaining == PERMANENT_BUFF_DURATION) ? 0xFFFFFFFF : buffs[i].ticsremaining;   // AoTv4: perma buff -> infinite marker
 		packet_index++;
 	}
 

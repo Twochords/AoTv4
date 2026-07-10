@@ -1819,6 +1819,7 @@ bool IsDamageSpell(uint16 spell_id);
 bool IsAnyDamageSpell(uint16 spell_id);
 bool IsDamageOverTimeSpell(uint16 spell_i);
 bool IsFearSpell(uint16 spell_id);
+bool IsCrowdControlSpell(uint16 spell_id);   // AoTv4: root/mez/charm/fear/blind/silence/snare
 bool IsCureSpell(uint16 spell_id);
 bool IsHarmTouchSpell(uint16 spell_id);
 int GetSpellEffectIndex(uint16 spell_id, int effect_id);

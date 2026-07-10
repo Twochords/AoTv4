@@ -30,6 +30,13 @@
 
 extern double frame_time;
 
+// AoTv4: give every activated combat skill its OWN reuse timer instead of the single shared
+// pTimerCombatAbility, so abilities are fully independent and never block each other (Bash no longer
+// locks out Tiger Claw / Kick / Frenzy, etc.). The per-skill timer id is base + skill id. Skill ids top
+// out at 77 (HIGHEST_SKILL), so 300..377 sits safely inside the free pTimerType window (item end 200 ->
+// peqzone 900). Used by both Client::OPCombatAbility (manual) and Client::DoClassAttacks (#autoskill/AI).
+static const uint16 AOTV4_SKILL_TIMER_BASE = 300;
+
 int Mob::GetBaseSkillDamage(EQ::skills::SkillType skill, Mob *target)
 {
 	int base = EQ::skills::GetBaseDamage(skill);
@@ -340,12 +347,10 @@ void Client::OPCombatAbility(const CombatAbility_Struct *ca_atk)
 		return;
 	}
 
-	pTimerType timer = pTimerCombatAbility;
-	// RoF2+ Tiger Claw is unlinked from other monk skills, if they ever do that for other classes there will need
-	// to be more checks here
-	if (ClientVersion() >= EQ::versions::ClientVersion::RoF2 && ca_atk->m_skill == EQ::skills::SkillTigerClaw) {
-		timer = pTimerCombatAbility2;
-	}
+	// AoTv4: per-skill reuse timer (base + skill id) -- every ability is independent, so using one never
+	// blocks another. Replaces the shared pTimerCombatAbility (+ the RoF2 Tiger-Claw-only pTimerCombatAbility2
+	// special case, now unnecessary since EVERY skill is unlinked).
+	pTimerType timer = (pTimerType)(AOTV4_SKILL_TIMER_BASE + ca_atk->m_skill);
 
 	bool bypass_skill_check = false;
 
@@ -2060,9 +2065,8 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 		return;
 	}
 
-	if(!IsRiposte && (!p_timers.Expired(&database, pTimerCombatAbility, false))) {
-		return;
-	}
+	// AoTv4: the reuse-timer check is PER-SKILL and moved below (after skill_to_use is resolved), so each
+	// ability has its own cooldown and never blocks another.
 
 	int ReuseTime = 0;
 	float HasteMod = GetHaste() * 0.01f;
@@ -2121,6 +2125,12 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 	if(skill_to_use == -1)
 		return;
 
+	// AoTv4: per-skill reuse timer -- each ability is independent, so one never blocks another.
+	pTimerType ca_timer = (pTimerType)(AOTV4_SKILL_TIMER_BASE + skill_to_use);
+	if (!IsRiposte && !p_timers.Expired(&database, ca_timer, false)) {
+		return;
+	}
+
 	int64 dmg = GetBaseSkillDamage(static_cast<EQ::skills::SkillType>(skill_to_use), GetTarget());
 
 	if (skill_to_use == EQ::skills::SkillBash) {
@@ -2135,7 +2145,7 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 			DoSpecialAttackDamage(ca_target, EQ::skills::SkillBash, dmg, 0, -1, ReuseTime);
 
 			if(ReuseTime > 0 && !IsRiposte) {
-				p_timers.Start(pTimerCombatAbility, ReuseTime);
+				p_timers.Start(ca_timer, ReuseTime);
 			}
 		}
 		return;
@@ -2164,7 +2174,7 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 		}
 
 		if(ReuseTime > 0 && !IsRiposte) {
-			p_timers.Start(pTimerCombatAbility, ReuseTime);
+			p_timers.Start(ca_timer, ReuseTime);
 		}
 		return;
 	}
@@ -2229,7 +2239,7 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 
 	ReuseTime = ReuseTime / HasteMod;
 	if(ReuseTime > 0 && !IsRiposte){
-		p_timers.Start(pTimerCombatAbility, ReuseTime);
+		p_timers.Start(ca_timer, ReuseTime);
 	}
 }
 

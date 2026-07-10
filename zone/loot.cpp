@@ -140,23 +140,23 @@ void NPC::AddLootTable(uint32 loottable_id, bool is_global)
 }
 
 // AoTv4 gear tiers: whenever a base item is rolled into loot, give it an independent 25% chance to
-// also drop its Hallowed copy (base id + 1,000,000) and a 5% chance for its Mythic copy
-// (base id + 2,000,000). Only fires when those tier rows actually exist (see custom/sql/
+// also drop its Hallowed copy (base id + 300,000) and a 5% chance for its Mythic copy
+// (base id + 600,000). Only fires when those tier rows actually exist (see custom/sql/
 // aotv4_gear_tiers.sql), so it's a no-op for items without tiers. Mode-independent: rolled here
 // rather than via lootdrop_entries.chance, which is a weight (not a %) for most loottables.
 void NPC::AddTierUpgrades(const EQ::ItemData *base_item, const LootdropEntriesRepository::LootdropEntries &loot_drop)
 {
-	if (!base_item || base_item->ID >= 1000000) {
+	if (!base_item || base_item->ID >= 300000) {
 		return;  // null, or already a tier item -> don't recurse/stack
 	}
 	if (zone->random.Real(0.0, 100.0) <= 25.0) {
-		const EQ::ItemData *hallowed = database.GetItem(base_item->ID + 1000000);
+		const EQ::ItemData *hallowed = database.GetItem(base_item->ID + 300000);
 		if (hallowed) {
 			AddLootDrop(hallowed, loot_drop);
 		}
 	}
 	if (zone->random.Real(0.0, 100.0) <= 5.0) {
-		const EQ::ItemData *mythic = database.GetItem(base_item->ID + 2000000);
+		const EQ::ItemData *mythic = database.GetItem(base_item->ID + 600000);
 		if (mythic) {
 			AddLootDrop(mythic, loot_drop);
 		}

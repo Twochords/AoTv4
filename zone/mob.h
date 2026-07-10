@@ -407,6 +407,8 @@ public:
 	virtual bool CheckFizzle(uint16 spell_id);
 	virtual bool CheckSpellLevelRestriction(Mob *caster, uint16 spell_id);
 	virtual bool IsImmuneToSpell(uint16 spell_id, Mob *caster);
+	bool IsCrowdControlImmune();          // AoTv4: within the 30s window after being CC'd?
+	void TriggerCrowdControlImmunity();   // AoTv4: start/refresh the 30s CC-immunity window
 
 	virtual float GetAOERange(uint16 spell_id);
 	void InterruptSpell(uint16 spellid = SPELL_UNKNOWN);
@@ -1695,6 +1697,7 @@ protected:
 	Timer attack_timer;
 	Timer attack_dw_timer;
 	Timer attack_autoskill_timer;   // AoTv4: #autoskill poll (500ms) while auto-attacking
+	Timer cc_immune_timer;          // AoTv4: 30s crowd-control immunity window after being CC'd
 	Timer ranged_timer;
 	float attack_speed; //% increase/decrease in attack speed (not haste)
 	int attack_delay; //delay between attacks in 10ths of seconds

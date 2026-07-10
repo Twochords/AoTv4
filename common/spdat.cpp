@@ -253,6 +253,21 @@ bool IsFearSpell(uint16 spell_id)
 	return IsEffectInSpell(spell_id, SpellEffect::Fear);
 }
 
+// AoTv4: does this spell apply crowd control -- a movement/action lock or steer? Root, mez, charm,
+// fear, blind, silence, or snare (detrimental movement slow). Used for the NPC->player CC duration cap
+// (spells.cpp CalcBuffDuration) and the 30s CC-immunity window (Mob::IsImmuneToSpell). Stun is handled
+// separately (ms-based, capped in Mob::SpellEffect) so stun-nukes still deal their damage.
+bool IsCrowdControlSpell(uint16 spell_id)
+{
+	return IsEffectInSpell(spell_id, SpellEffect::Root)    ||
+	       IsEffectInSpell(spell_id, SpellEffect::Mez)     ||
+	       IsEffectInSpell(spell_id, SpellEffect::Charm)   ||
+	       IsEffectInSpell(spell_id, SpellEffect::Fear)    ||
+	       IsEffectInSpell(spell_id, SpellEffect::Blind)   ||
+	       IsEffectInSpell(spell_id, SpellEffect::Silence) ||
+	       IsEffectInSpell(spell_id, SpellEffect::MovementSpeed);
+}
+
 bool IsCureSpell(uint16 spell_id)
 {
 	if (!IsValidSpell(spell_id)) {

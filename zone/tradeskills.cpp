@@ -259,7 +259,7 @@ void Object::HandleAugmentation(Client* user, const AugmentItem_Struct* in_augme
 // crucible itself is never consumed. Gated by item id (NOT bagtype) so real bagtype-30 quest
 // containers are untouched.
 static const uint32 AOTV4_REFINE_BAG_ID = 2000060;
-static const uint32 AOTV4_TIER_STEP     = 1000000;   // native->Hallowed and Hallowed->Mythic
+static const uint32 AOTV4_TIER_STEP     = 300000;    // native->Hallowed(+300k) and Hallowed->Mythic(+600k)
 
 static bool AoTv4IsEpicItem(uint32 id);   // defined below; used to keep epics out of the crucible
 
@@ -1345,11 +1345,11 @@ void Client::CheckIncreaseTradeskill(int16 bonusstat, int16 stat_modifier, float
 	LogTradeskills("Stage2 chance was: [{}] percent. 0 percent means stage1 failed", chance_stage2);
 }
 
-// AoTv4: tier items (Hallowed = base+1,000,000, Mythic = base+2,000,000) count as their base item when
+// AoTv4: tier items (Hallowed = base+300,000, Mythic = base+600,000) count as their base item when
 // matching tradeskill recipes, so a combine works with any quality tier of a required component (the
 // combine analog of the any-quality quest turn-in). Ids outside the reserved band pass through.
 static uint32 AoTv4TierBaseId(uint32 id) {
-	return (id >= 1000000 && id < 3000000) ? (id % 1000000) : id;
+	return (id >= 300000 && id < 900000) ? (id % 300000) : id;
 }
 
 // AoTv4: is this item id an epic (items.epicitem<>0)? The runtime EQ::ItemData doesn't carry the epic
@@ -1712,8 +1712,8 @@ bool ZoneDatabase::GetTradeRecipe(
 		const uint8  success_count = Strings::ToUnsignedInt(row[1]);
 		// AoTv4: an EPIC produced by a combine comes out Mythic, same as summonitem quest rewards.
 		// Gated to epics only (via the cached epicitem set) so ordinary tradeskilling is unaffected.
-		if (AoTv4IsEpicItem(item_id) && GetItem(item_id + 2000000)) {
-			item_id += 2000000;
+		if (AoTv4IsEpicItem(item_id) && GetItem(item_id + 600000)) {
+			item_id += 600000;
 		}
 		spec->onsuccess.emplace_back(std::pair<uint32, uint8>(item_id, success_count));
 	}

@@ -13,8 +13,10 @@
 return {
   ["arena"]={id=77,x=147.04,y=-1014.25,z=48.00,h=256,long="The Arena"},
   ["bazaar"]={id=151,x=-441.25,y=0.29,z=-5.35,h=388,long="The Bazaar"},                        -- book POK_DOOR (no return door)
-  ["butcher"]={id=68,x=-523.00,y=1726.00,z=-1.00,h=45,long="Butcherblock Mountains"},
+  ["butcher"]={id=68,x=-523.00,y=1726.00,z=-1.00,h=45,long="Kaladim"},                          -- butcher book doorid 78 (by the Kaladim zone line)
+  ["butcherdocks"]={id=68,x=2934.99,y=1238.97,z=-2.26,h=356,long="Butcherblock Docks"},           -- SECOND butcher book, doorid 179 (the docks); land ~35u inland of the book, facing it
   ["crescent"]={id=394,x=-2635.00,y=-1240.00,z=-150.60,h=149,long="Crescent Reach"},
+  ["ecommons"]={id=22,x=-196.96,y=-1526.81,z=3.13,h=0,long="Commonlands"},                       -- book doorid 71; land just S of the (south-facing) book, facing N at it
   ["everfrost"]={id=30,x=-31.00,y=2835.00,z=-62.00,h=453,long="Everfrost Peaks"},
   ["feerrott"]={id=47,x=-163.00,y=908.00,z=-9.00,h=248,long="The Feerrott"},
   ["fieldofbone"]={id=78,x=1845.00,y=-2980.00,z=11.00,h=259,long="The Field of Bone"},
@@ -32,6 +34,7 @@ return {
   ["overthere"]={id=93,x=1888.00,y=3133.00,z=-51.00,h=128,long="The Overthere"},
   ["potranquility"]={id=203,x=-1463.00,y=774.00,z=-878.00,h=131,long="The Plane of Tranquility"},
   ["qeynos2"]={id=2,x=487.00,y=219.00,z=2.00,h=267,long="North Qeynos"},
+  ["qeytoqrg"]={id=4,x=75.87,y=3162.71,z=1.23,h=361,long="Qeynos Hills"},                         -- book doorid 14 (moved, faces E to Blackburrow); land just W of it, facing the book
   ["rathemtn"]={id=50,x=309.50,y=-1166.00,z=-0.50,h=34,long="The Rathe Mountains"},
   ["shadeweaver"]={id=165,x=-2433.00,y=-2970.00,z=-215.00,h=236,long="Shadeweaver's Thicket"},
   ["shadowrest"]={id=187,x=-8.38,y=-244.33,z=4.09,h=384,long="Shadowrest"},                    -- book POKTELE500 (no return door)

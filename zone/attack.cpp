@@ -5056,8 +5056,8 @@ void Mob::TryWeaponProc(const EQ::ItemInstance *inst, const EQ::ItemData *weapon
 			static_cast<float>(weapon->ProcRate)) / 100.0f;
 		// AoTv4: FIXED per-tier weapon proc chance (overrides the computed dex/delay/procrate chance) so
 		// every proc weapon has a predictable, tier-based rate: native 10%, Hallowed 35%, Mythic 75%.
-		if (weapon->ID >= 2000000 && weapon->ID < 3000000)      WPC = 0.75f;   // Mythic
-		else if (weapon->ID >= 1000000 && weapon->ID < 2000000) WPC = 0.35f;   // Hallowed
+		if (weapon->ID >= 600000 && weapon->ID < 900000)        WPC = 0.75f;   // Mythic
+		else if (weapon->ID >= 300000 && weapon->ID < 600000)   WPC = 0.35f;   // Hallowed
 		else                                                    WPC = 0.10f;   // native
 		if (zone->random.Roll(WPC)) {	// 255 dex = 0.084 chance of proc. No idea what this number should be really.
 			if (weapon->Proc.Level2 > ourlevel) {

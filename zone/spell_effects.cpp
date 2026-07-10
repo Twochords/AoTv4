@@ -788,6 +788,11 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 							effect_value += effect_value*caster->GetFocusEffect(focusFcStunTimeMod, spell_id)/100;
 						}
 
+						// AoTv4: crowd-control cap -- an NPC can't stun a player for more than 4 seconds.
+						if (caster && caster->IsNPC() && IsClient() && effect_value > 4000) {
+							effect_value = 4000;
+						}
+
 						Stun(effect_value);
 					} else {
 						if (IsClient())

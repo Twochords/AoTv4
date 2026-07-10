@@ -1472,6 +1472,16 @@ void Lua_Client::CancelAllTasks() {
 	}
 }
 
+// AoTv4: unlike CancelAllTasks (memory-only; for #task reloadall), this removes the task from BOTH the
+// client state AND the DB (character_tasks/character_activities), so it doesn't reload on the next zone.
+// No "task failed" popup or re-take lockout timer (that's FailTask). No-op if the task isn't active.
+void Lua_Client::RemoveTaskByTaskID(uint32 task_id) {
+	Lua_Safe_Call_Void();
+	if (self->HasTaskState()) {
+		self->RemoveTaskByTaskID(task_id);
+	}
+}
+
 
 bool Lua_Client::IsTaskCompleted(int task_id) {
 	Lua_Safe_Call_Bool();
@@ -3814,6 +3824,7 @@ luabind::scope lua_register_client() {
 	.def("Escape", (void(Lua_Client::*)(void))&Lua_Client::Escape)
 	.def("FailTask", (void(Lua_Client::*)(int))&Lua_Client::FailTask)
 	.def("CancelAllTasks", (void(Lua_Client::*)(void))&Lua_Client::CancelAllTasks)
+	.def("RemoveTaskByTaskID", (void(Lua_Client::*)(uint32))&Lua_Client::RemoveTaskByTaskID)
 	.def("FilteredMessage", &Lua_Client::FilteredMessage)
 	.def("FindEmptyMemSlot", (int(Lua_Client::*)(void))&Lua_Client::FindEmptyMemSlot)
 	.def("FindMemmedSpellBySlot", (uint16(Lua_Client::*)(int))&Lua_Client::FindMemmedSpellBySlot)

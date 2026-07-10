@@ -483,7 +483,7 @@ void NPC::GetPetState(SpellBuff_Struct *pet_buffs, uint32 *items, char *name) {
 		if (IsValidSpell(buffs[i].spellid)) {
 			pet_buffs[i].spellid = buffs[i].spellid;
 			pet_buffs[i].effect_type = i+1;
-			pet_buffs[i].duration = buffs[i].ticsremaining;
+			pet_buffs[i].duration = (buffs[i].ticsremaining == PERMANENT_BUFF_DURATION) ? 0xFFFFFFFF : buffs[i].ticsremaining;   // AoTv4: perma buff -> infinite marker
 			pet_buffs[i].level = buffs[i].casterlevel;
 			pet_buffs[i].bard_modifier = 10;
 			pet_buffs[i].counters = buffs[i].counters;

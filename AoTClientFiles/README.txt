@@ -4,7 +4,7 @@ AoTv4 - Client Files
 Copy the files below into your EverQuest (RoF2) client folder -- the folder that
 contains eqgame.exe. Close EQ first.
 
-Windows path to this folder:  C:\AoTv3\AoTv4\CLIENT_FILES
+Windows path to this folder:  C:\AoTv3\AoTv4\AoTClientFiles
 
 
 WHAT GOES WHERE

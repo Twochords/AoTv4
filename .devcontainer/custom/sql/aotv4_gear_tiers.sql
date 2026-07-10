@@ -1,12 +1,19 @@
 -- ==========================================================================================
 -- AoTv4 gear tiers. Adds two tiers ABOVE native gear:
---   Hallowed  = base item id + 1,000,000,  name "Hallowed <name>"
---   Mythic    = base item id + 2,000,000,  name "Mythic <name>"   (No Drop)
+--   Hallowed  = base item id + 300,000,  name "Hallowed <name>"
+--   Mythic    = base item id + 600,000,  name "Mythic <name>"   (No Drop)
 -- Scope: "currently-obtainable" equippable items (slots>0, referenced by lootdrop_entries
 --        or merchantlist). Native rows are edited in place only for all/all + not-lore.
 -- Derived stats use the tier's SCALED stats (e.g. Hallowed spelldmg = (2*int)*0.5).
+--
+-- NOTE on the offsets: RoF2 item LINKS encode the id in a 5-hex-digit field capped at 0xFFFFF
+-- (1,048,575). The old +1,000,000/+2,000,000 scheme pushed Mythic (and high-base Hallowed) past
+-- that ceiling, so their chat links rendered as garbage. Base ids top out at 147,494, so the tier
+-- "step" is 300,000: Hallowed = base+1*step, Mythic = base+2*step, both well under the ceiling. The
+-- reserved band is [300000, 900000); base-id recovery in C++ is still (id % 300000). Keep the C++
+-- (loot.cpp, npc.cpp, questmgr.cpp, attack.cpp, tradeskills.cpp AOTV4_TIER_STEP) in step with this.
 -- Items live in SHARED MEMORY -- after running this, rebuild ./shared_memory + restart world/zones.
--- Idempotent: re-running rebuilds the +1M/+2M rows (that id band holds nothing else).
+-- Idempotent: re-running rebuilds the tier rows (that id band holds nothing else).
 -- ==========================================================================================
 
 -- ---- scope: obtainable equippable base items ------------------------------------------------
@@ -15,7 +22,7 @@ CREATE TEMPORARY TABLE aotv4_scope (id INT PRIMARY KEY);
 INSERT INTO aotv4_scope
   SELECT DISTINCT i.id FROM items i
   WHERE i.slots > 0
-    AND i.id < 1000000   -- base items only; never re-tier our own +1M/+2M rows (or orphan refs to them)
+    AND i.id < 300000   -- base items only (max native id is 147,494); never re-tier our own tier rows
     AND (i.id IN (SELECT item_id FROM lootdrop_entries) OR i.id IN (SELECT item FROM merchantlist));
 
 -- AoTv4: also tier TUTORIAL quest-reward GEAR. These are quest-only (not in lootdrop_entries/merchantlist),
@@ -29,10 +36,13 @@ INSERT IGNORE INTO aotv4_scope (id) VALUES
   (67104),(67111),(67118),(67125),                                       -- Kobold sleeves
   (82929),(82930),(82936),(82937),(82943),(82944),(82950),(82951);       -- Gloom body/legs armor
 
--- clear any prior tier rows so re-runs are clean (this band holds only our generated tiers)
-DELETE FROM items WHERE id BETWEEN 1000000 AND 2999999;
+-- clear any prior tier rows so re-runs are clean. New band [300000,900000) holds only our tiers.
+-- Also sweep the OLD +1M/+2M band (pre-2026-07 scheme) so a migration leaves no orphan tier rows,
+-- but SPARE the refine crucible bag (2000060, created by aotv4_refine_crucible.sql).
+DELETE FROM items WHERE id BETWEEN 300000 AND 899999;
+DELETE FROM items WHERE id BETWEEN 1000000 AND 2999999 AND id <> 2000060;
 
--- ============================== HALLOWED (base + 1,000,000) =================================
+-- ============================== HALLOWED (base + 300,000) ==================================
 DROP TEMPORARY TABLE IF EXISTS tmp_hallowed;
 CREATE TEMPORARY TABLE tmp_hallowed LIKE items;
 INSERT INTO tmp_hallowed SELECT * FROM items WHERE id IN (SELECT id FROM aotv4_scope);
@@ -58,10 +68,10 @@ UPDATE tmp_hallowed SET
   nodrop = 1,                                  -- tradeable (only Mythic is No Drop)
   classes = 65535, races = 65535, loregroup = 0,
   Name = CONCAT('Hallowed ', Name),
-  id = id + 1000000;
+  id = id + 300000;
 INSERT INTO items SELECT * FROM tmp_hallowed;
 
--- ================================ MYTHIC (base + 2,000,000) =================================
+-- ================================ MYTHIC (base + 600,000) ==================================
 DROP TEMPORARY TABLE IF EXISTS tmp_mythic;
 CREATE TEMPORARY TABLE tmp_mythic LIKE items;
 INSERT INTO tmp_mythic SELECT * FROM items WHERE id IN (SELECT id FROM aotv4_scope);
@@ -94,7 +104,7 @@ UPDATE tmp_mythic SET
   nodrop = 0,                                  -- No Drop
   classes = 65535, races = 65535, loregroup = 0,
   Name = CONCAT('Mythic ', Name),
-  id = id + 2000000;
+  id = id + 600000;
 INSERT INTO items SELECT * FROM tmp_mythic;
 
 -- ================================ NATIVE (in place) =========================================

@@ -283,10 +283,10 @@ class, `classes8`, skill caps, expansion). The windows are generic (`SPELLCHOICE
   stop world+zones, `cd build/bin && ./shared_memory`, restart world (zones reboot on demand). Do it
   with world DOWN, or world keeps the stale mmap.
 - **Gear tiers** (`custom/sql/aotv4_gear_tiers.sql`): two tiers above native, generated from
-  obtainable equippable gear (slots>0, in lootdrop_entries/merchantlist, **base ids <1,000,000** —
-  never re-tier our own rows). **Hallowed = base id +1,000,000** (stats/resists/dmg ×2, hp/mana/end
+  obtainable equippable gear (slots>0, in lootdrop_entries/merchantlist, **base ids <300,000** —
+  never re-tier our own rows). **Hallowed = base id +300,000** (stats/resists/dmg ×2, hp/mana/end
   ×2, AC ×1.5, int→.5 spelldmg, wis→.5 healamt, str/agi/dex /10 → attack/strikethrough/accuracy,
-  instruments ×1.5, tradeable). **Mythic = +2,000,000** (hp/mana/end ×2.5, AC ×2, int/wis→1×
+  instruments ×1.5, tradeable). **Mythic = +600,000** (hp/mana/end ×2.5, AC ×2, int/wis→1×
   spelldmg/healamt, +½ heroic on every stat+resist, instruments ×2, **No Drop**). All three tiers:
   classes/races=65535, not-lore; **native + Hallowed tradeable, only Mythic No Drop**. Derived stats
   use the scaled (×2) values.
@@ -295,6 +295,16 @@ class, `classes8`, skill caps, expansion). The windows are generic (`SPELLCHOICE
   dominant weighted loot mode); `AoTv4MythicReward` (questmgr.cpp + lua_client.cpp) upgrades
   **quest-reward** gear to its Mythic tier (epics never hand out native). Re-run the SQL → rebuild
   shared memory → restart.
+  - ⚠️ **Tier offset = 300,000 (step), NOT 1,000,000.** RoF2 item LINKS encode the id in a
+    5-hex-digit field masked to `0xFFFFF` (1,048,575, see `common/say_link.cpp`), so an item id
+    ≥ 1,048,576 makes its chat link render as garbage (and can desync the client link parser for
+    following lines). The old +1M/+2M scheme broke every Mythic link (and Hallowed of base >48,575).
+    Base ids top out at 147,494, so the step is **300,000**: Hallowed = base+1×step, Mythic =
+    base+2×step, band `[300000,900000)`, all under the ceiling; base recovery is `id % 300000`.
+    The step lives in **5 C++ spots** (loot.cpp, npc.cpp, questmgr.cpp, attack.cpp, and
+    tradeskills.cpp `AOTV4_TIER_STEP`) — keep them in step with the SQL. Renumbering existing tier
+    ids is a one-time `custom/sql/aotv4_tier_renumber.sql` (migrates live inventory/merchant/etc.
+    refs; spares the refine bag 2000060).
 - **Never run `make zone`** — that Makefile target is NOT a build; it runs a **bare `./zone`** (no
   instance args), which registers with world as an unmanaged static zone ("Zone started with name
   [.] by launcher [NONE]") and **breaks zone routing** (clients time out on enter-world). To rebuild

@@ -2988,13 +2988,29 @@ int Mob::CalcBuffDuration(Mob *caster, Mob *target, uint16 spell_id, int32 caste
 		res = 10000; // ~16h override
 	}
 
-	// AoTv4: BENEFICIAL buffs and bard songs on player-side targets are PERMANENT -- cast once and keep it,
-	// no re-buffing or re-singing. Only affects spells that already have a buff duration (res > 0) and are
-	// beneficial; DETRIMENTAL effects are untouched and still expire normally. (-1000 = PERMANENT_BUFF_DURATION,
-	// which the buff tic loop never decrements; SpellEffect treats a negative CalcBuffDuration as perma.)
+	// AoTv4: BENEFICIAL buffs and bard songs on player-side targets are effectively PERMANENT -- cast once
+	// and keep it, no re-buffing or re-singing. Only affects spells that already have a buff duration
+	// (res > 0) and are beneficial; DETRIMENTAL effects are untouched and still expire normally.
+	// NOTE: we do NOT use PERMANENT_BUFF_DURATION (-1000) here. The RoF2 client applies a buff's STAT
+	// bonus for a duration it derives itself and MISHANDLES the permanent sentinel -- it draws a permanent
+	// icon but drops the stats at the spell's native time (Chant of Battle, Yaulp, etc.). A very large but
+	// FINITE tic count is a normal value the client keeps applying stats for. 1,000,000 tics ~= 69 days of
+	// continuous playtime -- effectively permanent (a roguelite death re-buffs long before then); it does
+	// decrement in the tic loop, and the buff window shows a long countdown instead of an infinity symbol.
 	if (res > 0 && IsBeneficialSpell(spell_id) && target &&
 		(target->IsClient() || target->IsBot() || target->IsMerc() || target->IsPet())) {
-		res = PERMANENT_BUFF_DURATION;
+		res = 1000000;
+	}
+
+	// AoTv4: cap NPC-cast CROWD CONTROL on players so a mob can't perma-lock a player (e.g. the Unrest
+	// ghoul chain-casting Ghoul Root, buffduration 5 = ~30s). Buff durations count whole 6-second tics,
+	// so "no longer than 4 seconds" clamps to the engine minimum of 1 tic (~0-6s, ~3s average). Applies
+	// only to a DETRIMENTAL spell cast by an NPC on a player, and only to the control effects that lock
+	// or steer movement -- root, mez, charm, fear, blind, silence, snare (detrimental movement slow).
+	// Stun is separate (applied in ms, capped to 4s in Mob::SpellEffect). DoTs/debuffs are untouched.
+	if (res > 1 && caster->IsNPC() && target->IsClient() &&
+		IsDetrimentalSpell(spell_id) && IsCrowdControlSpell(spell_id)) {
+		res = 1;
 	}
 
 	LogSpells("Spell [{}]: Casting level [{}], formula [{}], base_duration [{}]: result [{}]",
@@ -4306,6 +4322,15 @@ bool Mob::SpellOnTarget(
 		return false;
 	}
 
+	// AoTv4: an NPC's crowd control landing on a player opens a 30-second CC-immunity window -- while it's
+	// up, IsImmuneToSpell (above) blocks any further NPC CC on that player, so mobs can't chain-lock them
+	// (e.g. the Unrest ghoul re-rooting every few seconds). Fires here, after the immunity check passed, so
+	// only a CC that WASN'T already blocked starts/does-not-extend the window. Stun is excluded (see
+	// IsCrowdControlSpell) so stun-nukes keep working.
+	if (spelltar->IsClient() && IsNPC() && IsDetrimentalSpell(spell_id) && IsCrowdControlSpell(spell_id)) {
+		spelltar->TriggerCrowdControlImmunity();
+	}
+
 	//check for AE_Undead
 	if (spells[spell_id].target_type == ST_UndeadAE){
 		if (
@@ -4494,8 +4519,17 @@ bool Mob::SpellOnTarget(
 			);
 		}
 
+		// AoTv4: a PLAYER's spell can never FULLY resist -- clamp the resist result to a 25% floor, so a
+		// would-be resist lands for 25% instead of 0. Partial resists between 25-100% are unchanged; NPC
+		// casts are left completely alone. Nukes scale their damage by spell_effectiveness (SpellEffect),
+		// so this yields 25% damage; a DoT floored above 0 simply takes hold instead of being wasted.
+		if (IsClient() && spell_effectiveness < 25) {
+			spell_effectiveness = 25;
+		}
+
 		if (spell_effectiveness < 100) {
-			if (spell_effectiveness == 0 || !IsPartialResistableSpell(spell_id)) {
+			// player casts skip the full-resist path entirely (handled by the 25% floor above)
+			if (!IsClient() && (spell_effectiveness == 0 || !IsPartialResistableSpell(spell_id))) {
 				LogSpells("Spell [{}] was completely resisted by [{}]", spell_id, spelltar->GetName());
 
 				if (spells[spell_id].resist_type == RESIST_PHYSICAL){
@@ -5052,6 +5086,20 @@ void Mob::BuffDetachCaster(Mob *caster) {
 
 // checks if 'this' can be affected by spell_id from caster
 // returns true if the spell should fail, false otherwise
+// AoTv4: 30-second crowd-control immunity window. TriggerCrowdControlImmunity starts it when an NPC's CC
+// lands on a player (SpellOnTarget); IsCrowdControlImmune reports whether it's still active, and
+// IsImmuneToSpell uses that to block further NPC CC. The timer is disabled (GetRemainingTime returns
+// 0xFFFFFFFF when disabled) until first CC, so Enabled() must gate the remaining-time check.
+bool Mob::IsCrowdControlImmune()
+{
+	return cc_immune_timer.Enabled() && cc_immune_timer.GetRemainingTime() > 0;
+}
+
+void Mob::TriggerCrowdControlImmunity()
+{
+	cc_immune_timer.Start(30000);   // 30s; only started on a CC that wasn't already immune-blocked
+}
+
 bool Mob::IsImmuneToSpell(uint16 spell_id, Mob *caster)
 {
 	int effect_index;
@@ -5080,6 +5128,15 @@ bool Mob::IsImmuneToSpell(uint16 spell_id, Mob *caster)
 
 	if(IsBeneficialSpell(spell_id) && (caster->GetNPCTypeID())) //then skip the rest, stop NPCs aggroing each other with buff spells. 2013-03-05
 		return false;
+
+	// AoTv4: 30-second crowd-control immunity -- once an NPC crowd-controls a player, further NPC CC is
+	// blocked until the window lapses (started by TriggerCrowdControlImmunity in SpellOnTarget). Silent
+	// (no immune message) so a chain-casting mob doesn't spam the player. Players/bots casting are unaffected.
+	if (IsClient() && caster->IsNPC() && IsDetrimentalSpell(spell_id) &&
+		IsCrowdControlSpell(spell_id) && IsCrowdControlImmune()) {
+		LogSpells("CC-immune: blocking crowd control spell [{}] on [{}]", spell_id, GetName());
+		return true;
+	}
 
 	if(IsMesmerizeSpell(spell_id))
 	{
@@ -6561,7 +6618,10 @@ void Client::SendBuffDurationPacket(Buffs_Struct &buff, int slot)
 	sbf->buff.level = buff.casterlevel > 0 ? buff.casterlevel : GetLevel();
 	sbf->buff.bard_modifier = buff.instrument_mod;
 	sbf->buff.spellid = buff.spellid;
-	sbf->buff.duration = buff.ticsremaining;
+	// AoTv4: our permanent beneficial buffs (ticsremaining = PERMANENT_BUFF_DURATION = -1000) must be sent
+	// to the client as 0xFFFFFFFF -- the same "infinite" marker native DF_Permanent buffs use. Sending the
+	// raw -1000 makes the client draw a permanent icon but expire the STAT bonus at the spell's native time.
+	sbf->buff.duration = (buff.ticsremaining == PERMANENT_BUFF_DURATION) ? 0xFFFFFFFF : buff.ticsremaining;
 	if (buff.dot_rune)
 		sbf->buff.counters = buff.dot_rune;
 	else if (buff.magic_rune)
@@ -6596,7 +6656,7 @@ void Client::SendBuffNumHitPacket(Buffs_Struct &buff, int slot)
 
 	bi->entries[0].buff_slot = slot;
 	bi->entries[0].spell_id = buff.spellid;
-	bi->entries[0].tics_remaining = buff.ticsremaining;
+	bi->entries[0].tics_remaining = (buff.ticsremaining == PERMANENT_BUFF_DURATION) ? 0xFFFFFFFF : buff.ticsremaining;   // AoTv4: perma buff -> infinite marker
 	bi->entries[0].num_hits = buff.hit_number;
 	strn0cpy(bi->entries[0].caster, buff.caster_name, 64);
 	bi->name_lengths = strlen(bi->entries[0].caster);
@@ -6695,7 +6755,7 @@ EQApplicationPacket *Mob::MakeBuffsPacket(bool for_target, bool clear_buffs)
 		if (IsValidSpell(buffs[i].spellid)) {
 			buff->entries[index].buff_slot = i;
 			buff->entries[index].spell_id = buffs[i].spellid;
-			buff->entries[index].tics_remaining = buffs[i].ticsremaining;
+			buff->entries[index].tics_remaining = (buffs[i].ticsremaining == PERMANENT_BUFF_DURATION) ? 0xFFFFFFFF : buffs[i].ticsremaining;   // AoTv4: perma buff -> infinite marker
 			buff->entries[index].num_hits = buffs[i].hit_number;
 			strn0cpy(buff->entries[index].caster, buffs[i].caster_name, 64);
 			buff->name_lengths += strlen(buff->entries[index].caster);

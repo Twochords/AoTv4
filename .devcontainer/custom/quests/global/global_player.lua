@@ -20,11 +20,32 @@ local DEATH_AA_AT_CAP  = 0.40   -- AA for dying AT the era cap = cap * this  (L5
 local DEATH_AA_SUB_CAP = 0.38   -- XP-effort scale below the cap = cap * this; ceiling = 0.95 * at-cap
                                 --   so a near-cap death is ~95% of dying AT cap (L59 Kunark ~19 vs 24)
 
+-- Every starting-path task wiped on death so the tutorial restarts as if entered for the FIRST time
+-- (see event_death). Mostly the Gloomingdeep tutorial set; 5745 ("New Beginnings") is the Plane of
+-- Knowledge new-player task, which otherwise lingers forever (it's a Quest-type task the client keeps
+-- in the DB). These get RemoveTaskByTaskID'd (active, memory+DB) AND UncompleteTask'd (completed record).
+local TUTORIAL_TASKS = {
+	1394, 1395, 1396, 1448, 3785, 5032, 5091, 5092, 5094, 5095,
+	5096, 5097, 5098, 5102, 5106, 5166, 5702, 5703, 5745, 8505,
+}
+
 function event_enter_zone(e)
 	mysterious_voice(e)
 	era_system.sync_zone()                          -- point this zone's expansion rule at the unlocked era
 	e.self:Message(MT.NPCQuestSay, "PORTALCLOSE")   -- dismiss the Portal window on any zone change
 	e.self:SetTimer("skillsync", 2)                 -- one-shot: re-reveal earned combat abilities after the UI builds (no jump)
+
+	-- Restore the real bind once the player LEAVES the Tutorial. Death temporarily binds them to the
+	-- Tutorial (event_death) so respawn lands there; here we put their own bind back and clear the save.
+	local bkey = "deathbind_" .. e.self:CharacterID()
+	local saved = eq.get_data(bkey)
+	if saved and saved ~= "" and eq.get_zone_id() ~= 189 then
+		local z, x, y, zz, h = saved:match("^(%-?%d+),(%-?[%d.]+),(%-?[%d.]+),(%-?[%d.]+),(%-?[%d.]+)$")
+		if z then
+			e.self:SetBindPoint(tonumber(z), 0, tonumber(x), tonumber(y), tonumber(zz), tonumber(h))
+		end
+		eq.delete_data(bkey)
+	end
 
 	if eq.is_lost_dungeons_of_norrath_enabled() and eq.get_zone_short_name() == "lavastorm" and e.self:GetGMStatus() >= 80 then 
 		e.self:Message(MT.DimGray, "There are GM commands available for Dragons of Norrath, use " .. eq.say_link("#don") .. " to get started")
@@ -536,10 +557,35 @@ function event_death(e)
   spell_choice.clear_pending(client)  -- drop any un-picked offers so the new run starts clean
   spell_choice.send_unlocks(client)   -- re-hide the now-reset combat skills on the client
 
-  -- RESET QUESTS: the roguelite wipe destroys quest items, which would otherwise strand a player
-  -- mid-quest (e.g. a half-finished Tutorial task they can no longer hand in). Cancel every active
-  -- task on death so the quest is cleared and can be re-taken fresh on the new run.
+  -- RESET QUESTS: fully wipe the starting-quest state so a death restarts the tutorial as if entered for
+  -- the FIRST time (the tutorial is the roguelite's way out -- a dead player MUST be able to re-run it).
+  -- CancelAllTasks only clears the CLIENT'S in-memory task slots (it's built for #task reloadall) -- it
+  -- does NOT delete the character_tasks DB rows, so Quest-type tasks (e.g. 5745 New Beginnings, 5166) just
+  -- reload on the next zone and appear "stuck". RemoveTaskByTaskID deletes from memory AND the DB, and
+  -- UncompleteTask clears any completion record. Remove the specific tasks FIRST (they must still be in
+  -- the active list to be found), then CancelAllTasks to refresh the client's view of anything else.
+  for _, tid in ipairs(TUTORIAL_TASKS) do
+    client:RemoveTaskByTaskID(tid)   -- active task -> gone from memory + DB (no fail popup / lockout)
+    client:UncompleteTask(tid)       -- clear any completed record so it can be taken again
+  end
   client:CancelAllTasks()
+
+  -- ROGUELITE START: every death sends the player back to the Tutorial, whose refreshed quests + free
+  -- (Mythic) loot are the intended "get started". Clear the Tutorial's gate qglobals so its tasks are
+  -- re-handed on arrival (tutorialb/player.pl only assigns while tutpop is unset).
+  eq.delete_global("tutpop"); eq.delete_global("tutbind")
+  eq.delete_global("amote");  eq.delete_global("bmote")
+
+  -- TELEPORT-ONLY (bind untouched): respawn reads bind slot 0, so point slot 0 at the Tutorial for THIS
+  -- respawn while preserving the player's real bind -- saved once here, restored when they next leave the
+  -- Tutorial (see event_enter_zone). Save only if not already saved, so repeated Tutorial deaths don't
+  -- overwrite the real bind with the Tutorial one.
+  local bkey = "deathbind_" .. client:CharacterID()
+  if (eq.get_data(bkey) or "") == "" then
+    eq.set_data(bkey, string.format("%d,%.2f,%.2f,%.2f,%.2f",
+      client:GetBindZoneID(), client:GetBindX(), client:GetBindY(), client:GetBindZ(), client:GetBindHeading()))
+  end
+  client:SetBindPoint(189, 0, 2.0, -146.0, 19.6, 303.75)   -- tutorialb start (EVENT_ENTERZONE re-positions)
 
   -- Personal death recap: the dying player's own client can swallow the world_emote during its death
   -- sequence, so guarantee they see their own line here (after the reset settles).
@@ -560,6 +606,17 @@ function event_death_complete(e)
   local primary = client:GetItemIDAt(13)       -- slot 13 = Primary
   if not primary or primary <= 0 then
     client:SummonItem(5013)                    -- Rusty Short Sword (dmg 4 / dly 28, no level req, Bard-usable)
+  end
+
+  -- REFRESH THE TUTORIAL for a DIED-IN-THE-TUTORIAL player. event_death already cancelled all tasks and
+  -- cleared the gate qglobals, but a same-zone respawn (their death bind is now the Tutorial) does NOT
+  -- re-fire EVENT_ENTERZONE, so we re-hand the tasks directly here and re-gate tutpop. Players who died
+  -- ELSEWHERE respawn INTO the Tutorial (a real zone change), so tutorialb/player.pl's EVENT_ENTERZONE
+  -- re-assigns them there instead.
+  if eq.get_zone_id() == 189 then
+    client:AssignTask(1448)                    -- Basic Training
+    client:AssignTask(5166)                    -- paired Tutorial task
+    eq.set_global("tutpop", "1", 5, "D30")     -- re-gate so EVENT_ENTERZONE won't re-assign/re-popup
   end
 end
 

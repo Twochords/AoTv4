@@ -25,6 +25,13 @@ local function found_key(client) return "pok_found_" .. client:CharacterID() end
 -- the Felwithe zone line. Any zone/doorid not listed falls back to the zone short name (the common case).
 local book_override = {
 	gfaydark = { [109] = "gfaydark", [108] = "felwithe" },
+	butcher  = { [78]  = "butcher",  [179] = "butcherdocks" },   -- doorid 78 = Kaladim, 179 = Butcherblock Docks
+}
+
+-- HUB books: clicking one unlocks a whole SET of destinations at once (instead of just its own zone).
+-- The Tutorial book opens the three starter-zone books so new players can get going.
+local grant_sets = {
+	tutorialb = { "butcherdocks", "ecommons", "qeytoqrg" },
 }
 
 -- discovered zones the player has, de-duped and validated against the portal table (so only real
@@ -38,20 +45,34 @@ local function get_found(client)
 	return out
 end
 
--- Record the clicked book as discovered (only if it maps to a portal entry). doorid disambiguates zones
--- with more than one book (e.g. gfaydark's Kelethin vs Felwithe books); otherwise the zone short is used.
+-- Add one portal short to the player's discovered set. Returns true only if it was newly added
+-- (so re-clicking a known book doesn't spam or re-push the list).
+local function attune(client, short)
+	if not short or not portals[short] then return false end
+	local key  = found_key(client)
+	local data = eq.get_data(key) or ""
+	for s in data:gmatch("([^,]+)") do if s == short then return false end end   -- already known
+	eq.set_data(key, data == "" and short or (data .. "," .. short))
+	client:Message(MT.Yellow, string.format(
+		"You attune to the Plane of Knowledge book: %s.", portals[short].long))
+	return true
+end
+
+-- Record the clicked book as discovered. A hub book (grant_sets) unlocks a whole set; otherwise the
+-- doorid disambiguates multi-book zones (gfaydark Kelethin/Felwithe, butcher Kaladim/Docks) and falls
+-- back to the zone short name.
 function M.discover(client, zone_short, doorid)
+	local set = grant_sets[zone_short]
+	if set then
+		local any = false
+		for _, s in ipairs(set) do if attune(client, s) then any = true end end
+		if any then M.send_list(client, true) end                               -- silent push to the dll
+		return
+	end
 	local short = zone_short
 	local ov = book_override[zone_short]
 	if ov and doorid and ov[doorid] then short = ov[doorid] end
-	if not short or not portals[short] then return end
-	local key  = found_key(client)
-	local data = eq.get_data(key) or ""
-	for s in data:gmatch("([^,]+)") do if s == short then return end end        -- already known
-	eq.set_data(key, data == "" and short or (data .. "," .. short))
-	client:Message(MT.Yellow, string.format(
-		"You attune to the Plane of Knowledge book here: %s.", portals[short].long))
-	M.send_list(client, true)                                                    -- silent push to the dll
+	if attune(client, short) then M.send_list(client, true) end
 end
 
 -- Emit the discovered list to the dll window. quiet=true sends only PORTALDATA (no saylinks).
