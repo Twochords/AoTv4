@@ -474,9 +474,8 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 
 			case SpellEffect::CurrentMana:
 			{
-				// Bards don't get mana from effects, good or bad.
-				if(GetClass() == Class::Bard)
-					break;
+				// AoTv4: everyone is a Bard, so the stock "Bards get no mana from effects" rule would
+				// break mana-tap/instant-mana spells server-wide. Let Bards get mana from effects.
 				if(IsManaTapSpell(spell_id)) {
 					if (!IsPureMeleeClass()) {
 #ifdef SPELL_EFFECT_SPAM
@@ -511,9 +510,7 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 
 			case SpellEffect::CurrentManaOnce:
 			{
-				// Bards don't get mana from effects, good or bad.
-				if(GetClass() == Class::Bard)
-					break;
+				// AoTv4: everyone is a Bard -- let Bards get mana from effects (see CurrentMana above).
 #ifdef SPELL_EFFECT_SPAM
 				snprintf(effect_desc, _EDLEN, "Current Mana Once: %+i", effect_value);
 #endif

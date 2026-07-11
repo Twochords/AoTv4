@@ -75,3 +75,7 @@ skill-caps.diff
 # bootstrapped clones. Track it -- including the dll .vcxproj that the global *.vcxproj rule
 # above would otherwise hide.
 !.devcontainer/custom/**/*.vcxproj
+
+# Large DB recovery dumps -- local backups only, never committed (see POST_REBUILD_RECOVERY.md)
+/Deez.sql
+/aotv4_current.sql

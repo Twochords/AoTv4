@@ -665,7 +665,10 @@ int64 Client::CalcManaRegen(bool bCombat)
 		if (IsSitting() || CanMedOnHorse()) {
 			// kind of weird to do it here w/e
 			// client does some base medding regen for shrouds here
-			if (GetClass() != Class::Bard) {
+			// AoTv4: everyone here is a Bard, so the stock "Bards can't meditate" exclusion would zero
+			// out sitting/med mana regen server-wide. Bards get the Meditate skill via free_skills, so
+			// let them med-regen like any other caster.
+			{
 				auto skill = GetSkill(EQ::skills::SkillMeditate);
 				if (skill > 0) {
 					regen++;

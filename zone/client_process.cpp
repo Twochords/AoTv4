@@ -1953,8 +1953,11 @@ void Client::OPGMSummon(const EQApplicationPacket *app)
 void Client::DoHPRegen() {
 	int64 regen = CalcHPRegen();
 	// AoTv4: fast out-of-combat recovery -- at least 20% of max per 6s tick when nothing is engaged on
-	// you (~full in ~5 ticks / ~30s). In combat, normal regen applies. GetAggroCount()==0 = out of combat.
-	if (GetAggroCount() == 0) {
+	// you (~full in ~5 ticks / ~30s). In combat, normal regen applies. GetAggroCount() is a counter that
+	// can leak (mob despawns/deaggros without decrementing it), so fall back to the authoritative hate-list
+	// scan (Fighting) when it's non-zero -- a stuck counter then self-heals into fast regen when nothing
+	// actually fights you. (Matches DoManaRegen.)
+	if (GetAggroCount() == 0 || !entity_list.Fighting(this)) {
 		int64 fast = GetMaxHP() / 5;
 		if (fast > regen) regen = fast;
 	}
@@ -1971,7 +1974,11 @@ void Client::DoManaRegen() {
 
 	int64 regen = CalcManaRegen();
 	// AoTv4: fast out-of-combat mana recovery -- at least 20% of max per tick when out of combat.
-	if (GetAggroCount() == 0) {
+	// GetAggroCount() is a counter that can leak (a mob that despawns/deaggros without decrementing it
+	// leaves the player stuck "in combat"), which strands a standing Bard's mana (near-zero base regen)
+	// even while idle with nothing around. Fall back to the authoritative hate-list scan (Fighting) when
+	// the counter is non-zero so a stuck counter self-heals: fast-regen whenever nothing actually fights us.
+	if (GetAggroCount() == 0 || !entity_list.Fighting(this)) {
 		int64 fast = max_mana / 5;
 		if (fast > regen) regen = fast;
 	}

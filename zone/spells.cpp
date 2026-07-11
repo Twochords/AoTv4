@@ -2928,6 +2928,15 @@ bool Mob::ApplyBardPulse(int32 spell_id, Mob *spell_target, CastingSlot slot) {
 		return false;
 	}
 
+	// AoTv4: recompute bonuses after every song pulse. Stock behavior: once a song's buff exists, AddBuff
+	// short-circuits ("do not recast a buff we already have on") and skips the CalcBonuses() it normally
+	// runs on add -- so a continuously-pulsing song's spellbonuses (haste from Vilia's, etc.) never re-apply
+	// after the first tick. AoTv4 makes songs effectively permanent, so the pulse runs forever and the gap
+	// is permanent. Recompute here (caster and target) so active-song bonuses stay live.
+	CalcBonuses();
+	if (spell_target != this)
+		spell_target->CalcBonuses();
+
 	if (IsClient()) {
 		CastToClient()->CheckSongSkillIncrease(spell_id);
 	}

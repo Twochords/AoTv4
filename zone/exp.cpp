@@ -207,6 +207,11 @@ uint64 Client::GetExperienceForKill(Mob *against)
 			ret /= 100;
 		}
 
+		// AoTv4: +50% experience from mobs over level 30 -- the above-30 leveling pace was too slow.
+		if (level > 30) {
+			ret = ret * 3 / 2;
+		}
+
 		return ret;
 	}
 
@@ -1011,37 +1016,12 @@ uint32 Client::GetEXPForLevel(uint16 check_level)
 #endif
 
 	uint16 check_levelm1 = check_level-1;
-	float mod;
-	if (check_level < 31)
-		mod = 1.0;
-	else if (check_level < 36)
-		mod = 1.1;
-	else if (check_level < 41)
-		mod = 1.2;
-	else if (check_level < 46)
-		mod = 1.3;
-	else if (check_level < 52)
-		mod = 1.4;
-	else if (check_level < 53)
-		mod = 1.5;
-	else if (check_level < 54)
-		mod = 1.6;
-	else if (check_level < 55)
-		mod = 1.7;
-	else if (check_level < 56)
-		mod = 1.9;
-	else if (check_level < 57)
-		mod = 2.1;
-	else if (check_level < 58)
-		mod = 2.3;
-	else if (check_level < 59)
-		mod = 2.5;
-	else if (check_level < 60)
-		mod = 2.7;
-	else if (check_level < 61)
-		mod = 3.0;
-	else
-		mod = 3.1;
+	// AoTv4: no hell levels + a relaxed above-30 curve. Stock applied a STEPWISE multiplier
+	// (1.0 -> 1.1 -> 1.2 ... -> 3.0) whose jumps, on top of the (level-1)^3 growth, spiked specific
+	// levels (31/36/41/46/52/56-60) -- the classic "hell levels." Replaced with a smooth linear ramp
+	// that is ALSO gentler than stock at every level above 30 (mod 1.6 @ L60 vs 3.0), so per-level cost
+	// rises evenly with no spikes and the total above-30 grind drops. Below 31 is unchanged (mod 1.0).
+	float mod = (check_level < 31) ? 1.0f : 1.0f + (check_level - 30) * 0.02f;
 
 	float base = (check_levelm1)*(check_levelm1)*(check_levelm1);
 

@@ -7,13 +7,20 @@ sub EVENT_ENTERZONE {
     quest::setglobal("tutbind", 1, 1, "D30");
   }
     
-  if (!defined($qglobals{tutpop})) {
-    quest::popup("Join the revolution!",
-                 "Welcome to the Revolt! You have been given two new quests:
-                   <br><br><c \"#FFFF00\">Rally with Rahtiz:</c><br>If you are ready to begin fighting for the revolt, 
-                   hail Guard Rahtiz and see where you are needed.<br><br><c \"#FFFF00\">Basic Training:</c><br>If you 
-                   would like more training on the finer points of Everquest, speak with Arias and he will direct you to other knowledgeable 
-                   members of the slave revolt.<br><br><c \"#F07F00\">Click 'OK' to continue.</c>");
+  # AoTv4: (re)hand the tutorial starting quests whenever the player is in tutorialb WITHOUT them --
+  # not just the first time. The old gate keyed off `tutpop` (a 30-day qglobal cleared ONLY on death),
+  # so a LIVING player who ended up back here task-less (e.g. after leaving via the PoK book instead of
+  # the now-removed Arias teleport) was stranded with no starting quest for 30 days. Key off actual task
+  # presence instead; keep the welcome popup gated on tutpop so it only shows once per cycle.
+  if (!quest::istaskactive(1448) && !quest::istaskactive(5166)) {
+    if (!defined($qglobals{tutpop})) {
+      quest::popup("Join the revolution!",
+                   "Welcome to the Revolt! You have been given two new quests:
+                     <br><br><c \"#FFFF00\">Rally with Rahtiz:</c><br>If you are ready to begin fighting for the revolt,
+                     hail Guard Rahtiz and see where you are needed.<br><br><c \"#FFFF00\">Basic Training:</c><br>If you
+                     would like more training on the finer points of Everquest, speak with Arias and he will direct you to other knowledgeable
+                     members of the slave revolt.<br><br><c \"#F07F00\">Click 'OK' to continue.</c>");
+    }
     quest::assigntask(1448);
     quest::assigntask(5166);
     quest::setglobal("tutpop", 1, 1, "D30");

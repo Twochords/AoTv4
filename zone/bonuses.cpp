@@ -1847,8 +1847,8 @@ void Mob::CalcSpellBonuses(StatBonuses* newbon)
 		}
 	}
 
-	if (GetClass() == Class::Bard)
-		newbon->ManaRegen = 0; // Bards do not get mana regen from spells.
+	// AoTv4: everyone is a Bard, so the stock "Bards get no mana regen from spells" rule would make
+	// Clarity and every other mana-regen song/buff do nothing. Let Bards keep spell mana regen.
 }
 
 void Mob::ApplySpellsBonuses(uint16 spell_id, uint8 casterlevel, StatBonuses *new_bonus, uint16 casterId,

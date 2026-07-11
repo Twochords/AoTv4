@@ -24,9 +24,13 @@ local DEATH_AA_SUB_CAP = 0.38   -- XP-effort scale below the cap = cap * this; c
 -- (see event_death). Mostly the Gloomingdeep tutorial set; 5745 ("New Beginnings") is the Plane of
 -- Knowledge new-player task, which otherwise lingers forever (it's a Quest-type task the client keeps
 -- in the DB). These get RemoveTaskByTaskID'd (active, memory+DB) AND UncompleteTask'd (completed record).
+-- The list MUST cover every task the tutorial zones (tutoriala/tutorialb) hand out -- any left off
+-- lingers (active or completed) and blocks a clean re-offer when the player re-runs the tutorial after
+-- death. 208/505744 = Jail Break (tutoriala); 8799/8804 (Hotbars) + 15035 = tutorialb sub-tasks.
 local TUTORIAL_TASKS = {
-	1394, 1395, 1396, 1448, 3785, 5032, 5091, 5092, 5094, 5095,
+	208, 1394, 1395, 1396, 1448, 3785, 5032, 5091, 5092, 5094, 5095,
 	5096, 5097, 5098, 5102, 5106, 5166, 5702, 5703, 5745, 8505,
+	8799, 8804, 15035, 505744,
 }
 
 function event_enter_zone(e)
