@@ -1710,10 +1710,15 @@ bool ZoneDatabase::GetTradeRecipe(
 	for(auto row : results) {
 		uint32       item_id       = Strings::ToUnsignedInt(row[0]);
 		const uint8  success_count = Strings::ToUnsignedInt(row[1]);
-		// AoTv4: an EPIC produced by a combine comes out Mythic, same as summonitem quest rewards.
-		// Gated to epics only (via the cached epicitem set) so ordinary tradeskilling is unaffected.
-		if (AoTv4IsEpicItem(item_id) && GetItem(item_id + 600000)) {
-			item_id += 600000;
+		// AoTv4: every WEARABLE (slots>0) combine output comes out MYTHIC when a Mythic tier exists -- so
+		// crafted GEAR is always top-tier and stays relevant as later expansions unlock better base items.
+		// (Epics are wearable + always have a Mythic tier, so this covers them too.) Non-wearable outputs
+		// -- components, food, reagents, the refine bag -- are untouched.
+		{
+			const EQ::ItemData *base_item = GetItem(item_id);
+			if (base_item && base_item->Slots > 0 && GetItem(item_id + 600000)) {
+				item_id += 600000;   // wearable -> always Mythic
+			}
 		}
 		spec->onsuccess.emplace_back(std::pair<uint32, uint8>(item_id, success_count));
 	}

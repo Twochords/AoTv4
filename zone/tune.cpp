@@ -1494,8 +1494,8 @@ void Mob::TuneCommonOutgoingHitSuccess(Mob* defender, DamageHitInfo &hit, ExtraA
 			extra_mincap = GetLevel() * 2;
 		else if (GetLevel() > 50)
 			extra_mincap = GetLevel() * 3 / 2;
-		if (IsSpecialAttack(eSpecialAttacks::ChaoticStab)) {
-			hit.damage_done = extra_mincap;
+		if (IsSpecialAttack(eSpecialAttacks::FrontalBackstab)) {   // AoTv4: frontal backstab = 50% (was chaotic min-damage)
+			hit.damage_done = hit.damage_done / 2;
 		}
 		else {
 			int ass = TryAssassinate(defender, hit.skill);

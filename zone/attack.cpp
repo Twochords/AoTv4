@@ -6397,8 +6397,10 @@ void Mob::CommonOutgoingHitSuccess(Mob* defender, DamageHitInfo &hit, ExtraAttac
 			extra_mincap = GetLevel() * 2;
 		else if (GetLevel() > 50)
 			extra_mincap = GetLevel() * 3 / 2;
-		if (IsSpecialAttack(eSpecialAttacks::ChaoticStab)) {
-			hit.damage_done = extra_mincap;
+		// AoTv4: a FRONTAL backstab does HALF the normal damage and cannot assassinate; from behind it's
+		// full and can still assassinate. (Replaces the old chaotic-stab min-damage frontal.)
+		if (IsSpecialAttack(eSpecialAttacks::FrontalBackstab)) {
+			hit.damage_done = hit.damage_done / 2;
 		}
 		else {
 			int ass = TryAssassinate(defender, hit.skill);

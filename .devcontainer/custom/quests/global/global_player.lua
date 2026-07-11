@@ -35,6 +35,12 @@ function event_enter_zone(e)
 	e.self:Message(MT.NPCQuestSay, "PORTALCLOSE")   -- dismiss the Portal window on any zone change
 	e.self:SetTimer("skillsync", 2)                 -- one-shot: re-reveal earned combat abilities after the UI builds (no jump)
 
+	-- Gloomingdeep Guard (5150) is a Tutorial-only protective buff; strip it the moment you leave the
+	-- Tutorial so our permanent-buff rule doesn't carry it out into the world. (It stays while in tutorialb.)
+	if eq.get_zone_id() ~= 189 then
+		e.self:BuffFadeBySpellID(5150)
+	end
+
 	-- Restore the real bind once the player LEAVES the Tutorial. Death temporarily binds them to the
 	-- Tutorial (event_death) so respawn lands there; here we put their own bind back and clear the save.
 	local bkey = "deathbind_" .. e.self:CharacterID()
@@ -605,7 +611,10 @@ function event_death_complete(e)
   -- GetItemIDAt returns INVALID_ID (-1), NOT 0, for an empty slot -- test `<= 0`, not `== 0`.
   local primary = client:GetItemIDAt(13)       -- slot 13 = Primary
   if not primary or primary <= 0 then
-    client:SummonItem(5013)                    -- Rusty Short Sword (dmg 4 / dly 28, no level req, Bard-usable)
+    client:SummonItem(9998)                    -- Short Sword* (dmg 4 / dly 29, no req) -- the exact sword Absor's
+                                               -- tutorial quest accepts (check_handin 9998 -> Sharpened Short Sword).
+                                               -- Stays BASE (9998 is excluded from gear tiers) so the hand-in matches;
+                                               -- Absor then hands back the Mythic Sharpened Short Sword.
   end
 
   -- REFRESH THE TUTORIAL for a DIED-IN-THE-TUTORIAL player. event_death already cancelled all tasks and

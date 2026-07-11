@@ -2997,7 +2997,14 @@ int Mob::CalcBuffDuration(Mob *caster, Mob *target, uint16 spell_id, int32 caste
 	// FINITE tic count is a normal value the client keeps applying stats for. 1,000,000 tics ~= 69 days of
 	// continuous playtime -- effectively permanent (a roguelite death re-buffs long before then); it does
 	// decrement in the tic loop, and the buff window shows a long countdown instead of an infinity symbol.
-	if (res > 0 && IsBeneficialSpell(spell_id) && target &&
+	// AoTv4: some beneficial buffs are SHORT-TERM by design and must keep their native duration, not go
+	// permanent -- HEAL-OVER-TIME (dedicated HoTs, SE_HealOverTime; group HoTs; and HP regen, SE_CurrentHP)
+	// and INVULNERABILITY (Divine Aura). Mana regen (Clarity, SE_CurrentMana) and stat/HP-max buffs are NOT
+	// heal-over-time, so they still go permanent as intended.
+	bool short_term_buff = IsInvulnerabilitySpell(spell_id) ||
+	                       IsEffectInSpell(spell_id, SpellEffect::HealOverTime) ||
+	                       IsEffectInSpell(spell_id, SpellEffect::CurrentHP);
+	if (res > 0 && IsBeneficialSpell(spell_id) && !short_term_buff && target &&
 		(target->IsClient() || target->IsBot() || target->IsMerc() || target->IsPet())) {
 		res = 1000000;
 	}

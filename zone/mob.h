@@ -66,7 +66,7 @@ enum class eSpecialAttacks : int {
 	None,
 	Rampage,
 	AERampage,
-	ChaoticStab
+	FrontalBackstab   // AoTv4: a backstab from the FRONT -- does 50% damage, cannot assassinate (replaces the old ChaoticStab min-damage)
 };
 
 struct AppearanceStruct {

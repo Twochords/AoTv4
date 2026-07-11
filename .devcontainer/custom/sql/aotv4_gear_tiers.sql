@@ -31,10 +31,20 @@ INSERT INTO aotv4_scope
 INSERT IGNORE INTO aotv4_scope (id) VALUES
   (38005),(38026),(38047),(38068),(38089),(38110),(38131),(38152),(38173),(38194),(38215),(38236),
   (38257),(38278),(38299),(38320),                                       -- class "Ring (Test)" starter items
-  (54230),(54232),(54233),(54235),(54237),(54238),(59950),(59951),(59952),(59953),  -- newbie weapons
+  (54230),(54231),(54232),(54233),(54235),(54236),(54237),(54238),      -- newbie weapons (incl. bronze/iron SWORDS 54231/54236)
+  (59950),(59951),(59952),(59953),                                       -- sharpened newbie weapons
   (59943),                                                                -- Kobold Skull Charm
-  (67104),(67111),(67118),(67125),                                       -- Kobold sleeves
-  (82929),(82930),(82936),(82937),(82943),(82944),(82950),(82951);       -- Gloom body/legs armor
+  (67104),(67111),(67118),(67125),(59969),                               -- Kobold sleeves + Kobold Leather Mask
+  (82929),(82930),(82936),(82937),(82943),(82944),(82950),(82951),       -- Gloom body/legs armor
+  (54217),(54218),(54219),(54220),(54221),(54222),(54223),               -- Stitched Burlap armor (silk turn-ins)
+  (54225),(54226),(54227),(54228),                                       -- Stitched Burlap armor cont.
+  (54696);                                                                -- Steatite Fragment (primary-slot quest reward)
+
+-- AoTv4: NEVER tier the tutorial turn-in starter weapons Absor accepts (Dagger*/Short Sword*/Club*/Dull
+-- Axe*). They're handed IN to his quest via plugin::check_handin(<base id>), so they must stay BASE --
+-- a Mythic copy would fail the hand-in. (The player spawns with 9998 base; Absor gives back the Mythic
+-- Sharpened reward.) 9998/9999 are in loottables so the auto-scope grabbed them; remove them here.
+DELETE FROM aotv4_scope WHERE id IN (9997, 9998, 9999, 55623);
 
 -- clear any prior tier rows so re-runs are clean. New band [300000,900000) holds only our tiers.
 -- Also sweep the OLD +1M/+2M band (pre-2026-07 scheme) so a migration leaves no orphan tier rows,

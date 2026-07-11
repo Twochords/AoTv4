@@ -178,10 +178,10 @@ sub EVENT_CLICKDOOR {
   my $d_id = ($doorid % 256);
 
   if ($d_id == 11) {
-    # AoTv4: the stock exit dumps players in the Plane of Knowledge (expansion 4), stranding new chars on
-    # this Classic-locked server. Route to a valid, faction-safe home city by race/start-zone instead.
-    # Shared with Arias ("leave"/"escape") so both exits behave identically -- see plugins/aotv4_tutorial.pl.
-    plugin::AoTTutorialExit($client);
+    # AoTv4: the hole-in-the-wall tutorial exit is DISABLED. Everyone leaves via the Plane of Knowledge
+    # hub book (opens the travel network: Butcherblock Docks / Commonlands / Qeynos Hills). Arias's
+    # "leave"/"escape" exit is disabled too, so the book is the single way out.
+    $client->Message(15, "The passage is sealed. Use the glowing Plane of Knowledge book in the cavern to travel onward.");
   }
 }
 

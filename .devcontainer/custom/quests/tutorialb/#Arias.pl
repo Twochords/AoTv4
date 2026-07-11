@@ -14,8 +14,8 @@ sub EVENT_SAY {
       quest::popup("Adventure Awaits", "<br>Arias has given you a Kobold Skull Charm, a powerful item that will protect you in combat and enhance your abilities.<br><br>To equip the item, open your inventory ( <c \"#00F0F0\">i</c> ) and drop the skull on top of the rectangular icon in the middle of the window.<br><br><c \"#F0F000\">Inspecting Items:</c><br>To inspect an item and see what benefits it offers, <c \"#00F0F0\">right click and hold</c> over the icon in your <c \"#00A000\">Inventory window</c>.<br><br> <c \"#F07F00\">Congratulations, you are now finished with your Basic Training.  Hail Guard Rahtiz if you have not done so already.</c>");
     }
     elsif (quest::istaskactivityactive(3785, 15)) { #Task: The Revolt of Gloomingdeep
-      quest::say("You have done a great deed today, $name! Now that the Overlord is dead, and the kobolds in disarray, the rebellion is free from tyranny. I have more work to do here, guiding the freed slaves, but you may leave this place through the passageway at the back of this cavern. I wish you fortune in all your future deeds, $name. We will not forget what you have done here!");
-      quest::popup("Escape to Norrath", "<br>The slaves have dug an escape tunnel that will lead you out of the Mines of Gloomingdeep.<br><br><c \"#F07F00\">Are you ready to Escape to Norrath?</c>");
+      quest::say("You have done a great deed today, $name! Now that the Overlord is dead, and the kobolds in disarray, the rebellion is free from tyranny. I have more work to do here, guiding the freed slaves, but when you are ready to leave, use the glowing Plane of Knowledge book here in the cavern -- it will carry you out into Norrath. I wish you fortune in all your future deeds, $name. We will not forget what you have done here!");
+      quest::popup("Escape to Norrath", "<br>Use the glowing <c \"#00F0F0\">Plane of Knowledge book</c> here in the cavern to travel out into Norrath.<br><br>It opens a travel network -- pick your destination and step through.<br><br><c \"#F07F00\">The book is your way out.</c>");
     }
     else {
       quest::say("We found the other slaves!  Not bad, my friend, not bad.  No matter what happens in the mines, you should always be able to find your way back here.  If you seek allies in other instances of these mines, I can send you there if you [" . quest::saylink("wish") . "].");
@@ -26,10 +26,10 @@ sub EVENT_SAY {
     quest::say("I understand. Hopefully you can find what, or whom, you seek.");
   }
   if ($text=~/leave/i || $text=~/escape/i) {
-    quest::say("Here I'll show you how to get out. Come and help us again!");
-    # AoTv4: stock exit was the Plane of Knowledge (expansion 4) -- strands new chars on a Classic-locked
-    # server. Route to the character's faction-safe home city (same logic as the exit door).
-    plugin::AoTTutorialExit($client);
+    # AoTv4: Arias no longer teleports you out. Everyone leaves via the Plane of Knowledge book -- it opens
+    # the travel network (Butcherblock Docks / Commonlands / Qeynos Hills). Both this and the exit door are
+    # disabled so the book is the single way out.
+    quest::say("When you are ready, use the glowing Plane of Knowledge book here in the cavern -- it will carry you onward to the wider world. Come and help us again!");
   }
 }
 

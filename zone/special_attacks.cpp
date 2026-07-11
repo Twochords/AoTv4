@@ -731,7 +731,6 @@ void Mob::TryBackstab(Mob *other, int ReuseTime) {
 	}
 
 	bool bIsBehind = false;
-	bool bCanFrontalBS = false;
 
 	//make sure we have a proper weapon if we are a client.
 	if (IsClient()) {
@@ -759,24 +758,16 @@ void Mob::TryBackstab(Mob *other, int ReuseTime) {
 	//Live AA - Triple Backstab
 	int tripleChance = itembonuses.TripleBackstab + spellbonuses.TripleBackstab + aabonuses.TripleBackstab;
 
-	if (BehindMob(other, GetX(), GetY())) {
-		bIsBehind = true;
-	}
-	else {
-		//Live AA - Seized Opportunity
-		int FrontalBSChance = itembonuses.FrontalBackstabChance + spellbonuses.FrontalBackstabChance + aabonuses.FrontalBackstabChance;
+	bIsBehind = BehindMob(other, GetX(), GetY());
+	bool bFacestab = IsNPC() && CanFacestab();
 
-		if (FrontalBSChance && zone->random.Roll(FrontalBSChance)) {
-			bCanFrontalBS = true;
-		}
-	}
-
-	if (bIsBehind || bCanFrontalBS || (IsNPC() && CanFacestab())) { // Player is behind other OR can do Frontal Backstab
-		if (bCanFrontalBS && IsClient()) { // I don't think there is any message ...
-			CastToClient()->Message(Chat::White, "Your fierce attack is executed with such grace, your target did not see it coming!");
-		}
-
-		RogueBackstab(other,false,ReuseTime);
+	// AoTv4: backstab ALWAYS lands. From BEHIND (or an NPC facestab) it's a FULL backstab that can
+	// assassinate and double/triple. From the FRONT it's a single HALF-damage (50%) hit that cannot
+	// assassinate (flagged via eSpecialAttacks::FrontalBackstab -- see attack.cpp). This removes the old
+	// Chaotic Backstab (AA-gated min-damage frontal), the Seized Opportunity chance, and the old
+	// "front -> plain melee attack" fallback.
+	if (bIsBehind || bFacestab) {
+		RogueBackstab(other, false, ReuseTime);
 
 		if (level >= RuleI(Combat, DoubleBackstabLevelRequirement)) {
 			// TODO: 55-59 doesn't appear to match just checking double attack, 60+ does though
@@ -790,36 +781,15 @@ void Mob::TryBackstab(Mob *other, int ReuseTime) {
 				}
 			}
 		}
-
-		if (IsClient()) {
-			CastToClient()->CheckIncreaseSkill(EQ::skills::SkillBackstab, other, 10);
-		}
-
 	}
-	//Live AA - Chaotic Backstab
-	else if(aabonuses.FrontalBackstabMinDmg || itembonuses.FrontalBackstabMinDmg || spellbonuses.FrontalBackstabMinDmg) {
-		m_specialattacks = eSpecialAttacks::ChaoticStab;
-
-		//we can stab from any angle, we do min damage though.
-		// chaotic backstab can't double etc Seized can, but that's because it's a chance to do normal BS
-		// Live actually added SPA 473 which grants chance to double here when they revamped chaotic/seized
-
-		RogueBackstab(other, true, ReuseTime);
-
-		if (IsClient()) {
-			CastToClient()->CheckIncreaseSkill(EQ::skills::SkillBackstab, other, 10);
-		}
-
+	else { // FRONTAL: single 50% hit, no assassinate, no double/triple
+		m_specialattacks = eSpecialAttacks::FrontalBackstab;
+		RogueBackstab(other, false, ReuseTime);
 		m_specialattacks = eSpecialAttacks::None;
-
-		int double_bs_front = aabonuses.Double_Backstab_Front + itembonuses.Double_Backstab_Front + spellbonuses.Double_Backstab_Front;
-
-		if (double_bs_front && other->GetHP() > 0 && zone->random.Roll(double_bs_front)) {
-			RogueBackstab(other, false, ReuseTime);
-		}
 	}
-	else { //We do a single regular attack if we attack from the front without chaotic stab
-		Attack(other, EQ::invslot::slotPrimary);
+
+	if (IsClient()) {
+		CastToClient()->CheckIncreaseSkill(EQ::skills::SkillBackstab, other, 10);
 	}
 }
 
@@ -2142,6 +2112,7 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 
 			ReuseTime = (BashReuseTime - 1) / HasteMod;
 
+			CheckIncreaseSkill(EQ::skills::SkillBash, GetTarget(), 10);   // AoTv4: skill up via #autoskill too
 			DoSpecialAttackDamage(ca_target, EQ::skills::SkillBash, dmg, 0, -1, ReuseTime);
 
 			if(ReuseTime > 0 && !IsRiposte) {
@@ -2188,11 +2159,13 @@ void Client::DoClassAttacks(Mob *ca_target, uint16 skill, bool IsRiposte)
 
 			ReuseTime = KickReuseTime-1;
 
+			CheckIncreaseSkill(EQ::skills::SkillKick, GetTarget(), 10);   // AoTv4: skill up via #autoskill too
 			DoSpecialAttackDamage(ca_target, EQ::skills::SkillKick, dmg, 0, -1, ReuseTime);
 		}
 	}
 
 	if (skill_to_use == EQ::skills::SkillFlyingKick || skill_to_use == EQ::skills::SkillDragonPunch || skill_to_use == EQ::skills::SkillEagleStrike || skill_to_use == EQ::skills::SkillTigerClaw || skill_to_use == EQ::skills::SkillRoundKick) {
+		CheckIncreaseSkill((EQ::skills::SkillType) skill_to_use, GetTarget(), 10);   // AoTv4: skill up the monk strike via #autoskill too
 		ReuseTime = MonkSpecialAttack(ca_target, skill_to_use) - 1;
 		MonkSpecialAttack(ca_target, skill_to_use);
 
