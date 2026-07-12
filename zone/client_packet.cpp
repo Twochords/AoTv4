@@ -3198,11 +3198,12 @@ void Client::Handle_OP_AugmentItem(const EQApplicationPacket *app)
 		}
 
 		if (in_augment->augment_action == AugmentActions::Remove || in_augment->augment_action == AugmentActions::Swap) {
-			if (!solvent) { // Check for valid distiller if safely removing / swapping an augmentation
+			if (!solvent) { // AoTv4: augs are freely removable/swappable -- no distiller required. Pulling an
+				// aug out (or dragging a new one onto an occupied slot) keeps the old aug; just needs one present.
 				old_aug = tobe_auged->GetAugment(in_augment->augment_index);
-				if (!old_aug || old_aug->GetItem()->AugDistiller != 0) {
-					LogError("Player tried to safely remove an augment without a distiller");
-					Message(Chat::Red, "Error: Missing an augmentation distiller for safely removing this augment.");
+				if (!old_aug) {
+					LogError("Player tried to remove a nonexistent augment");
+					Message(Chat::Red, "Error: No augment found in that slot.");
 					return;
 				}
 			} else if (solvent->GetItem()->ItemType == EQ::item::ItemTypeAugmentationDistiller) {

@@ -639,6 +639,20 @@ function event_say(e)
   aa_choice.handle_say(e)
   pok_travel.handle_say(e)        -- "portals" (list) + "portalgo <short>" (travel)
   bazaar_broker.handle_global_say(e)  -- vendor window: "vpset .../vshop/vclose"
+
+  -- AoTv4 in-game search ("allaclone") -- backs the /search overlay. All swallowed by the dll.
+  --   "srch <item|npc|spell> <term>"  -> SRCHDATA <kind>^id|name^id|name^...   (result list)
+  --   "srchdet <item|npc|spell> <id>" -> SRCHDET <kind>|<id>|<detail ~-line-separated>
+  local skind, sterm = e.message:match("^srch (%a+) (.+)$")
+  if skind then
+    e.self:Message(MT.NPCQuestSay, "SRCHDATA " .. skind .. "^" .. (e.self:SearchList(skind, sterm) or ""))
+    return
+  end
+  local dkind, did = e.message:match("^srchdet (%a+) (%d+)$")
+  if dkind then
+    e.self:Message(MT.NPCQuestSay, "SRCHDET " .. dkind .. "|" .. did .. "|" .. (e.self:SearchDetail(dkind, tonumber(did)) or ""))
+    return
+  end
 end
 
 -- Discover a Plane of Knowledge portal by clicking that zone's PoK book (a door to poknowledge).

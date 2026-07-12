@@ -1,5 +1,5 @@
 -- AoTv4 "Refining Crucible" -- a generic upgrade bag. Put in 4 identical items and Combine; if a
--- higher gear tier of that item exists (Hallowed = base id +1,000,000, Mythic = +2,000,000), the 4 are
+-- higher gear tier of that item exists (Hallowed = base id +300,000, Mythic = +600,000), the 4 are
 -- consumed into 1 of the next tier. Handled in C++ (zone/tradeskills.cpp `AoTv4RefineCombine`), gated on
 -- this exact item id (2000060) -- NOT on bagtype -- so real bagtype-30 quest containers are untouched.
 --
@@ -16,12 +16,12 @@ UPDATE tmp_crucible SET
 	icon     = 1016,   -- Gigantic Velium Crucible icon
 	itemclass = 1,     -- container
 	bagtype  = 30,     -- AlwaysWorks quest container -> shows the Combine button, works anywhere
-	bagslots = 10,
+	bagslots = 4,      -- 4 slots (you place 4 items to refine)
 	bagsize  = 4,      -- Giant: holds any gear
-	bagwr    = 100,    -- 100% weight reduction (a tool, not a burden)
+	bagwr    = 0,      -- no weight reduction (carries the full weight of its 4 items)
 	nodrop   = 1,      -- droppable/tradeable (1 = NOT no-drop)
 	norent   = 255,    -- never rent-expires
-	loregroup = 0,     -- not lore -> can own several
+	loregroup = -1,    -- LORE: only one Refining Crucible per character
 	stackable = 0,
 	price    = 500,    -- 5 gold base (merchant markup ~5% -> shows ~5g at a vendor)
 	weight   = 0;

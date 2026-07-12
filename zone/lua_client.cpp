@@ -1380,6 +1380,16 @@ std::string Lua_Client::GetSellableInventory() {
 	return self->GetSellableInventory();
 }
 
+std::string Lua_Client::SearchList(std::string kind, std::string term) {
+	Lua_Safe_Call_String();
+	return self->SearchList(kind, term);
+}
+
+std::string Lua_Client::SearchDetail(std::string kind, int id) {
+	Lua_Safe_Call_String();
+	return self->SearchDetail(kind, static_cast<uint32>(id));
+}
+
 std::string Lua_Client::GetMyShopListing() {
 	Lua_Safe_Call_String();
 	return self->GetMyShopListing();
@@ -4004,6 +4014,8 @@ luabind::scope lua_register_client() {
 	.def("StopPlayerTrader", &Lua_Client::StopPlayerTrader)
 	.def("ReclaimOfflineShop", &Lua_Client::ReclaimOfflineShop)
 	.def("GetSellableInventory", &Lua_Client::GetSellableInventory)
+	.def("SearchList", &Lua_Client::SearchList)
+	.def("SearchDetail", &Lua_Client::SearchDetail)
 	.def("GetMyShopListing", &Lua_Client::GetMyShopListing)
 	.def("AddItemsToShop", &Lua_Client::AddItemsToShop)
 	.def("PullShopItem", &Lua_Client::PullShopItem)

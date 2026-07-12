@@ -393,10 +393,13 @@ int64 Mob::GetExtraSpellAmt(uint16 spell_id, int64 extra_spell_amt, int64 base_s
 	// AoTv4: no spell on this server casts longer than 2.5s, and the stock curve only reaches 100% at a
 	// 7s total -- so item spelldmg/healamt was perma-throttled to 25%. Remapped: a 2.5s+ total gets 100%,
 	// anything faster gets 50%. (total_cast_time = cast_time + max(recast, recovery), in ms.)
-	if (total_cast_time >= 2500) {
-		// 100% -- no reduction
+	// AoTv4: INSTANT spells (total_cast_time == 0) are innate/weapon PROCS (e.g. Call of Sky Strike) --
+	// give them the full 100% too, so spell damage meaningfully drives proc damage. Otherwise a proc is
+	// stuck at 50% forever: it has no cast time to ever climb the 2.5s curve. Songs (~3s) already hit 100%.
+	if (total_cast_time >= 2500 || total_cast_time == 0) {
+		// 100% -- 2.5s+ casts and instant procs
 	} else {
-		extra_spell_amt = extra_spell_amt / 2;   // 50% for anything under 2.5s
+		extra_spell_amt = extra_spell_amt / 2;   // 50% for the in-between (0 < t < 2.5s)
 	}
 
 	// AoTv4: the stock "never more than half the spell's base" cap is removed -- with our high-spelldmg/

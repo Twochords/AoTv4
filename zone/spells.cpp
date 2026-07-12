@@ -3167,6 +3167,27 @@ int Mob::CheckStackConflict(uint16 spellid1, int caster_level1, uint16 spellid2,
 		}
 	}
 
+	// AoTv4: on an all-Bard server the random reward pool means tons of buffs share effect slots, and the
+	// stock "conflict on ANY shared effect" silently blocks/overwrites buffs in confusing ways. Relax it:
+	// two DIFFERENT beneficial buffs stack UNLESS they share their PRIMARY effect -- the first effect that
+	// carries a real, non-zero value (skipping filler slots like Clarity's base-0 AC spacer). Same-line
+	// buffs (HP symbol ranks, the regen line, the haste line, the Clarity line) share their primary effect
+	// and fall through to the stock rank overwrite/block below, so they do NOT stack. Genuinely different
+	// buffs (mana vs AC vs haste vs stats) coexist even if they incidentally overlap on a minor effect.
+	if (spellid1 != spellid2 && IsBeneficialSpell(spellid1) && IsBeneficialSpell(spellid2)) {
+		auto aotv4_primary_effect = [](uint16 sid) -> int {
+			for (int s = 0; s < EFFECT_COUNT; ++s) {
+				if (!IsBlankSpellEffect(sid, s) && spells[sid].base_value[s] != 0) {
+					return spells[sid].effect_id[s];
+				}
+			}
+			return -1;
+		};
+		if (aotv4_primary_effect(spellid1) != aotv4_primary_effect(spellid2)) {
+			return 0;   // different primary effect -> stack (coexist)
+		}
+	}
+
 	const std::string& always_stack_spells = RuleS(Spells, AlwaysStackSpells);
 	if (spellid1 != spellid2 && !always_stack_spells.empty()) {
 		const auto& v = Strings::Split(always_stack_spells, ",");
@@ -6800,13 +6821,11 @@ void Mob::BuffModifyDurationBySpellID(uint16 spell_id, int32 newDuration)
 
 int Client::GetCurrentBuffSlots() const
 {
-	int numbuffs = 15;
-	// client does check spells and items
+	// AoTv4: beneficial buffs now stack heavily, so grant every character the FULL number of long-buff
+	// slots the client can display (RoF2 = 42) instead of the stock level/AA-scaled 15. The ClampUpper
+	// keeps it at the client's hard max, so this is safe across client versions and can't overflow the UI.
+	int numbuffs = EQ::spells::StaticLookup(m_ClientVersion)->LongBuffs;
 	numbuffs += aabonuses.BuffSlotIncrease + spellbonuses.BuffSlotIncrease + itembonuses.BuffSlotIncrease;
-	if (GetLevel() > 70)
-		numbuffs++;
-	if (GetLevel() > 74)
-		numbuffs++;
 	return EQ::ClampUpper(numbuffs, EQ::spells::StaticLookup(m_ClientVersion)->LongBuffs);
 }
 

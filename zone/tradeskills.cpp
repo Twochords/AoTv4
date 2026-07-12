@@ -514,23 +514,17 @@ void Object::HandleCombine(Client* user, const NewCombine_Struct* in_combine, Ob
 
 	//changing from a switch to string of if's since we don't need to iterate through all of the skills in the SkillType enum
 	if (spec.tradeskill == EQ::skills::SkillAlchemy) {
-		if (user_pp.class_ != Class::Shaman) {
+		if (user_pp.class_ != Class::Shaman && user_pp.class_ != Class::Bard) {   // AoTv4: Bards can do Alchemy (everyone is a Bard)
 			user->Message(Chat::Red, "This tradeskill can only be performed by a shaman.");
 			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
 			user->QueuePacket(outapp);
 			safe_delete(outapp);
 			return;
 		}
-		else if (user_pp.level < MIN_LEVEL_ALCHEMY) {
-			user->Message(Chat::Red, "You cannot perform alchemy until you reach level %i.", MIN_LEVEL_ALCHEMY);
-			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
-			user->QueuePacket(outapp);
-			safe_delete(outapp);
-			return;
-		}
+		// AoTv4: no level requirement for Alchemy (stock MIN_LEVEL_ALCHEMY gate removed).
 	}
 	else if (spec.tradeskill == EQ::skills::SkillTinkering) {
-		if (user_pp.race != Race::Gnome) {
+		if (user_pp.race != Race::Gnome && user_pp.class_ != Class::Bard) {   // AoTv4: Bards can Tinker (everyone is a Bard)
 			user->Message(Chat::Red, "Only gnomes can tinker.");
 			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
 			user->QueuePacket(outapp);
@@ -539,7 +533,7 @@ void Object::HandleCombine(Client* user, const NewCombine_Struct* in_combine, Ob
 		}
 	}
 	else if (spec.tradeskill == EQ::skills::SkillMakePoison) {
-		if (user_pp.class_ != Class::Rogue) {
+		if (user_pp.class_ != Class::Rogue && user_pp.class_ != Class::Bard) {   // AoTv4: Bards can make poison (everyone is a Bard)
 			user->Message(Chat::Red, "Only rogues can mix poisons.");
 			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
 			user->QueuePacket(outapp);
@@ -691,23 +685,17 @@ void Object::HandleAutoCombine(Client* user, const RecipeAutoCombine_Struct* rac
 	}
 
 	if (spec.tradeskill == EQ::skills::SkillAlchemy) {
-		if (user->GetClass() != Class::Shaman) {
+		if (user->GetClass() != Class::Shaman && user->GetClass() != Class::Bard) {   // AoTv4: Bards can do Alchemy (everyone is a Bard)
 			user->Message(Chat::Red, "This tradeskill can only be performed by a shaman.");
 			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
 			user->QueuePacket(outapp);
 			safe_delete(outapp);
 			return;
 		}
-		else if (user->GetLevel() < MIN_LEVEL_ALCHEMY) {
-			user->Message(Chat::Red, "You cannot perform alchemy until you reach level %i.", MIN_LEVEL_ALCHEMY);
-			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
-			user->QueuePacket(outapp);
-			safe_delete(outapp);
-			return;
-		}
+		// AoTv4: no level requirement for Alchemy (stock MIN_LEVEL_ALCHEMY gate removed).
 	}
 	else if (spec.tradeskill == EQ::skills::SkillTinkering) {
-		if (user->GetRace() != Race::Gnome) {
+		if (user->GetRace() != Race::Gnome && user->GetClass() != Class::Bard) {   // AoTv4: Bards can Tinker (everyone is a Bard)
 			user->Message(Chat::Red, "Only gnomes can tinker.");
 			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
 			user->QueuePacket(outapp);
@@ -716,7 +704,7 @@ void Object::HandleAutoCombine(Client* user, const RecipeAutoCombine_Struct* rac
 		}
 	}
 	else if (spec.tradeskill == EQ::skills::SkillMakePoison) {
-		if (user->GetClass() != Class::Rogue) {
+		if (user->GetClass() != Class::Rogue && user->GetClass() != Class::Bard) {   // AoTv4: Bards can make poison (everyone is a Bard)
 			user->Message(Chat::Red, "Only rogues can mix poisons.");
 			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
 			user->QueuePacket(outapp);

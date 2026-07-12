@@ -2,8 +2,10 @@
 -- AoTv4 gear tiers. Adds two tiers ABOVE native gear:
 --   Hallowed  = base item id + 300,000,  name "Hallowed <name>"
 --   Mythic    = base item id + 600,000,  name "Mythic <name>"   (No Drop)
--- Scope: "currently-obtainable" equippable items (slots>0, referenced by lootdrop_entries
---        or merchantlist). Native rows are edited in place only for all/all + not-lore.
+-- Scope: "currently-obtainable" equippable items (slots>0, referenced by lootdrop_entries,
+--        merchantlist, OR a tradeskill recipe output -- so every craftable wearable (armor/
+--        weapon/jewelry) also gets tiered and thus crafts into Mythic via AoTv4MythicReward).
+--        Native rows are edited in place only for all/all + not-lore.
 -- Derived stats use the tier's SCALED stats (e.g. Hallowed spelldmg = (2*int)*0.5).
 --
 -- NOTE on the offsets: RoF2 item LINKS encode the id in a 5-hex-digit field capped at 0xFFFFF
@@ -23,7 +25,9 @@ INSERT INTO aotv4_scope
   SELECT DISTINCT i.id FROM items i
   WHERE i.slots > 0
     AND i.id < 300000   -- base items only (max native id is 147,494); never re-tier our own tier rows
-    AND (i.id IN (SELECT item_id FROM lootdrop_entries) OR i.id IN (SELECT item FROM merchantlist));
+    AND (i.id IN (SELECT item_id FROM lootdrop_entries)
+         OR i.id IN (SELECT item FROM merchantlist)
+         OR i.id IN (SELECT item_id FROM tradeskill_recipe_entries WHERE successcount > 0));  -- AoTv4: craftable wearables too
 
 -- AoTv4: also tier TUTORIAL quest-reward GEAR. These are quest-only (not in lootdrop_entries/merchantlist),
 -- so the scope above misses them and AoTv4MythicReward silently no-ops when the tutorial hands them out.

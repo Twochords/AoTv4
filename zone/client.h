@@ -317,6 +317,10 @@ public:
 	int  StartPlayerTrader(uint32 default_mult);   // AoTv4: server-side trader start from satchel (Bazaar Broker NPC)
 	std::string GetTraderSatchelItemIDs();         // AoTv4: CSV of item ids in the Trader's Satchel (for the Broker popup)
 	void ReclaimOfflineShop();                     // AoTv4: on login, clear any listings left running while offline
+	// AoTv4 in-game search ("allaclone") -- backs the /search overlay. kind = "item"|"npc"|"spell":
+	std::string SearchList(std::string kind, std::string term);   // "id|name^id|name^..." name matches
+	std::string SearchDetail(std::string kind, uint32 id);        // one row's info, lines split by '~'
+
 	// AoTv4 permanent escrow shop (add-from-any-bag; managed via the dll "My Shop" tab):
 	std::string GetSellableInventory();            // "slot|itemid|name|vendor^..." droppable items to add
 	std::string GetMyShopListing();                // "item_sn|itemid|name|cost^..." current shop rows

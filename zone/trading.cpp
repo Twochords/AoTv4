@@ -1075,6 +1075,344 @@ std::string Client::GetSellableInventory()
 	return csv;
 }
 
+// ================================ AoTv4 in-game search ("allaclone") ================================
+// Backs the /search overlay window. kind = "item" | "npc" | "spell". The term is sanitized down to
+// alphanumerics + space so a player's chat can never inject SQL. All lookups are read-only.
+
+// LIST: up to 40 name matches as  "id|name^id|name^..."  (the dll renders the scrollable result list).
+std::string Client::SearchList(std::string kind, std::string term)
+{
+	std::string t;                                   // sanitized LIKE term (alnum + space, capped)
+	for (char c : term) {
+		if (std::isalnum(static_cast<unsigned char>(c)) || c == ' ') t += c;
+		if (t.size() >= 32) break;
+	}
+	// trim trailing spaces
+	while (!t.empty() && t.back() == ' ') t.pop_back();
+	if (t.empty()) return "";
+
+	std::string query;
+	if (kind == "item") {
+		// include ALL tiers (native + Hallowed +300k + Mythic +600k) so players can find every quality;
+		// order by BASE name (strip the tier prefix) so an item's native/Hallowed/Mythic rows sit together
+		// and all three survive the row limit.
+		query = fmt::format(
+			"SELECT id, Name FROM items WHERE Name LIKE '%{}%' "
+			"ORDER BY TRIM(LEADING 'Mythic ' FROM TRIM(LEADING 'Hallowed ' FROM Name)), id LIMIT 60", t);
+	} else if (kind == "npc") {
+		// only mobs a player can actually fight: spawned in the world, targetable (skip invisible-man
+		// trigger race 127 and untargetable bodytype 11).
+		query = fmt::format(
+			"SELECT n.id, CONCAT(REPLACE(n.name,'_',' '),' (L',n.level,')') FROM npc_types n "
+			"WHERE n.name LIKE '%{}%' AND n.race<>127 AND n.bodytype<>11 "
+			"AND EXISTS (SELECT 1 FROM spawnentry se WHERE se.npcID=n.id) "
+			"ORDER BY n.level, n.name LIMIT 40", t);
+	} else if (kind == "spell") {
+		// only real, learnable spells (classes8 = Bard learn level 1..70), deduped by name -- drops the
+		// focus/AA/beta/click junk (classes8 254/255) and the many same-name rank rows.
+		query = fmt::format(
+			"SELECT MIN(id), name FROM spells_new WHERE name LIKE '%{}%' AND id < 10000 "
+			"AND classes8 BETWEEN 1 AND 70 AND name NOT LIKE '%Rk.%' GROUP BY name ORDER BY name LIMIT 60", t);
+	} else if (kind == "recipe") {
+		// tradeskill recipes, deduped by name (same recipe often repeats per container).
+		query = fmt::format(
+			"SELECT MIN(id), name FROM tradeskill_recipe WHERE name LIKE '%{}%' AND enabled=1 "
+			"GROUP BY name ORDER BY name LIMIT 60", t);
+	} else {
+		return "";
+	}
+
+	auto results = database.QueryDatabase(query);
+	if (!results.Success()) return "";
+
+	std::string csv;
+	for (auto row : results) {
+		std::string name = row[1] ? row[1] : "";
+		for (auto &ch : name) { if (ch == '|' || ch == '^' || ch == '~') ch = ' '; }
+		csv += fmt::format("{}|{}^", row[0], name);
+	}
+	return csv;
+}
+
+// AoTv4 search helpers ------------------------------------------------------------------------
+// Readable spell description (db_str type 6) with #N / @N placeholders filled from the spell's effect
+// base/max values. Returned cleaned of | ^ ~ so it can be embedded in a SearchDetail line. Used by both
+// the spell detail and (to explain an item's clicky/focus/proc) the item detail.
+static std::string AoTv4SpellDesc(uint32 sid)
+{
+	if (sid == 0) return "";
+	auto r = database.QueryDatabase(fmt::format(
+		"SELECT effect_base_value1, effect_base_value2, effect_base_value3, effect_base_value4, "
+		"max1, max2, max3, max4 FROM spells_new WHERE id = {}", sid));
+	if (!r.Success() || r.RowCount() == 0) return "";
+	auto row = r.begin();
+	auto I   = [&](int c) { return row[c] ? Strings::ToInt(row[c]) : 0; };
+	auto dq  = database.QueryDatabase(fmt::format("SELECT value FROM db_str WHERE id = {} AND type = 6", sid));
+	if (!dq.Success() || dq.RowCount() == 0 || !dq.begin()[0] || !dq.begin()[0][0]) return "";
+	std::string desc = dq.begin()[0];
+	int base[5] = { 0, I(0), I(1), I(2), I(3) };
+	int mx[5]   = { 0, I(4), I(5), I(6), I(7) };
+	auto rep = [&](const std::string &tok, int v) {
+		std::string vs = std::to_string(v < 0 ? -v : v); size_t p;
+		while ((p = desc.find(tok)) != std::string::npos) desc.replace(p, tok.size(), vs);
+	};
+	for (int n = 4; n >= 1; --n) { rep(fmt::format("#{}", n), base[n]); rep(fmt::format("@{}", n), mx[n]); }
+	for (auto &c : desc) { if (c == '|' || c == '^' || c == '~') c = ' '; }
+	return desc;
+}
+
+// Word-wrap `text` into '~'-separated lines (each prefixed with `prefix`) appended to `out`.
+static void AoTv4WrapInto(std::string &out, const std::string &text, const char *prefix, size_t W)
+{
+	size_t pos = 0;
+	while (pos < text.size()) {
+		size_t take = text.size() - pos;
+		if (take > W) { size_t sp = text.rfind(' ', pos + W); take = (sp == std::string::npos || sp <= pos) ? W : sp - pos; }
+		out += "~"; out += prefix; out += text.substr(pos, take);
+		pos += take; while (pos < text.size() && text[pos] == ' ') pos++;
+	}
+}
+
+// DETAIL: one row's full info, lines separated by '~' (the dll splits into display lines).
+std::string Client::SearchDetail(std::string kind, uint32 id)
+{
+	auto clean = [](std::string s) { for (auto &c : s) { if (c == '|' || c == '^' || c == '~') c = ' '; } return s; };
+
+	if (kind == "item") {
+		const EQ::ItemData *d = database.GetItem(id);
+		if (!d) return "";
+		std::string s = clean(d->Name);
+
+		// --- flags line (Magic / Lore / No Trade / Attunable + our tier tag) ---
+		// NOTE: never put square brackets in this text -- the RoF2 client auto-converts [Name] chat into a
+		// (broken) item link. Comma-separated, native-style, no brackets.
+		std::string flags;
+		auto addf = [&](const char *f) { if (!flags.empty()) flags += ", "; flags += f; };
+		if (d->Magic)          addf("Magic");
+		if (d->LoreGroup != 0) addf("Lore");
+		if (d->NoDrop == 0)    addf("No Trade");
+		if (d->NoRent == 0)    addf("Temporary");
+		if (d->Attuneable)     addf("Attunable");
+		{ int tier = id / 300000; if (tier == 1) addf("Hallowed"); else if (tier == 2) addf("Mythic"); }
+		if (!flags.empty()) s += "~" + flags;
+
+		// --- Class / Race (65535 == all playable -> "ALL") ---
+		auto maskStr = [](uint32 m, const char *const *tbl) -> std::string {
+			if (m == 0 || (m & 0xFFFF) == 0xFFFF) return "ALL";
+			std::string r; for (int i = 0; i < 16; ++i) if (m & (1u << i)) { if (!r.empty()) r += " "; r += tbl[i]; }
+			return r.empty() ? "NONE" : r;
+		};
+		static const char *CLS[] = { "WAR","CLR","PAL","RNG","SHD","DRU","MNK","BRD","ROG","SHM","NEC","WIZ","MAG","ENC","BST","BER" };
+		static const char *RAC[] = { "HUM","BAR","ERU","ELF","HIE","DEF","HEF","DWF","TRL","OGR","HFL","GNM","IKS","VAH","FRG","DRK" };
+		s += "~Class: " + maskStr(d->Classes, CLS);
+		s += "~Race: "  + maskStr(d->Races,   RAC);
+
+		// --- equip slot names ---
+		static const char *SLOT[] = { "Charm","Ear","Head","Face","Ear","Neck","Shoulders","Arms","Back",
+			"Wrist","Wrist","Range","Hands","Primary","Secondary","Finger","Finger","Chest","Legs","Feet","Waist","Ammo" };
+		std::string slots;
+		for (int b = 0; b < 22; ++b) if (d->Slots & (1u << b)) {
+			std::string nm = SLOT[b];
+			if (slots.find(nm) == std::string::npos) { if (!slots.empty()) slots += " "; slots += nm; }
+		}
+		s += fmt::format("~Slot: {}", slots.empty() ? "NONE" : slots);
+
+		// --- Size / Weight / (weapon) Skill ---
+		static const char *SZ[] = { "TINY","SMALL","MEDIUM","LARGE","GIANT" };
+		std::string sz = fmt::format("Size: {}   Weight: {:.1f}", (d->Size <= 4) ? SZ[d->Size] : "?", d->Weight / 10.0);
+		const char *skill = nullptr;
+		switch (d->ItemType) {
+			case 0: skill = "1H Slashing"; break; case 1: skill = "2H Slashing"; break; case 2: skill = "Piercing"; break;
+			case 3: skill = "1H Blunt"; break;    case 4: skill = "2H Blunt"; break;    case 5: skill = "Archery"; break;
+			case 7: skill = "Throwing"; break;    case 8: skill = "Shield"; break;      case 35: skill = "2H Piercing"; break;
+			case 45: skill = "Hand to Hand"; break; case 23: skill = "Wind Inst."; break; case 24: skill = "Stringed Inst."; break;
+			case 25: skill = "Brass Inst."; break;  case 26: skill = "Percussion Inst."; break;
+		}
+		if (skill) sz += fmt::format("   Skill: {}", skill);
+		s += "~" + sz;
+
+		// --- weapon dmg / delay, or armor AC ---
+		if (d->Damage) s += fmt::format("~Base Dmg: {}   Delay: {}   Ratio: {:.2f}", d->Damage, d->Delay, d->Delay ? (double)d->Damage / d->Delay : 0.0);
+		if (d->ElemDmgAmt) { static const char *ED[] = { "","Magic","Fire","Cold","Poison","Disease" };
+			s += fmt::format("~Elem Dmg: {} {}", d->ElemDmgAmt, (d->ElemDmgType >= 1 && d->ElemDmgType <= 5) ? ED[d->ElemDmgType] : ""); }
+		if (d->AC) s += fmt::format("~AC: {}", d->AC);
+
+		// --- HP / Mana / Endurance (only nonzero) ---
+		{ std::string hm; auto add = [&](const char *n, int v) { if (v) { if (!hm.empty()) hm += "   "; hm += fmt::format("{}: {}", n, v); } };
+		  add("HP", d->HP); add("Mana", d->Mana); add("End", d->Endur); if (!hm.empty()) s += "~" + hm; }
+
+		// --- attributes (only nonzero, like the native window) ---
+		{ std::string st; auto add = [&](const char *n, int v) { if (v) { if (!st.empty()) st += "  "; st += fmt::format("{} {}", n, v); } };
+		  add("STR", d->AStr); add("STA", d->ASta); add("AGI", d->AAgi); add("DEX", d->ADex);
+		  add("WIS", d->AWis); add("INT", d->AInt); add("CHA", d->ACha); if (!st.empty()) s += "~" + st; }
+
+		// --- resists (only nonzero) ---
+		{ std::string rs; auto add = [&](const char *n, int v) { if (v) { if (!rs.empty()) rs += "  "; rs += fmt::format("{} {}", n, v); } };
+		  add("Magic", d->MR); add("Fire", d->FR); add("Cold", d->CR); add("Disease", d->DR); add("Poison", d->PR); add("Corrupt", d->SVCorruption);
+		  if (!rs.empty()) s += "~Resists: " + rs; }
+
+		if (d->SpellDmg || d->HealAmt) s += fmt::format("~Spell Dmg: {}   Heal Amt: {}", d->SpellDmg, d->HealAmt);
+
+		// --- clicky / focus / proc / worn effects (resolve the spell name) ---
+		auto spellName = [&](int sid) -> std::string {
+			if (sid <= 0) return "";
+			auto q = database.QueryDatabase(fmt::format("SELECT name FROM spells_new WHERE id = {}", sid));
+			return (q.Success() && q.RowCount() && q.begin()[0]) ? clean(q.begin()[0]) : "";
+		};
+		// each effect shows its NAME then an indented description of what it does (db_str type 6)
+		auto effLine = [&](int sid, const char *label) {
+			std::string nm = spellName(sid); if (nm.empty()) return;
+			s += "~" + std::string(label) + ": " + nm;
+			std::string desc = AoTv4SpellDesc((uint32) sid);
+			if (!desc.empty()) AoTv4WrapInto(s, desc, "    ", 50);
+		};
+		effLine(d->Click.Effect, "Effect (Click)");
+		effLine(d->Proc.Effect,  "Combat Proc");
+		effLine(d->Focus.Effect, "Focus");
+		effLine(d->Worn.Effect,  "Worn");
+		if (d->ReqLevel) s += fmt::format("~Required Level: {}", d->ReqLevel);
+		if (d->RecLevel) s += fmt::format("~Recommended Level: {}", d->RecLevel);
+
+		// "Dropped by" -- reverse loot lookup (use the native base id; tiers roll off the same tables)
+		auto dropr = database.QueryDatabase(fmt::format(
+			"SELECT DISTINCT REPLACE(n.name,'_',' ') FROM npc_types n "
+			"JOIN loottable_entries lte ON lte.loottable_id = n.loottable_id "
+			"JOIN lootdrop_entries lde ON lde.lootdrop_id = lte.lootdrop_id "
+			"WHERE lde.item_id = {} AND n.race<>127 ORDER BY n.name LIMIT 15", id % 300000));
+		if (dropr.Success() && dropr.RowCount()) {
+			s += "~Dropped by:";
+			for (auto dr2 : dropr) { s += "~  " + clean(dr2[0] ? dr2[0] : ""); }
+		}
+		return s;
+	}
+
+	if (kind == "npc") {
+		// only HP matters (per design); plus the zones (LONG name) it spawns in and what it drops.
+		auto r = database.QueryDatabase(fmt::format(
+			"SELECT REPLACE(name,'_',' '), hp FROM npc_types WHERE id = {}", id));
+		if (!r.Success() || r.RowCount() == 0) return "";
+		auto row = r.begin();
+		std::string s = clean(row[0]);
+		s += fmt::format("~Hit Points: {}", row[1]);
+
+		auto zr = database.QueryDatabase(fmt::format(
+			"SELECT DISTINCT z.long_name FROM spawn2 s "
+			"JOIN spawnentry se ON se.spawngroupID = s.spawngroupID "
+			"JOIN zone z ON z.short_name = s.zone WHERE se.npcID = {} LIMIT 10", id));
+		if (zr.Success() && zr.RowCount()) {
+			s += "~Zones:";
+			for (auto zrow : zr) { s += "~  " + clean(zrow[0] ? zrow[0] : ""); }
+		}
+
+		auto lr = database.QueryDatabase(fmt::format(
+			"SELECT DISTINCT i.Name FROM npc_types n "
+			"JOIN loottable_entries lte ON lte.loottable_id = n.loottable_id "
+			"JOIN lootdrop_entries lde ON lde.lootdrop_id = lte.lootdrop_id "
+			"JOIN items i ON i.id = lde.item_id WHERE n.id = {} AND i.id < 300000 ORDER BY i.Name LIMIT 30", id));
+		if (lr.Success() && lr.RowCount()) {
+			s += "~Drops:";
+			for (auto lrow : lr) { s += "~  " + clean(lrow[0] ? lrow[0] : ""); }
+		}
+		return s;
+	}
+
+	if (kind == "spell") {
+		auto r = database.QueryDatabase(fmt::format(
+			"SELECT name, mana, cast_time, classes8, buffduration, recast_time, `range`, resisttype, "
+			"effect_base_value1, effect_base_value2, effect_base_value3, effect_base_value4, "
+			"max1, max2, max3, max4 FROM spells_new WHERE id = {}", id));
+		if (!r.Success() || r.RowCount() == 0) return "";
+		auto row = r.begin();
+		auto I   = [&](int col) { return row[col] ? Strings::ToInt(row[col]) : 0; };
+		std::string s = clean(row[0] ? row[0] : "");
+
+		// line: mana / cast / recast / range / learn level
+		std::string l = fmt::format("Mana {}  Cast {}ms", I(1), I(2));
+		if (I(5) > 0) l += fmt::format("  Recast {}s", I(5) / 1000);
+		if (I(6) > 0) l += fmt::format("  Range {}", I(6));
+		l += fmt::format("  Learn L{}", I(3));
+		s += "~" + l;
+
+		// line: resist + duration
+		static const char *RES[] = { "Unresistable", "Magic", "Fire", "Cold", "Poison", "Disease",
+		                             "Chromatic", "Prismatic", "Physical", "Corruption" };
+		int rt = I(7), bd = I(4);
+		std::string l2 = fmt::format("Resist: {}", (rt >= 0 && rt <= 9) ? RES[rt] : "?");
+		if (bd > 0) l2 += fmt::format("   Duration: {} ticks (~{}s)", bd, bd * 6);
+		s += "~" + l2;
+
+		// human-readable description (db_str type 6) with #N / @N placeholders filled from the effect
+		// base/max values, then word-wrapped so the scrollable detail panel shows all of it.
+		auto dr = database.QueryDatabase(fmt::format("SELECT value FROM db_str WHERE id = {} AND type = 6", id));
+		if (dr.Success() && dr.RowCount() && dr.begin()[0] && dr.begin()[0][0]) {
+			std::string desc = dr.begin()[0];
+			int base[5] = { 0, I(8),  I(9),  I(10), I(11) };
+			int mx[5]   = { 0, I(12), I(13), I(14), I(15) };
+			auto rep = [&](const std::string &tok, int v) {
+				std::string vs = std::to_string(v < 0 ? -v : v); size_t p;
+				while ((p = desc.find(tok)) != std::string::npos) desc.replace(p, tok.size(), vs);
+			};
+			for (int n = 4; n >= 1; --n) { rep(fmt::format("#{}", n), base[n]); rep(fmt::format("@{}", n), mx[n]); }
+			desc = clean(desc);
+			s += "~";                                            // blank separator line
+			const size_t W = 52; size_t pos = 0;
+			while (pos < desc.size()) {
+				size_t take = desc.size() - pos;
+				if (take > W) { size_t sp = desc.rfind(' ', pos + W); take = (sp == std::string::npos || sp <= pos) ? W : sp - pos; }
+				s += "~" + desc.substr(pos, take);
+				pos += take; while (pos < desc.size() && desc[pos] == ' ') pos++;
+			}
+		}
+		return s;
+	}
+
+	if (kind == "recipe") {
+		auto r = database.QueryDatabase(fmt::format(
+			"SELECT name, tradeskill, trivial FROM tradeskill_recipe WHERE id = {}", id));
+		if (!r.Success() || r.RowCount() == 0) return "";
+		auto row = r.begin();
+		std::string s = clean(row[0] ? row[0] : "");
+		int ts = row[1] ? Strings::ToInt(row[1]) : 0;
+		const char *tsn = "Tradeskill";
+		switch (ts) {
+			case 55: tsn = "Fishing"; break;      case 56: tsn = "Make Poison"; break;   case 57: tsn = "Tinkering"; break;
+			case 58: tsn = "Research"; break;     case 59: tsn = "Alchemy"; break;       case 60: tsn = "Baking"; break;
+			case 61: tsn = "Tailoring"; break;    case 63: tsn = "Blacksmithing"; break; case 64: tsn = "Fletching"; break;
+			case 65: tsn = "Brewing"; break;      case 68: tsn = "Jewelry Making"; break;case 69: tsn = "Pottery"; break;
+			case 75: tsn = "Poison Making"; break;
+		}
+		s += fmt::format("~Skill: {}   Trivial: {}", tsn, row[2] ? Strings::ToInt(row[2]) : 0);
+
+		// what the combine yields
+		auto yq = database.QueryDatabase(fmt::format(
+			"SELECT i.Name, e.successcount FROM tradeskill_recipe_entries e JOIN items i ON i.id = e.item_id "
+			"WHERE e.recipe_id = {} AND e.successcount > 0 ORDER BY i.Name", id));
+		if (yq.Success() && yq.RowCount()) {
+			s += "~Yields:";
+			for (auto y : yq) { int c = y[1] ? Strings::ToInt(y[1]) : 1; s += "~  " + clean(y[0] ? y[0] : "") + (c > 1 ? fmt::format(" x{}", c) : ""); }
+		}
+		// ingredients consumed
+		auto cq = database.QueryDatabase(fmt::format(
+			"SELECT i.Name, e.componentcount FROM tradeskill_recipe_entries e JOIN items i ON i.id = e.item_id "
+			"WHERE e.recipe_id = {} AND e.componentcount > 0 ORDER BY i.Name", id));
+		if (cq.Success() && cq.RowCount()) {
+			s += "~Components:";
+			for (auto c : cq) { int n = c[1] ? Strings::ToInt(c[1]) : 1; s += "~  " + clean(c[0] ? c[0] : "") + (n > 1 ? fmt::format(" x{}", n) : ""); }
+		}
+		// container it must be combined in
+		auto kq = database.QueryDatabase(fmt::format(
+			"SELECT DISTINCT i.Name FROM tradeskill_recipe_entries e JOIN items i ON i.id = e.item_id "
+			"WHERE e.recipe_id = {} AND e.iscontainer = 1 ORDER BY i.Name LIMIT 6", id));
+		if (kq.Success() && kq.RowCount()) {
+			s += "~Made in:";
+			for (auto k : kq) { s += "~  " + clean(k[0] ? k[0] : ""); }
+		}
+		return s;
+	}
+
+	return "";
+}
+
 // The player's current shop rows as "item_sn|item_id|name|unit_cost" CSV -- feeds the dll "My Shop" tab.
 std::string Client::GetMyShopListing()
 {

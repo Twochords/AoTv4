@@ -366,6 +366,8 @@ public:
 	void StopPlayerTrader();
 	void ReclaimOfflineShop();
 	std::string GetSellableInventory();
+	std::string SearchList(std::string kind, std::string term);
+	std::string SearchDetail(std::string kind, int id);
 	std::string GetMyShopListing();
 	int AddItemsToShop(std::string csv);
 	int PullShopItem(int serial);

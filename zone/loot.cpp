@@ -131,6 +131,30 @@ void NPC::AddLootTable(uint32 loottable_id, bool is_global)
 		}
 	}
 
+	// AoTv4: NAMED mobs get one ADDITIONAL item from their loot pool -- an extra drop slot. "Named" is
+	// detected by a capitalized clean name (EQ trash is lowercase "a bat" / "an orc pawn"; named mobs are
+	// proper nouns like "Lord Nagafen" / "Ancient Cyclops"). We roll one guaranteed item from the mob's
+	// primary pool (the loottable entry with the highest droplimit == its main equipment pool). Only for
+	// the NPC's own table (not global loot). The rolled item still flows through AddTierUpgrades, so the
+	// bonus item can itself upgrade to Hallowed/Mythic.
+	if (!is_global) {
+		const char *cn = GetCleanName();
+		if (cn && cn[0] >= 'A' && cn[0] <= 'Z') {
+			uint32 bonus_lootdrop = 0;
+			int    best_limit     = -1;
+			for (const auto &lte: zone->GetLootTableEntries(loottable_id)) {
+				if (static_cast<int>(lte.droplimit) > best_limit) {
+					best_limit     = static_cast<int>(lte.droplimit);
+					bonus_lootdrop = lte.lootdrop_id;
+				}
+			}
+			if (bonus_lootdrop != 0) {
+				AddLootDropTable(bonus_lootdrop, 1, 1);   // exactly one extra item from the primary pool
+				LogLootDetail("AoTv4 named bonus drop for [{}] from lootdrop [{}]", GetCleanName(), bonus_lootdrop);
+			}
+		}
+	}
+
 	LogLootDetail(
 		"Loaded [{}] Loot Table [{}] is_global [{}]",
 		GetCleanName(),
