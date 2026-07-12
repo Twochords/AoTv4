@@ -1457,7 +1457,7 @@ public:
 	void ResetAssistCap() { npc_assist_cap = 0; }
 	int64 GetWeaponDamage(Mob *against, const EQ::ItemData *weapon_item);
 	int64 GetWeaponDamage(Mob *against, const EQ::ItemInstance *weapon_item, int64 *hate = nullptr);
-	int64 DoDamageCaps(int64 base_damage);
+	int64 DoDamageCaps(int64 base_damage, const EQ::ItemInstance* weapon);
 
 	int64 GetHPRegen() const;
 	int64 GetHPRegenPerSecond() const;

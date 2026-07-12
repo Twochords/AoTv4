@@ -1179,6 +1179,20 @@ RULE_INT(EvolvingItems, DelayUponEquipping, 30000, "Delay in ms before an evolvi
 RULE_BOOL(EvolvingItems, DestroyAugmentsOnEvolve, false, "If this is enabled, any augments in an item will be destroyed when the item evolves. Otherwise, send augments to the player via the parcel system (requires that the Parcel System be enabled).")
 RULE_CATEGORY_END()
 
+
+
+RULE_CATEGORY(AoT)
+RULE_INT(AoT, DamageCapBaseDelayPct,    50, "Base damage cap as a percent of weapon delay (50 = 50% of delay)")
+RULE_INT(AoT, DamageCapLevelPctPerLevel, 5, "Additional cap percent of weapon delay added per character level (5 = +5% of delay per level)")
+RULE_INT(AoT, DamageCapTwoHandBonusPct,  80, "Additional percent bonus to the damage cap for two-handed weapons (80 = +80%, so 180% of 1H cap)")
+RULE_REAL(AoT, MitFloorAcCoeff,       1.25, "AC coefficient in the mitigation floor formula: mit/(coeff*mit + scalar*off). Asymptote = 1/coeff (default 80% max floor)")
+RULE_REAL(AoT, MitOffScalar,          2.0,  "Offense multiplier in the mitigation roll denominator. Higher = offense dominates more; also raises the deflect threshold")
+RULE_REAL(AoT, MitAcDR,              0.4,  "AC coefficient in the mitigation roll denominator. Higher = more DR on stacking AC; also raises the deflect threshold")
+RULE_REAL(AoT, MaxHitOffenseModifier,      -0.25, "Adjusts maximum hit from the player. Negatives lower max hits while positives raise max hit.")
+RULE_REAL(AoT, MaxHitOffenseMultiplier,     0.02,  "Determines how much player's offense is a factor in maximum melee hits. Vanilla is ~ 0.01.")
+RULE_REAL(AoT, MaxHitMinimumMultiplier,     2.0,  "Minimum multiplier, source of the early game weapon damage x2 we all know and love")
+RULE_CATEGORY_END()
+
 #undef RULE_CATEGORY
 #undef RULE_INT
 #undef RULE_REAL

@@ -153,8 +153,11 @@ int64 Mob::GetActSpellDamage(uint16 spell_id, int64 value, Mob* target) {
 			if (IsClient()) {
 				MessageString(Chat::SpellCrit, YOU_CRIT_BLAST, itoa(-value));
 			}
+			// STATBUFFS resist is now eHP boost vs its type
+			int64 resist = std::max(-50, GetResist(spells[spell_id].resist_type) - spells[spell_id].resist_difficulty);
+			int64 pct_eHP = 100 + resist;
 
-			return value;
+			return (value* 100) / pct_eHP;
 		}
 	}
 	//Non Crtical Hit Calculation pathway
@@ -198,8 +201,11 @@ int64 Mob::GetActSpellDamage(uint16 spell_id, int64 value, Mob* target) {
 			value = -legacy_manaburn_cap;
 		}
 	}
+	// STATBUFFS resist is now eHP boost vs its type
+	int64 resist = std::max(-50, GetResist(spells[spell_id].resist_type) - spells[spell_id].resist_difficulty);
+	int64 pct_eHP = 100 + resist;
 
-	return value;
+	return (value* 100) / pct_eHP;
 }
 
 int64 Mob::GetActReflectedSpellDamage(uint16 spell_id, int64 value, int effectiveness) {
@@ -358,8 +364,11 @@ int64 Mob::GetActDoTDamage(uint16 spell_id, int64 value, Mob* target, bool from_
 
 		value -= extra_dmg;
 	}
+	// STATBUFFS resist is now eHP boost vs its type
+	int64 resist = std::max(-50, GetResist(spells[spell_id].resist_type) - spells[spell_id].resist_difficulty);
+	int64 pct_eHP = 100 + resist;
 
-	return value;
+	return (value* 100) / pct_eHP;
 }
 
 int64 Mob::GetExtraSpellAmt(uint16 spell_id, int64 extra_spell_amt, int64 base_spell_dmg)

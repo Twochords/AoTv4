@@ -896,7 +896,7 @@ int64 Mob::TuneClientAttack(Mob* other, bool no_avoid, bool no_hit_chance, int h
 		// if we revamp this function be more general, we will have to make sure this isn't
 		// executed for anything BUT normal melee damage weapons from auto attack
 		if (Hand == EQ::invslot::slotPrimary || Hand == EQ::invslot::slotSecondary)
-			my_hit.base_damage = CastToClient()->DoDamageCaps(my_hit.base_damage);
+			my_hit.base_damage = CastToClient()->DoDamageCaps(my_hit.base_damage, weapon);
 		auto shield_inc = spellbonuses.ShieldEquipDmgMod + itembonuses.ShieldEquipDmgMod + aabonuses.ShieldEquipDmgMod;
 		if (shield_inc > 0 && HasShieldEquipped() && Hand == EQ::invslot::slotPrimary) {
 			my_hit.base_damage = my_hit.base_damage * (100 + shield_inc) / 100;

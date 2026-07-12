@@ -6,6 +6,28 @@
 # in game, stop loot spam #logs set gmsay 69 0
 NAME := eqemu-server
 
+# mkdir -p /tmp/vcpkg-buildtrees
+# mv submodules/vcpkg/buildtrees/* /tmp/vcpkg-buildtrees/
+# rm -rf submodules/vcpkg/buildtrees
+# ln -s /tmp/vcpkg-buildtrees submodules/vcpkg/buildtrees
+.PHONY: cmake
+cmake: is-vscode
+	git submodule update --init --recursive
+	cmake -S . -B build -G Ninja \
+		-DCMAKE_BUILD_TYPE=Debug \
+		-DCMAKE_C_COMPILER_LAUNCHER=ccache \
+		-DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+		-DCMAKE_HAVE_LIBC_PTHREAD=1 \
+		-DEQEMU_BUILD_TESTS=ON \
+		-DEQEMU_BUILD_LOGIN=ON \
+		-DEQEMU_BUILD_LUA=ON \
+		-DEQEMU_BUILD_PERL=ON \
+		-DEQEMU_BUILD_CLIENT_FILES=OFF
+
+.PHONY: build
+build: is-vscode
+	cmake --build build --parallel 4
+
 .PHONY: prep
 prep: is-vscode
 	@echo "Preparing build/bin for usage..."

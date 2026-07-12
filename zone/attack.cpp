@@ -908,13 +908,21 @@ int Mob::ACSum(bool skip_caps)
 		}
 		shield_ac += itembonuses.heroic_str_shield_ac;
 	}
+	// Carolus TODO: Is shield ac applying twice if we do this?
+	ac += shield_ac;
 	// EQ math
-	ac = (ac * 4) / 3;
+	// ac = (ac * 4) / 3;
 	// anti-twink
+	// Carolus: anti-twink is for chumps
+	/*
 	if (!skip_caps && IsOfClientBot() && GetLevel() < RuleI(Combat, LevelToStopACTwinkControl)) {
 		ac = std::min(ac, 25 + 6 * GetLevel());
-	}
+	}*/
+
+	// TODO: do we want racial perks?
+	// Carolus: 1 ac is 1 ac stop making the math fucky eq!
 	ac = std::max(0, ac + GetClassRaceACBonus());
+	ac += GetSkill(EQ::skills::SkillDefense);
 	if (IsNPC()) {
 		// This is the developer tweaked number
 		// for the VAST amount of NPCs in EQ this number didn't exceed 600 until recently (PoWar)
@@ -922,25 +930,18 @@ int Mob::ACSum(bool skip_caps)
 		// For a 60 PoP mob ~120, 70 OoW ~120
 		ac += GetAC();
 		ac += GetPetACBonusFromOwner();
-		auto spell_aa_ac = aabonuses.AC + spellbonuses.AC;
-		ac += GetSkill(EQ::skills::SkillDefense) / 5;
-		if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter))
-			ac += spell_aa_ac / 3;
-		else
-			ac += spell_aa_ac / 4;
 	}
-	else { // TODO: so we can't set NPC skills ... so the skill bonus ends up being HUGE so lets nerf them a bit
-		auto spell_aa_ac = aabonuses.AC + spellbonuses.AC;
-		if (EQ::ValueWithin(static_cast<int>(GetClass()), Class::Necromancer, Class::Enchanter))
-			ac += GetSkill(EQ::skills::SkillDefense) / 2 + spell_aa_ac / 3;
-		else
-			ac += GetSkill(EQ::skills::SkillDefense) / 3 + spell_aa_ac / 4;
-	}
+	auto spell_aa_ac = aabonuses.AC + spellbonuses.AC;
+	ac += spell_aa_ac;
 
-	if (GetAGI() > 70)
-		ac += GetAGI() / 20;
-	if (ac < 0)
-		ac = 0;
+	auto agi = GetAGI();
+	if (agi > 70)
+		ac += agi - 70;
+	if (ac < 1)
+		ac = 1;
+
+	// Carolus: ONE AC IS ONE AC!
+	skip_caps = 1;
 
 	if (!skip_caps && IsOfClientBot()) {
 		auto softcap = GetACSoftcap();
@@ -1081,9 +1082,91 @@ void Mob::MeleeMitigation(Mob *attacker, DamageHitInfo &hit, ExtraAttackOptions 
 		mitigation -= opts->armor_pen_flat;
 	}
 
-	auto roll = RollD20(hit.offense, mitigation);
+	// Carolus: #STATBUFFS AC
+	// Determine ranged vs melee for stat selection
+	const bool is_ranged_mit = (hit.skill == EQ::skills::SkillArchery || hit.skill == EQ::skills::SkillThrowing);
+
+	// offense for Do_Mitigation: 5 * level + STR (melee) or DEX (ranged) + ATK
+	// Same primary stat as max_hit so both scale together.
+	// Clients: GetATKBonus() avoids double-counting (ATK field already = item+spell ATK for PCs).
+	// NPCs: GetATK() is correct since their base ATK field is not double-counted.
+	const int off_stat   = is_ranged_mit ? attacker->GetDEX() : attacker->GetSTR();
+	const int atk_bonus  = attacker->IsOfClientBotMerc() ? attacker->GetATKBonus() : attacker->GetATK();
+	int offense = GetSkill(EQ::skills::SkillOffense) + off_stat + atk_bonus;
+	if (offense < 1) offense = 1;
+	if (mitigation < 1) mitigation = 1;
+	double max_hit;
+
+	// max_hit = base_damage * max(0.5, (damage_stat - 25) * 0.02)
+	// damage stat: STR for melee, DEX for ranged
+	// const int dmg_stat = is_ranged_mit ? attacker->GetDEX() : attacker->GetSTR();
+
+	if(attacker->IsOfClientBotMerc())
+	{
+		const double off_mod = RuleR(AoT, MaxHitOffenseModifier);
+		const double off_mult  = RuleR(AoT, MaxHitOffenseMultiplier);
+		const double min_mult  = RuleR(AoT, MaxHitMinimumMultiplier);
+
+		const double stat_mult = std::max(min_mult, (static_cast<double>(offense) + off_mod) * off_mult);
+		max_hit = static_cast<double>(hit.base_damage) * stat_mult;
+	}
+	else
+	{
+		max_hit = static_cast<double>(hit.base_damage);
+	}
+
+
+	const double min_mit_cap = RuleR(AoT, MitFloorAcCoeff);
+	const double off_scalar  = RuleR(AoT, MitOffScalar);
+	const double defense_dr  = RuleR(AoT, MitAcDR);
+
+	const double min_mit = static_cast<double>(mitigation) /
+		(min_mit_cap * static_cast<double>(mitigation) + off_scalar * static_cast<double>(offense));
+
+	const int used_offense = zone->random.Roll0(5 + offense) + 1;
+	const int used_ac      = zone->random.Roll0(5 + mitigation) + 1;
+
+	double rolled_mit = static_cast<double>(used_ac) /
+		(off_scalar * static_cast<double>(used_offense) + defense_dr * static_cast<double>(used_ac));
+
+	if (rolled_mit > 1.0)
+		rolled_mit = 1.0;
+	else if (rolled_mit < min_mit)
+		rolled_mit = min_mit;
+
+	// Level difference modifier: higher attacker level reduces mitigation, lower increases it
+	const int level_diff            = attacker->GetLevel() - GetLevel();
+	const int level_diff_roll_check = RuleI(Combat, LevelDifferenceRollCheck);
+	if (level_diff_roll_check >= 0) {
+		const double level_bonus = static_cast<double>(RuleR(Combat, LevelDifferenceRollBonus));
+		if (level_diff > level_diff_roll_check)
+			rolled_mit -= level_bonus;
+		else if (level_diff < (-level_diff_roll_check))
+			rolled_mit += level_bonus;
+		rolled_mit = std::max(min_mit, std::min(1.0, rolled_mit));
+	}
+
+	if (rolled_mit >= 1.0) {
+		// Armor fully deflected the blow — zero damage, send flavored message
+		const std::string skill_name = EQ::skills::GetSkillName(hit.skill);
+		const char* atk_name = skill_name.empty() ? "attack" : skill_name.c_str();
+		attacker->Message(Chat::Yellow, "Your %s was deflected by %s's armor!", atk_name, defender->GetName());
+		defender->Message(Chat::Yellow, "%s's %s was deflected by your armor!", attacker->GetName(), atk_name);
+		hit.damage_done = 0;
+	} else {
+		// Ceiling rounding: small AC values that reduce by < 1 damage point are ignored,
+		// making low AC effectively no mitigation until it's large enough to absorb a full point.
+		double dmg_val = max_hit * (1.0 - rolled_mit);
+		int dmg_int    = static_cast<int>(dmg_val);
+		hit.damage_done = std::max(1, dmg_int + (dmg_val > static_cast<double>(dmg_int) ? 1 : 0));
+	}
+
+	Log(Logs::Detail, Logs::Attack, "ac %d vs offense %d. base %d max_hit %.1f mit %.3f damage %d",
+		mitigation, offense, hit.base_damage, max_hit, rolled_mit, hit.damage_done);
+	// auto roll = RollD20(hit.offense, mitigation);
 
 	// Add bonus to roll if level difference is sufficient
+	/*
 	const int level_diff            = attacker->GetLevel() - GetLevel();
 	const int level_diff_roll_check = RuleI(Combat, LevelDifferenceRollCheck);
 
@@ -1107,6 +1190,7 @@ void Mob::MeleeMitigation(Mob *attacker, DamageHitInfo &hit, ExtraAttackOptions 
 	hit.damage_done = std::max(static_cast<int>(roll * static_cast<double>(hit.base_damage) + 0.5), 1);
 
 	Log(Logs::Detail, Logs::Attack, "mitigation %d vs offense %d. base %d rolled %f damage %d", mitigation, hit.offense, hit.base_damage, roll, hit.damage_done);
+	*/
 }
 
 //Returns the weapon damage against the input mob
@@ -1355,6 +1439,41 @@ int64 Mob::GetWeaponDamage(Mob *against, const EQ::ItemInstance *weapon_item, in
 	return std::max((int64)0, dmg);
 }
 
+
+int64 Mob::DoDamageCaps(int64 base_damage, const EQ::ItemInstance* weapon)
+{
+	auto level = GetLevel();
+	auto stop_level = RuleI(Combat, LevelToStopDamageCaps);
+	if (stop_level && stop_level <= level)
+		return base_damage;
+
+	int weapon_delay;
+	bool is_2h = false;
+
+	if (weapon && weapon->GetItem()) {
+		weapon_delay = weapon->GetItem()->Delay;
+		is_2h = weapon->GetItem()->IsType2HWeapon();
+	} else {
+		weapon_delay = GetHandToHandDelay();
+	}
+
+	if (weapon_delay < 1)
+		weapon_delay = 1;
+
+	int base_pct    = RuleI(AoT, DamageCapBaseDelayPct);
+	int level_pct   = RuleI(AoT, DamageCapLevelPctPerLevel);
+	int twohnd_pct  = RuleI(AoT, DamageCapTwoHandBonusPct);
+
+	int64 cap = static_cast<int64>(weapon_delay) * (base_pct + level_pct * static_cast<int>(level)) / 100;
+	if (is_2h)
+		cap = cap * (100 + twohnd_pct) / 100;
+
+	return std::min(cap, base_damage);
+}
+
+
+// Legacy Damage Caps code do not remove.
+#if 0
 int64 Mob::DoDamageCaps(int64 base_damage)
 {
 	// this is based on a client function that caps melee base_damage
@@ -1468,6 +1587,7 @@ int64 Mob::DoDamageCaps(int64 base_damage)
 
 	return std::min((int64)cap, base_damage);
 }
+#endif
 
 // other is the defender, this is the attacker
 //SYNC WITH: tune.cpp, mob.h TuneDoAttack
@@ -1535,7 +1655,8 @@ void Mob::DoAttack(Mob *other, DamageHitInfo &hit, ExtraAttackOptions *opts, boo
 			}
 			other->MeleeMitigation(this, hit, opts);
 			if (hit.damage_done > 0) {
-				ApplyDamageTable(hit);
+				// Carolus STATBUFFS: makes strength multiplier more predictable if we remove damage tables.
+				// ApplyDamageTable(hit);
 				CommonOutgoingHitSuccess(other, hit, opts);
 			}
 			LogCombat("Final damage after all reductions: [{}]", hit.damage_done);
@@ -1633,7 +1754,9 @@ bool Mob::Attack(Mob* other, int Hand, bool bRiposte, bool IsStrikethrough, bool
 	my_hit.min_damage = 0;
 	int64 hate = 0;
 	if (weapon)
+	{
 		hate = (weapon->GetItem()->Damage + weapon->GetItem()->ElemDmgAmt);
+	}
 
 	my_hit.base_damage = GetWeaponDamage(other, weapon, &hate);
 	if (hate == 0 && my_hit.base_damage > 1)
@@ -1645,7 +1768,7 @@ bool Mob::Attack(Mob* other, int Hand, bool bRiposte, bool IsStrikethrough, bool
 		// if we revamp this function be more general, we will have to make sure this isn't
 		// executed for anything BUT normal melee damage weapons from auto attack
 		if (Hand == EQ::invslot::slotPrimary || Hand == EQ::invslot::slotSecondary)
-			my_hit.base_damage = DoDamageCaps(my_hit.base_damage);
+			my_hit.base_damage = DoDamageCaps(my_hit.base_damage, weapon);
 		auto shield_inc = spellbonuses.ShieldEquipDmgMod + itembonuses.ShieldEquipDmgMod + aabonuses.ShieldEquipDmgMod;
 		if (shield_inc > 0 && HasShieldEquipped() && Hand == EQ::invslot::slotPrimary) {
 			my_hit.base_damage = my_hit.base_damage * (100 + shield_inc) / 100;
