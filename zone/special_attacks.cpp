@@ -761,30 +761,33 @@ void Mob::TryBackstab(Mob *other, int ReuseTime) {
 	bIsBehind = BehindMob(other, GetX(), GetY());
 	bool bFacestab = IsNPC() && CanFacestab();
 
-	// AoTv4: backstab ALWAYS lands. From BEHIND (or an NPC facestab) it's a FULL backstab that can
-	// assassinate and double/triple. From the FRONT it's a single HALF-damage (50%) hit that cannot
-	// assassinate (flagged via eSpecialAttacks::FrontalBackstab -- see attack.cpp). This removes the old
-	// Chaotic Backstab (AA-gated min-damage frontal), the Seized Opportunity chance, and the old
-	// "front -> plain melee attack" fallback.
-	if (bIsBehind || bFacestab) {
-		RogueBackstab(other, false, ReuseTime);
+	// AoTv4: backstab ALWAYS lands and can double/triple from EITHER facing. From BEHIND (or an NPC
+	// facestab) every hit is a FULL backstab that can assassinate. From the FRONT every hit is a
+	// HALF-damage (50%) hit that cannot assassinate (eSpecialAttacks::FrontalBackstab -- see attack.cpp),
+	// but it rolls the SAME double (CheckDoubleAttack) and triple (tripleChance) as a rear backstab, so a
+	// frontal double/triple is just the rear one at the 50% rate. (Removed the old Chaotic Backstab /
+	// Seized Opportunity / "front -> plain melee" behavior.)
+	bool frontal = !(bIsBehind || bFacestab);
+	if (frontal) {
+		m_specialattacks = eSpecialAttacks::FrontalBackstab;   // 50% dmg + no assassinate for every hit below
+	}
 
-		if (level >= RuleI(Combat, DoubleBackstabLevelRequirement)) {
-			// TODO: 55-59 doesn't appear to match just checking double attack, 60+ does though
-			if(IsOfClientBot() && CastToClient()->CheckDoubleAttack()) {
-				if (other->GetHP() > 0) {
-					RogueBackstab(other, false, ReuseTime);
-				}
+	RogueBackstab(other, false, ReuseTime);
 
-				if (tripleChance && other->GetHP() > 0 && zone->random.Roll(tripleChance)) {
-					RogueBackstab(other, false, ReuseTime);
-				}
+	if (level >= RuleI(Combat, DoubleBackstabLevelRequirement)) {
+		// TODO: 55-59 doesn't appear to match just checking double attack, 60+ does though
+		if (IsOfClientBot() && CastToClient()->CheckDoubleAttack()) {
+			if (other->GetHP() > 0) {
+				RogueBackstab(other, false, ReuseTime);        // double
+			}
+
+			if (tripleChance && other->GetHP() > 0 && zone->random.Roll(tripleChance)) {
+				RogueBackstab(other, false, ReuseTime);        // triple
 			}
 		}
 	}
-	else { // FRONTAL: single 50% hit, no assassinate, no double/triple
-		m_specialattacks = eSpecialAttacks::FrontalBackstab;
-		RogueBackstab(other, false, ReuseTime);
+
+	if (frontal) {
 		m_specialattacks = eSpecialAttacks::None;
 	}
 

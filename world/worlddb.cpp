@@ -170,8 +170,14 @@ void WorldDatabase::GetCharSelectInfo(uint32 account_id, EQApplicationPacket **o
 		cse->Unknown2        = 0;
 
 		if (RuleB(World, EnableReturnHomeButton)) {
-			int now = time(nullptr);
-			if (now - e.last_login >= RuleI(World, MinOfflineTimeToReturnHome)) {
+			// AoTv4: always available except a reuse cooldown (MinOfflineTimeToReturnHome seconds since last use).
+			// Last-use time lives in a data_bucket so char saves never wipe it.
+			int now      = time(nullptr);
+			int last_use = 0;
+			auto rh = database.QueryDatabase(fmt::format(
+				"SELECT `value` FROM data_buckets WHERE character_id = {} AND `key` = 'return_home_cd' LIMIT 1", e.id));
+			for (auto rrow : rh) { last_use = Strings::ToInt(rrow[0]); break; }
+			if (now - last_use >= RuleI(World, MinOfflineTimeToReturnHome)) {
 				cse->GoHome = 1;
 			}
 		}

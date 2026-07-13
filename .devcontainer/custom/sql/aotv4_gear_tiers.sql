@@ -44,6 +44,26 @@ INSERT IGNORE INTO aotv4_scope (id) VALUES
   (54225),(54226),(54227),(54228),                                       -- Stitched Burlap armor cont.
   (54696);                                                                -- Steatite Fragment (primary-slot quest reward)
 
+-- AoTv4: also tier the classic 1.0 EPICS. They're quest-only (outside loot/merchant/recipe), so the
+-- auto-scope misses them and AoTv4MythicReward silently hands out the NATIVE epic. Adding them here
+-- generates their Hallowed/Mythic tiers; the block at the very END of this file then forces the whole
+-- epic family (native + Hallowed + Mythic) to Lore + No Drop -- epics are unique and always Mythic.
+INSERT IGNORE INTO aotv4_scope (id) VALUES
+  (20542),          -- Bard: Singing Short Sword
+  (66175),          -- Warrior: Jagged Blade of War (the quest-given id)
+  (10099),(11050),  -- Paladin: Fiery Defender / Fiery Avenger
+  (14383),          -- Shadowknight: Innoruuk's Curse
+  (20488),(20487),  -- Ranger: Earthcaller / Swiftwind
+  (11057),          -- Rogue: Ragebringer
+  (5532),           -- Cleric: Water Sprinkler of Nem Ankh
+  (20490),          -- Druid: Nature Walkers Scimitar
+  (10651),          -- Shaman: Spear of Fate
+  (20544),          -- Necromancer: Scythe of the Shadowed Soul
+  (14341),          -- Wizard: Staff of the Four
+  (28034),          -- Magician: Orb of Mastery
+  (10650),          -- Enchanter: Staff of the Serpent
+  (1683),(10652);   -- Monk: Celestial Fists
+
 -- AoTv4: NEVER tier the tutorial turn-in starter weapons Absor accepts (Dagger*/Short Sword*/Club*/Dull
 -- Axe*). They're handed IN to his quest via plugin::check_handin(<base id>), so they must stay BASE --
 -- a Mythic copy would fail the hand-in. (The player spawns with 9998 base; Absor gives back the Mythic
@@ -130,3 +150,18 @@ WHERE id IN (SELECT id FROM aotv4_scope);
 DROP TEMPORARY TABLE IF EXISTS aotv4_scope;
 DROP TEMPORARY TABLE IF EXISTS tmp_hallowed;
 DROP TEMPORARY TABLE IF EXISTS tmp_mythic;
+
+-- AoTv4: NO native wearable item is Lore. The scoped native update above only covers obtainable
+-- (loot/merchant) gear; this blanket pass clears loregroup on EVERY native equippable item (slots>0,
+-- base id < 300000) so quest/drop-less gear isn't Lore-locked either. Tier copies are already not-lore.
+UPDATE items SET loregroup = 0 WHERE slots > 0 AND id < 300000 AND loregroup <> 0;
+
+-- AoTv4: the classic 1.0 EPICS are UNIQUE and always handed out as their Mythic tier -- force Lore
+-- (loregroup = -1) + No Drop (nodrop = 0) on the whole family: native, Hallowed (+300000), Mythic
+-- (+600000). Overrides the all-tradeable/de-Lore passes above (epics don't drop, so the loot-tier roll
+-- never touches them). Keep this list in step with the epic scope additions above.
+SET @aotv4_epics := '1683,5532,10099,10650,10651,10652,11050,11057,14341,14383,20487,20488,20490,20542,20544,28034,66175';
+UPDATE items SET loregroup = -1, nodrop = 0
+WHERE FIND_IN_SET(id, @aotv4_epics)
+   OR FIND_IN_SET(id - 300000, @aotv4_epics)
+   OR FIND_IN_SET(id - 600000, @aotv4_epics);

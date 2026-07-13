@@ -72,6 +72,12 @@ bool areAAChoiceWindowEnabled = true;
 // "/say portalgo <short>". Shares the spell/AA window hooks.
 bool arePortalWindowEnabled = true;
 
+// areLootWindowEnabled if set to true shows the Advanced Loot System (ALS) window driven by the server's
+// "LOOTDATA <n>^eid|itemid|icon|name|npcname^..." chat line. Auto-pops when loot drops from NPCs you kill;
+// "/advl" reopens it. Rows send "/say alspick <eid> loot|leave" (an/ag/never wired for the filter phase)
+// and "/say alslootall". Shares the spell/AA/portal window hooks.
+bool areLootWindowEnabled = false;   // AoTv4: ALS loot window REMOVED -- native looting only; server no longer drives it.
+
 // areLostWindowEnabled if set to true shows a "You Lost" window on death listing everything that
 // was destroyed, driven by the server's "LOSTDATA name^name^..." chat line. Scrollable; right-click
 // or wait to dismiss. Shares the spell/AA window hooks.
@@ -88,6 +94,19 @@ bool areJournalWindowEnabled = true;
 // server's "VENDORDATA id|name|vendorvalue^..." chat line (Bazaar Broker NPC). Scrollable satchel
 // list with +/- price tiers shown in real platinum; Open/Close Shop send "/say vpset.../vshop/vclose".
 bool areVendorWindowEnabled = true;
+
+// areSearchWindowEnabled if set to true shows the "/search" (alias "/find") in-game lookup window --
+// tabbed Items / Mobs / Spells. Type a name -> "/say srch <kind> <term>"; the server replies
+// SRCHDATA/SRCHDET which the dll renders (result list + click-for-detail). Read-only DB lookup, the
+// server sanitizes the term. Reuses the shop window's command queue + shared draw helpers.
+bool areSearchWindowEnabled = true;
+
+// areTradeskillsUnlocked if set to true lets ANY character use the class/race-locked tradeskills
+// (Tinkering=Gnome, Alchemy=Shaman, Make Poison=Rogue, + racial containers). Hooks CSkillMgr::IsAvailable
+// so they show in the skill window + enable the Combine button, and byte-patches CContainerWnd::HandleCombine's
+// per-tradeskill race/class gate (je->jmp) so the combine isn't blocked. Server gates are already
+// Bard-bypassed (zone/tradeskills.cpp). See core_tradeskill.h.
+bool areTradeskillsUnlocked = true;
 
 // areSkillsUnlocked if set to true patches CSkillMgr::GetSkillCap so a 0 (class-can't-have)
 // cap becomes a usable cap, letting EVERY class see/use EVERY skill -- the skill analogue

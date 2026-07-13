@@ -864,24 +864,29 @@ bool Client::HandleEnterWorldPacket(const EQApplicationPacket *app) {
 		/* Check GoHome */
 		if (ew->return_home && !ew->tutorial) {
 			bool home_enabled = false;
-			for (auto row : results) {
-				if (!strcasecmp(row[1], char_name)) {
-					if (RuleB(World, EnableReturnHomeButton)) {
-						int now = time(nullptr);
-						if ((now - Strings::ToInt(row[3])) >= RuleI(World, MinOfflineTimeToReturnHome)) {
-							home_enabled = true;
-							break;
-						}
-					}
+			if (RuleB(World, EnableReturnHomeButton)) {
+				int now      = time(nullptr);
+				int last_use = 0;
+				auto rh = database.QueryDatabase(fmt::format(
+					"SELECT `value` FROM data_buckets WHERE character_id = {} AND `key` = 'return_home_cd' LIMIT 1", charid));
+				for (auto rrow : rh) { last_use = Strings::ToInt(rrow[0]); break; }
+				if ((now - last_use) >= RuleI(World, MinOfflineTimeToReturnHome)) {
+					home_enabled = true;
 				}
 			}
-
 			if (home_enabled) {
-				zone_id = database.MoveCharacterToBind(charid, 4);
+				// AoTv4: always send to the tutorial hub (tutorialb, 189), then stamp the reuse cooldown.
+				zone_id = 189;
+				database.QueryDatabase(fmt::format(
+					"UPDATE character_data SET zone_id = 189, x = 18, y = -147, z = 20, heading = 0 WHERE id = {}", charid));
+				database.QueryDatabase(fmt::format(
+					"DELETE FROM data_buckets WHERE character_id = {} AND `key` = 'return_home_cd'", charid));
+				database.QueryDatabase(fmt::format(
+					"INSERT INTO data_buckets (character_id, `key`, `value`) VALUES ({}, 'return_home_cd', '{}')",
+					charid, time(nullptr)));
 			} else {
 				LogInfo("[{}] is trying to go home before they're able.", char_name);
 				RecordPossibleHack("[MQGoHome] player tried to go home before they were able");
-
 				eqs->Close();
 				return true;
 			}
@@ -1836,8 +1841,10 @@ bool Client::OPCharCreate(char *name, CharCreate_Struct *cc)
 		pp.binds[slot_id].heading = pp.heading;
 	}
 
-	/* Overrides if we have the tutorial flag set! */
-	if (cc->tutorial && RuleB(World, EnableTutorialButton)) {
+	/* AoTv4: the tutorial is MANDATORY -- EVERY new character starts in the tutorial regardless of the
+	   character-creation "tutorial" checkbox. This stops players opting out and landing in Crescent Reach
+	   (or a start city). (Was: `if (cc->tutorial && RuleB(World, EnableTutorialButton))`.) */
+	if (RuleB(World, EnableTutorialButton)) {
 		pp.zone_id = RuleI(World, TutorialZoneID);
 
 		auto z = GetZone(pp.zone_id);

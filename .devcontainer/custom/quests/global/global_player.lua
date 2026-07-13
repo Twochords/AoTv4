@@ -6,6 +6,7 @@ local aa_choice = require("aa_choice")
 local pok_travel = require("pok_travel")
 local death_loss = require("death_loss")
 local era_system = require("era_system")   -- server-wide expansion unlock progression
+local hotzones = require("hotzones")       -- daily-rotating Hot Zones (flat 2x EXP)
 local bazaar_broker = require("bazaar_broker")  -- player-shop vendor window (vpset/vshop/vclose)
 
 -- AA-on-death tuning (roguelite: death banks AA and resets the character to level 1).
@@ -36,6 +37,7 @@ local TUTORIAL_TASKS = {
 function event_enter_zone(e)
 	mysterious_voice(e)
 	era_system.sync_zone()                          -- point this zone's expansion rule at the unlocked era
+	eq.set_hotzone(hotzones.is_hot(eq.get_zone_short_name()))  -- 2x EXP if this is one of today's rotating hot zones
 	e.self:Message(MT.NPCQuestSay, "PORTALCLOSE")   -- dismiss the Portal window on any zone change
 	e.self:SetTimer("skillsync", 2)                 -- one-shot: re-reveal earned combat abilities after the UI builds (no jump)
 
@@ -343,14 +345,32 @@ local FREE_SKILLS = {
 	4,5,13,14,18,24,          -- casting (Abjuration/Alteration/Channeling/Conjuration/Divination/Evocation)
 	43,44,45,46,47,           -- casting specializations
 	12,41,49,54,70,           -- singing + instruments (Bard)
-	9,17,25,29,31,32,39,42,67,-- utility (Bind Wound/Disarm Traps/Feign Death/Hide/Meditate/Mend/Safe Fall/Sneak/Begging)
+	9,17,25,27,29,31,32,39,42,67,-- utility (Bind Wound/Disarm Traps/Feign Death/Forage/Hide/Meditate/Mend/Safe Fall/Sneak/Begging)
 	0,1,2,3,36,28,7,51,       -- weapon proficiencies (1H/2H Blunt+Slash, 1H Pierce, H2H, Archery, Throwing)
+	56,57,59,                 -- race/class-locked tradeskills (Make Poison/Tinkering/Alchemy) -- granted so they SHOW in the skill window + are usable (server gates are patched; everyone is a Bard)
 	33,15,19,34,37,11,20,76,22,71 -- passive combat: Offense/Defense/Dodge/Parry/Riposte/Block/Double(20)+Triple(76) Attack/Dual Wield(22)/Intimidation
 }
 local function grant_free_skills(c)
 	for _, v in ipairs(FREE_SKILLS) do
 		if c:MaxSkill(v) > 0 and c:GetRawSkill(v) < 1 and c:CanHaveSkill(v) then
 			c:SetSkill(v, 1)
+		end
+	end
+end
+
+-- AoTv4: every character keeps each TRADESKILL at a floor of 20. New characters start there on their
+-- first connect; existing characters are raised to 20 on login if lower. Only RAISES -- a tradeskill
+-- already trained above 20 is left alone. (Caps are 300 from level 1 for all of these, so the floor
+-- always sticks; the MaxSkill guard is just a safety net.)
+local TRADESKILLS = {
+	55, 56, 57, 58, 59, 60, 61, 63, 64, 65, 68, 69,   -- Fishing, Make Poison, Tinkering, Research, Alchemy,
+	                                                  -- Baking, Tailoring, Blacksmithing, Fletching, Brewing,
+	                                                  -- Jewelry Making, Pottery
+}
+local function floor_tradeskills(c)
+	for _, v in ipairs(TRADESKILLS) do
+		if c:CanHaveSkill(v) and c:MaxSkill(v) >= 20 and c:GetRawSkill(v) < 20 then
+			c:SetSkill(v, 20)
 		end
 	end
 end
@@ -374,19 +394,16 @@ function event_connect(e)
 	bazaar_broker.pay_escrow(e.self)
 
 	grant_free_skills(e.self)            -- level-1 chars get Dual Wield etc. now, not only after first ding
+	floor_tradeskills(e.self)           -- every tradeskill floored to 20 (new chars start there; existing raised on login)
 
-	-- daily Hot Zone welcome: the midnight roll publishes the list to the GLOBAL bucket
-	-- "aotv4_hotzone_list" (read live, never cached). Printed as clean per-line chat because the RoF2
-	-- MOTD control won't render line breaks. Bucket format: longname|mult^longname|mult^...
-	local hz = eq.get_data("aotv4_hotzone_list")
-	if hz and hz ~= "" then
-		e.self:Message(MT.LightBlue, "----- Welcome to AoTv4!  Today's Hot Zones (bonus EXP) -----")
-		for entry in string.gmatch(hz, "([^%^]+)") do
-			local name, mult = entry:match("^(.-)|(%d+)$")
-			if name then
-				e.self:Message(mult == "3" and MT.Lime or MT.Yellow,
-					string.format("   %s  -  %sx EXP", name, mult))
-			end
+	-- daily Hot Zone welcome. Computed live from the date (hotzones.lua) so it always matches the actual
+	-- 2x apply (event_enter_zone -> eq.set_hotzone) and the #hotzone popup -- no bucket/cron to drift.
+	-- Printed per-line because the RoF2 MOTD control won't render line breaks.
+	local hz_today = hotzones.today()
+	if #hz_today > 0 then
+		e.self:Message(MT.LightBlue, "----- Welcome to AoTv4!  Today's Hot Zones (2x EXP) -----")
+		for _, z in ipairs(hz_today) do
+			e.self:Message(MT.Lime, string.format("   %s  -  2x EXP", z.l))
 		end
 	end
 end
@@ -517,6 +534,11 @@ function event_level_up(e)
 
   -- offer a choice of 3 level-appropriate spells to learn
   spell_choice.offer(e)
+
+  -- Let LEFTOVER banked AA (from a prior death) be spent as leveling unlocks new AAs/prereqs. Only
+  -- pops the AA picker when something is newly affordable; otherwise silently refreshes the banked
+  -- header. Without this, points the death-picker couldn't spend yet just sit stuck (looks "lost").
+  aa_choice.reoffer_if_banked(e)
 end
 
 -- On death, bank ALL experience as Alternate Advancement and restart at level 1 (roguelite).
@@ -662,6 +684,12 @@ function event_click_door(e)
   if e.door and e.door:GetDestinationZoneName() == "poknowledge" then
     pok_travel.discover(e.self, eq.get_zone_short_name(), e.door:GetDoorID())  -- attune (first click); doorid splits multi-book zones
     pok_travel.open(e.self)                                -- open the Portal window
+    return 1
+  end
+  -- AoTv4: the "BFIRE" fire in Oasis of Marr ports to the Plane of Hate (zone 76) at the normal port-in.
+  -- Done in Lua (MovePC) like the PoK travel books, so it never depends on the native door-teleport path.
+  if e.door and e.door:GetDestinationZoneName() == "hateplane" then
+    e.self:MovePC(76, -353.08, -374.8, 3.75, 0)
     return 1
   end
 end

@@ -79,3 +79,9 @@ skill-caps.diff
 # Large DB recovery dumps -- local backups only, never committed (see POST_REBUILD_RECOVERY.md)
 /Deez.sql
 /aotv4_current.sql
+client_dist/BaseData.txt
+client_dist/dbstr_us.txt
+client_dist/SkillCaps.txt
+client_dist/spells_us.txt
+EQUI_TradeskillWnd.xml
+utils/EQUI_TradeskillWnd.xml

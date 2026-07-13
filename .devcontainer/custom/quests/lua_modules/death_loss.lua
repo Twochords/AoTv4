@@ -46,7 +46,11 @@ function M.process(client)
 
 	client:UnmemSpellAll(false)                              -- clear gems (false = no per-spell spam;
 	client:UnscribeSpellAll(false)                           -- the client refreshes on the death-zone)
-	lost[#lost + 1] = "All memorized spells and your spellbook"
+	client:UntrainDiscAll(false)                             -- clear TRAINED disciplines too -- they live in
+	                                                         -- character_disciplines (separate from the spellbook),
+	                                                         -- so UnscribeSpellAll misses them and the Combat
+	                                                         -- Abilities window keeps them across a roguelite death.
+	lost[#lost + 1] = "All memorized spells, disciplines, and your spellbook"
 
 	-- reward-gated COMBAT abilities (Backstab/Kick/etc.) -> reset to 0 so they're re-earned via the
 	-- level-up picker. (Caller re-sends SKILLUNLOCKDATA so the client re-hides them.)

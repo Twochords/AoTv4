@@ -3013,8 +3013,13 @@ int Mob::CalcBuffDuration(Mob *caster, Mob *target, uint16 spell_id, int32 caste
 	bool short_term_buff = IsInvulnerabilitySpell(spell_id) ||
 	                       IsEffectInSpell(spell_id, SpellEffect::HealOverTime) ||
 	                       IsEffectInSpell(spell_id, SpellEffect::CurrentHP);
+	// AoTv4: AA-cast buffs are EXCLUDED from the permanent extension -- an AA's buff keeps its NATIVE
+	// duration (and the AA keeps its native reuse timer), so it behaves normally: it fades on its own
+	// time and is re-activated when the AA refreshes, rather than sticking forever. casting_spell_aa_id
+	// is still set on the caster while SpellOnTarget->CalcBuffDuration runs (see SpellOnTarget @ ~2794).
 	if (res > 0 && IsBeneficialSpell(spell_id) && !short_term_buff && target &&
-		(target->IsClient() || target->IsBot() || target->IsMerc() || target->IsPet())) {
+		(target->IsClient() || target->IsBot() || target->IsMerc() || target->IsPet()) &&
+		!(caster && caster->casting_spell_aa_id)) {
 		res = 1000000;
 	}
 

@@ -51,15 +51,19 @@ local function aa_cost(aa) local c = tonumber(aa.cost) or 1; return c < 1 and 1 
 -- Reverse id -> name from the pool (built once), so the pick confirmation can name the AA. The
 -- engine's own "gained the ability ... at a cost of 0" line is misleading (we grant ignore_cost,
 -- so it always says 0); the dll hides it and we print the REAL banked cost instead.
-local aa_name_by_id
-local function name_of(id)
-	if not aa_name_by_id then
-		aa_name_by_id = {}
+local aa_by_id
+local function aa_lookup(id)
+	if not aa_by_id then
+		aa_by_id = {}
 		for _, list in pairs(aapool) do
-			for _, aa in ipairs(list) do aa_name_by_id[aa.id] = aa.name end
+			for _, aa in ipairs(list) do aa_by_id[aa.id] = aa end
 		end
 	end
-	return aa_name_by_id[id] or ("ability " .. tostring(id))
+	return aa_by_id[id]
+end
+local function name_of(id)
+	local aa = aa_lookup(id)
+	return aa and aa.name or ("ability " .. tostring(id))
 end
 
 -- Push the banked total to the dll with NO choices, so its header updates when the picker STOPS
@@ -91,11 +95,15 @@ local function gather_affordable(client, level, budget)
 			for _, aa in ipairs(list) do
 				local cost = aa_cost(aa)
 				local next_rank = (client:GetAAByAAID(aa.id) or 0) + 1
-				-- AoTv4: whole pool is offered randomly -- NO era/expansion gating. An AA is offered when
-				-- it's affordable now, within the per-AA rank cap (next_rank*cost <= RANK_BUDGET), and its
-				-- PREREQS are owned (prereqs_met) -- so dependency chains still unlock in order.
-				local within_cap = (next_rank * cost <= RANK_BUDGET)
-				if cost <= budget and within_cap and prereqs_met(client, aa) then
+				-- AoTv4: offered when affordable, the NEXT rank is still within the AA's max picker rank
+				-- (aa.mr), within the per-AA investment cap (next_rank*cost <= RANK_BUDGET), and PREREQS
+				-- are owned. The mr gate keeps MULTI-rank AAs coming (next rank <= mr) but drops a
+				-- SINGLE-rank AA you already own -- e.g. Origin (mr=1): own rank 1 -> next 2 > 1 -> not
+				-- offered. mr is floored to 1 so the handful of mr=0 pool rows still offer their first rank.
+				local max_rank    = math.max(1, tonumber(aa.mr) or 1)
+				local within_rank = next_rank <= max_rank
+				local within_cap  = (next_rank * cost <= RANK_BUDGET)
+				if cost <= budget and within_rank and within_cap and prereqs_met(client, aa) then
 					out[#out + 1] = aa
 				end
 			end
@@ -116,6 +124,47 @@ local function pick_random(list, n)
 	return out
 end
 
+-- Send an offer to the client: the dll AA window (AACHOICEDATA + AADESCDATA) and the chat saylink
+-- fallback. `choices` is an ordered list of aa objects. Used to send a freshly-rolled offer AND to
+-- re-send the STORED one unchanged.
+local function send_offer(client, budget, choices)
+	local fields, descs = {}, {}
+	for _, aa in ipairs(choices) do
+		local cost = aa_cost(aa)
+		fields[#fields + 1] = aa.name .. "|" .. tostring(aa.icon or 0) .. "|" ..
+			tostring(cost) .. "|" .. tostring(aa.cls or 0)
+		descs[#descs + 1]   = ((aa.desc or ""):gsub("[%^|]", " "))               -- ^ and | are delimiters
+	end
+	client:Message(MT.NPCQuestSay,
+		"AACHOICEDATA " .. tostring(budget) .. "^" .. table.concat(fields, "^"))
+	client:Message(MT.NPCQuestSay, "AADESCDATA " .. table.concat(descs, "^"))
+	if SHOW_SAYLINKS then
+		client:Message(MT.Yellow, string.format(
+			"Death has tempered you (%d AA banked) -- choose an Alternate Ability:", budget))
+		for i, aa in ipairs(choices) do
+			local link = eq.say_link(SAY_TRIGGER .. " " .. i, true, "[ Train " .. aa.name .. " ]")
+			client:Message(MT.LightBlue, string.format("  %d) %s  (cost %d)  %s", i, aa.name, aa_cost(aa), link))
+		end
+	end
+end
+
+-- Re-send the CURRENTLY STORED offer verbatim (no re-roll) by rebuilding the choice list from the
+-- "id:cost,..." in choice_key. Returns true if there was a stored offer. This is what makes the offer
+-- STICKY: it only changes when the player picks one; leveling/relog just re-show the same options.
+local function resend_stored_offer(client)
+	local stored = eq.get_data(choice_key(client))
+	if not stored or stored == "" then return false end
+	local choices = {}
+	for s in stored:gmatch("([^,]+)") do
+		local id = s:match("^(%d+):")
+		local aa = id and aa_lookup(tonumber(id))
+		if aa then choices[#choices + 1] = aa end
+	end
+	if #choices == 0 then return false end
+	send_offer(client, get_num(bank_key(client)), choices)
+	return true
+end
+
 ------------------------------------------------------------------- public API
 -- Bank `points` AA points (added to the private bucket) and start presenting choices.
 function M.grant_picks(e, points)
@@ -128,10 +177,27 @@ function M.grant_picks(e, points)
 	M.offer(e)
 end
 
+-- Re-open the picker for any LEFTOVER banked points (called on level-up). After a death the picker
+-- spends down to whatever couldn't be afforded YET (level too low, rank cap, unmet prereqs) and stops;
+-- those points stay in the bank but had no way to be spent later. On each level-up we re-check: if the
+-- leftover can now afford something new, start a fresh pick session (reset the per-death pick counter)
+-- so it pops; otherwise just refresh the dll's banked header silently (no "nothing affordable" spam).
+function M.reoffer_if_banked(e)
+	-- Re-show the CURRENT pending offer (the SAME options) so it stays reachable after leveling/zoning.
+	-- NEVER re-rolls or generates -- the offered set changes ONLY when the player picks one. If nothing
+	-- is pending, do nothing (a new set is rolled only on death, or right after a pick).
+	resend_stored_offer(e.self)
+end
+
 -- Present one AA choice if the banked budget can still afford anything.
 function M.offer(e)
 	local client = e.self
 	local budget = get_num(bank_key(client))
+
+	-- STICKY: if an offer is already pending, re-send it UNCHANGED and stop. The offered set only
+	-- changes when the player PICKS one (handle_say clears choice_key first, THEN calls offer() to roll
+	-- the next set). So leveling, relogging, or just not picking never reshuffles the options.
+	if resend_stored_offer(client) then return end
 
 	if get_num(count_key(client)) >= MAX_PICKS then
 		eq.set_data(choice_key(client), "")
@@ -166,30 +232,12 @@ function M.offer(e)
 	math.randomseed(client:CharacterID() * 2654435761 + n * 7919)
 
 	local choices = pick_random(pool, CHOICE_COUNT)
-	local ids, fields, descs = {}, {}, {}
+	local ids = {}
 	for _, aa in ipairs(choices) do
-		local cost = aa_cost(aa)
-		ids[#ids + 1]    = tostring(aa.id) .. ":" .. tostring(cost)  -- "id:cost"
-		fields[#fields + 1] = aa.name .. "|" .. tostring(aa.icon or 0) .. "|" ..
-			tostring(cost) .. "|" .. tostring(aa.cls or 0)
-		descs[#descs + 1] = ((aa.desc or ""):gsub("[%^|]", " "))               -- ^ and | are delimiters
+		ids[#ids + 1] = tostring(aa.id) .. ":" .. tostring(aa_cost(aa))   -- "id:cost"
 	end
-	eq.set_data(choice_key(client), table.concat(ids, ","))
-
-	-- dll AA window (own channel): "AACHOICEDATA <banked>^name|icon|cost|cls^..."
-	client:Message(MT.NPCQuestSay,
-		"AACHOICEDATA " .. tostring(budget) .. "^" .. table.concat(fields, "^"))
-	-- descriptions on a sibling line (shown on hover): "AADESCDATA desc1^desc2^desc3"
-	client:Message(MT.NPCQuestSay, "AADESCDATA " .. table.concat(descs, "^"))
-
-	if SHOW_SAYLINKS then
-		client:Message(MT.Yellow, string.format(
-			"Death has tempered you (%d AA banked) -- choose an Alternate Ability:", budget))
-		for i, aa in ipairs(choices) do
-			local link = eq.say_link(SAY_TRIGGER .. " " .. i, true, "[ Train " .. aa.name .. " ]")
-			client:Message(MT.LightBlue, string.format("  %d) %s  (cost %d)  %s", i, aa.name, aa_cost(aa), link))
-		end
-	end
+	eq.set_data(choice_key(client), table.concat(ids, ","))   -- store BEFORE sending (so it's stickily re-sendable)
+	send_offer(client, budget, choices)
 end
 
 -- Resolve an "aapick N". Returns true if it consumed the message.

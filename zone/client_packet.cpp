@@ -13356,6 +13356,29 @@ void Client::Handle_OP_RecipesSearch(const EQApplicationPacket *app)
 	auto* p_recipes_search_struct = (RecipesSearch_Struct*)app->pBuffer;
 	p_recipes_search_struct->query[55] = '\0';	//just to be sure.
 
+	// AoTv4: optional skill filter smuggled as a leading "#<skillid>#" token on the search string.
+	// The custom "Artisan's Universal Kit" (item 990061) links EVERY recipe into one container, so the
+	// native Tradeskill Window mixes all skills. The window's dll-driven skill dropdown prepends this
+	// token to restrict the search to a single tradeskill; it's also typeable by hand for testing
+	// (e.g. Partial Name = "#57#" shows only Tinkering). Token is stripped so the rest is the real name.
+	int aotv4_skill_filter = -1;
+	{
+		char *q = p_recipes_search_struct->query;
+		if (q[0] == '#') {
+			char *end = strchr(q + 1, '#');
+			if (end && end > q + 1) {
+				bool all_digits = true;
+				for (char *p = q + 1; p < end; ++p) {
+					if (!isdigit((unsigned char) *p)) { all_digits = false; break; }
+				}
+				if (all_digits) {
+					aotv4_skill_filter = atoi(q + 1);
+					memmove(q, end + 1, strlen(end + 1) + 1); // drop "#N#" prefix in place
+				}
+			}
+		}
+	}
+
 	LogTradeskills(
 		"Requested search recipes for object_type [{}] some_id [{}]",
 		p_recipes_search_struct->object_type,
@@ -13386,10 +13409,13 @@ void Client::Handle_OP_RecipesSearch(const EQApplicationPacket *app)
 	}
 
 	std::string search_clause;
+	if (aotv4_skill_filter >= 0) {
+		search_clause = StringFormat("tr.tradeskill = %d AND", aotv4_skill_filter); // AoTv4: dropdown skill filter
+	}
 	if (p_recipes_search_struct->query[0] != 0) {
 		char buf[120];	//larger than 2X rss->query
 		database.DoEscapeString(buf, p_recipes_search_struct->query, strlen(p_recipes_search_struct->query));
-		search_clause = StringFormat("name rlike '%s' AND", buf);
+		search_clause += StringFormat("name rlike '%s' AND", buf);
 	}
 
 	//arbitrary limit of 200 recipes, makes sense to me.

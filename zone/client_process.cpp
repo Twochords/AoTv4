@@ -1660,8 +1660,8 @@ void Client::OPGMTraining(const EQApplicationPacket *app)
 //#pragma GCC push_options
 //#pragma GCC optimize ("O0")
 	for (int sk = EQ::skills::Skill1HBlunt; sk <= EQ::skills::HIGHEST_SKILL; ++sk) {
-		if (sk == EQ::skills::SkillTinkering && GetRace() != Race::Gnome) {
-			gmtrain->skills[sk] = 0; //Non gnomes can't tinker!
+		if (sk == EQ::skills::SkillTinkering && GetRace() != Race::Gnome && GetClass() != Class::Bard) {
+			gmtrain->skills[sk] = 0; //Non gnomes can't tinker! (AoTv4: except Bards -- everyone is a Bard)
 		} else {
 			gmtrain->skills[sk] = GetMaxSkillAfterSpecializationRules((EQ::skills::SkillType)sk, MaxSkill((EQ::skills::SkillType)sk, GetClass(), RuleI(Character, MaxLevel)));
 			//this is the highest level that the trainer can train you to, this is enforced clientside so we can't just

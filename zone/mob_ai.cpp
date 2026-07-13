@@ -1319,6 +1319,15 @@ void Mob::AI_Process() {
 			}
 			AI_EngagedCastCheck();
 
+			// AoTv4: a TEMP-PET archer (RangedAttack ability -- e.g. Swarm of Decay's archer swarm pets)
+			// keeps FIRING its bow even while in melee range, so it behaves like an archer that can shoot
+			// point-blank instead of only from afar. NPC ranged attacks don't enforce the client-only
+			// MinRangedAttackDist, so a close shot is allowed. Scoped to temp pets so it doesn't stealth-buff
+			// enemy archer NPCs. The RangedAttack fires below at the same `doranged` check as the ranged path.
+			if (IsTempPet() && GetSpecialAbility(SpecialAbility::RangedAttack)) {
+				doranged = true;
+			}
+
 		}    //end is within combat rangepet
 		else {
 

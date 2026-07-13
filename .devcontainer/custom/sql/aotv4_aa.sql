@@ -58,3 +58,15 @@ UPDATE rule_values SET rule_value = 'false' WHERE rule_name = 'Expansion:UseCurr
 --      UPDATE rule_values SET rule_value='<n>' WHERE rule_name='Expansion:CurrentExpansion';  -- then restart
 --    To reset the progression race to Classic: DELETE FROM data_buckets WHERE `key`='aotv4_era';
 UPDATE rule_values SET rule_value = '0' WHERE rule_name = 'Expansion:CurrentExpansion';
+
+-- AoTv4: remove the "First Aid" AA (id 17) as a PREREQUISITE for anything. First Aid is dropped from
+-- the reward pool (aa_pool.lua), so it can never be trained -- which would otherwise soft-lock every AA
+-- that required it (e.g. Critical Mend, Bandage Wound). Clearing its prereq rows lets those be trained
+-- directly. AAs load at zone BOOT -> zone restart applies this.
+DELETE FROM aa_rank_prereqs WHERE aa_id = 17;
+
+-- AoTv4: remove all Mend-family AAs (Mend Companion 58, Critical Mend 97, Hastened Mending 161,
+-- Replenish Companion 418) from progression. They're dropped from the reward pool (aa_pool.lua), so
+-- they can never be trained; clearing their prereq rows unblocks anything that required them (Mend
+-- Companion alone gated 26 ranks). Hastened Mend (3805) was never in the pool. Zone restart applies.
+DELETE FROM aa_rank_prereqs WHERE aa_id IN (58,97,161,418);

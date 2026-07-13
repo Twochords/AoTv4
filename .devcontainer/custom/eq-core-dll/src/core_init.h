@@ -7,6 +7,7 @@
 #include "core_luclin_models.h"
 #include "core_allcasters.h"
 #include "core_skillunlock.h"
+#include "core_tradeskill.h"
 #include "core_spellchoice.h"
 #include "_options.h"
 
@@ -23,9 +24,12 @@ void InitOptions() {
 	if (areCustomShieldsEnabled) InjectCustomShields();
 	if (areAllClassesCasters) EnableAllClassesCasters();
 	if (areSkillsUnlocked) EnableSkillUnlock();
+	if (areTradeskillsUnlocked) EnableTradeskillUnlock();   // class/race-locked tradeskills (Tinkering/Alchemy/Make Poison)
 	// Spell / AA / Lost are now tabs of the single Reward Journal window (it enables their chat
 	// parsers itself), so we wire the journal instead of the three old standalone windows.
 	if (areJournalWindowEnabled) EnableJournalWindow();
 	if (areVendorWindowEnabled) EnableVendorWindow();
+	if (areSearchWindowEnabled) EnableSearchWindow();
 	if (arePortalWindowEnabled) EnablePortalWindow();
+	if (areLootWindowEnabled) EnableLootWindow();
 }

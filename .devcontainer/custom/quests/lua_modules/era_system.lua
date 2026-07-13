@@ -72,12 +72,11 @@ end
 function M.sync_zone()
 	local d = M.def(M.current())
 	eq.set_rule("Expansion:CurrentExpansion", tostring(d.expansion))
-	-- AoTv4: pin the NATIVE XP level cap to the era cap so players can't ding PAST it. exp.cpp caps a
-	-- character at (Character:MaxExpLevel + 1), so cap-1 stops leveling exactly AT the era cap. Without
-	-- this the native cap was 70, so players dinged to cap+1 -- which briefly unlocked the client's
-	-- AA-experience toggle (AAs unlock at 51 on live) before clamp_level pulled them back to the cap.
-	-- clamp_level (event_level_up) stays as a safety net.
-	eq.set_rule("Character:MaxExpLevel", tostring(d.cap - 1))
+	-- AoTv4: pin the NATIVE XP level cap to the era cap so players can't ding PAST it. exp.cpp lets a
+	-- character reach UP TO Character:MaxExpLevel (the level grant is gated on check_level < MaxExpLevel+1),
+	-- so MaxExpLevel = cap stops leveling exactly AT the era cap (cap-1 was an off-by-one that capped a
+	-- level early). clamp_level (event_level_up) stays as a safety net.
+	eq.set_rule("Character:MaxExpLevel", tostring(d.cap))
 end
 
 -- Called after a successful AA pick (aa_choice.handle_say). Advance the server-wide era while the
@@ -91,7 +90,7 @@ function M.check_unlock(client)
 		eq.set_data(BUCKET, tostring(era))
 		local d = M.def(era)
 		eq.set_rule("Expansion:CurrentExpansion", tostring(d.expansion))
-		eq.set_rule("Character:MaxExpLevel", tostring(d.cap - 1))   -- AoTv4: raise the native XP cap with the era
+		eq.set_rule("Character:MaxExpLevel", tostring(d.cap))       -- AoTv4: raise the native XP cap with the era (reach = cap)
 		eq.world_emote(15, string.format(
 			"%s has pushed the age forward!  %s is now open to all -- the level cap rises to %d!",
 			client:GetName(), d.name, d.cap))
