@@ -5352,35 +5352,7 @@ bool Mob::IsImmuneToSpell(uint16 spell_id, Mob *caster)
 	return false;
 }
 
-int Mob::GetResist(uint8 resist_type)
-{
-	switch(resist_type)
-	{
-	case RESIST_FIRE:
-		return GetFR();
-	case RESIST_COLD:
-		return GetCR();
-	case RESIST_MAGIC:
-		return GetMR();
-	case RESIST_DISEASE:
-		return GetDR();
-	case RESIST_POISON:
-		return GetPR();
-	case RESIST_CORRUPTION:
-		return GetCorrup();
-	case RESIST_PRISMATIC:
-		return (GetFR() + GetCR() + GetMR() + GetDR() + GetPR()) / 5;
-	case RESIST_CHROMATIC:
-		return std::min({GetFR(), GetCR(), GetMR(), GetDR(), GetPR()});
-	case RESIST_PHYSICAL:
-		if (IsNPC())
-			return GetPhR();
-		else
-			return 0;
-	default:
-		return 0;
-	}
-}
+
 
 //
 // Spell resists:

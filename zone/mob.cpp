@@ -8793,3 +8793,139 @@ bool Mob::LoadDataBucketsCache()
 
 	return true;
 }
+
+
+// AoT STATBUFFS
+int Mob::GetPotencySoftCap()
+{
+	return RuleI(AoT, PotencySoftCap)
+		+ GetHeroicINT() * RuleR(AoT, PotencyCapPerHInt);
+}
+
+int Mob::GetResistHardCap(RESISTTYPE resist_type)
+{
+	int heroic = 0;
+	switch(resist_type)
+	{
+		case RESIST_FIRE:
+			heroic = GetHeroicFR();
+		case RESIST_COLD:
+			heroic = GetHeroicCR();
+		case RESIST_MAGIC:
+			heroic = GetHeroicMR();
+		case RESIST_DISEASE:
+			heroic = GetHeroicDR();
+		case RESIST_POISON:
+			heroic = GetHeroicPR();
+	}
+
+	return RuleI(AoT, ResisteHPHardCap)
+		+ GetHeroicWIS() * RuleR(AoT, ResistCapPerHWis)
+		+ heroic * RuleR(AoT, ResistCapPerHResist);
+}
+
+float Mob::GetOverpowerMult()
+{
+	int softcap = RuleI(AoT, DCOverpowerMultSoftCap);
+	int hardcap = RuleI(AoT, DCOverpowerMultHardCap);
+	float returns = RuleR(AoT, DCOverpowerMultAfterCapReturns);
+	float base = RuleR(AoT, DCOverpowerMultPerHCha);
+	int used_hcha = GetHeroicCHA();
+
+	if (used_hcha > hardcap) used_hcha = hardcap;
+
+	if (used_hcha > softcap)
+	{
+		used_hcha = softcap + (used_hcha - softcap) * RuleR(AoT, DCOverpowerMultAfterCapReturns);
+	}
+	return static_cast<float>(used_hcha) * RuleR(AoT, DCOverpowerMultPerHCha);
+}
+
+int Mob::GetDC(RESISTTYPE resist_type)
+{
+	float dc = 0.0f;
+
+	dc += GetCHA() * RuleR(AoT, DCPerCha);
+	dc += GetHeroicCHA() * RuleR(AoT, DCPerHCha);
+
+	return static_cast<int>(dc);
+}
+
+int Mob::GetResist(uint8 resist_type)
+{
+	int global_resist = GetWIS() * RuleR(AoT, ResistPerWis) + GetHeroicWIS() * RuleR(AoT, ResistPerHWis);
+	switch(resist_type)
+	{
+	case RESIST_FIRE:
+		return global_resist + GetFR() + GetHeroicFR() * RuleR(AoT, ResistPerHResist);
+	case RESIST_COLD:
+		return global_resist + GetCR() + GetHeroicCR() * RuleR(AoT, ResistPerHResist);
+	case RESIST_MAGIC:
+		return global_resist + GetMR() + GetHeroicMR() * RuleR(AoT, ResistPerHResist);
+	case RESIST_DISEASE:
+		return global_resist + GetDR() + GetHeroicDR() * RuleR(AoT, ResistPerHResist);
+	case RESIST_POISON:
+		return global_resist + GetPR() + GetHeroicPR() * RuleR(AoT, ResistPerHResist);
+	case RESIST_CORRUPTION:
+		return global_resist + GetCorrup();
+	case RESIST_PRISMATIC:
+		return global_resist + (GetFR() + GetCR() + GetMR() + GetDR() + GetPR() +
+				(GetHeroicFR() + GetHeroicCR() + GetHeroicMR() + GetHeroicDR() + GetHeroicPR()) * RuleR(AoT, ResistPerHResist)) / 5;
+	case RESIST_CHROMATIC:
+		return global_resist + std::min({GetFR(), GetCR(), GetMR(), GetDR(), GetPR()}) +
+				((GetHeroicFR() + GetHeroicCR() + GetHeroicMR() + GetHeroicDR() + GetHeroicPR()) * RuleR(AoT, ResistPerHResist)) / 5;
+	case RESIST_PHYSICAL:
+		if (IsNPC())
+			return global_resist + GetPhR();
+		else
+			return global_resist;
+	default:
+		return global_resist;
+	}
+}
+
+int Mob::GetPotency(RESISTTYPE resist_type)
+{
+	float potency = 0.0f;
+
+	potency += GetINT() * RuleR(AoT, PotencyPerInt);
+	potency += GetHeroicINT() * RuleR(AoT, PotencyPerHInt);
+
+	// Existing spell damage contributes directly to potency.
+	potency += GetSpellDmg();
+
+	int softcap = GetPotencySoftCap();
+
+	if (potency > softcap)
+	{
+		potency = softcap + (potency - softcap) * RuleR(AoT, PotencyAfterCapReturns);
+	}
+
+	return static_cast<int>(potency);
+}
+
+uint64 Mob::ScaleSpellDamage(Mob* defender, uint64 base_damage, int resist_adjust, RESISTTYPE resist_type, SpellScalingModifiers modifiers)
+{
+	int DC = GetDC(resist_type) * modifiers.dc - resist_adjust;
+	int resist = defender->GetResist(resist_type) * modifiers.resist;
+	base_damage *= (100 + GetPotency(resist_type) * modifiers.potency) / 100;
+	if (resist >= DC)
+	{
+		resist -= DC;
+		int eHP = 100;
+		int hardcap = defender->GetResistHardCap(resist_type);
+		if (resist > hardcap) resist = hardcap;
+		eHP += resist * RuleR(AoT, eHPPerResist);
+
+		return base_damage * 100 / eHP;
+	}
+
+	DC -= resist;
+	int hardcap = RuleI(AoT, DCOverpowerCap);
+	if(DC > hardcap) DC = hardcap;
+	float mult = 100.0f + DC * GetOverpowerMult();
+
+	return static_cast<uint64>(
+		base_damage * mult / 100.0f
+	);
+}

@@ -90,6 +90,13 @@ struct AppearanceStruct {
 	uint8  texture          = UINT8_MAX;
 };
 
+struct SpellScalingModifiers
+{
+    float potency = 1.0f;
+    float resist = 1.0f;
+    float dc = 1.0f;
+};
+
 class DataBucketKey;
 class Mob : public Entity {
 public:
@@ -619,11 +626,11 @@ public:
 	inline virtual int32 GetINT() const { return INT + itembonuses.INT + spellbonuses.INT; }
 	inline virtual int32 GetWIS() const { return WIS + itembonuses.WIS + spellbonuses.WIS; }
 	inline virtual int32 GetCHA() const { return CHA + itembonuses.CHA + spellbonuses.CHA; }
-	inline virtual int32 GetHeroicMR() const { return 0; }
-	inline virtual int32 GetHeroicFR() const { return 0; }
-	inline virtual int32 GetHeroicDR() const { return 0; }
-	inline virtual int32 GetHeroicPR() const { return 0; }
-	inline virtual int32 GetHeroicCR() const { return 0; }
+	inline virtual int32 GetHeroicMR() const { return itembonuses.HeroicMR; }
+	inline virtual int32 GetHeroicFR() const { return itembonuses.HeroicFR; }
+	inline virtual int32 GetHeroicDR() const { return itembonuses.HeroicDR; }
+	inline virtual int32 GetHeroicPR() const { return itembonuses.HeroicPR; }
+	inline virtual int32 GetHeroicCR() const { return itembonuses.HeroicCR; }
 	inline virtual int32 GetMR() const { return MR + itembonuses.MR + spellbonuses.MR; }
 	inline virtual int32 GetFR() const { return FR + itembonuses.FR + spellbonuses.FR; }
 	inline virtual int32 GetDR() const { return DR + itembonuses.DR + spellbonuses.DR; }
@@ -637,13 +644,13 @@ public:
 	inline StatBonuses* GetItemBonusesPtr() { return &itembonuses; }
 	inline StatBonuses* GetSpellBonusesPtr() { return &spellbonuses; }
 	inline StatBonuses* GetAABonusesPtr() { return &aabonuses; }
-	inline virtual int32 GetHeroicSTR() const { return 0; }
-	inline virtual int32 GetHeroicSTA() const { return 0; }
-	inline virtual int32 GetHeroicDEX() const { return 0; }
-	inline virtual int32 GetHeroicAGI() const { return 0; }
-	inline virtual int32 GetHeroicINT() const { return 0; }
-	inline virtual int32 GetHeroicWIS() const { return 0; }
-	inline virtual int32 GetHeroicCHA() const { return 0; }
+	inline virtual int32 GetHeroicSTR() const { return itembonuses.HeroicSTR; }
+	inline virtual int32 GetHeroicSTA() const { return itembonuses.HeroicSTA; }
+	inline virtual int32 GetHeroicDEX() const { return itembonuses.HeroicDEX; }
+	inline virtual int32 GetHeroicAGI() const { return itembonuses.HeroicAGI; }
+	inline virtual int32 GetHeroicINT() const { return itembonuses.HeroicINT; }
+	inline virtual int32 GetHeroicWIS() const { return itembonuses.HeroicWIS; }
+	inline virtual int32 GetHeroicCHA() const { return itembonuses.HeroicCHA; }
 	inline virtual int32 GetMaxSTR() const { return GetSTR(); }
 	inline virtual int32 GetMaxSTA() const { return GetSTA(); }
 	inline virtual int32 GetMaxDEX() const { return GetDEX(); }
@@ -1518,7 +1525,17 @@ public:
 	bool IsGuildmaster() const;
 	bool IsDestroying() const { return m_destroying; }
 
+
+	// AoT STATBUFFS
+	uint64 ScaleSpellDamage(Mob*, uint64, int, RESISTTYPE, SpellScalingModifiers);
+
 protected:
+	// AoT STATBUFFS internal
+	int GetDC(RESISTTYPE);
+	int GetPotency(RESISTTYPE);
+	int GetPotencySoftCap();
+	int GetResistHardCap(RESISTTYPE);
+	float GetOverpowerMult();
 	void CommonDamage(Mob* other, int64 &damage, const uint16 spell_id, const EQ::skills::SkillType attack_skill, bool &avoidable, const int8 buffslot, const bool iBuffTic, eSpecialAttacks specal = eSpecialAttacks::None);
 	static uint16 GetProcID(uint16 spell_id, uint8 effect_index);
 	int _GetWalkSpeed() const;
@@ -1954,3 +1971,5 @@ private:
 	void DoSpellInterrupt(uint16 spell_id, int32 mana_cost, int my_curmana);
 	void HandleDoorOpen();
 };
+
+

@@ -180,6 +180,8 @@ int Mob::GetTotalToHit(EQ::skills::SkillType skill, int chance_mod)
 	// Torven parsed an apparent constant of 1.2 somewhere in here * 6 / 5 looks eqmathy to me!
 	// new test clients have 121 / 100
 	accuracy = (accuracy * 121) / 100;
+	// STATBUFFS DEX
+	accuracy += GetDEX() * RuleR(AoT, AccuracyPerDex);
 
 	// unsure on the stacking order of these effects, rather hard to parse
 	// item mod2 accuracy isn't applied to range? Theory crafting and parses back it up I guess
@@ -1150,8 +1152,8 @@ void Mob::MeleeMitigation(Mob *attacker, DamageHitInfo &hit, ExtraAttackOptions 
 		// Armor fully deflected the blow — zero damage, send flavored message
 		const std::string skill_name = EQ::skills::GetSkillName(hit.skill);
 		const char* atk_name = skill_name.empty() ? "attack" : skill_name.c_str();
-		attacker->Message(Chat::Yellow, "Your %s was deflected by %s's armor!", atk_name, defender->GetName());
-		defender->Message(Chat::Yellow, "%s's %s was deflected by your armor!", attacker->GetName(), atk_name);
+		attacker->Message(Chat::YouMissOther, "Your %s was deflected by %s's armor!", atk_name, defender->GetName());
+		defender->Message(Chat::OtherMissYou, "%s's %s was deflected by your armor!", attacker->GetName(), atk_name);
 		hit.damage_done = 0;
 	} else {
 		// Ceiling rounding: small AC values that reduce by < 1 damage point are ignored,
@@ -3493,6 +3495,44 @@ void Mob::DamageShield(Mob* attacker, bool spell_ds) {
 
 			DS -= DS * ds_mitigation / 100;
 		}
+
+		// STATBUFFS Applied to damage shield
+
+		RESISTTYPE resist_type = RESIST_MAGIC;
+
+		switch (spellbonuses.DamageShieldType) {
+			case DS_DECAY:
+				resist_type = RESIST_DISEASE;
+				break;
+
+			case DS_CHILLED:
+			case DS_FREEZING:
+				resist_type = RESIST_COLD;
+				break;
+
+			case DS_TORMENT:
+				resist_type = RESIST_CORRUPTION;
+				break;
+
+			case DS_BURN:
+				resist_type = RESIST_FIRE;
+				break;
+
+			case DS_THORNS:
+				resist_type = RESIST_MAGIC;
+				break;
+
+			default:
+				resist_type = RESIST_MAGIC;
+				break;
+		}
+		SpellScalingModifiers modifiers;
+
+		modifiers.potency = RuleR(AoT, DamageShieldPotencyMultiplier);
+		modifiers.resist  = RuleR(AoT, DamageShieldResistMultiplier);
+		modifiers.dc      = RuleR(AoT, DamageShieldDCMultiplier);
+
+		DS = -ScaleSpellDamage(attacker, -DS, 0, resist_type, modifiers);
 
 		attacker->Damage(this, -DS, spellid, EQ::skills::SkillAbjuration/*hackish*/, false);
 		//we can assume there is a spell now
