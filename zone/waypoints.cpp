@@ -257,6 +257,10 @@ void NPC::UpdateWaypoint(int wp_index)
 		LogAIDetail("Update to waypoint [{}] failed. Not found", wp_index);
 		return;
 	}
+	if (wp_index < 0 || wp_index >= static_cast<int>(Waypoints.size())) {
+		LogPathingError("Invalid waypoint index", GetGrid(), wp_index);
+		return;
+	}
 	std::vector<wplist>::iterator cur;
 	cur = Waypoints.begin();
 	cur += wp_index;
@@ -653,6 +657,36 @@ void Mob::StopNavigation() {
 	mMovementManager->StopNavigation(this);
 }
 
+void NPC::LogPathingError(
+    std::string_view reason,
+    int grid_id,
+    int wp_index
+)
+{
+    auto msg = fmt::format(
+        "[PATHING] {} | NPC {} ({}) SpawnID {} Grid {} WP {} Waypoints {} Zone {} ({})",
+        reason,
+        GetNPCTypeID(),
+        GetCleanName(),
+        GetSpawnPointID(),
+        grid_id,
+        wp_index,
+        Waypoints.size(),
+        zone->GetShortName(),
+        zone->GetZoneID()
+    );
+
+    LogError("{}", msg);
+
+    entity_list.MessageStatus(
+        nullptr,
+        Chat::Red,
+        AccountStatus::GMAdmin,   // or Guide/GM depending on who should see it
+        "{}",
+        msg
+    );
+}
+
 void NPC::AssignWaypoints(int32 grid_id, int start_wp)
 {
 	if (grid_id == 0)
@@ -701,6 +735,11 @@ void NPC::AssignWaypoints(int32 grid_id, int start_wp)
 			Waypoints.push_back(new_waypoint);
 			max_wp++;
 		}
+	}
+
+	if (Waypoints.empty()) {
+		LogPathingError("Grid contains no waypoints", grid_id, start_wp);
+		return;
 	}
 
 	cur_wp = start_wp;

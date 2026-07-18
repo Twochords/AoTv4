@@ -634,6 +634,8 @@ public:
 		CalcBonuses();
 	}
 
+	void AssignWaypoints(int32 grid_id, int start_wp);
+
 protected:
 
 	void HandleRoambox();

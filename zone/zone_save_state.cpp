@@ -327,6 +327,13 @@ inline void LoadNPCState(Zone *zone, NPC *n, ZoneStateSpawnsRepository::ZoneStat
 			n->RestoreMana();
 		}
 	}
+	LogInfo(
+		"Restoring pathing: NPC={} Spawn={} Grid={} StartWP={}",
+		npc->GetNPCTypeID(),
+		npc->GetSpawnPointID(),
+		grid_id,
+		start_wp
+	);
 
 	if (s.grid) {
 		n->AssignWaypoints(s.grid, s.current_waypoint);

@@ -3012,7 +3012,8 @@ int Mob::CalcBuffDuration(Mob *caster, Mob *target, uint16 spell_id, int32 caste
 	// heal-over-time, so they still go permanent as intended.
 	bool short_term_buff = IsInvulnerabilitySpell(spell_id) ||
 	                       IsEffectInSpell(spell_id, SpellEffect::HealOverTime) ||
-	                       IsEffectInSpell(spell_id, SpellEffect::CurrentHP);
+	                       IsEffectInSpell(spell_id, SpellEffect::CurrentHP) ||
+						   IsDiscipline(spell_id);
 	// AoTv4: AA-cast buffs are EXCLUDED from the permanent extension -- an AA's buff keeps its NATIVE
 	// duration (and the AA keeps its native reuse timer), so it behaves normally: it fades on its own
 	// time and is re-activated when the AA refreshes, rather than sticking forever. casting_spell_aa_id
