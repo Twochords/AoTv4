@@ -634,7 +634,7 @@ public:
 		CalcBonuses();
 	}
 
-	void AssignWaypoints(int32 grid_id, int start_wp);
+	void LogPathingError(std::string_view reason, int grid_id, int wp_index);
 
 protected:
 
