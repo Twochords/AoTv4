@@ -1,0 +1,25 @@
+-- AoTv4: remove the "banish" mechanic from raid mobs.
+-- On a solo-Bard roguelite server the classic dragon/named banishes (eject the player to another
+-- zone) make the encounters impossible -- you cannot coordinate the counterplay, and a max-level
+-- Bard (cap rises to 60/65/70 as eras unlock) just gets thrown out of the fight forever.
+--
+-- Two channels are handled:
+--   * Scripted level-gate banish (Lady Vox, Lord Nagafen) -- removed in the quest .pl files
+--     (permafrost/Lady_Vox.pl, permafrost/player.pl, soldungb/Lord_Nagafen.pl, soldungb/player.pl).
+--   * Spell-cast teleport-banish (this file) -- the raid mob casts a spell that MovePCs you out.
+--
+-- These 6 spells are effect 83 (Teleport) that dump the player into another zone, and each lives
+-- ONLY in its own banisher's npc_spells list (verified), so deleting by spellid has no collateral.
+-- Pure-damage spells merely NAMED "Banishment" (disintegrate / DD) are intentionally left alone.
+--
+--   855  Trakanon's Touch            -> sebilis     (Trakanon,               list 46)
+--   6791 Trakanon's Banishing Touch  -> sebilis     (#The_Fabled_Trakanon,   list 1333)
+--   1164 Crusader's Banishment       -> skyshrine   (Susarrak/Charayan/Grendish the Crusader)
+--   1476 The Dain's Justice          -> thurgadinb  (#Dain_Frostreaver_IV,   list 124)
+--   2144 Shadow Warding 5            -> vexthal     (Akhevan_Warder,         list 236)
+--   2786 In Irons                    -> sseru       (#Praesertum_* x4,       lists 1086/1087)
+--
+-- NPC spell lists load at zone boot (and into shared memory): after applying, rebuild shared memory
+-- with world down (cd build/bin && ./shared_memory) and restart, or at minimum bounce the zones.
+
+DELETE FROM npc_spells_entries WHERE spellid IN (855, 6791, 1164, 1476, 2144, 2786);

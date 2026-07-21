@@ -42,6 +42,25 @@ nohup ./queryserv    > logs/queryserv_manual.log    2>&1 &   # logging
 - Zones are **dynamic**: `eqlaunch` boots `./zone` processes on demand and respawns them; idle
   zones self-terminate. That's normal, not a crash.
 
+### RoF2 login needs 5999/udp PUBLISHED (client "times out at username/password")
+The RoF2 client logs in on the **SoD stream** (`login.json` `sod_port: 5999`), NOT the Titanium
+port 5998. The dev container reaches the Windows client only through `devcontainer.json`
+**`appPort`**, which therefore **MUST include `"5999:5999/udp"`** (alongside 5998 world-link,
+7000-7005 zones, 9000 world). If it's missing, the loginserver runs fine and world connects, but
+the client's login packets never reach the container → **timeout at the username/password screen**
+with **zero client lines in `logs/loginserver_manual.log`** (that empty log is the tell). Diagnose:
+`(ss -lunp | grep :5999)` shows the loginserver bound locally, but the port isn't forwarded to the
+host. Fix = `appPort` entry + a container rebuild. Client `eqhost.txt` stays `Host=127.0.0.1:5999`.
+
+### The DB and the login port both survive rebuilds now (persistent volume)
+A container rebuild used to wipe **both** the `peq` database (datadir was on the ephemeral overlay)
+and the 5999 port (missing from `appPort`) — the recurring "server won't come up after a rebuild"
+pain. Both are fixed in `devcontainer.json`: `appPort` includes `5999:5999/udp`, and the MariaDB
+datadir is a **named volume** (`source=aotv4-mysql-data,target=/var/lib/mysql,type=volume`) that
+**persists across rebuilds**. See `POST_REBUILD_RECOVERY.md`. The canonical DB snapshot lives at
+**`/src/aotv4_current.sql`** (full `peq` with all migrations baked in) — needed only for the ONE
+import after the volume is first created, or to seed a brand-new volume; routine rebuilds keep the DB.
+
 ## 3. The level-up reward window
 
 No opcode patching — communication rides on **chat**:

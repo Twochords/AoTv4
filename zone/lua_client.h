@@ -63,6 +63,7 @@ public:
 	void SetAnon(uint8 anon_flag);
 	int GetAFK();
 	void SetAFK(uint8 afk_flag);
+	void ToggleTribute(bool enabled);
 	void Duck();
 	void DyeArmorBySlot(uint8 slot, uint8 red, uint8 green, uint8 blue);
 	void DyeArmorBySlot(uint8 slot, uint8 red, uint8 green, uint8 blue, uint8 use_tint);

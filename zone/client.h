@@ -2208,6 +2208,7 @@ private:
 	Timer TaskPeriodic_Timer;
 	Timer charm_update_timer;
 	Timer rest_timer;
+	Timer ooc_regen_timer; // AoTv4: out-of-combat regen activation delay (see CalcRestState)
 	Timer charm_class_attacks_timer;
 	Timer charm_cast_timer;
 	Timer qglobal_purge_timer;

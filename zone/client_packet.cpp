@@ -10911,22 +10911,15 @@ void Client::Handle_OP_MoveItem(const EQApplicationPacket *app)
 	BenchTimer bench;
 
 	MoveItem_Struct* mi = (MoveItem_Struct*) app->pBuffer;
+	// AoTv4: moving/equipping an item mid-cast used to KICK the player ("Inventory desync"), which on a
+	// caster-heavy Bard server disconnected people constantly (bard songs were exempt, but the reward
+	// system's regular spells were not). Instead of kicking, INTERRUPT the cast -- classic EQ behavior
+	// (moving items breaks your spell). Interrupting clears the stale casting state that the kick was
+	// guarding against, so client + server stay in sync, and the item move below then proceeds cleanly.
 	if (spellend_timer.Enabled() && casting_spell_id && !IsBardSong(casting_spell_id)) {
 		if (mi->from_slot != mi->to_slot && (mi->from_slot <= EQ::invslot::GENERAL_END || mi->from_slot > 39) &&
 			IsValidSlot(mi->from_slot) && IsValidSlot(mi->to_slot)) {
-			const EQ::ItemInstance* itm_from = GetInv().GetItem(mi->from_slot);
-			const EQ::ItemInstance* itm_to   = GetInv().GetItem(mi->to_slot);
-			auto message = fmt::format(
-				"Player issued a move item from {}(item id {}) to {}(item id {}) while casting {}.",
-				mi->from_slot,
-				itm_from ? itm_from->GetID() : 0,
-				mi->to_slot,
-				itm_to ? itm_to->GetID() : 0,
-				casting_spell_id
-			);
-			RecordPlayerEventLog(PlayerEvent::POSSIBLE_HACK, PlayerEvent::PossibleHackEvent{ .message = message });
-			Kick("Inventory desync"); // Kick client to prevent client and server from getting out-of-sync inventory slots
-			return;
+			InterruptSpell(casting_spell_id);
 		}
 	}
 

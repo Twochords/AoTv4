@@ -93,6 +93,11 @@ void Lua_Client::SetAFK(uint8 afk_flag) {
 	self->SetAFK(afk_flag);
 }
 
+void Lua_Client::ToggleTribute(bool enabled) {
+	Lua_Safe_Call_Void();
+	self->ToggleTribute(enabled);
+}
+
 int Lua_Client::GetAnon() {
 	Lua_Safe_Call_Int();
 	return self->GetAnon();
@@ -4190,6 +4195,7 @@ luabind::scope lua_register_client() {
 	.def("SetAATitle", (void(Lua_Client::*)(std::string))&Lua_Client::SetAATitle)
 	.def("SetAATitle", (void(Lua_Client::*)(std::string,bool))&Lua_Client::SetAATitle)
 	.def("SetAFK", (void(Lua_Client::*)(uint8))&Lua_Client::SetAFK)
+	.def("ToggleTribute", (void(Lua_Client::*)(bool))&Lua_Client::ToggleTribute)
 	.def("SetAccountFlag", (void(Lua_Client::*)(const std::string&,const std::string&))&Lua_Client::SetAccountFlag)
 	.def("SetAlternateCurrencyValue", (void(Lua_Client::*)(uint32,uint32))&Lua_Client::SetAlternateCurrencyValue)
 	.def("SetAnon", (void(Lua_Client::*)(uint8))&Lua_Client::SetAnon)

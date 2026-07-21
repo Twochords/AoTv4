@@ -1,11 +1,17 @@
 # POST-REBUILD RECOVERY RUNBOOK
 
-**Written:** 2026-07-11, right before a deliberate `Dev Containers: Rebuild Container` to publish
-UDP **5999** (RoF2 login port) via `devcontainer.json` `appPort`.
+**Written:** 2026-07-11. **Updated 2026-07-21** — the two things that made a rebuild painful are now
+fixed in `devcontainer.json`, so a normal rebuild should "just work":
+- **`appPort` now includes `"5999:5999/udp"`** (the RoF2/SoD login port). Without it the client
+  **times out at the username/password screen** — see CLAUDE.md §2 "RoF2 login needs 5999/udp".
+- **The MariaDB datadir is now a persistent named volume** (`aotv4-mysql-data` →
+  `/var/lib/mysql`), so a rebuild **no longer wipes the `peq` DB**. Steps 2-4 below are only needed
+  the **first** time (when the named volume is created empty) or if the volume is ever reset.
 
-**Why this file exists:** rebuilding the dev container **wipes `/var/lib/mysql`** (it lives on the
-container's ephemeral overlay, NOT a mount). Everything below restores the server to exactly the
-state it was in before the rebuild. Follow it top-to-bottom after the container comes back.
+**Why this file still exists:** the named volume is created **empty** the first time it's mounted;
+until it's seeded once, `peq` is absent. And if the volume is deleted (or you're standing up a new
+machine), you re-seed from the snapshot. Steps below restore `peq` from scratch. After a *routine*
+rebuild with the volume intact, skip to **step 5** (shared memory) → **step 6** (start stack).
 
 ---
 
@@ -14,16 +20,30 @@ state it was in before the rebuild. Follow it top-to-bottom after the container 
   rework** — do NOT rebuild it unless it fails to launch).
 - Config symlinks `build/bin/login.json` + `eqemu_config.json` → `.devcontainer/override/` (already
   correct: `sod_port=5999`).
-- `devcontainer.json` (now publishes `5999:5999/udp`).
-- The DB snapshot **`/src/aotv4_current.sql`** (305 MB — full `peq` dump *with today's migrations
-  already applied*: gear tiers, spelldmg rule, 4 characters, login accounts). Self-creates the DB.
-- Fallback dump **`/src/Deez.sql`** (Jul 10, HeidiSQL, pre-migration — only use if the snapshot fails).
+- `devcontainer.json` (publishes `5999:5999/udp`; mounts the `aotv4-mysql-data` DB volume).
+- **The `peq` database itself** — now on the persistent named volume, so it survives a rebuild.
+- The DB snapshot **`/src/aotv4_current.sql`** (~404 MB — full `peq` dump *with all migrations
+  already applied*: gear tiers 27k Hallowed + 27k Mythic, spelldmg rule, 7 characters incl. Ashrem,
+  login accounts). Self-creates the DB (`CREATE DATABASE IF NOT EXISTS peq`). **Only needed to seed a
+  fresh/empty volume.** ⚠️ `/src/Deez.sql` has been BOTH the pre-migration dump and (later) a full
+  copy — do not trust its name; **always seed from `aotv4_current.sql`** and verify with step 4.
 - `custom/sql/*` migrations (do NOT need to re-run — they're baked into `aotv4_current.sql`).
 
-## What is GONE and must be rebuilt
-- The MariaDB datadir: `peq` database + the `peq@127.0.0.1` user (recreated in steps 2–3).
-- Shared memory segment (rebuilt in step 5).
+## What is GONE and must be rebuilt (routine rebuild, volume intact)
+- **Nothing DB-side** — the `peq` database + `peq@127.0.0.1` user persist on the named volume.
+  (Only when the volume is first created / reset do you run steps 2-3 to seed + grant.)
+- Shared memory segment (rebuilt in step 5 — it lives in the container overlay, so always rebuild).
 - All running server processes (started in step 6).
+
+---
+
+## FAST PATH — one command
+After a rebuild, just run the recovery script (idempotent: seeds the DB only if the volume is empty,
+then rebuilds shared memory + starts the stack + prints a health check):
+```bash
+bash /src/.devcontainer/recover.sh
+```
+The exact manual steps it automates are below (use them to debug if the script reports a failure).
 
 ---
 

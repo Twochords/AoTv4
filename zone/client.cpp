@@ -153,6 +153,7 @@ Client::Client() : Mob(
 				   TaskPeriodic_Timer(RuleI(TaskSystem, PeriodicCheckTimer) * 1000),
 				   charm_update_timer(6000),
 				   rest_timer(1),
+				   ooc_regen_timer(1),
 				   pick_lock_timer(1000),
 				   charm_class_attacks_timer(3000),
 				   charm_cast_timer(3500),

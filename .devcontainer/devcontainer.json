@@ -5,6 +5,7 @@
     },
     "appPort": [
         "5998:5998/udp",
+        "5999:5999/udp",
         "7000:7000/udp",
         "7001:7001/udp",
         "7002:7002/udp",
@@ -53,5 +54,10 @@
     },
 
     "workspaceFolder": "/src",
-    "workspaceMount": "source=${localWorkspaceFolder},target=/src,type=bind,consistency=cached"
+    "workspaceMount": "source=${localWorkspaceFolder},target=/src,type=bind,consistency=cached",
+
+    "// mounts": "Persist the MariaDB datadir on a named volume so a container rebuild does NOT wipe the peq DB (see POST_REBUILD_RECOVERY.md). First rebuild after adding this: the empty volume is populated from the image's initialized datadir (peq-less) -> import the snapshot ONCE. Every rebuild after that keeps the DB.",
+    "mounts": [
+        "source=aotv4-mysql-data,target=/var/lib/mysql,type=volume"
+    ]
 }

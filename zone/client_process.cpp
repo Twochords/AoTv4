@@ -1952,13 +1952,12 @@ void Client::OPGMSummon(const EQApplicationPacket *app)
 
 void Client::DoHPRegen() {
 	int64 regen = CalcHPRegen();
-	// AoTv4: fast out-of-combat recovery -- at least 20% of max per 6s tick when nothing is engaged on
-	// you (~full in ~5 ticks / ~30s). In combat, normal regen applies. GetAggroCount() is a counter that
-	// can leak (mob despawns/deaggros without decrementing it), so fall back to the authoritative hate-list
-	// scan (Fighting) when it's non-zero -- a stuck counter then self-heals into fast regen when nothing
-	// actually fights you. (Matches DoManaRegen.)
-	if (GetAggroCount() == 0 || !entity_list.Fighting(this)) {
-		int64 fast = GetMaxHP() / 5;
+	// AoTv4: fast out-of-combat recovery -- 1/3 of max per 6s tick, so it fills to 100% in 3 ticks
+	// (SetHP clamps to max). CanFastRegen() is set by CalcRestState (runs earlier this tick): true
+	// once you've been genuinely out of combat -- authoritative Fighting() scan, self-heals a leaked
+	// aggro counter -- for OOC_REGEN_DELAY_MS (10s). In combat, only normal regen applies.
+	if (CanFastRegen()) {
+		int64 fast = GetMaxHP() / 3;
 		if (fast > regen) regen = fast;
 	}
 	SetHP(GetHP() + regen);
@@ -1973,13 +1972,12 @@ void Client::DoManaRegen() {
 		CheckIncreaseSkill(EQ::skills::SkillMeditate, nullptr, -5);
 
 	int64 regen = CalcManaRegen();
-	// AoTv4: fast out-of-combat mana recovery -- at least 20% of max per tick when out of combat.
-	// GetAggroCount() is a counter that can leak (a mob that despawns/deaggros without decrementing it
-	// leaves the player stuck "in combat"), which strands a standing Bard's mana (near-zero base regen)
-	// even while idle with nothing around. Fall back to the authoritative hate-list scan (Fighting) when
-	// the counter is non-zero so a stuck counter self-heals: fast-regen whenever nothing actually fights us.
-	if (GetAggroCount() == 0 || !entity_list.Fighting(this)) {
-		int64 fast = max_mana / 5;
+	// AoTv4: fast out-of-combat mana recovery -- 1/3 of max per tick, filling to 100% in 3 ticks.
+	// Gated by CanFastRegen() (set by CalcRestState this tick): active once genuinely out of combat
+	// for OOC_REGEN_DELAY_MS (10s), using the authoritative Fighting() scan so a leaked aggro counter
+	// can't strand a standing Bard's near-zero base mana regen. (Matches DoHPRegen.)
+	if (CanFastRegen()) {
+		int64 fast = max_mana / 3;
 		if (fast > regen) regen = fast;
 	}
 	SetMana(GetMana() + regen);
@@ -2085,34 +2083,37 @@ void Client::DoEnduranceUpkeep() {
 		SetEndurUpkeep(false);
 }
 
+// AoTv4: how long you must be out of combat before out-of-combat (fast) regen kicks in.
+static constexpr uint32 OOC_REGEN_DELAY_MS = 10000; // 10 seconds
+
 void Client::CalcRestState()
 {
-	// This method calculates rest state HP and mana regeneration.
-	// The client must have been out of combat for RuleI(Character, RestRegenTimeToActivate) seconds,
-	// must be sitting down, and must not have any detrimental spells affecting them.
+	// AoTv4 out-of-combat regen gate. Rewritten to be robust and Bard-friendly:
+	//   * Combat is detected with the AUTHORITATIVE hate-list scan (entity_list.Fighting), NOT the
+	//     AggroCount counter. That counter can leak (a mob despawns/deaggros without decrementing it),
+	//     which used to strand a player "in combat" forever so they never topped off -- the reported
+	//     "OOC regen won't reach 100%" bug. Fighting() reflects reality and self-heals a stuck counter.
+	//   * No sitting requirement -- everyone here is a Bard and plays standing.
+	//   * Activates OOC_REGEN_DELAY_MS (10s) after combat actually ends, then stays on until the next
+	//     real fight. DoHPRegen/DoManaRegen then fill to 100% (1/3 of max per tick -> 3 ticks, clamped).
+	ooc_regen = false;
+
 	if(!RuleB(Character, RestRegenEnabled))
 		return;
 
-	ooc_regen = false;
-
-	if(AggroCount || !(IsSitting() || CanMedOnHorse()))
+	if (entity_list.Fighting(this)) {          // genuinely in combat -> reset the activation delay
+		ooc_regen_timer.Disable();
 		return;
-
-	if(!rest_timer.Check(false))
-		return;
-
-	// so we don't have aggro, our timer has expired, we do not want this to cause issues
-	m_pp.RestTimer = 0;
-
-	uint32 buff_count = GetMaxTotalSlots();
-	for (unsigned int j = 0; j < buff_count; j++) {
-		if(IsValidSpell(buffs[j].spellid)) {
-			if(IsDetrimentalSpell(buffs[j].spellid) && (buffs[j].ticsremaining > 0))
-				if(!IsRestAllowedSpell(buffs[j].spellid))
-					return;
-		}
 	}
 
+	if (!ooc_regen_timer.Enabled())            // first tick out of combat -> start the 10s countdown
+		ooc_regen_timer.Start(OOC_REGEN_DELAY_MS);
+
+	if (!ooc_regen_timer.Check(false))         // not yet 10s out of combat
+		return;
+
+	// out of combat and the activation delay has elapsed
+	m_pp.RestTimer = 0;
 	ooc_regen = true;
 }
 
