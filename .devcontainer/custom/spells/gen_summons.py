@@ -126,11 +126,14 @@ def main():
             else:
                 _, pet_type = pick(fam, band)
             sql.append(
-                "INSERT INTO spells_new (`id`,`name`,`teleport_zone`,`range`,`cast_time`,"
+                "INSERT INTO spells_new (`id`,`name`,`teleport_zone`,`you_cast`,`other_casts`,"
+                "`cast_on_you`,`cast_on_other`,`spell_fades`,`range`,`cast_time`,"
                 "`recast_time`,`recovery_time`,`buffdurationformula`,`buffduration`,`mana`,"
                 "`icon`,`new_icon`,`memicon`,`targettype`,`resisttype`,`goodEffect`,`classes8`,"
-                "`spell_category`,`not_extendable`,`effectid1`,`effect_base_value1`,`formula1`) "
-                "VALUES (%d,'Summon %s','%s',0,0,0,0,0,0,0,2511,161,161,6,0,1,255,-99,1,33,1,100);"
+                "`spell_category`,`not_extendable`,`typedescnum`,`effectdescnum`,`effectid1`,`effect_base_value1`,`formula1`) "
+                # empty strings, never NULL -- the shared-memory loader builds
+                # std::string from these columns and a NULL aborts the spell load
+                "VALUES (%d,'Summon %s','%s','','','','','',0,0,0,0,0,0,0,2511,161,161,6,0,1,255,-99,1,0,0,33,1,100);"
                 % (sid, label, pet_type, ))
             sql.append("INSERT INTO aotv4_spell_origin (spell_id, origin, bucket) "
                        "VALUES (%d, 'aotv4', 'H');" % sid)

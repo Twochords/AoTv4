@@ -29,7 +29,7 @@ return {
 		{ band = 30 , spell = 50219 },  -- skel_pet_29_
 		{ band = 40 , spell = 50220 },  -- skel_pet_37_
 		{ band = 50 , spell = 50221 },  -- skel_pet_47_
-		{ band = 60 , spell = 50222 },  -- skel_pet_61_
+		{ band = 60 , spell = 50222 },  -- skel_pet_63_
 		{ band = 65 , spell = 50223 },  -- skel_pet_67_
 	},
 	[50047] = {  -- Summon FireImp

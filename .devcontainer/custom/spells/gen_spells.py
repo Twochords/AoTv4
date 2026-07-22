@@ -401,6 +401,17 @@ def main():
 
         cols = {
             "id": sid, "name": "'%s'" % esc(name),
+            # These varchar columns DEFAULT NULL, and the shared-memory loader builds
+            # std::string straight from them -- a NULL aborts the spell load with
+            # "basic_string: construction from null is not valid". Native rows are
+            # never NULL here, so always write empty strings.
+                        # typedescnum/effectdescnum also DEFAULT NULL and are read through
+            # Strings::To*, which builds a std::string from the raw column -- a NULL
+            # throws "construction from null" and aborts the whole spell load.
+            "typedescnum": 0, "effectdescnum": 0,
+"teleport_zone": "''", "you_cast": "''", "other_casts": "''",
+            "cast_on_you": "''", "cast_on_other": "''", "spell_fades": "''",
+
             "range": 0 if target == ST_SELF else 200,
             "aoerange": spec.get("aoe", 40 if target == ST_AETARGET else 0),
             # AEDuration turns an AE into a RAIN -- repeated waves over that many
@@ -446,6 +457,17 @@ def main():
     for h in HELPERS:
         cols = {
             "id": h["id"], "name": "'%s'" % esc(h["name"]),
+            # These varchar columns DEFAULT NULL, and the shared-memory loader builds
+            # std::string straight from them -- a NULL aborts the spell load with
+            # "basic_string: construction from null is not valid". Native rows are
+            # never NULL here, so always write empty strings.
+                        # typedescnum/effectdescnum also DEFAULT NULL and are read through
+            # Strings::To*, which builds a std::string from the raw column -- a NULL
+            # throws "construction from null" and aborts the whole spell load.
+            "typedescnum": 0, "effectdescnum": 0,
+"teleport_zone": "''", "you_cast": "''", "other_casts": "''",
+            "cast_on_you": "''", "cast_on_other": "''", "spell_fades": "''",
+
             "range": 0 if h["target"] == ST_SELF else 200,
             "aoerange": 0, "cast_time": 0, "recast_time": 0, "recovery_time": 0,
             "buffdurationformula": DUR_FIXED, "buffduration": h["dur"],

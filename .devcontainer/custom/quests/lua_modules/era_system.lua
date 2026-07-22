@@ -16,7 +16,12 @@ local M = {}
 -- AAs are NOT era-gated anymore -- the whole pool is offered randomly (prereqs still enforced) from the
 -- start. Expansions open smoothly as the first player's accumulated AA value crosses these thresholds.
 M.ERA = {
-	[0] = { name = "Classic",                  expansion = 0, cap = 50, cap_exp = 164708600,  spent = 0    },
+	-- Classic caps at 30, not 50: the custom ability set is authored for levels
+	-- 1-30 (see .devcontainer/custom/spells/), so past 30 the reward window would
+	-- have nothing new to offer and would degrade to empty picks. Raise this as
+	-- levels 31+ get authored. cap_exp = GetEXPForLevel(30) = 29^3 * 1.0 * 1000
+	-- (zone/exp.cpp:1024 -- the level modifier is 1.0 below level 31).
+	[0] = { name = "Classic",                  expansion = 0, cap = 30, cap_exp = 24389000,   spent = 0    },
 	[1] = { name = "The Ruins of Kunark",      expansion = 1, cap = 60, cap_exp = 616137000,  spent = 220  },
 	[2] = { name = "The Scars of Velious",     expansion = 2, cap = 60, cap_exp = 616137000,  spent = 485  },
 	[3] = { name = "The Shadows of Luclin",    expansion = 3, cap = 60, cap_exp = 616137000,  spent = 740  },
