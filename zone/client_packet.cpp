@@ -36,6 +36,7 @@
 #include "common/repositories/tradeskill_recipe_entries_repository.h"
 #include "common/rulesys.h"
 #include "common/shared_tasks.h"
+#include "zone/achievement_manager.h"
 #include "zone/bot.h"
 #include "zone/dialogue_window.h"
 #include "zone/dynamic_zone.h"
@@ -535,6 +536,8 @@ void Client::CompleteConnect()
 
 	// Task Packets
 	LoadClientTaskState();
+	achievement_manager.ProcessLevel(this);
+	achievement_manager.ProcessZoneVisit(this);
 
 	// moved to dbload and translators since we iterate there also .. keep m_pp values whatever they are when they get here
 	/*const auto sbs = EQ::spells::DynamicLookup(ClientVersion(), GetGM())->SpellbookSize;

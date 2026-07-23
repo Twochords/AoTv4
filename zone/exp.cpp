@@ -23,6 +23,7 @@
 #include "common/strings.h"
 #include "zone/bot.h"
 #include "zone/client.h"
+#include "zone/achievement_manager.h"
 #include "zone/groups.h"
 #include "zone/lua_parser.h"
 #include "zone/mob.h"
@@ -999,6 +1000,8 @@ void Client::SetLevel(uint8 set_level, bool command)
 	UpdateMercLevel();
 
 	Save();
+
+	achievement_manager.ProcessLevel(this);
 }
 
 // Note: The client calculates exp separately, we cant change this function

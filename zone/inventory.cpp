@@ -22,6 +22,7 @@
 #include "common/evolving_items.h"
 #include "common/repositories/character_corpse_items_repository.h"
 #include "common/strings.h"
+#include "zone/achievement_manager.h"
 #include "zone/bot.h"
 #include "zone/queryserv.h"
 #include "zone/quest_parser_collection.h"
@@ -668,6 +669,8 @@ bool Client::SummonItem(uint32 item_id, int16 charges, uint32 aug1, uint32 aug2,
 		DiscoverItem(item_id);
 	}
 
+	achievement_manager.ProcessItemReceive(this, item_id);   // item_receive objectives (class epics)
+
 	return true;
 }
 
@@ -1042,6 +1045,8 @@ bool Client::PushItemOnCursor(const EQ::ItemInstance& inst, bool client_update)
 	if (client_update) {
 		SendItemPacket(EQ::invslot::slotCursor, &inst, ItemPacketLimbo);
 	}
+
+	achievement_manager.ProcessItemReceive(this, inst.GetItem()->ID);   // item_receive objectives (loot -> cursor)
 
 	auto s = m_inv.cursor_cbegin(), e = m_inv.cursor_cend();
 	return database.SaveCursor(CharacterID(), s, e);
