@@ -390,23 +390,11 @@ void ZoneDatabase::UpdateTraderItemPrice(int char_id, uint32 item_id, uint32 cha
 	}
 
 	if (new_price == 0) {
-		LogTrading("Removing Trader items from the DB for char_id [{}], item_id [{}]", char_id, item_id);
-
-		auto results = TraderRepository::DeleteWhere(
-			database,
-			fmt::format(
-				"`char_id` = '{}' AND `item_id` = {}",
-				char_id,
-				item_id
-			)
-		);
-		if (!results) {
-			LogDebug("[CLIENT] Failed to remove trader item(s): [{}] for char_id: [{}]",
-					 item_id,
-					 char_id
-			);
-		}
-
+		// AoTv4: a native "set price to 0 = unlist" would DELETE the escrowed rows WITHOUT returning the
+		// items to the player -- the item lives ONLY as its row -- so it would destroy real items. Unlisting
+		// is done by PullShopItem (returns the item to the cursor) instead; native price-update packets
+		// aren't used by the /shop flow, so we do NOT delete here.
+		LogTrading("AoTv4: ignoring native price=0 unlist for char_id [{}], item_id [{}] (use PullShopItem)", char_id, item_id);
 		return;
 	}
 

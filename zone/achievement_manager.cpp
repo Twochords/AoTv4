@@ -830,22 +830,51 @@ void AchievementManager::PushLiveUpdate(Client *client, uint32 completed_achieve
 		fmt::format("ACH|status|completed={}|total={}|points={}|categories={}", completed, total, points, category_count).c_str()
 	);
 
-	for (const auto &category : LoadCategorySummaries(character_id)) {
-		client->Message(
-			Chat::White,
-			fmt::format(
-				"ACH|category|id={}|parent={}|name={}|completed={}|total={}|points={}",
-				category.id, category.parent_id, ProtocolValue(category.name, 80),
-				category.completed, category.total, category.points
-			).c_str()
-		);
-	}
-
+	// Send the row-flip FIRST, then only the affected leaf category + its parent header.
+	// Re-pushing ALL ~40 categories per completion is a chat burst the RoF2 client can
+	// drop/reorder, which loses the achievement_state line -> the "sometimes doesn't
+	// update" symptom. Completing one achievement only changes its own category's and
+	// its parent's counts, so 1 status + 1 state + <=2 category lines is enough and reliable.
 	if (completed_achievement_id) {
 		client->Message(
 			Chat::White,
 			fmt::format("ACH|achievement_state|id={}|completed=1", completed_achievement_id).c_str()
 		);
+	}
+
+	const uint32 affected_cat = completed_achievement_id ? LoadAchievementCategory(completed_achievement_id) : 0;
+	if (affected_cat) {
+		// rolled-up summaries for just the affected leaf + its parent (mirrors LoadCategorySummaries)
+		auto cat_results = database.QueryDatabase(
+			fmt::format(
+				"SELECT c.`id`, c.`parent_id`, c.`name`, COUNT(a.`id`), "
+				"COALESCE(SUM(CASE WHEN ca.`achievement_id` IS NULL THEN 0 ELSE 1 END), 0), "
+				"COALESCE(SUM(CASE WHEN ca.`achievement_id` IS NULL THEN 0 ELSE a.`points` END), 0) "
+				"FROM `custom_achievement_categories` c "
+				"LEFT JOIN `custom_achievements` a ON ("
+				"    a.`category_id` = c.`id` "
+				"    OR a.`category_id` IN (SELECT sc.`id` FROM `custom_achievement_categories` sc "
+				"                           WHERE sc.`parent_id` = c.`id` AND sc.`enabled` = 1) "
+				"  ) AND a.`enabled` = 1 AND a.`hidden` = 0 "
+				"LEFT JOIN `custom_character_achievements` ca ON ca.`achievement_id` = a.`id` AND ca.`character_id` = {0} "
+				"WHERE c.`enabled` = 1 AND (c.`id` = {1} "
+				"  OR c.`id` = (SELECT `parent_id` FROM `custom_achievement_categories` WHERE `id` = {1})) "
+				"GROUP BY c.`id`, c.`parent_id`, c.`name`",
+				character_id, affected_cat
+			)
+		);
+		if (cat_results.Success()) {
+			for (auto row = cat_results.begin(); row != cat_results.end(); ++row) {
+				client->Message(
+					Chat::White,
+					fmt::format(
+						"ACH|category|id={}|parent={}|name={}|completed={}|total={}|points={}",
+						ToUInt(row[0]), ToUInt(row[1]), ProtocolValue(row[2] ? row[2] : "", 80),
+						ToUInt(row[4]), ToUInt(row[3]), ToUInt(row[5])
+					).c_str()
+				);
+			}
+		}
 	}
 }
 
@@ -1040,9 +1069,16 @@ std::vector<AchievementManager::AchievementSummary> AchievementManager::LoadAchi
 			"SELECT a.`id`, a.`category_id`, a.`name`, a.`description`, a.`points`, COALESCE(ca.`completed_at`, 0) "
 			"FROM `custom_achievements` a "
 			"LEFT JOIN `custom_character_achievements` ca "
-			"ON ca.`achievement_id` = a.`id` AND ca.`character_id` = {} "
-			"WHERE a.`enabled` = 1 AND a.`hidden` = 0 AND a.`category_id` = {} "
-			"ORDER BY a.`sort_order`, a.`id`",
+			"ON ca.`achievement_id` = a.`id` AND ca.`character_id` = {0} "
+			// Selecting a parent header (Hunter/Exploration/Slayer/...) shows the union of its child
+			// categories' achievements, so a parent is never an empty row. Leaves have no children
+			// (subquery empty) so they stay direct-only. Grouped by category so children list together.
+			"WHERE a.`enabled` = 1 AND a.`hidden` = 0 AND ("
+			"    a.`category_id` = {1} "
+			"    OR a.`category_id` IN (SELECT sc.`id` FROM `custom_achievement_categories` sc "
+			"                           WHERE sc.`parent_id` = {1} AND sc.`enabled` = 1) "
+			"  ) "
+			"ORDER BY a.`category_id`, a.`sort_order`, a.`id`",
 			character_id,
 			category_id
 		)

@@ -34,6 +34,7 @@
 #include "zone/string_ids.h"
 #include "zone/worldserver.h"
 #include <numeric>
+#include <map>
 
 class QueryServ;
 
@@ -899,7 +900,10 @@ void Client::TraderStartTrader(const EQApplicationPacket *app)
 		return;
 	}
 
-	TraderRepository::DeleteWhere(database, fmt::format("`char_id` = '{}';", CharacterID()));
+	// AoTv4: do NOT clear the char's existing rows before relisting -- they are escrowed listings from the
+	// /shop flow (AddItemsToShop), and the item lives ONLY as its row, so the stock clear-before-relist
+	// would destroy real items. This native satchel path is legacy (superseded by AddItemsToShop) and
+	// dormant, but leave escrow intact if it ever fires.
 	TraderRepository::ReplaceMany(database, trader_items);
 	safe_delete(inv);
 
@@ -929,15 +933,17 @@ void Client::TraderEndTrader(bool persist_listings)
 		}
 	}
 
-	if (!persist_listings) {
-		TraderRepository::DeleteWhere(database, fmt::format("`char_id` = '{}'", CharacterID()));
-	}
-	// else: AoTv4 offline shop -- keep the listings so the shop stays searchable/buyable while the
-	// owner is logged off. We deliberately leave char_entity_id AS-IS (the small shop-open entity id):
-	// the Bazaar's per-trader filter does an EXACT match on char_entity_id (common/bazaar.cpp), so a big
-	// synthetic marker would be truncated by the client and match nothing. A browsing buyer with no live
-	// entity is instead resolved from the DB (see Handle_OP_TraderShop). Coin from offline sales is
-	// banked to shop_escrow_<charid> and handed over on the seller's next login (global_player.lua).
+	// AoTv4: NEVER delete escrowed listings when trader mode ends. A listed item lives ONLY as its `trader`
+	// row (Client::AddItemsToShop removed it from the satchel), so the stock "delete this char's rows on
+	// end-trader" would destroy real items -- and end-trader fires on MANY paths (zoning, camp, inventory
+	// moves, invalid-item, ...), not just an intentional close. The shop must persist and stay searchable/
+	// buyable. Rows are removed ONLY by an explicit unlist (PullShopItem), a sale, or login reconciliation
+	// (ReclaimOfflineShop). So the stock `if (!persist_listings) DeleteWhere(...)` is disabled here.
+	//   We deliberately leave char_entity_id AS-IS (the small shop-open entity id): the Bazaar's per-trader
+	//   filter does an EXACT match on char_entity_id (common/bazaar.cpp); a browsing buyer with no live
+	//   entity is resolved from the DB (Handle_OP_TraderShop). Offline-sale coin is banked to
+	//   shop_escrow_<charid> and paid on the seller's next login (global_player.lua).
+	(void) persist_listings;
 
 	SendBecomeTraderToWorld(this, TraderOff);
 	SendTraderMode(TraderOff);
@@ -1044,8 +1050,20 @@ void Client::ReclaimOfflineShop()
 
 // Sellable (droppable, non-container) items across the player's main inventory + its bags, as a CSV of
 // "slot|item_id|name|vendor_value" -- feeds the dll "Add Items" browser. Skips bank/equipped/cursor.
+// AoTv4 price book: item_id -> price (copper), persisted per character in the shopbook_<charid> bucket.
+static std::map<uint32, uint32> LoadShopBook(uint32 char_id)
+{
+	std::map<uint32, uint32> book;
+	for (const auto &tok : Strings::Split(DataBucket::GetData(&database, fmt::format("shopbook_{}", char_id)), ",")) {
+		auto kv = Strings::Split(tok, ":");
+		if (kv.size() >= 2) { book[Strings::ToUnsignedInt(kv[0])] = Strings::ToUnsignedInt(kv[1]); }
+	}
+	return book;
+}
+
 std::string Client::GetSellableInventory()
 {
+	std::map<uint32, uint32> book = LoadShopBook(CharacterID());   // projected prices for the Inventory tab
 	std::string csv;
 	auto        consider = [&](int16 slot) {
 		const EQ::ItemInstance *it = GetInv().GetItem(slot);
@@ -1058,7 +1076,9 @@ std::string Client::GetSellableInventory()
 		}
 		std::string name = d->Name;
 		for (auto &ch : name) { if (ch == '|' || ch == '^') { ch = ' '; } }
-		csv += fmt::format("{}|{}|{}|{}^", slot, d->ID, name, d->Price);
+		int qty = d->Stackable ? (it->GetCharges() > 0 ? it->GetCharges() : 1) : 1;   // stack size to sell
+		uint32 bp = book.count(d->ID) ? book[d->ID] : 0;                              // price-book price (0 = unpriced)
+		csv += fmt::format("{}|{}|{}|{}|{}|{}^", slot, d->ID, name, d->Price, qty, bp);
 	};
 
 	// AoTv4: only items placed INSIDE a Trader's Satchel are sellable -- not loose inventory or other
@@ -1422,7 +1442,72 @@ std::string Client::GetMyShopListing()
 		const EQ::ItemData *d    = database.GetItem(r.item_id);
 		std::string         name = d ? d->Name : fmt::format("item {}", r.item_id);
 		for (auto &ch : name) { if (ch == '|' || ch == '^') { ch = ' '; } }
-		csv += fmt::format("{}|{}|{}|{}^", r.item_sn, r.item_id, name, r.item_cost);
+		int qty = r.item_charges > 0 ? r.item_charges : 1;   // listed stack size
+		csv += fmt::format("{}|{}|{}|{}|{}^", r.item_sn, r.item_id, name, r.item_cost, qty);
+	}
+	return csv;
+}
+
+// AoTv4 price book: persist item_id -> price and append a change-log entry (old->new, unix time).
+void Client::SetItemPrice(uint32 item_id, uint32 price)
+{
+	if (item_id == 0) {
+		return;
+	}
+	std::string book_key  = fmt::format("shopbook_{}", CharacterID());
+	uint32      old_price = 0;
+	std::string out;
+	bool        found = false;
+	for (const auto &tok : Strings::Split(DataBucket::GetData(&database, book_key), ",")) {
+		auto kv = Strings::Split(tok, ":");
+		if (kv.size() < 2) { continue; }
+		uint32 iid = Strings::ToUnsignedInt(kv[0]);
+		uint32 p   = Strings::ToUnsignedInt(kv[1]);
+		if (iid == item_id) { old_price = p; p = price; found = true; }
+		out += fmt::format("{}{}:{}", out.empty() ? "" : ",", iid, p);
+	}
+	if (!found) { out += fmt::format("{}{}:{}", out.empty() ? "" : ",", item_id, price); }
+	DataBucket::SetData(&database, book_key, out);
+
+	// change log: newest-first, capped at 20 entries  (item:old:new:unixtime)
+	std::string log_key = fmt::format("shoplog_{}", CharacterID());
+	std::string newlog  = fmt::format("{}:{}:{}:{}", item_id, old_price, price, (long) time(nullptr));
+	int         kept    = 1;
+	for (const auto &e : Strings::Split(DataBucket::GetData(&database, log_key), ",")) {
+		if (e.empty() || kept >= 20) { continue; }
+		newlog += "," + e; ++kept;
+	}
+	DataBucket::SetData(&database, log_key, newlog);
+}
+
+// The price book as "itemid|name|price^..." (feeds the Pricing-tab list + Inventory-tab projected prices).
+std::string Client::GetPriceBook()
+{
+	std::string csv;
+	for (const auto &tok : Strings::Split(DataBucket::GetData(&database, fmt::format("shopbook_{}", CharacterID())), ",")) {
+		auto kv = Strings::Split(tok, ":");
+		if (kv.size() < 2) { continue; }
+		uint32              iid  = Strings::ToUnsignedInt(kv[0]);
+		const EQ::ItemData *d    = database.GetItem(iid);
+		std::string         name = d ? d->Name : fmt::format("item {}", iid);
+		for (auto &ch : name) { if (ch == '|' || ch == '^') { ch = ' '; } }
+		csv += fmt::format("{}|{}|{}^", iid, name, Strings::ToUnsignedInt(kv[1]));
+	}
+	return csv;
+}
+
+// Recent price changes as "itemid|name|old|new|unixtime^..." (newest first).
+std::string Client::GetPriceLog()
+{
+	std::string csv;
+	for (const auto &tok : Strings::Split(DataBucket::GetData(&database, fmt::format("shoplog_{}", CharacterID())), ",")) {
+		auto kv = Strings::Split(tok, ":");
+		if (kv.size() < 4) { continue; }
+		uint32              iid  = Strings::ToUnsignedInt(kv[0]);
+		const EQ::ItemData *d    = database.GetItem(iid);
+		std::string         name = d ? d->Name : fmt::format("item {}", iid);
+		for (auto &ch : name) { if (ch == '|' || ch == '^') { ch = ' '; } }
+		csv += fmt::format("{}|{}|{}|{}|{}^", iid, name, kv[1], kv[2], kv[3]);
 	}
 	return csv;
 }
@@ -1457,25 +1542,27 @@ int Client::AddItemsToShop(std::string csv)
 		next_sn = (uint32) Strings::ToUnsignedInt(sn_prev);
 	}
 
+	std::map<uint32, uint32>              book = LoadShopBook(CharacterID());   // prices come from the book
 	std::vector<TraderRepository::Trader> rows;
-	std::vector<int16>                    slots;   // items to escrow -- deleted ONLY after the rows persist
+	std::vector<std::pair<int16, uint8>>  slots;   // (slot, delete_qty) -- escrowed ONLY after rows persist
 	bool                                  hit_cap = false;
 	for (const auto &tok : Strings::Split(csv, ",")) {
 		if (tok.empty()) {
 			continue;
 		}
 		auto kv = Strings::Split(tok, ":");
-		if (kv.size() < 2) {
+		if (kv.empty()) {
 			continue;
 		}
 		int16  slot  = (int16) Strings::ToInt(kv[0]);
-		uint32 price = (uint32) Strings::ToUnsignedInt(kv[1]);
-		if (price == 0) {
-			continue;
-		}
+		int    want  = (kv.size() >= 2) ? Strings::ToInt(kv[1]) : 0;   // how many to list; 0 = whole stack
 		const EQ::ItemInstance *it = GetInv().GetItem(slot);
 		if (!it || !it->GetItem() || it->GetItem()->NoDrop == 0 || it->IsClassBag()) {
 			continue;   // stale slot / No-Drop / container -- skip
+		}
+		uint32 price = book.count(it->GetID()) ? book[it->GetID()] : 0;   // price-book price for this item
+		if (price == 0) {
+			continue;   // unpriced -- set a price on the Pricing tab first
 		}
 		// AoTv4: the item must live INSIDE a Trader's Satchel (validate server-side, not just the dll).
 		int16                   parent     = EQ::InventoryProfile::CalcSlotId(slot);
@@ -1497,7 +1584,9 @@ int Client::AddItemsToShop(std::string csv)
 		r.char_id               = CharacterID();
 		r.char_zone_id          = GetZoneID();
 		r.char_zone_instance_id = GetInstanceID();
-		r.item_charges          = it->GetCharges() == 0 ? 1 : it->GetCharges();
+		int full     = it->GetCharges() > 0 ? it->GetCharges() : 1;   // actual stack size
+		int list_qty = (want <= 0 || want >= full) ? full : want;     // clamp; 0/over = whole stack
+		r.item_charges          = list_qty;
 		r.item_cost             = price;
 		r.item_id               = it->GetID();
 		r.item_sn               = next_sn++;
@@ -1513,7 +1602,8 @@ int Client::AddItemsToShop(std::string csv)
 			r.aug_slot_6 = augs[5];
 		}
 		rows.emplace_back(r);
-		slots.push_back(slot);
+		uint8 del_qty = (list_qty >= full) ? 0 : (uint8) list_qty;   // 0 = delete whole item, else partial
+		slots.push_back({ slot, del_qty });
 	}
 
 	if (rows.empty()) {
@@ -1526,8 +1616,8 @@ int Client::AddItemsToShop(std::string csv)
 		Message(Chat::Red, "Could not list your items right now -- nothing was taken from your bags.");
 		return 0;
 	}
-	for (int16 s : slots) {
-		DeleteItemInInventory(s, 0, true, true);   // ESCROW: the item now lives only as its row
+	for (auto &s : slots) {
+		DeleteItemInInventory(s.first, s.second, true, true);   // ESCROW: del_qty 0 = whole stack, else partial
 	}
 	DataBucket::SetData(&database, sn_key, std::to_string(next_sn));
 

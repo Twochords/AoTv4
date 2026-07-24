@@ -177,6 +177,14 @@ Bazaar::GetSearchResults(
 	std::string field_criteria_items("FALSE");
 	std::string where_criteria_items(" TRUE ");
 
+	// AoTv4 trader-anywhere: sellers list their escrow shop from ANY zone (the trader row's char_zone_id
+	// is wherever they were standing -- never a single Bazaar zone), and listings persist while offline.
+	// So a general bazaar search MUST be GLOBAL: never restricted to the searcher's current zone (the stock
+	// Local_Scope behaviour) nor to a single trader (the stock trader_id -> char_id filter). Without this,
+	// RoF2 -- which sends Local_Scope / AllTraders_Scope and populates trader_id from the selected trader --
+	// scopes every search to one seller, so players only ever see their own listings. We keep the NonRoF
+	// per-trader inspect path (entity-id based) and the alternate Bazaar-shard search (its own rule, off
+	// here) intact; everything else falls through with no filter -> search_criteria_trader stays "TRUE".
 	if (search.search_scope == NonRoFBazaarSearchScope) {
 		search_criteria_trader.append(
 			fmt::format(
@@ -187,31 +195,21 @@ Bazaar::GetSearchResults(
 			)
 		);
 	}
-	else if (search.search_scope == Local_Scope) {
-		search_criteria_trader.append(fmt::format(
-			" AND trader.char_zone_id = {} AND trader.char_zone_instance_id = {}",
-			char_zone_id,
-			char_zone_instance_id)
-		);
-	}
-	else if (search.trader_id > 0) {
-		if (RuleB(Bazaar, UseAlternateBazaarSearch)) {
-			if (search.trader_id >= TraderRepository::TRADER_CONVERT_ID) {
-				convert = true;
-				search_criteria_trader.append(fmt::format(
-					" AND trader.char_zone_id = {} AND trader.char_zone_instance_id = {}",
-					Zones::BAZAAR,
-					search.trader_id - TraderRepository::TRADER_CONVERT_ID)
-				);
-			}
-			else {
-				search_criteria_trader.append(fmt::format(" AND trader.char_id = {}", search.trader_id));
-			}
+	else if (RuleB(Bazaar, UseAlternateBazaarSearch) && search.trader_id > 0) {
+		if (search.trader_id >= TraderRepository::TRADER_CONVERT_ID) {
+			convert = true;
+			search_criteria_trader.append(fmt::format(
+				" AND trader.char_zone_id = {} AND trader.char_zone_instance_id = {}",
+				Zones::BAZAAR,
+				search.trader_id - TraderRepository::TRADER_CONVERT_ID)
+			);
 		}
 		else {
 			search_criteria_trader.append(fmt::format(" AND trader.char_id = {}", search.trader_id));
 		}
 	}
+	// else: AoTv4 global marketplace search -- no zone/char restriction (all listings are searchable
+	// everywhere). Item-name/type/cost/stat filters below still apply via where_criteria_items.
 
 	if (search.min_cost != 0) {
 		search_criteria_trader.append(fmt::format(" AND trader.item_cost >= {}", search.min_cost * 1000));

@@ -372,6 +372,9 @@ public:
 	std::string GetMyShopListing();
 	int AddItemsToShop(std::string csv);
 	int PullShopItem(int serial);
+	void SetItemPrice(int item_id, int price);
+	std::string GetPriceBook();
+	std::string GetPriceLog();
 	bool IsTrader();
 	void ResetAlternateAdvancementRank(int aa_id);
 	void MarkSingleCompassLoc(float in_x, float in_y, float in_z);

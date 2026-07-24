@@ -5997,16 +5997,13 @@ void EntityList::RestoreCorpse(NPC *npc, uint32_t decay_time)
 void EntityList::CheckToClearTraderAndBuyerTables()
 {
 	if (zone->GetZoneID() == Zones::BAZAAR) {
-		TraderRepository::DeleteWhere(
-			database,
-			fmt::format(
-				"`char_zone_id` = {} AND `char_zone_instance_id` = {}", zone->GetZoneID(), zone->GetInstanceID()
-			)
-		);
+		// AoTv4: do NOT clear trader rows here. Listings are PERMANENT escrow (§13) -- a player who listed
+		// while standing in the Bazaar zone (char_zone_id=151) would otherwise lose their whole shop when
+		// the Bazaar zone cycles. Buyer entries are transient runtime state, so those are still cleared.
 		BuyerRepository::DeleteBuyers(database, zone->GetZoneID(), zone->GetInstanceID());
 
 		LogTradingDetail(
-			"Removed trader and buyer entries for Zone ID [{}] and Instance ID [{}]",
+			"AoTv4: cleared Bazaar buyer entries (trader rows preserved) for Zone ID [{}] Instance ID [{}]",
 			zone->GetZoneID(),
 			zone->GetInstanceID()
 		);

@@ -322,10 +322,13 @@ public:
 	std::string SearchDetail(std::string kind, uint32 id);        // one row's info, lines split by '~'
 
 	// AoTv4 permanent escrow shop (add-from-any-bag; managed via the dll "My Shop" tab):
-	std::string GetSellableInventory();            // "slot|itemid|name|vendor^..." droppable items to add
-	std::string GetMyShopListing();                // "item_sn|itemid|name|cost^..." current shop rows
-	int  AddItemsToShop(std::string csv);          // "slot:price,..." -> escrow items out of bags into rows
+	std::string GetSellableInventory();            // "slot|itemid|name|vendor|stackqty|bookprice^..." items to add
+	std::string GetMyShopListing();                // "item_sn|itemid|name|cost|qty^..." current shop rows
+	int  AddItemsToShop(std::string csv);          // "slot:qty,..." -> escrow at the item's PRICE-BOOK price
 	int  PullShopItem(uint32 serial);              // unlist one row -> item back to cursor
+	void SetItemPrice(uint32 item_id, uint32 price); // AoTv4 price book: persist item_id->price + append change log
+	std::string GetPriceBook();                    // "itemid|name|price^..." your saved prices (persistent)
+	std::string GetPriceLog();                     // "itemid|name|old|new|when^..." recent price changes
 //	void TraderPriceUpdate(const EQApplicationPacket *app);
 	uint8 WithCustomer(uint16 NewCustomer);
 	std::vector<uint32> GetKeyRing() { return keyring; }

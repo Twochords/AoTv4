@@ -2240,7 +2240,13 @@ void Database::ClearGuildOnlineStatus()
 
 void Database::ClearTraderDetails()
 {
-	TraderRepository::Truncate(*this);
+	// AoTv4: the `trader` table is PERMANENT escrow storage. A listed item lives ONLY as its row --
+	// Client::AddItemsToShop DELETES it from the player's satchel when listing -- so these rows MUST
+	// survive world restarts (and logouts, and death). The stock behaviour TRUNCATEs this table on every
+	// world boot (safe on live EQ, where the item still sits in the satchel and the table is just a
+	// runtime cache), which HERE would permanently destroy every player's shop. So we do NOT truncate;
+	// we only clear the transient `active_transaction` lock in case a purchase was mid-flight at shutdown.
+	QueryDatabase("UPDATE `trader` SET `active_transaction` = 0 WHERE `active_transaction` <> 0");
 }
 
 void Database::ClearBuyerDetails()

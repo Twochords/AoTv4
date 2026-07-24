@@ -1410,6 +1410,21 @@ int Lua_Client::PullShopItem(int serial) {
 	return self->PullShopItem(serial);
 }
 
+void Lua_Client::SetItemPrice(int item_id, int price) {
+	Lua_Safe_Call_Void();
+	self->SetItemPrice(static_cast<uint32>(item_id), static_cast<uint32>(price));
+}
+
+std::string Lua_Client::GetPriceBook() {
+	Lua_Safe_Call_String();
+	return self->GetPriceBook();
+}
+
+std::string Lua_Client::GetPriceLog() {
+	Lua_Safe_Call_String();
+	return self->GetPriceLog();
+}
+
 bool Lua_Client::IsTrader() {
 	Lua_Safe_Call_Bool();
 	return self->IsTrader();
@@ -4024,6 +4039,9 @@ luabind::scope lua_register_client() {
 	.def("GetMyShopListing", &Lua_Client::GetMyShopListing)
 	.def("AddItemsToShop", &Lua_Client::AddItemsToShop)
 	.def("PullShopItem", &Lua_Client::PullShopItem)
+	.def("SetItemPrice", &Lua_Client::SetItemPrice)
+	.def("GetPriceBook", &Lua_Client::GetPriceBook)
+	.def("GetPriceLog", &Lua_Client::GetPriceLog)
 	.def("IsTrader", &Lua_Client::IsTrader)
 	.def("GrantNameChange", &Lua_Client::GrantNameChange)
 	.def("GuildID", (uint32(Lua_Client::*)(void))&Lua_Client::GuildID)

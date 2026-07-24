@@ -435,17 +435,27 @@ zone reads it, so gating is consistent and survives restarts.
 > enabled, type 1-5, real-named, `expansion 0-8`, first-rank `level_req <= 70`, dedup by name) so
 > **pool == tagged set**. An AA in the pool but not tagged Bard → its grant silently fails.
 
-## 13. Player shop (permanent escrow trader) — `/shop`
+## 13. Player shop (permanent escrow trader) — `/trader` (was `/shop`)
 
 An AFK player shop that works from **any city** (no Bazaar zone, no NPC, no Trader's Satchel), documented
 in full in **`HANDOFF.md`**. Items are **escrowed** (they leave your bags when listed → no dupe), searchable
 via the native `/bazaar`, delivered by parcel, and paid to the seller on sale (instantly if online, else
-banked to next login). Managed by a **two-tab dll window** (`/shop`).
+banked to next login). Managed by a **three-tab native SIDL window** (`/trader`): **Set Price** (price an
+inventory item into a persistent price book + see that item's price history) / **List Item** (choose a
+quantity and add a priced item to your shop) / **My Shop** (pull a listing back).
 
-- **Protocol (chat, dll swallows all of it):** `/shop` → dll rewrites to `/say shopopen`; server replies
-  `SHOPINVDATA slot|itemid|name|vendor^…` (Add-Items tab: your droppable bag items) + `MYSHOPDATA
-  itemsn|itemid|name|cost^…` (My-Shop tab: current listings). dll → `/say shopadd slot:copper,…` (escrow
-  into shop), `/say shoppull <itemsn>` (unlist → cursor), `/say shoprefresh`.
+- **Protocol (chat, dll swallows all of it):** `/trader` → dll rewrites to `/say shopopen`; server replies with
+  four lines — `SHOPINVDATA slot|itemid|name|vendor|stackqty|bookprice^…` (inventory + its saved price),
+  `SHOPBOOKDATA itemid|name|price^…` (the price book), `SHOPLOGDATA itemid|name|old|new|when^…` (price-change
+  history, newest first), `MYSHOPDATA itemsn|itemid|name|cost|qty^…` (current listings). dll → `/say
+  shopsetprice <itemid>:<copper>` (persist a book price), `/say shopadd slot:qty,…` (escrow; **price comes
+  from the book, NOT the command** — an unpriced item is rejected), `/say shoppull <itemsn>` (unlist →
+  cursor), `/say shoprefresh`.
+- **Price book (2026-07, `zone/trading.cpp`):** per-character `item_id→price` persisted in the
+  `shopbook_<charid>` data bucket; a capped (20-entry) change log in `shoplog_<charid>`. `SetItemPrice`
+  (upsert + append log), `GetPriceBook`, `GetPriceLog` — all Lua-bound (`lua_client.*`). `GetSellableInventory`
+  now carries the book price per row; `AddItemsToShop` reads the price from the book (so `shopadd` sends only
+  `slot:qty`). Rationale: you set prices once, then list from them without re-typing. **Needs a zone rebuild.**
 - **Server (`zone/trading.cpp`, `Client::` + Lua-bound):** `GetSellableInventory`, `AddItemsToShop`
   (**insert rows FIRST, then delete items** — loss-safe; unique `item_sn` from the `shopsn_<charid>`
   counter because item serials change across relog), `GetMyShopListing`, `PullShopItem`. Rows persist in
@@ -462,6 +472,92 @@ banked to next login). Managed by a **two-tab dll window** (`/shop`).
   in that `active` check, so focusing one overlay doesn't hide the others — **multiple overlays coexist**.
   The shop window is draggable across its whole top strip. `/shop` intercept is in `core_bazaar.h`
   (`areTradeAnywhereEnabled=true`).
+- **Native trader window ANYWHERE — attempted, NOT viable (2026-07). The `/shop` window is the answer.**
+  We tried to open the real RoF2 trader window (`CBazaarWnd`) outside the Bazaar and it **does not render**,
+  even though the window *object* exists everywhere. Findings (so nobody re-treads this):
+  - `pinstCBazaarWnd` @ `0xD1FCB0` / `pinstCBarterWnd` @ `0xF70CF0` are **non-null in all zones** (runtime
+    Ctrl+B vtable dump) — built at UI-load. `/trader`→`0x4EAB40`, `/buyer`→`0x4E6F60` (from `__CommandList`
+    @ `0xACD5A8`); the handler has no zone check — it guards `window+0x1D4` then calls the show wrapper
+    `vtable[0x90]`=`0x864100` → `CXWnd::Show(1,1,1)` (`vtable[0xd8]`).
+  - **But calling Show (via the handler OR directly, bypassing the `[0x1d4]` gate) shows NOTHING outside the
+    Bazaar** — TESTED in-game (Ctrl+T and a `/trader` intercept both fail; `/shop` works, so the dll/detour
+    is fine). `[0x1d4]` is the window's "active" state (written by Bazaar UI code @ `0x652BBA`/`0x654D28`;
+    Deactivate = `0x63ADB0`). The window only renders after `CBazaarWnd::Activate` runs **on Bazaar entry**
+    (positions it, wires it into the Bazaar screen). Show just re-shows an already-activated window; outside
+    the Bazaar it was never activated, so nothing draws. Replicating that activation is a large, fragile,
+    untestable-without-rebuild client patch — **not worth it**, especially since the Bazaar zone may not exist.
+  - Leftover harmless code: the `/trader`/`/buyer` intercepts in `core_bazaar.h` (call Show → no-op visually)
+    and the Ctrl+T/Ctrl+Y/Ctrl+B diagnostics in core_spellwindow.cpp. Kept as documentation of the dead end.
+  - **Resolution:** the custom **`/shop`** window already delivers the full requirement (offline trader, any
+    zone, NO Bazaar zone needed, global `/bazaar` search, escrow/parcel payout). It was **restyled to the
+    EQ-native look** (2026-07, `VendorPaint`/`VDrawBtn`/new `VBevel` + title-bar in core_spellwindow.cpp):
+    gold/tan metallic window frame (dark→bright→mid gold band), near-black background, a **gold "Trader" title
+    bar** (`VTBAR_H`=24, embossed strip + gold underline, `[X]` in its top-right), sunken recessed list panel +
+    raised header strip, EQ beveled-grey buttons, sunken coin input fields, alternating row bands, cream/gold
+    text. ⚠️ **Layout uses shared helpers** (`VTabBtn`/`VUpBtn`/`VField`/`VActBtn`/`VRowY`/`VLIST_Y`/`hy`) for
+    BOTH paint and click hit-testing — all include `VTBAR_H`, so the title-bar shift stays consistent; the drag
+    region (WndProc) is the only raw-constant spot. `VDrawBtn`/`VBevel` are shared with the search window.
+    **Needs a dll rebuild.**
+  - **SUPERSEDED by a native SIDL window (2026-07).** The GDI restyle only *imitates* EQ chrome; the real fix
+    (asked "why not use the window XML as reference?") is a **native `CCustomWnd`** — same approach as the
+    achievement window (§15), which renders with the client's own UI engine so it looks truly native AND
+    works in any zone. Built from the reference XMLs the user supplied (`/src/EQUI_BazaarWnd.xml` etc.):
+    - **`EQUI_ShopWnd.xml`** (`aotv4_client_install/uifiles_default/`) — Screen `item="ShopWnd"` (`WDT_Def`
+      frame, Titlebar/Closebox, title "Trader"), a `Listbox` (`WDT_Inner`, cols Item/Qty/Price), 4 coin
+      `Editbox`es, buttons Set Price / Add to Shop / Pull Item / Refresh + Add-Items/My-Shop tabs.
+    - **`ShopWnd : CCustomWnd`** (core_spellwindow.cpp) — REUSES the GDI backend (same `g_vendor*`/`g_my*`
+      state + `VendorQueue`/`VendorDoAdd`); `WndNotification` maps clicks → the same `/say shopadd/shoppull/
+      shoprefresh`. `EnsureShopWindow` wires `ppSidlMgr`/`ppWndMgr` from client globals (the §15 fix).
+      `SHOPINVDATA` now calls `ShopSidlShow()` (was `g_vendorVisible=true`); `MYSHOPDATA`→`ShopWndRefreshIfOpen`;
+      teardown `ShopWndOnUiReset()` is called from the achievement `CleanGameUI`/`ReloadUI` detour (it owns
+      those). Old GDI overlay stays in the dll but is never shown.
+    - ⚠️ **SIDL editbox I/O gotchas (learned the hard, crashy way) — THREE traps:**
+      1. **Raw struct member offsets are WRONG for this client build.** Accessing `((CEditWnd*)w)->InputText`
+         reads empty and `w->WindowText` reads a garbage pointer → `GetCXStr` on it **CRASHES**. `EQClasses.h`
+         member offsets don't match this RoF2 build. Only **address-mapped METHODS** (`FUNCTION_AT_ADDRESS`) are
+         reliable. So **read** an editbox via the method `w->GetWindowTextA()` (`0x411190`) and pull chars from
+         the returned `CXStr` (which wraps one `CXSTR*`): `CXStr s = w->GetWindowTextA(); PCXSTR raw =
+         *(PCXSTR*)&s; if (raw) GetCXStr(raw, buf, n);` (`ShopGetInt`). **Set** labels via `SetWindowTextA`
+         (`ShopSetLabel`). Don't pre-fill editboxes (and `CXStr::operator char*` isn't address-bound — never cast).
+      2. **Clicking a coin field clears the Listbox selection**, so at button-click `GetCurSel()` is −1 and any
+         "apply to selected row" no-ops (symptom: Set Price never changes the price). Remember the row on
+         list-click in `m_sel` and use `SelRow()` (single-item fallback), NOT live `GetCurSel()`.
+      3. `/echo` is NOT a valid EQ command (that's an MQ2 thing) — for in-window feedback use `WriteChatColor`
+         (MQ2Main.h / MQ2PluginHandler.cpp is in the build) or set a label; `/echo` returns "invalid command".
+    - **Stackable quantity (2026-07):** `Client::AddItemsToShop` (trading.cpp) lists a **partial stack**
+      (`item_charges = list_qty`; `DeleteItemInInventory(slot, del_qty)` where `del_qty` 0 = whole stack) so you
+      can list N of a stack and keep the rest. Client shows real Qty + has a `SHW_Qty` field (default = full
+      stack); state in `g_vendorStack`/`g_vListQty`/`g_myQty`. Field splitting is `VSplitN(s, out, n)` (the shop's
+      old `VSplit5` was renamed — a duplicate def collided with the loot window's `VSplit5`). Buyer still
+      purchases the whole listing (per-unit buys would be a bigger change). **Needs a zone rebuild + dll rebuild.**
+    - **Three tabs (2026-07, `ShopWnd` in core_spellwindow.cpp):** `g_vendorTab` 0/1/2 = Set Price / List Item /
+      My Shop (`SHOP_TAB_*`). One shared `SHW_ItemList`; `ApplyVis()` shows/hides each tab's controls via
+      `CXWnd::Show`. Set Price → `shopsetprice`; List → `shopadd slot:qty` for the selected row (`VendorDoAdd`);
+      Pull → `shoppull`. History listbox `SHW_HistList` is filtered to the selected item's id (`FillHistory`),
+      relative "when" via `ShopWhenStr`. EQUI_ShopWnd.xml is CX564×CY600 (single shared item list -- a
+      per-tab second listbox for filling List/My Shop was tried and caused a UI-load error, so it was
+      dropped; keep the layout to ONE list of each type). **Needs a dll rebuild.**
+    - **Command: `/trader`** (core_bazaar.h) routes to `/say shopopen` → server SHOPINVDATA → `ShopSidlShow`.
+      The old `/shop` and `/buyer` intercepts were **removed** (the native trader/buyer windows can't render
+      standalone).
+    - **Client install:** `aotv4_client_install/SHOP_WINDOW_INSTALL.md` — copy `EQUI_ShopWnd.xml` to
+      `uifiles/default/` + `<Include>` it in `EQUI.xml`, rebuild the dll. Like the achievement window, expect
+      a possible iteration to nail the SIDL wiring.
+- ⚠️ **Bazaar search MUST be global — `common/bazaar.cpp` `Bazaar::GetSearchResults` (2026-07 fix).** Escrow
+  sellers list from ANY zone (the `trader` row's `char_zone_id` is wherever they stood — never a single Bazaar
+  zone), so the STOCK scope filters break trader-anywhere: `Local_Scope` restricts to the searcher's zone, and
+  the `else if (trader_id > 0)` branch restricts to one `char_id`. RoF2 sends `Local_Scope`/`AllTraders_Scope`
+  and populates `trader_id` from the selected trader, so **stock scoping shows each player only their own /
+  their-zone listings** (symptom: "others can't see my listing; needs a relog"). Fix: for the non-alternate
+  path, add **no** trader/zone filter — `search_criteria_trader` stays `"TRUE"` → all listings match (item
+  name/type/cost filters still apply). Keep the NonRoF per-trader-inspect path + the (rule-gated, off) shard
+  path intact. The buyer's trader **list** was already global (`GetDistinctTraders`, no zone filter when
+  `UseAlternateBazaarSearch=false`). **Needs a zone rebuild** (bazaar.cpp is in `libcommon`).
+- **Live visibility on list** is already wired: `AddItemsToShop` calls `SetTrader(true)` +
+  `SendBecomeTraderToWorld(this, TraderOn)` → world fans `ServerOP_TraderMessaging` to every zone
+  (`ZSList::SendPacket`) → each zone pushes `AddTraderToBazaarWindow` to all online RoF2 clients. So a listing
+  appears in others' open bazaar windows without a relog — but the buyer must still click **Search** (the
+  bazaar has no passive item feed). This only *worked* once the global-search fix above unmasked it.
 - **Do NOT resurrect** (removed on request): the Bazaar Broker NPC (2000050), the Shopkeeper stand-in NPC
   (2000051), the Trader's-Satchel `vpset/vshop` flow, or `Bazaar:UseAlternateBazaarSearch` (keep it false —
   it's Bazaar-zone-sharded, the opposite of trader-anywhere).
@@ -617,3 +713,16 @@ categories showing 0/0 and later in-scope tiers empty. Fixes:
   Creature Slayer 5xxxxx, Zone Slayer 7000xx-7004xx, Server Custom 8000xx, Meta 900xxx, Class Mastery 9000xxx,
   GoD/OoW Hunter 3307xx/3308xx. **Every category is now populated** (Epics 16, Exploration 277, Hunter 136,
   Slayer 385, Progression 490, Tradeskill 72, Server Custom 4, Character 22, Class Mastery 16, Meta 4).
+- **Parent headers drill down (code):** the dll shows categories as a flat list with children indented; a parent
+  (Hunter/Exploration/…) has NO direct achievements, so selecting it used to show an empty list. `LoadAchievements`
+  now returns the union of the selected category + its enabled child categories (grouped by `category_id`), so
+  clicking "Hunter" lists all 136. Leaves are unaffected (no children).
+- ⚠️ **Live-refresh must stay small — chat-burst drops (fix).** `PushLiveUpdate` originally re-sent ALL ~40
+  `ACH|category` lines per completion; the RoF2 chat pipe drops/reorders that burst, losing the trailing
+  `ACH|achievement_state` row-flip → "the window updates only sometimes." Now it sends the **state flip first**,
+  then only the **affected leaf + its parent** (1 status + 1 state + ≤2 category = ~4 lines). Any per-completion
+  push here must stay minimal for the same reason. (A big parent drill-in still sends ~N achievement lines, same
+  load as the pre-existing 490-row Task Completion leaf — if a huge list ever truncates, batch it.)
+- **Native EQ-menu "Achievements" button is intentionally NOT hooked** — it opens RoF2's stock `CAchievementsWnd`
+  (which we never populate), not our window. Redirecting it needs RE of the client's native-open call; by choice
+  the window is opened via `#ach`/`/ach` instead.
