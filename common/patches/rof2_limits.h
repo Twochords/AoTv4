@@ -343,7 +343,7 @@ namespace RoF2
 			AltAbility = 0xFF
 		};
 
-		const int SPELL_ID_MAX = 45000;
+		const int SPELL_ID_MAX = 50240;	// AoTv4: custom spell set lives at 50000-50239 (above the stock 45000 cap), so the RoF2 spellbook/gem packet builders would drop them -- raise the ceiling to include them
 		const int SPELLBOOK_SIZE = 720;
 		const int SPELL_GEM_COUNT = static_cast<uint32>(CastingSlot::MaxGems);
 

@@ -529,7 +529,12 @@ int64 Client::CalcMaxMana()
 			GroupLeadershipAAManaEnhancement()
 		);
 	} else {
-		max_mana = 0;
+		// AoTv4: "all classes are casters" -- the four pure-melee classes (Warrior/Monk/Rogue/Berserker)
+		// get a mana pool that GROWS with level like a hybrid: level * 40. This MUST match the client
+		// dll's AOTV4_MELEE_MANA_PER_LEVEL (.devcontainer/repo/eq-core-dll/src/core_allcasters.h) exactly
+		// -- same constant, same level -- so the gauge max (client-computed) == this server ceiling and
+		// the bar fills to 100%. No bonuses -> exact match. Tune the 40 in BOTH places together.
+		max_mana = GetLevel() * 40;
 	}
 
 	if (max_mana < 0) {

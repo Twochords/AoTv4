@@ -8,6 +8,8 @@ local death_loss = require("death_loss")
 local era_system = require("era_system")   -- server-wide expansion unlock progression
 local hotzones = require("hotzones")       -- daily-rotating Hot Zones (flat 2x EXP)
 local bazaar_broker = require("bazaar_broker")  -- player-shop vendor window (vpset/vshop/vclose)
+local aotv4_reactions = require("aotv4_reactions")  -- custom "when you are hit" abilities
+local aotv4_pets = require("aotv4_pets")             -- summon traits + pet behaviour
 
 -- AA-on-death tuning (roguelite: death banks AA and resets the character to level 1).
 -- Reward tracks XP EFFORT below the cap, then JUMPS at the era level cap to reward the last push.
@@ -40,6 +42,7 @@ function event_enter_zone(e)
 	eq.set_hotzone(hotzones.is_hot(eq.get_zone_short_name()))  -- 2x EXP if this is one of today's rotating hot zones
 	e.self:Message(MT.NPCQuestSay, "PORTALCLOSE")   -- dismiss the Portal window on any zone change
 	e.self:SetTimer("skillsync", 2)                 -- one-shot: re-reveal earned combat abilities after the UI builds (no jump)
+	e.self:SetTimer("aotpet", 5)                    -- repeating: auto-summon the Summon-ability pet once out of combat
 
 	-- Gloomingdeep Guard (5150) is a Tutorial-only protective buff; strip it the moment you leave the
 	-- Tutorial so our permanent-buff rule doesn't carry it out into the world. (It stays while in tutorialb.)
@@ -414,6 +417,10 @@ function event_timer(e)
 		-- list, then (re)send the earned-skill set + nudge a rebuild so abilities show without jumping.
 		e.self:StopTimer("skillsync")
 		spell_choice.send_unlocks(e.self)
+	elseif e.timer == "aotpet" then
+		-- Summon abilities are traits, not casts: this is what actually puts the
+		-- pet at your side once you are out of combat and petless.
+		aotv4_pets.maybe_summon(e.self)
 	end
 end
 
@@ -545,6 +552,10 @@ end
 -- The random AA window then pops; banked AA scales with how far the run got.
 function event_death(e)
   local client = e.self
+
+  -- a duel ends the moment one of the participants dies
+  aotv4_reactions.end_duel(client:GetID())
+
   local death_level = client:GetLevel()   -- capture BEFORE the roguelite reset to level 1 below
   local run_xp      = client:GetEXP()     -- XP earned THIS run (effort); also captured pre-reset
 
@@ -730,4 +741,17 @@ end
 
 function event_task_complete(e)
   don.on_task_complete(e.self, e.task_id)
+end
+
+-- Custom "when you are hit" abilities: Divine Aura, Blade Turn, Counterattack,
+-- Vengeful Aura. The RETURN VALUE matters here -- zone/attack.cpp:4404 uses it
+-- as damage_override (negative negates the hit, positive replaces it, 0 leaves
+-- it alone), so this must return what the module hands back.
+function event_damage_taken(e)
+  return aotv4_reactions.on_damage_taken(e)
+end
+
+-- Open Wounds banks a share of every hit on a marked target as pending bleed.
+function event_damage_given(e)
+  return aotv4_reactions.on_damage_given(e)
 end

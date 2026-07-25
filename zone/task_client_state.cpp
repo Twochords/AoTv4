@@ -26,6 +26,7 @@
 #include "common/rulesys.h"
 #include "common/shared_tasks.h"
 #include "zone/client.h"
+#include "zone/achievement_manager.h"
 #include "zone/dynamic_zone.h"
 #include "zone/queryserv.h"
 #include "zone/quest_parser_collection.h"
@@ -942,6 +943,8 @@ int ClientTaskState::IncrementDoneCount(
 				};
 				RecordPlayerEventLogWithClient(client, PlayerEvent::TASK_COMPLETE, e);
 			}
+
+			achievement_manager.ProcessTaskComplete(client, info->task_id);
 
 			client->SendTaskActivityComplete(info->task_id, 0, task_index, task_data->type, 0);
 

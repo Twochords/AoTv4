@@ -22,6 +22,7 @@
 #include "common/evolving_items.h"
 #include "common/repositories/character_corpse_items_repository.h"
 #include "common/strings.h"
+#include "zone/achievement_manager.h"
 #include "zone/bot.h"
 #include "zone/queryserv.h"
 #include "zone/quest_parser_collection.h"
@@ -668,6 +669,8 @@ bool Client::SummonItem(uint32 item_id, int16 charges, uint32 aug1, uint32 aug2,
 		DiscoverItem(item_id);
 	}
 
+	achievement_manager.ProcessItemReceive(this, item_id);   // item_receive objectives (class epics)
+
 	return true;
 }
 
@@ -1042,6 +1045,8 @@ bool Client::PushItemOnCursor(const EQ::ItemInstance& inst, bool client_update)
 	if (client_update) {
 		SendItemPacket(EQ::invslot::slotCursor, &inst, ItemPacketLimbo);
 	}
+
+	achievement_manager.ProcessItemReceive(this, inst.GetItem()->ID);   // item_receive objectives (loot -> cursor)
 
 	auto s = m_inv.cursor_cbegin(), e = m_inv.cursor_cend();
 	return database.SaveCursor(CharacterID(), s, e);
@@ -1776,30 +1781,12 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 		CheckIfMovedItemIsPartOfBuyLines(srcitemid);
 	}
 
-	if (IsTrader() && srcitemid>0){
-		EQ::ItemInstance* srcbag;
-		EQ::ItemInstance* dstbag;
-		uint32 srcbagid =0;
-		uint32 dstbagid = 0;
-
-		if (src_slot_id >= EQ::invbag::GENERAL_BAGS_BEGIN && src_slot_id <= EQ::invbag::GENERAL_BAGS_END) {
-			srcbag = m_inv.GetItem(EQ::InventoryProfile::CalcSlotId(src_slot_id));
-			if (srcbag)
-				srcbagid = srcbag->GetItem()->ID;
-		}
-		if (dst_slot_id >= EQ::invbag::GENERAL_BAGS_BEGIN && dst_slot_id <= EQ::invbag::GENERAL_BAGS_END) {
-			dstbag = m_inv.GetItem(EQ::InventoryProfile::CalcSlotId(dst_slot_id));
-			if (dstbag)
-				dstbagid = dstbag->GetItem()->ID;
-		}
-		if ((srcbagid && srcbag->GetItem()->BagType == EQ::item::BagTypeTradersSatchel) ||
-		    (dstbagid && dstbag->GetItem()->BagType == EQ::item::BagTypeTradersSatchel) ||
-		    (srcitemid && src_inst && src_inst->GetItem()->BagType == EQ::item::BagTypeTradersSatchel) ||
-		    (dstitemid && dst_inst && dst_inst->GetItem()->BagType == EQ::item::BagTypeTradersSatchel)) {
-			TraderEndTrader();
-			Message(Chat::Red,"You cannot move your Trader Satchels, or items inside them, while Trading.");
-		}
-	}
+	// AoTv4: the stock code ends trader mode -- and, before the escrow fix, DELETED all listings -- whenever
+	// a Trader's Satchel (or an item in it) is moved "while Trading". That protection exists only because on
+	// live EQ the LISTED items physically live in the satchel, so moving them would desync the listing. Here
+	// listed items are ESCROWED out of the satchel and live only as `trader` rows, so rearranging the satchel
+	// (e.g. staging the next item to list via /shop) is harmless and must NOT disturb the open shop. So the
+	// whole block is removed -- players can freely move satchel items while their shop stays listed.
 
 	// Step 2: Validate item in from_slot
 	// After this, we can assume src_inst is a valid ptr

@@ -327,12 +327,13 @@ inline void LoadNPCState(Zone *zone, NPC *n, ZoneStateSpawnsRepository::ZoneStat
 			n->RestoreMana();
 		}
 	}
+	// the NPC here is `n`; grid/waypoint come off the saved state `s`
 	LogInfo(
 		"Restoring pathing: NPC={} Spawn={} Grid={} StartWP={}",
-		npc->GetNPCTypeID(),
-		npc->GetSpawnPointID(),
-		grid_id,
-		start_wp
+		n->GetNPCTypeID(),
+		n->GetSpawnPointID(),
+		s.grid,
+		s.current_waypoint
 	);
 
 	if (s.grid) {

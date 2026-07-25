@@ -2931,8 +2931,8 @@ bool Mob::ApplyBardPulse(int32 spell_id, Mob *spell_target, CastingSlot slot) {
 	// AoTv4: recompute bonuses after every song pulse. Stock behavior: once a song's buff exists, AddBuff
 	// short-circuits ("do not recast a buff we already have on") and skips the CalcBonuses() it normally
 	// runs on add -- so a continuously-pulsing song's spellbonuses (haste from Vilia's, etc.) never re-apply
-	// after the first tick. AoTv4 makes songs effectively permanent, so the pulse runs forever and the gap
-	// is permanent. Recompute here (caster and target) so active-song bonuses stay live.
+	// after the first tick, and the bonus silently goes stale for as long as the song keeps pulsing.
+	// Recompute here (caster and target) so active-song bonuses stay live.
 	CalcBonuses();
 	if (spell_target != this)
 		spell_target->CalcBonuses();
@@ -2997,32 +2997,18 @@ int Mob::CalcBuffDuration(Mob *caster, Mob *target, uint16 spell_id, int32 caste
 		res = 10000; // ~16h override
 	}
 
-	// AoTv4: BENEFICIAL buffs and bard songs on player-side targets are effectively PERMANENT -- cast once
-	// and keep it, no re-buffing or re-singing. Only affects spells that already have a buff duration
-	// (res > 0) and are beneficial; DETRIMENTAL effects are untouched and still expire normally.
-	// NOTE: we do NOT use PERMANENT_BUFF_DURATION (-1000) here. The RoF2 client applies a buff's STAT
-	// bonus for a duration it derives itself and MISHANDLES the permanent sentinel -- it draws a permanent
-	// icon but drops the stats at the spell's native time (Chant of Battle, Yaulp, etc.). A very large but
-	// FINITE tic count is a normal value the client keeps applying stats for. 1,000,000 tics ~= 69 days of
-	// continuous playtime -- effectively permanent (a roguelite death re-buffs long before then); it does
-	// decrement in the tic loop, and the buff window shows a long countdown instead of an infinity symbol.
-	// AoTv4: some beneficial buffs are SHORT-TERM by design and must keep their native duration, not go
-	// permanent -- HEAL-OVER-TIME (dedicated HoTs, SE_HealOverTime; group HoTs; and HP regen, SE_CurrentHP)
-	// and INVULNERABILITY (Divine Aura). Mana regen (Clarity, SE_CurrentMana) and stat/HP-max buffs are NOT
-	// heal-over-time, so they still go permanent as intended.
-	bool short_term_buff = IsInvulnerabilitySpell(spell_id) ||
-	                       IsEffectInSpell(spell_id, SpellEffect::HealOverTime) ||
-	                       IsEffectInSpell(spell_id, SpellEffect::CurrentHP) ||
-						   IsDiscipline(spell_id);
-	// AoTv4: AA-cast buffs are EXCLUDED from the permanent extension -- an AA's buff keeps its NATIVE
-	// duration (and the AA keeps its native reuse timer), so it behaves normally: it fades on its own
-	// time and is re-activated when the AA refreshes, rather than sticking forever. casting_spell_aa_id
-	// is still set on the caster while SpellOnTarget->CalcBuffDuration runs (see SpellOnTarget @ ~2794).
-	if (res > 0 && IsBeneficialSpell(spell_id) && !short_term_buff && target &&
-		(target->IsClient() || target->IsBot() || target->IsMerc() || target->IsPet()) &&
-		!(caster && caster->casting_spell_aa_id)) {
-		res = 1000000;
-	}
+	// AoTv4: NO BUFF IS PERMANENT. Every buff -- beneficial or detrimental, song or spell -- runs for the
+	// duration its spell data declares and then fades.
+	//
+	// This deliberately REPLACES an earlier AoTv4 rule that extended beneficial player-side buffs to
+	// 1,000,000 tics (~69 days, "cast once and keep it"), with carve-outs for HoTs, SE_CurrentHP,
+	// invulnerability, disciplines and AA-cast buffs. That rule silently overrode the designed duration of
+	// any timed beneficial buff, which is wrong for the custom spell set (see
+	// .devcontainer/custom/spells/SPELL_REBUILD.md) -- e.g. Vengeful Aura trades "physical damage you take
+	// is doubled" for a 4-tic retaliation window, and making that permanent turns an upside into a curse.
+	//
+	// Abilities that are meant to be always-on are modelled as permanent PASSIVES in their spell data
+	// (buffdurationformula 50), not by overriding a finite duration here.
 
 	// AoTv4: cap NPC-cast CROWD CONTROL on players so a mob can't perma-lock a player (e.g. the Unrest
 	// ghoul chain-casting Ghoul Root, buffduration 5 = ~30s). Buff durations count whole 6-second tics,

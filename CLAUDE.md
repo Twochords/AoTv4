@@ -1,10 +1,17 @@
-# AoTv4 — Bard-only Random-Progression EQ Server
+# AoTv4 — All-Classes Random-Progression EQ Server
 
 EQEmu server + RoF2 client mod. The headline feature is a **level-up reward window**: on each
 level you're offered **3 random rewards** (spells or class-specific combat abilities) and pick
-one, which the server scribes/trains. Everyone plays a **Bard** (it both melee-disciplines and
-casts, so one class covers all reward types). The window is drawn by a client-side `dinput8.dll`
+one, which the server scribes/trains. The window is drawn by a client-side `dinput8.dll`
 so it works on a **vanilla RoF2 client — no MacroQuest/E3 required**.
+
+> **⚠️ ALL CLASSES (was Bard-only).** Originally every character was forced to Bard; as of **2026-07**
+> the server is opened to **all 16 classes**. The four pure-melee classes (Warrior/Monk/Rogue/Berserker)
+> are turned into casters **client-side** by the dll (`core_allcasters`, §14) + **server-side** mana
+> (`CalcMaxMana`). The reward-pool spells are opened to every class, and the reward abilities cast as
+> **spells not songs** even for a Bard (client `IsBardSong` detour, §14). Sections below that still say
+> "everyone is a Bard" are **historical** — Bard is now just one of the 16. Existing pre-pivot characters
+> remain Bard (a valid class; no forced reclass).
 
 ---
 
@@ -22,6 +29,8 @@ so it works on a **vanilla RoF2 client — no MacroQuest/E3 required**.
   - `core_spellwindow.cpp` — the spell window, the **AA window** (§6), the **Portal window** (§11),
     **and** the skill-unlock hook; all share the `dsp_chat` + `ProcessGameEvents` detours.
   - `core_skillunlock.h` — declares `EnableSkillUnlock()` (impl is in `core_spellwindow.cpp`).
+  - `core_allcasters.cpp` / `core_allcasters.h` — the **all-classes-as-casters** patch (§14). Its OWN
+    translation unit + OWN dedicated detours; NOT piggy-backed on the spell-window / tradeskill hooks.
   - `_options.h` — feature flags; `core_init.h` — wires them in `InitOptions()`.
 
 ## 2. Running the server
@@ -80,8 +89,8 @@ The **id list is server-side**; the player only sends an **index 1-3**, so a mod
 can't grant an arbitrary reward — only one of the three it was actually offered.
 
 ### Server side (Lua)
-- `global_player.lua`: `event_connect` forces **Bard** + sends `SKILLUNLOCKDATA` (see §4);
-  `event_level_up` auto-grants non-combat skills then calls `spell_choice.offer(e)`;
+- `global_player.lua`: `event_connect` sends `SKILLUNLOCKDATA` (see §4) — the old **Bard-force is REMOVED**
+  (all classes now, §14); `event_level_up` auto-grants non-combat skills then calls `spell_choice.offer(e)`;
   `event_say` calls `spell_choice.handle_say(e)`.
 - `spell_choice.lua` — builds the 3 choices (spells + ~1 combat skill), emits `SPELLCHOICEDATA`,
   validates picks. Stored bucket tokens are **typed**: `S:<spellid>` (spell/disc) or
@@ -235,8 +244,10 @@ GM `#resetaa aa` only *refunds* spent → unspent (doesn't zero the pool). The m
 `UseCurrentExpansionAAOnly` live in `.devcontainer/custom/sql/aotv4_aa.sql`.
 
 ## 7. Database setup
-- **Every char is a Bard** (`character_data.class = 8`; also forced in `event_connect`).
-- **`spells_new.classes8`** = the spell's min learnable level (Bard-usable + pool index).
+- **All 16 classes are playable** (§14). Historically every char was forced to Bard (`class = 8`); the
+  force is removed and `char_create_combinations` restored to all classes. Existing chars stay Bard.
+- **`spells_new.classes8`** = the spell's min learnable level (= the reward-pool index). It's now also
+  opened across every class column (`classes1..16`) so all classes can scribe/cast the reward spells.
 - **Bard `skill_caps`** (`class_id=8`) raised so skills scale; client also needs the exported
   `SkillCaps.txt` (`export_client_files`) installed in the EQ root.
 - **Expansion lock:** `rule_values Expansion:CurrentExpansion = 0` (Classic).
@@ -424,17 +435,27 @@ zone reads it, so gating is consistent and survives restarts.
 > enabled, type 1-5, real-named, `expansion 0-8`, first-rank `level_req <= 70`, dedup by name) so
 > **pool == tagged set**. An AA in the pool but not tagged Bard → its grant silently fails.
 
-## 13. Player shop (permanent escrow trader) — `/shop`
+## 13. Player shop (permanent escrow trader) — `/trader` (was `/shop`)
 
 An AFK player shop that works from **any city** (no Bazaar zone, no NPC, no Trader's Satchel), documented
 in full in **`HANDOFF.md`**. Items are **escrowed** (they leave your bags when listed → no dupe), searchable
 via the native `/bazaar`, delivered by parcel, and paid to the seller on sale (instantly if online, else
-banked to next login). Managed by a **two-tab dll window** (`/shop`).
+banked to next login). Managed by a **three-tab native SIDL window** (`/trader`): **Set Price** (price an
+inventory item into a persistent price book + see that item's price history) / **List Item** (choose a
+quantity and add a priced item to your shop) / **My Shop** (pull a listing back).
 
-- **Protocol (chat, dll swallows all of it):** `/shop` → dll rewrites to `/say shopopen`; server replies
-  `SHOPINVDATA slot|itemid|name|vendor^…` (Add-Items tab: your droppable bag items) + `MYSHOPDATA
-  itemsn|itemid|name|cost^…` (My-Shop tab: current listings). dll → `/say shopadd slot:copper,…` (escrow
-  into shop), `/say shoppull <itemsn>` (unlist → cursor), `/say shoprefresh`.
+- **Protocol (chat, dll swallows all of it):** `/trader` → dll rewrites to `/say shopopen`; server replies with
+  four lines — `SHOPINVDATA slot|itemid|name|vendor|stackqty|bookprice^…` (inventory + its saved price),
+  `SHOPBOOKDATA itemid|name|price^…` (the price book), `SHOPLOGDATA itemid|name|old|new|when^…` (price-change
+  history, newest first), `MYSHOPDATA itemsn|itemid|name|cost|qty^…` (current listings). dll → `/say
+  shopsetprice <itemid>:<copper>` (persist a book price), `/say shopadd slot:qty,…` (escrow; **price comes
+  from the book, NOT the command** — an unpriced item is rejected), `/say shoppull <itemsn>` (unlist →
+  cursor), `/say shoprefresh`.
+- **Price book (2026-07, `zone/trading.cpp`):** per-character `item_id→price` persisted in the
+  `shopbook_<charid>` data bucket; a capped (20-entry) change log in `shoplog_<charid>`. `SetItemPrice`
+  (upsert + append log), `GetPriceBook`, `GetPriceLog` — all Lua-bound (`lua_client.*`). `GetSellableInventory`
+  now carries the book price per row; `AddItemsToShop` reads the price from the book (so `shopadd` sends only
+  `slot:qty`). Rationale: you set prices once, then list from them without re-typing. **Needs a zone rebuild.**
 - **Server (`zone/trading.cpp`, `Client::` + Lua-bound):** `GetSellableInventory`, `AddItemsToShop`
   (**insert rows FIRST, then delete items** — loss-safe; unique `item_sn` from the `shopsn_<charid>`
   counter because item serials change across relog), `GetMyShopListing`, `PullShopItem`. Rows persist in
@@ -451,6 +472,257 @@ banked to next login). Managed by a **two-tab dll window** (`/shop`).
   in that `active` check, so focusing one overlay doesn't hide the others — **multiple overlays coexist**.
   The shop window is draggable across its whole top strip. `/shop` intercept is in `core_bazaar.h`
   (`areTradeAnywhereEnabled=true`).
+- **Native trader window ANYWHERE — attempted, NOT viable (2026-07). The `/shop` window is the answer.**
+  We tried to open the real RoF2 trader window (`CBazaarWnd`) outside the Bazaar and it **does not render**,
+  even though the window *object* exists everywhere. Findings (so nobody re-treads this):
+  - `pinstCBazaarWnd` @ `0xD1FCB0` / `pinstCBarterWnd` @ `0xF70CF0` are **non-null in all zones** (runtime
+    Ctrl+B vtable dump) — built at UI-load. `/trader`→`0x4EAB40`, `/buyer`→`0x4E6F60` (from `__CommandList`
+    @ `0xACD5A8`); the handler has no zone check — it guards `window+0x1D4` then calls the show wrapper
+    `vtable[0x90]`=`0x864100` → `CXWnd::Show(1,1,1)` (`vtable[0xd8]`).
+  - **But calling Show (via the handler OR directly, bypassing the `[0x1d4]` gate) shows NOTHING outside the
+    Bazaar** — TESTED in-game (Ctrl+T and a `/trader` intercept both fail; `/shop` works, so the dll/detour
+    is fine). `[0x1d4]` is the window's "active" state (written by Bazaar UI code @ `0x652BBA`/`0x654D28`;
+    Deactivate = `0x63ADB0`). The window only renders after `CBazaarWnd::Activate` runs **on Bazaar entry**
+    (positions it, wires it into the Bazaar screen). Show just re-shows an already-activated window; outside
+    the Bazaar it was never activated, so nothing draws. Replicating that activation is a large, fragile,
+    untestable-without-rebuild client patch — **not worth it**, especially since the Bazaar zone may not exist.
+  - Leftover harmless code: the `/trader`/`/buyer` intercepts in `core_bazaar.h` (call Show → no-op visually)
+    and the Ctrl+T/Ctrl+Y/Ctrl+B diagnostics in core_spellwindow.cpp. Kept as documentation of the dead end.
+  - **Resolution:** the custom **`/shop`** window already delivers the full requirement (offline trader, any
+    zone, NO Bazaar zone needed, global `/bazaar` search, escrow/parcel payout). It was **restyled to the
+    EQ-native look** (2026-07, `VendorPaint`/`VDrawBtn`/new `VBevel` + title-bar in core_spellwindow.cpp):
+    gold/tan metallic window frame (dark→bright→mid gold band), near-black background, a **gold "Trader" title
+    bar** (`VTBAR_H`=24, embossed strip + gold underline, `[X]` in its top-right), sunken recessed list panel +
+    raised header strip, EQ beveled-grey buttons, sunken coin input fields, alternating row bands, cream/gold
+    text. ⚠️ **Layout uses shared helpers** (`VTabBtn`/`VUpBtn`/`VField`/`VActBtn`/`VRowY`/`VLIST_Y`/`hy`) for
+    BOTH paint and click hit-testing — all include `VTBAR_H`, so the title-bar shift stays consistent; the drag
+    region (WndProc) is the only raw-constant spot. `VDrawBtn`/`VBevel` are shared with the search window.
+    **Needs a dll rebuild.**
+  - **SUPERSEDED by a native SIDL window (2026-07).** The GDI restyle only *imitates* EQ chrome; the real fix
+    (asked "why not use the window XML as reference?") is a **native `CCustomWnd`** — same approach as the
+    achievement window (§15), which renders with the client's own UI engine so it looks truly native AND
+    works in any zone. Built from the reference XMLs the user supplied (`/src/EQUI_BazaarWnd.xml` etc.):
+    - **`EQUI_ShopWnd.xml`** (`aotv4_client_install/uifiles_default/`) — Screen `item="ShopWnd"` (`WDT_Def`
+      frame, Titlebar/Closebox, title "Trader"), a `Listbox` (`WDT_Inner`, cols Item/Qty/Price), 4 coin
+      `Editbox`es, buttons Set Price / Add to Shop / Pull Item / Refresh + Add-Items/My-Shop tabs.
+    - **`ShopWnd : CCustomWnd`** (core_spellwindow.cpp) — REUSES the GDI backend (same `g_vendor*`/`g_my*`
+      state + `VendorQueue`/`VendorDoAdd`); `WndNotification` maps clicks → the same `/say shopadd/shoppull/
+      shoprefresh`. `EnsureShopWindow` wires `ppSidlMgr`/`ppWndMgr` from client globals (the §15 fix).
+      `SHOPINVDATA` now calls `ShopSidlShow()` (was `g_vendorVisible=true`); `MYSHOPDATA`→`ShopWndRefreshIfOpen`;
+      teardown `ShopWndOnUiReset()` is called from the achievement `CleanGameUI`/`ReloadUI` detour (it owns
+      those). Old GDI overlay stays in the dll but is never shown.
+    - ⚠️ **SIDL editbox I/O gotchas (learned the hard, crashy way) — THREE traps:**
+      1. **Raw struct member offsets are WRONG for this client build.** Accessing `((CEditWnd*)w)->InputText`
+         reads empty and `w->WindowText` reads a garbage pointer → `GetCXStr` on it **CRASHES**. `EQClasses.h`
+         member offsets don't match this RoF2 build. Only **address-mapped METHODS** (`FUNCTION_AT_ADDRESS`) are
+         reliable. So **read** an editbox via the method `w->GetWindowTextA()` (`0x411190`) and pull chars from
+         the returned `CXStr` (which wraps one `CXSTR*`): `CXStr s = w->GetWindowTextA(); PCXSTR raw =
+         *(PCXSTR*)&s; if (raw) GetCXStr(raw, buf, n);` (`ShopGetInt`). **Set** labels via `SetWindowTextA`
+         (`ShopSetLabel`). Don't pre-fill editboxes (and `CXStr::operator char*` isn't address-bound — never cast).
+      2. **Clicking a coin field clears the Listbox selection**, so at button-click `GetCurSel()` is −1 and any
+         "apply to selected row" no-ops (symptom: Set Price never changes the price). Remember the row on
+         list-click in `m_sel` and use `SelRow()` (single-item fallback), NOT live `GetCurSel()`.
+      3. `/echo` is NOT a valid EQ command (that's an MQ2 thing) — for in-window feedback use `WriteChatColor`
+         (MQ2Main.h / MQ2PluginHandler.cpp is in the build) or set a label; `/echo` returns "invalid command".
+    - **Stackable quantity (2026-07):** `Client::AddItemsToShop` (trading.cpp) lists a **partial stack**
+      (`item_charges = list_qty`; `DeleteItemInInventory(slot, del_qty)` where `del_qty` 0 = whole stack) so you
+      can list N of a stack and keep the rest. Client shows real Qty + has a `SHW_Qty` field (default = full
+      stack); state in `g_vendorStack`/`g_vListQty`/`g_myQty`. Field splitting is `VSplitN(s, out, n)` (the shop's
+      old `VSplit5` was renamed — a duplicate def collided with the loot window's `VSplit5`). Buyer still
+      purchases the whole listing (per-unit buys would be a bigger change). **Needs a zone rebuild + dll rebuild.**
+    - **Three tabs (2026-07, `ShopWnd` in core_spellwindow.cpp):** `g_vendorTab` 0/1/2 = Set Price / List Item /
+      My Shop (`SHOP_TAB_*`). One shared `SHW_ItemList`; `ApplyVis()` shows/hides each tab's controls via
+      `CXWnd::Show`. Set Price → `shopsetprice`; List → `shopadd slot:qty` for the selected row (`VendorDoAdd`);
+      Pull → `shoppull`. History listbox `SHW_HistList` is filtered to the selected item's id (`FillHistory`),
+      relative "when" via `ShopWhenStr`. EQUI_ShopWnd.xml is CX564×CY600 (single shared item list -- a
+      per-tab second listbox for filling List/My Shop was tried and caused a UI-load error, so it was
+      dropped; keep the layout to ONE list of each type). **Needs a dll rebuild.**
+    - **Command: `/trader`** (core_bazaar.h) routes to `/say shopopen` → server SHOPINVDATA → `ShopSidlShow`.
+      The old `/shop` and `/buyer` intercepts were **removed** (the native trader/buyer windows can't render
+      standalone).
+    - **Client install:** `aotv4_client_install/SHOP_WINDOW_INSTALL.md` — copy `EQUI_ShopWnd.xml` to
+      `uifiles/default/` + `<Include>` it in `EQUI.xml`, rebuild the dll. Like the achievement window, expect
+      a possible iteration to nail the SIDL wiring.
+- ⚠️ **Bazaar search MUST be global — `common/bazaar.cpp` `Bazaar::GetSearchResults` (2026-07 fix).** Escrow
+  sellers list from ANY zone (the `trader` row's `char_zone_id` is wherever they stood — never a single Bazaar
+  zone), so the STOCK scope filters break trader-anywhere: `Local_Scope` restricts to the searcher's zone, and
+  the `else if (trader_id > 0)` branch restricts to one `char_id`. RoF2 sends `Local_Scope`/`AllTraders_Scope`
+  and populates `trader_id` from the selected trader, so **stock scoping shows each player only their own /
+  their-zone listings** (symptom: "others can't see my listing; needs a relog"). Fix: for the non-alternate
+  path, add **no** trader/zone filter — `search_criteria_trader` stays `"TRUE"` → all listings match (item
+  name/type/cost filters still apply). Keep the NonRoF per-trader-inspect path + the (rule-gated, off) shard
+  path intact. The buyer's trader **list** was already global (`GetDistinctTraders`, no zone filter when
+  `UseAlternateBazaarSearch=false`). **Needs a zone rebuild** (bazaar.cpp is in `libcommon`).
+- **Live visibility on list** is already wired: `AddItemsToShop` calls `SetTrader(true)` +
+  `SendBecomeTraderToWorld(this, TraderOn)` → world fans `ServerOP_TraderMessaging` to every zone
+  (`ZSList::SendPacket`) → each zone pushes `AddTraderToBazaarWindow` to all online RoF2 clients. So a listing
+  appears in others' open bazaar windows without a relog — but the buyer must still click **Search** (the
+  bazaar has no passive item feed). This only *worked* once the global-search fix above unmasked it.
 - **Do NOT resurrect** (removed on request): the Bazaar Broker NPC (2000050), the Shopkeeper stand-in NPC
   (2000051), the Trader's-Satchel `vpset/vshop` flow, or `Bazaar:UseAlternateBazaarSearch` (keep it false —
   it's Bazaar-zone-sharded, the opposite of trader-anywhere).
+
+## 14. All classes unlocked (was Bard-only) — 2026-07 pivot
+
+Everyone used to be forced to Bard; now all 16 classes are playable, with the 4 pure-melee classes made
+into casters. Three layers had to agree (like combat skills, §4):
+
+**(a) Client — `core_allcasters.cpp/.h`.** Its OWN translation unit, OWN detours (not piggy-backed on the
+spell-window/tradeskill hooks), gated by `areAllClassesCasters` (`_options.h`). RoF2 image base `0x400000`,
+addresses rebased at runtime. Four detours:
+- `EQ_Character::IsSpellcaster` (**0x443F50**) → always **1**: spellbook + spell-gem bar + casting for every
+  class (RoF2 hides them for Warrior/Monk/Rogue/Berserker via a class→bool table @ 0x443f90).
+- `EQ_Character::Max_Mana` (**0x581E60**) → a melee `0` return becomes `level * AOTV4_MELEE_MANA_PER_LEVEL`
+  (**=40**), so the mana VALUE scales like a hybrid. **Must match the server formula** (see (b)).
+- mana-gauge predicate (**0x59FB90**) → always **1**: `CPlayerWnd::Draw` (0x718cf0) shows the mana GAUGE
+  (`CPlayerWnd+0x22c` "PlayerMana") only when this class→bool predicate is non-zero — forcing 1 renders the
+  blue bar for melee. (A SECOND caster test, distinct from IsSpellcaster.)
+- `EQ_Spell::IsBardSong` (**0x432960**, `bool __stdcall(SPELL* spell, int class)`, `ret 8`) → skill-gated:
+  mirrors the server's `IsBardSong` so the **reward spells cast as normal spells, not songs, even for a Bard**.
+  Stock logic = "caster is a Bard AND the spell has a Bard level" (never checks skill); our reward spells
+  carry a Bard level (so a Bard can memorize them) but use **skill 98**, a non-song placeholder. Detour keeps
+  the stock result but only genuine song skills stay songs: **Brass 12, Singing 41, Stringed 49, Wind 54,
+  Percussion 70** (SPELL::Skill is a BYTE @ **+0x270**; per-class level array @ +0x246, Bard @ +0x24e).
+
+**(b) Server mana.** `zone/client_mods.cpp CalcMaxMana`: the pure-melee else-branch = `GetLevel() * 40`.
+Keep this constant in step with the dll's `AOTV4_MELEE_MANA_PER_LEVEL` so the client gauge max == the server
+mana ceiling. (Server + client use different stat formulas; a shared `level*constant` keeps them in lockstep.)
+
+**(c) Character creation.** `char_create_combinations` restored to **all 16 classes** (was class-8-only) —
+the world loads it at boot to both drive the create-screen UI (greying out disallowed classes) and validate
+create requests. Source: `custom/sql/aotv4_all_classes_creation.sql` (replaces the retired
+`aotv4_bard_only_creation.sql`). **World restart** required (combos load at world boot). The Bard-force block
+in `global_player.event_connect` is removed — characters keep their created class.
+
+### Custom reward spell set (43000-43149 offered + 43150+ helpers)
+- Generated by `.devcontainer/custom/spells/gen_spells.py` from `spell_design.csv` (score-based auto-tiering
+  across levels 1-30, `LEVEL_CAP=30`). Spells use **skill 98** (a non-song placeholder; server `IsBardSong`
+  is already skill-gated). Class levels opened to all 16 classes (offer level = `classes8`).
+- ⚠️ **Renumbered 50xxx → 43xxx** (RoF2 caps spell LINKS and the spellbook packet at **id < 45000**; the
+  custom set was originally at 50000+). Trigger/proc refs live in `effect_base_value`/`effect_limit_value`
+  and must be renumbered too (Moonfire's heal @ limit2, Firefist/Chi Block @ limit1 were missed once).
+- ⚠️ **`gen_spells.py` is DESYNCED from the live DB** — still emits 50xxx and lacks the live fixes below.
+  **Do a source-sync before ever regenerating** or it reverts everything. (Memory: `gen-spells-source-sync`.)
+- **Two description sources, keep in sync:** the level-up **picker** reads `spell_desc.lua` (server sends it
+  via `SPELLDESCDATA`); the in-game **spellbook** reads `db_str` (via `descnum=id`). ⚠️ A literal `%` in a
+  description renders as garbage (`0:00:00`) — the client treats `%` as a format token; spell out "percent".
+- **Descriptions live in:** `spell_design.csv` (master) → `spell_desc.lua` (gen) → `db_str` (live). Client
+  needs `spells_us.txt` (class levels + cast times) + `dbstr_us.txt` (descriptions) re-exported +
+  installed; the current bundle is dropped at `C:\AoTv3\AoTv4\aotv4_client_install` (== `/src/aotv4_client_install`).
+
+### Custom melee mitigation (why "deflected by your armor" spams)
+`zone/attack.cpp Mob::MeleeMitigation` (~1063) replaces stock AC mitigation with an **AC-vs-offense roll**
+(`AoT:Mit*` rules). A full-mitigation roll (`rolled_mit >= 1.0`) zeroes damage and prints **"…was deflected
+by your armor!"** (line 1156 — uses `GetName()`, the raw `a_cave_rat009`; should be `GetCleanName()`). A
+high-AC char vs a weak mob deflects nearly every hit → message spam (it's on the filterable `OtherMissYou`
+channel). Rune/mitigation buffs (SPA 55/78/161/162/163) DO still apply — via `ReduceDamage` (line 4331,
+after MeleeMitigation). ⚠️ **% mitigation is imperceptible vs the tiny post-mitigation numbers** (`3 * 1/100 = 0`);
+for low-level buffs prefer a **flat per-hit cap** — SPA 162 `base=100, limit=N` subtracts exactly N/hit
+(how Passive Protection was fixed). Damage shields (SPA 59) use a **negative** base (native convention).
+
+## 15. Achievements + class-aura rewards — 2026-07
+
+A DB-defined **achievement system** (ported/adapted from the `Barathos/EQEmu-feature-achievements` fork)
+whose rewards can **scribe a class aura**. The client shows a **native SIDL window**; the server owns all
+progress, completion, and validation. Same "server → `ACH|...` chat line → dll → window" pattern as our
+other overlays (§3/§6/§11/§13).
+
+**Server (`zone/achievement_manager.cpp/.h`, singleton `achievement_manager`).** DB-defined objectives
+(`level`/`zone_visit`/`task_complete`/`skill`/`*_kill`) tracked per character; on completion, rewards queue
+(auto-claim grants immediately). Gameplay hooks call it: `attack.cpp` `NPC::Death` (3 kill sites),
+`client.cpp` `SetSkill`, `exp.cpp` `SetLevel`, `client_packet.cpp` `CompleteConnect`, `task_client_state.cpp`
+`IncrementDoneCount`. `#ach [window|status|categories|category|detail|rewards|claim|check]` command
+(`gm_commands/achievements.cpp`). **AoTv4 additions:** an **`any_kill`** objective type (kill anything) and
+**`class_mask` enforcement** in `ProcessMatchedObjectives` (`GetPlayerClassBit`, `0`=any) so per-class
+achievements only advance for that class; a **`scribe_spell`** reward type in `AwardQueuedReward` (reward_id
+= a spell id → scribes it into the spellbook; idempotent).
+- **DB**: `custom_achievement_*` tables via `common/database/database_update_manifest_custom.h` (custom
+  migrations v1-4); `common/version.h` `CUSTOM_BINARY_DATABASE_VERSION = 4`. **World applies the migration
+  at boot** (not zone). Reward types: title_text/suffix/set, item, currency, coin, live_item_request,
+  **scribe_spell**.
+- ⚠️ **Migration pre-backup needs DB creds.** World auto-dumps the DB before applying migrations via
+  `mysqldump --defaults-extra-file=login.my.cnf`; it builds that cnf from **`content_database`** creds
+  (`IsDumpContentTables`). If `content_database` is absent/blank, the cnf gets empty creds → mysqldump
+  auths as the OS user → **"Access denied" → migration aborts**. Fix (done): a `content_database` block
+  (peq/peqpass) in `eqemu_config.json`. One-off unblock: write `login.my.cnf` (`[mysqldump]` peq creds)
+  **read-only** so `BuildCredentialsFile` can't overwrite it.
+
+**The 16 class auras (the reward).** One per class, granted by "*Class*: First Blood" (kill anything **as
+that class** → scribe that class's aura). Auras (§ generic mechanic): a **cast spell** (SPA 351, self, spawns
+the aura) + an **`auras` row** (cast → aura NPC → effect spell, `aura_type=1` OnAllGroupMembers = **group-
+shared**, distance 60) + an **effect spell** (the group buff). Our set: cast spells **43500-43515**, effect
+spells **43550-43565**, aura NPCs **2000100-2000115**; achievements **9000001-9000016** (category 9000),
+objectives `any_kill` + class_mask bit, rewards `scribe_spell` → the class's cast spell. **1-active is the
+default** (`GetAuraSlots()` = base 1; never grant `aura_slots` bonuses). Generated by
+`/tmp` scripts (clone templates 8468/8469/2000003); to regen see `custom/spells` history.
+
+**Client dll (`core_achievements_native.cpp/.h`, flag `areAchievementsNativeEnabled`).** The reference was a
+standalone dll that re-detoured `dsp_chat`/`InterpretCmd` — **which we already own** — so it was refactored
+to `.cpp`+`.h` (single definition across our TUs) and **routed through our existing detours**: our
+`dsp_chat` calls `NativeAchievementParseTransport` (swallow `ACH|`) + swallows the `#ach` echo; our
+`InterpretCmd` (`core_bazaar.h`) calls `NativeAchievementHandleLocalCommand` + `NativeAchievementRewriteCommand`
+(`/ach …` → `/say #ach …`). `InitAchievementsNative` installs ONLY the `CDisplay::CleanGameUI`/`ReloadUI`
+detours (window lifecycle) — conflict-free only because `isMQInjectsEnabled=false` (else MQ2's CleanUI hook
+takes those addresses). The window is a real SIDL `CCustomWnd` (`NativeAchievementWnd`), created on demand.
+- ⚠️ **This dll had NEVER used native SIDL windows** (all our overlays are self-drawn GDI), so the MQ2 UI
+  managers `ppSidlMgr`/`ppWndMgr` weren't reliably wired — `CCustomWnd`/`NativeAchievementEnsureWindow`
+  silently returned at `if (!pSidlMgr || !pWndMgr)` and **the window never appeared** (log stopped at
+  `ACH|window|show` with no "creating achievement window"). Fix: in `NativeAchievementEnsureWindow`, set
+  them directly from the client globals if unset — `ppSidlMgr = (CSidlManager**)((0x15D3D08-0x400000)+baseAddress)`,
+  `ppWndMgr = (CXWndManager**)((0x15D3D00-0x400000)+baseAddress)`. Any future native-window feature in this
+  dll must do the same. `native_achievements.log` (in the EQ root) is the dll's own debug trace — the fastest
+  way to diagnose the window (it logs every `ACH|` line received + the `EnsureWindow` pointer values).
+- **Client install** (see `aotv4_client_install/ACHIEVEMENT_WINDOW_INSTALL.md`): rebuild OUR `dinput8.dll`;
+  copy `EQUI_NativeAchievementWnd.xml` + `Achievement_*.tga` to `uifiles/default/`; add
+  `<Include>EQUI_NativeAchievementWnd.xml</Include>` to `EQUI.xml`. The `#ach` **text** commands work
+  without any client change; the UI files are only for the native window.
+
+**Filling out the categories (2026-07).** The seed (from the fork) populates Classic→PoP well but left header
+categories showing 0/0 and later in-scope tiers empty. Fixes:
+- **Parent-count rollup (code):** `LoadCategorySummaries` (`achievement_manager.cpp`) now rolls child-category
+  achievements up onto their parent (`a.category_id = c.id OR a.category_id IN (children of c, enabled)`), so
+  **Exploration/Hunter/Slayer/Progression/Tradeskill** headers show the sum of their leaves (277/136/385/490/72)
+  instead of 0. Leaves have no children so they stay direct-only. **Needs a zone rebuild + restart.**
+- **Beyond-OoW hidden (SQL, `custom/sql/aotv4_achievements_fill.sql`):** the era system caps at OoW, so the
+  Dragons-of-Norrath..Rain-of-Fear Exploration (cats 209-219) + Hunter (3309-3319) categories are set
+  `enabled=0` (unreachable zones; reversible if the server ever extends). `LoadCategorySummaries`'
+  `WHERE c.enabled=1` drops them from the window.
+- **Server Custom (cat 8), same SQL file:** class-agnostic **kill milestones** (`any_kill` 100/1k/10k/50k →
+  Bloodthirsty/Warmonger/Harbinger/Reaper). `any_kill` counts every kill across the char's life (survives the
+  roguelite death reset). **NB: a character is ONE class**, so an "all 16 auras" achievement would be
+  unearnable — Class-Mastery auras are per-class only.
+- **GoD/OoW Hunter (generated, `custom/sql/aotv4_achievements_hunter_god_oow.sql` via `/tmp/…/gen_hunter_god_oow.sh`):**
+  cats 3307/3308 filled from **OUR DB's named mobs** (not Live lists — those wouldn't match our spawns). Named =
+  npc_types whose name starts `#` (excl. `#Trigger`/`#Zoner`/level-99 system NPCs); `a_`/`an_`/lowercase = trash.
+  One `npc_name_kill` objective per distinct clean-name (top 12 by level), `zone_id` = the sub-zone it spawns in.
+  ⚠️ **`npc_name_kill` matches `o.zone_id == <zone killed in>` AND `LOWER(o.target_name) == LOWER(GetCleanName())`**
+  — `GetCleanName`==`CleanMobName` (`common/strings_legacy.cpp`): `_`→space, keep `[A-Za-z`+backtick]`, **strip
+  `#`/digits/apostrophes**, then we LOWER. bonzz.com gave the canonical zone list + target counts but **no mob
+  names** (they live on eqresource/raidloot) — irrelevant since we source earnable targets from our own spawns.
+- **Epics (cat 7, `custom/sql/aotv4_achievements_epics.sql`):** 16 achievements (one per class, epic 1.0
+  weapon), completed by a **new `item_receive` objective type**. `ProcessItemReceive(client,item_id)`
+  (`achievement_manager.cpp`) matches `item_receive`+`target_id`; **hooked live** in `Client::SummonItem`
+  (quest turn-ins/summons) + `Client::PushItemOnCursor` (loot→cursor), and **backstopped** by
+  `ProcessItemInventory` in `RecheckAutomatic` (credits already-owned epics on level/zone/#ach). class_mask
+  = `1<<(class-1)` gates each to its class. Epic item ids resolved from OUR `items` DB (the weapons that
+  actually exist here). **Needs a zone rebuild.**
+- ⚠️ **Achievement-id ranges are NOT category-bound — check before inserting.** Zone Slayer occupies
+  **700001-700448**; a first pass put Epics at 700001-700016 and `ON DUPLICATE KEY UPDATE` silently hijacked
+  16 Zone Slayer rows (their `zone_kill` objectives dangled). Epics moved to **710001-710016** (objectives
+  71000001+). Other ranges in use: Character 1xxx/110xx, Exploration 200xxx, Task 300xxx, Tradeskill 46xxxx,
+  Creature Slayer 5xxxxx, Zone Slayer 7000xx-7004xx, Server Custom 8000xx, Meta 900xxx, Class Mastery 9000xxx,
+  GoD/OoW Hunter 3307xx/3308xx. **Every category is now populated** (Epics 16, Exploration 277, Hunter 136,
+  Slayer 385, Progression 490, Tradeskill 72, Server Custom 4, Character 22, Class Mastery 16, Meta 4).
+- **Parent headers drill down (code):** the dll shows categories as a flat list with children indented; a parent
+  (Hunter/Exploration/…) has NO direct achievements, so selecting it used to show an empty list. `LoadAchievements`
+  now returns the union of the selected category + its enabled child categories (grouped by `category_id`), so
+  clicking "Hunter" lists all 136. Leaves are unaffected (no children).
+- ⚠️ **Live-refresh must stay small — chat-burst drops (fix).** `PushLiveUpdate` originally re-sent ALL ~40
+  `ACH|category` lines per completion; the RoF2 chat pipe drops/reorders that burst, losing the trailing
+  `ACH|achievement_state` row-flip → "the window updates only sometimes." Now it sends the **state flip first**,
+  then only the **affected leaf + its parent** (1 status + 1 state + ≤2 category = ~4 lines). Any per-completion
+  push here must stay minimal for the same reason. (A big parent drill-in still sends ~N achievement lines, same
+  load as the pre-existing 490-row Task Completion leaf — if a huge list ever truncates, batch it.)
+- **Native EQ-menu "Achievements" button is intentionally NOT hooked** — it opens RoF2's stock `CAchievementsWnd`
+  (which we never populate), not our window. Redirecting it needs RE of the client's native-open call; by choice
+  the window is opened via `#ach`/`/ach` instead.

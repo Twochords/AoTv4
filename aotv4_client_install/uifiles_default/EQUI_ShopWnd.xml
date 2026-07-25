@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="us-ascii"?>
+<XML ID="EQInterfaceDefinitionLanguage">
+	<Schema xmlns="EverQuestData" xmlns:dt="EverQuestDataTypes" />
+
+	<!-- AoTv4 native trader/shop window (CCustomWnd "ShopWnd"). THREE tabs: Set Price / List Item / My Shop.
+	     Enlarged from the original; single shared item list (proven-stable structure). All lists scroll.
+	     Backend = SHOPINVDATA/SHOPBOOKDATA/SHOPLOGDATA/MYSHOPDATA chat + /say shopsetprice/shopadd/shoppull. -->
+
+	<!-- ===== tab strip (contiguous, reads as tabs) ===== -->
+	<Button item="SHW_TabPrice">
+		<ScreenID>SHW_TabPrice</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>8</X><Y>8</Y></Location>
+		<Size><CX>182</CX><CY>24</CY></Size>
+		<Text>Set Price</Text>
+		<TextColor><R>255</R><G>255</G><B>255</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+	<Button item="SHW_TabList">
+		<ScreenID>SHW_TabList</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>190</X><Y>8</Y></Location>
+		<Size><CX>182</CX><CY>24</CY></Size>
+		<Text>List Item</Text>
+		<TextColor><R>255</R><G>255</G><B>255</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+	<Button item="SHW_TabShop">
+		<ScreenID>SHW_TabShop</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>372</X><Y>8</Y></Location>
+		<Size><CX>184</CX><CY>24</CY></Size>
+		<Text>My Shop</Text>
+		<TextColor><R>255</R><G>255</G><B>255</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+
+	<!-- ===== hint ===== -->
+	<Label item="SHW_Hint">
+		<ScreenID>SHW_Hint</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>38</Y></Location>
+		<Size><CX>546</CX><CY>18</CY></Size>
+		<Text>Select an item, type a price, then Set Price.</Text>
+		<TextColor><R>228</R><G>210</G><B>142</B></TextColor>
+		<NoWrap>true</NoWrap>
+	</Label>
+
+	<!-- ===== item list ===== -->
+	<Listbox item="SHW_ItemList">
+		<ScreenID>SHW_ItemList</ScreenID>
+		<DrawTemplate>WDT_Inner</DrawTemplate>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>8</X><Y>58</Y></Location>
+		<Size><CX>548</CX><CY>300</CY></Size>
+		<TextColor><R>255</R><G>255</G><B>255</B></TextColor>
+		<Style_Border>true</Style_Border>
+		<Style_VScroll>true</Style_VScroll>
+		<Columns><Width>360</Width><Heading>Item</Heading></Columns>
+		<Columns><Width>72</Width><Heading>Qty</Heading></Columns>
+		<Columns><Width>104</Width><Heading>Price</Heading></Columns>
+	</Listbox>
+
+	<!-- ===== price entry (Set Price tab) ===== -->
+	<Label item="SHW_PriceLabel"><ScreenID>SHW_PriceLabel</ScreenID><RelativePosition>true</RelativePosition><Location><X>10</X><Y>372</Y></Location><Size><CX>40</CX><CY>20</CY></Size><Text>Price</Text><TextColor><R>200</R><G>206</G><B>218</B></TextColor><NoWrap>true</NoWrap></Label>
+	<Editbox item="SHW_PricePlat"><ScreenID>SHW_PricePlat</ScreenID><DrawTemplate>WDT_Inner</DrawTemplate><RelativePosition>true</RelativePosition><Location><X>54</X><Y>370</Y></Location><Size><CX>44</CX><CY>22</CY></Size><Style_Border>true</Style_Border><TextColor><R>255</R><G>255</G><B>255</B></TextColor></Editbox>
+	<Label item="SHW_LblP"><ScreenID>SHW_LblP</ScreenID><RelativePosition>true</RelativePosition><Location><X>100</X><Y>372</Y></Location><Size><CX>10</CX><CY>20</CY></Size><Text>p</Text><TextColor><R>228</R><G>210</G><B>142</B></TextColor></Label>
+	<Editbox item="SHW_PriceGold"><ScreenID>SHW_PriceGold</ScreenID><DrawTemplate>WDT_Inner</DrawTemplate><RelativePosition>true</RelativePosition><Location><X>112</X><Y>370</Y></Location><Size><CX>36</CX><CY>22</CY></Size><Style_Border>true</Style_Border><TextColor><R>255</R><G>255</G><B>255</B></TextColor></Editbox>
+	<Label item="SHW_LblG"><ScreenID>SHW_LblG</ScreenID><RelativePosition>true</RelativePosition><Location><X>150</X><Y>372</Y></Location><Size><CX>10</CX><CY>20</CY></Size><Text>g</Text><TextColor><R>228</R><G>210</G><B>142</B></TextColor></Label>
+	<Editbox item="SHW_PriceSilv"><ScreenID>SHW_PriceSilv</ScreenID><DrawTemplate>WDT_Inner</DrawTemplate><RelativePosition>true</RelativePosition><Location><X>162</X><Y>370</Y></Location><Size><CX>36</CX><CY>22</CY></Size><Style_Border>true</Style_Border><TextColor><R>255</R><G>255</G><B>255</B></TextColor></Editbox>
+	<Label item="SHW_LblS"><ScreenID>SHW_LblS</ScreenID><RelativePosition>true</RelativePosition><Location><X>200</X><Y>372</Y></Location><Size><CX>10</CX><CY>20</CY></Size><Text>s</Text><TextColor><R>228</R><G>210</G><B>142</B></TextColor></Label>
+	<Editbox item="SHW_PriceCopp"><ScreenID>SHW_PriceCopp</ScreenID><DrawTemplate>WDT_Inner</DrawTemplate><RelativePosition>true</RelativePosition><Location><X>212</X><Y>370</Y></Location><Size><CX>36</CX><CY>22</CY></Size><Style_Border>true</Style_Border><TextColor><R>255</R><G>255</G><B>255</B></TextColor></Editbox>
+	<Label item="SHW_LblC"><ScreenID>SHW_LblC</ScreenID><RelativePosition>true</RelativePosition><Location><X>250</X><Y>372</Y></Location><Size><CX>10</CX><CY>20</CY></Size><Text>c</Text><TextColor><R>228</R><G>210</G><B>142</B></TextColor></Label>
+
+	<!-- ===== quantity entry (List Item tab) ===== -->
+	<Label item="SHW_QtyLabel"><ScreenID>SHW_QtyLabel</ScreenID><RelativePosition>true</RelativePosition><Location><X>10</X><Y>372</Y></Location><Size><CX>96</CX><CY>20</CY></Size><Text>Quantity to list</Text><TextColor><R>200</R><G>206</G><B>218</B></TextColor><NoWrap>true</NoWrap></Label>
+	<Editbox item="SHW_Qty"><ScreenID>SHW_Qty</ScreenID><DrawTemplate>WDT_Inner</DrawTemplate><RelativePosition>true</RelativePosition><Location><X>110</X><Y>370</Y></Location><Size><CX>54</CX><CY>22</CY></Size><Style_Border>true</Style_Border><TextColor><R>255</R><G>255</G><B>255</B></TextColor></Editbox>
+
+	<!-- ===== action buttons ===== -->
+	<Button item="SHW_SetPrice"><ScreenID>SHW_SetPrice</ScreenID><RelativePosition>true</RelativePosition><Location><X>8</X><Y>402</Y></Location><Size><CX>160</CX><CY>28</CY></Size><Text>Set Price</Text><TextColor><R>255</R><G>255</G><B>255</B></TextColor><Template>BDT_Normal</Template></Button>
+	<Button item="SHW_Add"><ScreenID>SHW_Add</ScreenID><RelativePosition>true</RelativePosition><Location><X>8</X><Y>402</Y></Location><Size><CX>160</CX><CY>28</CY></Size><Text>Add to Shop</Text><TextColor><R>255</R><G>255</G><B>255</B></TextColor><Template>BDT_Normal</Template></Button>
+	<Button item="SHW_Pull"><ScreenID>SHW_Pull</ScreenID><RelativePosition>true</RelativePosition><Location><X>8</X><Y>402</Y></Location><Size><CX>160</CX><CY>28</CY></Size><Text>Pull Item</Text><TextColor><R>255</R><G>255</G><B>255</B></TextColor><Template>BDT_Normal</Template></Button>
+	<Button item="SHW_Refresh"><ScreenID>SHW_Refresh</ScreenID><RelativePosition>true</RelativePosition><Location><X>396</X><Y>402</Y></Location><Size><CX>160</CX><CY>28</CY></Size><Text>Refresh</Text><TextColor><R>255</R><G>255</G><B>255</B></TextColor><Template>BDT_Normal</Template></Button>
+
+	<!-- ===== price history (Set Price tab, selected item only) ===== -->
+	<Label item="SHW_HistLabel"><ScreenID>SHW_HistLabel</ScreenID><RelativePosition>true</RelativePosition><Location><X>10</X><Y>440</Y></Location><Size><CX>546</CX><CY>18</CY></Size><Text>Price history</Text><TextColor><R>200</R><G>206</G><B>218</B></TextColor><NoWrap>true</NoWrap></Label>
+	<Listbox item="SHW_HistList">
+		<ScreenID>SHW_HistList</ScreenID>
+		<DrawTemplate>WDT_Inner</DrawTemplate>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>8</X><Y>462</Y></Location>
+		<Size><CX>548</CX><CY>98</CY></Size>
+		<TextColor><R>255</R><G>255</G><B>255</B></TextColor>
+		<Style_Border>true</Style_Border>
+		<Style_VScroll>true</Style_VScroll>
+		<Columns><Width>212</Width><Heading>When</Heading></Columns>
+		<Columns><Width>160</Width><Heading>Old</Heading></Columns>
+		<Columns><Width>160</Width><Heading>New</Heading></Columns>
+	</Listbox>
+
+	<!-- ===== window (bigger) ===== -->
+	<Screen item="ShopWnd">
+		<RelativePosition>false</RelativePosition>
+		<Location><X>200</X><Y>80</Y></Location>
+		<Size><CX>564</CX><CY>600</CY></Size>
+		<Text>Trader</Text>
+		<Style_Transparent>false</Style_Transparent>
+		<DrawTemplate>WDT_Def</DrawTemplate>
+		<Style_Titlebar>true</Style_Titlebar>
+		<Style_Closebox>true</Style_Closebox>
+		<Style_Border>true</Style_Border>
+		<Style_Sizable>true</Style_Sizable>
+		<Pieces>SHW_TabPrice</Pieces>
+		<Pieces>SHW_TabList</Pieces>
+		<Pieces>SHW_TabShop</Pieces>
+		<Pieces>SHW_Hint</Pieces>
+		<Pieces>SHW_ItemList</Pieces>
+		<Pieces>SHW_PriceLabel</Pieces>
+		<Pieces>SHW_PricePlat</Pieces>
+		<Pieces>SHW_LblP</Pieces>
+		<Pieces>SHW_PriceGold</Pieces>
+		<Pieces>SHW_LblG</Pieces>
+		<Pieces>SHW_PriceSilv</Pieces>
+		<Pieces>SHW_LblS</Pieces>
+		<Pieces>SHW_PriceCopp</Pieces>
+		<Pieces>SHW_LblC</Pieces>
+		<Pieces>SHW_QtyLabel</Pieces>
+		<Pieces>SHW_Qty</Pieces>
+		<Pieces>SHW_SetPrice</Pieces>
+		<Pieces>SHW_Add</Pieces>
+		<Pieces>SHW_Pull</Pieces>
+		<Pieces>SHW_Refresh</Pieces>
+		<Pieces>SHW_HistLabel</Pieces>
+		<Pieces>SHW_HistList</Pieces>
+	</Screen>
+</XML>

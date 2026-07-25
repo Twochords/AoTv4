@@ -44,6 +44,7 @@
 #include "common/spdat.h"
 #include "common/strings.h"
 #include "common/zone_store.h"
+#include "zone/achievement_manager.h"
 #include "zone/bot_command.h"
 #include "zone/cheat_manager.h"
 #include "zone/command.h"
@@ -2053,6 +2054,8 @@ void Client::SetSkill(EQ::skills::SkillType skillid, uint16 value) {
 	skill->value=value;
 	QueuePacket(outapp);
 	safe_delete(outapp);
+
+	achievement_manager.ProcessSkill(this, skillid, value);
 }
 
 void Client::IncreaseLanguageSkill(uint8 language_id, uint8 increase)

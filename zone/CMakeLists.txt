@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 
 set(zone_sources
     aa.cpp
+    achievement_manager.cpp
     aa_ability.cpp
     aggro.cpp
     aggromanager.cpp
@@ -118,6 +119,7 @@ set(zone_sources
 
 set(zone_headers
     aa.h
+    achievement_manager.h
     aa_ability.h
     aggromanager.h
     api_service.h
@@ -369,6 +371,7 @@ set(gm_command_sources
     bot_commands/bot_view_combos.cpp
     command.cpp
     gm_commands/acceptrules.cpp
+    gm_commands/achievements.cpp
     gm_commands/advnpcspawn.cpp
     gm_commands/aggrozone.cpp
     gm_commands/ai.cpp

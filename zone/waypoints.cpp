@@ -678,12 +678,14 @@ void NPC::LogPathingError(
 
     LogError("{}", msg);
 
+    // MessageStatus is (to_guilddbid, to_minstatus, type, printf-style message, ...)
+    // -- entity.h:363. It is varargs, not fmt, so "%s" + c_str() rather than "{}".
     entity_list.MessageStatus(
-        nullptr,
-        Chat::Red,
+        0,                        // all guilds
         AccountStatus::GMAdmin,   // or Guide/GM depending on who should see it
-        "{}",
-        msg
+        Chat::Red,
+        "%s",
+        msg.c_str()
     );
 }
 

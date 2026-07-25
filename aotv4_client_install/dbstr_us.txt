@@ -36576,7 +36576,136 @@
 42600^7^Iron Gear^0
 42938^6^Grants the title "The Lucky"^0
 42962^7^Fireworks Focus^0
+43000^6^Burns your target dealing 10 damage instantly and 1 damage per tick^0
+43001^6^Surprise your target with a sudden jolt dealing 10 damage and interupts your target^0
+43002^6^Sets your target alight, dealing 7 damage per tick^0
+43003^6^Shocks your target with high energy dealing 43 damage^0
+43004^6^Poisons your target dealing 3 damage per tick^0
+43005^6^Poisons up to 4 opponents near your target, dealing 8 damage per tick^0
+43006^6^Delivers a nasty fever to your target, dealing 7 damage per tick.^0
+43007^6^Infects up to 9 nearby enemies dealing 11 damage per tick.^0
+43008^6^Suddenly freezes your target, dealing 16 damage and lowering ac by 12 points for 6 ticks^0
+43009^6^Chills your target dealing 27 damage and slowing their attack speed by 5 percent^0
+43010^6^Kick your target, interrupting them and dealing your boots AC as damage^0
+43011^6^Swing your weapon at your target, Dealing 750 percent primary dps.^0
+43012^6^Steals your target's life force, dealing 16 points of damage and healing you for the damage dealt.^0
+43013^6^Instills a deep dread into your target, lowering their strength by 10 and dealing 4 damage per tick.^0
+43014^6^Throw a stone at your target dealing 5 damage^0
+43015^6^Take time to carefully aim your shot at your target, Deals the same damage your bow would do in 9 seconds and has 1.5x accuracy.^0
+43016^6^Heals your target for 17 points^0
+43017^6^Heals your target for 10 points after a 2 tick delay^0
+43018^6^Protects you against 13 points of damage^0
+43019^6^Protects your target from 20 points of damage.^0
+43020^6^Heals your target for 5 per tick^0
+43021^6^Heals your target for 1466 points per tick^0
+43022^6^Surrounds you in a divine aura, absorbing all forms of damage that deal less than 15 percent of your max hp^0
+43023^6^Lays your healing hands on your target, healing for 600 points^0
+43024^6^Grips your target in agony, dealing 200 damage^0
+43025^6^Converts 1 point of endurance into 2 percent of max mana per tick.^0
+43026^6^Transfers some of your mana to your target, granting them 30 points of mana^0
+43027^6^Converts 4 percent of max hp to 1 percent of max mana per tick.^0
+43028^6^Heals your group for 3 points and draining 5 mana per tick.^0
+43029^6^Protects you from 12 percent of incoming melee damage, at the cost of 1 point of endurance per attack.^0
+43030^6^Forces you and your target into a one on one duel. While in the duel, participants have melee damage is doubled and neither participant can flee the fight, cast spells, be healed, or be damaged by anything outside of the duel. The duel ends after 6 ticks or when one of the participants dies.^0
+43031^6^Wards your group against 1 point of damage on every attack.^0
+43032^6^Increases your effective weapon damage by 1. Costs 2 point of endurance per tick^0
+43033^6^All spells deal 8 percent additional damage. Costs 2 point of endurance per tick^0
+43034^6^All heals and wards are 8 percent more potent. Costs 2 point of endurance per tick^0
+43035^6^Protects you from 1 physical attack, recharging every 30 seconds. Consumes 5 endurance to refresh if the charge is used.^0
+43036^6^Steals 11 points of the targets' mana^0
+43037^6^Makes your target tired, damaging their endurance points by 10^0
+43038^6^Grants your group 15 max hp and 4 ac^0
+43039^6^Increases your groups charisma intelligence and wisdom by 10.^0
+43040^6^Increases your groups strength and stamina by 12^0
+43041^6^Increases your groups agility and dexterity by 12^0
+43042^6^Increases your groups haste by 5 percent^0
+43043^6^Increases your groups casting speed by 5 percent^0
+43044^6^Summons a bear to your side. The bear cub can hold aggro while taunt is on. Pets cannot be summoned via casting and instead will summon automatically outside of combat.^0
+43045^6^Summons a leopard to your side. The leopard can backstab when behind its target. Pets cannot be summoned via casting and instead will summon automatically outside of combat.^0
+43046^6^Summons a skeletal minion to your side. The skeleton will leech life from the enemy and use it to heal your party on every autoattack. Pets cannot be summoned via casting and instead will summon automatically outside of combat.^0
+43047^6^Summons a fire imp to your side. The imp will regularly cast fire effects on its target. Pets cannot be summoned via casting and instead will summon automatically outside of combat.^0
+43048^6^Summons a willowisp to your side. The willowisp leeches mana on autoattack and gives it to your party. Pets cannot be summoned via casting and instead will summon automatically outside of combat.^0
+43049^6^Allows you to proc Ember on a barehanded attack.^0
+43050^6^Increases all proc chance by 50 percent and proc cap by 1.^0
+43051^6^Allows you to proc Yawn on a barehanded attack.^0
+43052^6^Slices your target open, instantly dealing 300 percent of both weapons dps and attacks on this target for the next minute will cause them to take 25 percent additional bleed damage over the next 5 ticks^0
+43053^6^Your dual wield skills are amazing! You cannot fail to dual wield.^0
+43054^6^Feignt your target with your primary weapon to hit them with your offhand weapon, dealing 1000 percent of secondary dps.^0
+43055^6^Slam your weapon onto your opponent dealing 1250 percent primary dps and decreasing their ac by 5 percent of damage dealt for 1.2 minutes.^0
+43056^6^You get ready to take advantage of openings, when you are attacked, you strike back with 250 percent of primary dps if the target is in front of you for the next 5 attacks.^0
+43057^6^When you resist a spell, consume 4 percent of your maximum mana to reflect the spell's damage and effect back to the caster.^0
+43058^6^When you take physical damage, this effect will deal 5 points of damage to the attacker^0
+43059^6^You surround yourself in a vengeful aura. All physical damage you take is doubled, but the aura strikes the attacker for the final damage they dealt to you for the next 3 attacks.^0
+43060^6^Taunts your target, forcing your target to attack you for the next 2 ticks.^0
+43061^6^Sears your target for 22 damage^0
+43062^6^Engulfs your target in flame for 38 damage^0
+43063^6^Sets your target ablaze, dealing 12 damage per tick^0
+43064^6^Boils your target's blood for 9 damage per tick and lowers their fire resistance by 20^0
+43065^6^Jolts your target for 28 damage and staggers them^0
+43066^6^Calls down lightning on your target for 60 damage^0
+43067^6^Coats your target in frost for 33 damage and lowers their ac by 18^0
+43068^6^Impales your target on a spike of ice for 55 damage^0
+43069^6^Floods your target with venom, dealing 6 damage per tick^0
+43070^6^Wracks your target with plague, dealing 14 damage per tick^0
+43071^6^Withers your target, lowering their strength by 20 and dealing 9 damage per tick^0
+43072^6^Tears 30 points of life from your target and grants it to you^0
+43073^6^Heals your target for 40 points^0
+43074^6^Heals your target for 75 points^0
+43075^6^Heals your target for 12 per tick^0
+43076^6^Heals your entire group for 25 points^0
+43077^6^Heals your target for 30 points and restores 20 endurance^0
+43078^6^Protects your target against 35 points of damage^0
+43079^6^Protects your target against 80 points of damage^0
+43080^6^Protects your target from 60 points of spell damage^0
+43081^6^Increases your target's ac by 18^0
+43082^6^Increases your target's resistance to all elements by 15^0
+43083^6^Surrounds your target in thorns, dealing 12 damage to anything that strikes them^0
+43084^6^Slows your target's movement by 50 percent^0
+43085^6^Terrifies your target into fleeing^0
+43086^6^Blinds your target^0
+43087^6^Concusses your target, stunning them^0
+43088^6^Strips a magical effect from your target^0
+43089^6^Conceals you from sight^0
+43090^6^Lifts your target off the ground^0
+43091^6^Toughens your target's skin; when they are struck it knits the wound closed for 45 points^0
+43092^6^Wards your target so every blow against them returns 12 points of health^0
+43093^6^Blesses your target so the next killing blow leaves them standing at the brink^0
+43094^6^A blow of 150 or more floods you with adrenaline, closing 90 points of wounds^0
+43095^6^Blunts incoming spell damage by 50 percent, absorbing up to 1500 points^0
+43096^6^Lends your target the lynx's hunger; their blows tear 30 points of life away^0
+43097^6^Opens your target to healing, increasing every heal they receive by 15 percent^0
+43098^6^Turns aside the next 2 attacks against your target entirely^0
+43099^6^Mitigates 15 percent of incoming melee damage until 500 points have been turned^0
+43100^6^Mitigates 25 percent of incoming spell damage until 500 points have been turned^0
+43101^6^Calls repeated waves of freezing sleet over an area, each wave dealing 18 damage^0
+43102^6^Calls repeated waves of molten steel over an area, each wave dealing 20 damage^0
+43103^6^Clouds the memory of everything nearby, wiping their hatred of you^0
+43104^6^Saps your target's resistance to cold, poison and magic by 12^0
+43105^6^Marks your target, lowering every elemental resistance by 10^0
+43106^6^Sharpens your target's aim, greatly improving ranged accuracy and revealing the unseen^0
+43107^6^Strikes your target for 45 damage and knits 25 points of your own wounds closed^0
+43108^6^Shatters your target's focus, draining 15 mana and dealing 11 damage per tick^0
+43109^6^A driving march: your group gains haste, strength, attack and a thorned aura^0
+43110^6^A restoring chorus, returning 8 health and 6 mana to your group each tick^0
+43111^6^Floods everything near your target with misery, seizing their attention^0
+43112^6^Binds your target in decay, draining 13 life per tick and feeding it to you^0
 43496^6^Reach into the pack to retrieve your potion.^0
+43500^6^Surrounds your group with a protective ward, reducing the melee damage each member takes by 1 per hit.^0
+43501^6^Blesses your group; when a member is struck they have a chance to be instantly healed for 10.^0
+43502^6^Wreathes your group in holy light. Attackers take 2 damage each time they strike a group member.^0
+43503^6^Sharpens your group's aim; their melee attacks have a chance to fire a bonus strike for 6 damage.^0
+43504^6^Steeps your group in shadow; their melee attacks leech life, healing them for 2 percent of the damage dealt.^0
+43505^6^Surrounds your group in thorns. Attackers take 2 damage each time they strike a group member.^0
+43506^6^Focuses your group's reflexes, increasing their chance to avoid melee attacks by 2 percent.^0
+43507^6^Your group's melee attacks have a chance to resonate, restoring 4 mana to the group.^0
+43508^6^Your group strikes from the shadows, increasing their melee critical hit chance by 2 percent.^0
+43509^6^When your group is struck, the ancestral spirits have a chance to slow the attacker by 10 percent.^0
+43510^6^Harvests the souls of the slain; when a group member kills an enemy, the group regains 15 mana.^0
+43511^6^Empowers your group's magic, increasing their spell critical hit chance by 2 percent.^0
+43512^6^Cloaks your group in flame. Attackers take 3 fire damage each time they strike a group member.^0
+43513^6^Clears your group's minds, reducing their spell cast time by 3 percent.^0
+43514^6^Your group and their warders strike with savage force; their melee attacks have a chance to deal 7 bonus damage.^0
+43515^6^Fills your group with fury, increasing the damage of their critical hits by 5 percent.^0
 43600^7^Bronze Gear^0
 43700^7^Gold Spring^0
 43800^7^Gold Gear^0
