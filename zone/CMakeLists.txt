@@ -7,6 +7,7 @@ set(zone_sources
     aggro.cpp
     aggromanager.cpp
     api_service.cpp
+    aotv4_healer_aa.cpp
     attack.cpp
     aura.cpp
     beacon.cpp
@@ -27,6 +28,8 @@ set(zone_sources
     client_bot.cpp
     client_evolving_items.cpp
     client_mods.cpp
+    advloot.cpp
+    regions.cpp
     client_packet.cpp
     client_process.cpp
     combat_record.cpp
@@ -131,6 +134,8 @@ set(zone_headers
     bot_structs.h
     cheat_manager.h
     client.h
+    advloot.h
+    regions.h
     client_packet.h
     combat_record.h
     command.h

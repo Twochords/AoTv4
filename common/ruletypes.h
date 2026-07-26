@@ -1198,6 +1198,7 @@ RULE_REAL(AoT, PotencyPerHInt,     			1.0,  "How much does heroic intellect boos
 RULE_REAL(AoT, PotencyCapPerHInt,     		2.5,  "How much does heroic intellect boost potency cap")
 RULE_INT(AoT, PotencySoftCap,     			400,  "After potency cap is reached, deminishing returns apply")
 RULE_REAL(AoT, PotencyAfterCapReturns,     	0.2,  "Beyond the potency cap, potency is worth this value per point")
+RULE_BOOL(AoT, AdvLootReplacesLootWindow,	true, "Advanced Loot mode: right-clicking a corpse feeds the Advanced Loot window instead of opening the stock loot window (live behaviour). Set false to restore the stock window as a fallback if the AdvLoot window ever fails to open.")
 RULE_REAL(AoT, ResistPerWis,     			0.5,  "Points of global resist per wisdom")
 RULE_REAL(AoT, eHPPerResist,     			1.0,  "How much does resists improve survivability")
 RULE_REAL(AoT, ResistPerHWis,     			1.0,  "How much does heroic wisdom boost global resist")
@@ -1215,6 +1216,13 @@ RULE_INT(AoT, DCOverpowerMultHardCap, 		400,	"Maximum Heroic Charisma considered
 RULE_REAL(AoT, DamageShieldPotencyMultiplier, 0.5,	"Potency effectiveness multiplier for damage shields.")
 RULE_REAL(AoT, DamageShieldResistMultiplier, 1.0,	"Resist effectiveness multiplier against damage shields.")
 RULE_REAL(AoT, DamageShieldDCMultiplier, 	0.5,	"Difficulty Class effectiveness multiplier for damage shields.")
+RULE_BOOL(AoT, ShieldAnyClass,          	true,	"/shield works for every class, not just Warriors. Damage splitting is a core group tactic here, not a Warrior perk.")
+RULE_INT(AoT, ShieldMinLevel,           	1,	"Level required to use /shield (stock is 30).")
+RULE_BOOL(AoT, ShieldPermanent,         	true,	"/shield lasts until the pair separate or one dies, instead of the stock 12 seconds.")
+RULE_INT(AoT, ShieldRecastSeconds,      	6,	"Recast on /shield in seconds (stock is 180). Low, because the shield drops every time you step out of range.")
+RULE_INT(AoT, ShieldDistance,           	25,	"How far apart the shielder and shield target may drift before the shield drops (stock is 15).")
+RULE_INT(AoT, ShieldWallPenaltyPercent, 	20,	"Extra damage per ADDITIONAL person sharing a hit. Share = (damage/N) * (100 + penalty*(N-1))/100, so 2 sharers take 60 percent each (120 total) and 3 take ~47 percent each (140 total). Splitting smooths spikes but costs total HP.")
+RULE_INT(AoT, ShieldWallMaxSharers,     	4,	"Maximum people sharing one hit, including the aggro holder.")
 RULE_CATEGORY_END()
 
 #undef RULE_CATEGORY
