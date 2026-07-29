@@ -112,7 +112,8 @@ can't grant an arbitrary reward — only one of the three it was actually offere
 - `spell_choice.lua` — builds the 3 choices (spells + ~1 combat skill), emits `SPELLCHOICEDATA`,
   validates picks. Stored bucket tokens are **typed**: `S:<spellid>` (spell/disc) or
   `K:<skillid>` (combat skill). Tunables at top: `CHOICE_COUNT`, `LEVEL_BAND`, `SAY_TRIGGER`,
-  `SKILL_OFFER_CHANCE` (~0.7), `SKILL_GRANT_PCT` (0.25).
+  `SKILL_OFFER_CHANCE` (**0.125** -- roughly one level in eight; it sat at **0.0** for a while, meaning
+  combat abilities were never offered at all, while this line still claimed 0.7), `SKILL_GRANT_PCT` (0.25).
 - `spell_pool.lua` (**generated**, see §5), `spell_icons.lua` (**generated**),
   `spell_blacklist.lua` (**generated**), `skill_pool.lua` (hand-curated; see §4).
 
@@ -183,12 +184,59 @@ its own; our `dsp_chat` calls `SpellChoiceParseTransport`. Wire format is **unch
   **Lost** tab — the journal's Spell and AA tabs are dead (this module owns `SPELLCHOICEDATA`, and
   random AA is retired: `areAAChoiceWindowEnabled=false`, the `AACHOICEDATA` line is parsed and
   swallowed but shows nothing).
-- 📌 **TODO — the "You Lost" death window is still a GDI overlay.** With the Reward Journal deleted
-  it is the death-loss display again (`areLostWindowEnabled`, `PaintLostOverlay`/`LostOverlayWndProc`
-  in `core_spellwindow.cpp`, fed by `LOSTDATA`). It should become a **native SIDL `CCustomWnd`** like
-  the picker / AdvLoot / Shop / Achievement windows — self-drawn chrome never matches EQ, it can't
-  scale with the UI, and it only works windowed. The wire format (`LOSTDATA name^name^…`) can stay,
-  so it is a client-side change only. Same for the remaining GDI overlays: **Portal** and **Search**.
+- ✅ **The "You Lost" death window is now a native SIDL window** (2026-07-27) —
+  `core_lostwindow.cpp/.h` + `EQUI_AoTLostWnd.xml`, its OWN translation unit like `core_advloot`.
+  Installs no detours; our `dsp_chat` calls `LostParseTransport` (swallows `LOSTDATA`), Ctrl+Q calls
+  `LostWindowShow`, and the `CleanGameUI`/`ReloadUI` detour that `core_achievements_native.cpp` owns
+  calls `LostWindowOnUiReset`. **Wire format unchanged** (`LOSTDATA name^name^…`) so the server was
+  not touched. Scrolling, dragging and the 45-second idle timeout are all gone — the UI engine does
+  the first two and a real window with a close box does not need the third, so the list now stays
+  until dismissed. The GDI `PaintLostOverlay`/`LostOverlayWndProc`/`LostOverlayThreadProc` remain in
+  `core_spellwindow.cpp` but are **unreachable** (`if (false && …)`); delete once confirmed working.
+  Install: `aotv4_client_install/LOST_WINDOW_INSTALL.md`.
+  - ✅ **It is the "Death Book" and the dates EXPAND** (2026-07-28). One header row per death —
+    `[+]`/`[-]`, date, killer, item count — and only an open one lists its items, so 400 entries read
+    as a table of contents rather than a wall of names. The newest death starts open.
+    ⚠️ **`LostBuildGroups` resets the open/closed state**, so it is called only where the DATA is
+    replaced (`LOSTDATA`, and the LAST `LOSTLOG` chunk), never from `Refresh()` — and never on a
+    partial log, which would split one death across two chunks into two dates.
+    ⚠️⚠️ **The toggle is DEFERRED to `LostWindowTick`, not done in the click handler.** Toggling calls
+    `Refresh` → `DeleteAll`, which would destroy the listbox's rows from inside the listbox's own
+    notification while the client is still walking them. ⚠️ The selection is also read *after*
+    `CSidlScreenWnd::WndNotification` has run — inside it, `GetCurSel` is still one click behind.
+    ⚠️ Row index is NOT a data index (headers interleave, a closed death hides many rows) — every
+    click goes through the explicit `g_rowGroup[]` map.
+- ✅ **The Search window is now a native SIDL window and is called "Allaclone"** (2026-07-28) —
+  `core_allaclone.cpp/.h` + `EQUI_AoTAllacloneWnd.xml`, its OWN translation unit like `core_advloot`.
+  Installs no detours; our `dsp_chat` calls `AllacloneParseTransport` (swallows `SRCHDATA`/`SRCHDET`)
+  and `AllacloneIsOurEcho`, `ProcessGameEvents` calls `AllacloneTick`, and the `CleanGameUI`/
+  `ReloadUI` detour that `core_achievements_native.cpp` owns calls `AllacloneOnUiReset`.
+  **Wire format unchanged** (`/say srch <kind> <term>`, `/say srchdet <kind> <id>`) so the server was
+  not touched at all — `Client::SearchList`/`SearchDetail` are as they were.
+  Command is **`/allaclone`**, with `/search` and `/find` kept as aliases; the AoT menu button is
+  relabelled. `EnableSearchWindow()`/`ShowSearchWindow()` in `core_spellwindow.cpp` are now
+  **forwarders** so the switch is one place instead of a rename through every caller, and
+  `g_searchEnabled` stays false, which makes the old overlay's thread/paint/chat handler unreachable
+  without deleting them yet.
+  - ⚠️ **NO `TabBox` here, deliberately.** Native tabs are the right widget when each page owns its
+    contents; the four kinds (item/npc/spell/recipe) share ONE search box, ONE list and ONE detail
+    pane, so tabs would mean four copies of each. They are **mode buttons**, and the active one is
+    shown by rewriting its LABEL (`> Items <`) because no latched button state can be set reliably
+    from code on this build.
+  - ⚠️ **Enter is POLLED, not hooked.** An `Editbox` gives no usable "text committed" notification
+    here, so `AllacloneTick` watches the box and searches once the text settles (450 ms) — the same
+    approach the AdvLoot filter box already uses. ⚠️ An empty box must still be RECORDED as the last
+    searched term or the poll re-fires every frame forever.
+  - ⚠️ `SRCHDET` lines are escaped into STML (`<` `>` `&`) before display — an item name containing
+    `<` would otherwise swallow the rest of the panel.
+  - Install: `aotv4_client_install/ALLACLONE_WINDOW_INSTALL.md`.
+- 📌 **TODO — the Portal window is still a GDI overlay** and should get the same treatment for the
+  same reasons: self-drawn chrome never matches EQ, it can't scale with the UI, and it only works
+  windowed. Client-side-only change; its wire format can stay.
+- ⚠️ **A `<Button>` uses `<Template>BDT_Normal</Template>`, NOT `<ButtonDrawTemplate>`.** The tag
+  name differs from the inline form used for icon buttons, and only the ~34 `BDT_*` names actually
+  defined in `EQUI_Templates.xml` resolve — anything else draws an empty hole with no error, the
+  same failure mode as a mis-cased texture name.
 - **Client install:** copy `EQUI_AoTSpellChoiceWnd.xml` to `uifiles/default/` **and**
   `<Include>EQUI_AoTSpellChoiceWnd.xml</Include>` in `EQUI.xml`. Missing either = `CCustomWnd` can't
   find its screen and returns **silently** — no error, no window.
@@ -328,19 +376,46 @@ zone rebuild** (§8).
 > `spells_new` **is in shared memory**: world down → `./shared_memory` → restart, then rerun both
 > generators.
 >
-> ⚠️ **The generator writes `spell_blacklist.lua` too — it MUST be regenerated with the pool.** When
+> ⚠️⚠️ **THE BARD PIVOT SILENTLY BROKE ALL-CLASS SPELL ACCESS (fixed 2026-07-27).** While every
+character was forced to Bard, "any class can use anything" was free -- the pool only had to be legal
+for Bard. Opening the server to 16 classes removed that and the STOCK set was never reopened: of
+2,707 pool spells, **ZERO** were castable by all classes, and **bard songs carry a real level only
+in `classes8`** so 15 of 16 classes could be offered a song and then simply never use it. Three gates
+all had to be reopened, and any one left shut makes the reward useless:
+1. `spells_new.classes1..16` -- can the class scribe/cast it
+2. `skill_caps` **Singing 12, Percussion 41, Stringed 49, Wind 54, Brass 70** -- only Bard had ANY
+3. `skill_caps` for the twelve activated combat specials -- without a cap `CanHaveSkill` refuses and
+   a picked reward silently does nothing
+All three are in `custom/sql/aotv4_open_spells_and_skills.sql`. ⚠️ Running step 3 DESTROYS the record
+of which classes had a special natively -- the only surviving copy is `skill_pool.NATIVE`.
+
+⚠️ **The generator writes `spell_blacklist.lua` too — it MUST be regenerated with the pool.** When
 > the custom set took over, the blacklist was emptied ("empty by design: the pool is hand-authored"),
 > so re-pointing at the stock set without rebuilding it silently reopens every port, rez and
-> Enchant-material spell. Current prune = **310** (travel 247 / enchant 20 / rez 15 / cure-curse 7 /
-> LDoN 18 / summon-corpse 3), leaving **2295 offerable**. Travel is pruned partly because ports
-> **defeat region locking**.
+> Enchant-material spell. Current prune = **473** (travel 169 / summon-item 199 / illusion 23 /
+> vision 19 / enchant 20 / rez 15 / cure-curse 7 / LDoN 18 / summon-corpse 3), leaving **2174
+> offerable**. Travel is pruned partly because ports **defeat region locking**.
 >
 > ⚠️⚠️ **`teleport_zone` is NOT "destination zone" — it is "names an NPC *or* a zone".** Every
 > pet/familiar/warder/Eye-of-Zomm spell stores its **summon type** there (SPA 33/71/152 pets, 106
 > warders, 108 familiars, 67 eye). Keying the travel filter off `teleport_zone <> ''` pruned **95
 > stock pet spells** — every Magician elemental, Necro pet, Shaman/Beastlord warder and Enchanter
 > animation. Detect travel by **SPA** instead: 25 Bind Affinity, 26 Gate, 83 Teleport, 88 Evacuate,
-> 104 Translocate, plus `targettype = 3` (group teleport). No travel spell lacks one.
+> 104 Translocate. No travel spell lacks one.
+>
+> ⚠️ **`targettype = 3` was ALSO in the travel rule and is now REMOVED — do not add it back.**
+> ST_Group is 3, which is *every* group-target spell, not a group teleport: it was pruning **78
+> ordinary group buffs** (Elixir of Divinity, Wave of Marr, Eriki's Psalm of Power, the group heal
+> lines) as if they were ports. Of the 150 `targettype=3` spells in the pool, the **72 that really
+> are travel all carry one of the SPAs above** and are caught anyway — the clause bought nothing.
+>
+> ⚠️ **The junk rules must test PURITY, not presence** (2026-07-27). `illusion` (SPA 58) and `vision`
+> (SPA 13/65/66/87) prune only when **every populated slot** is that effect or 254 — a spell is kept
+> if the cosmetic bit rides along with something real. Written as "has the SPA" they took **31
+> illusions that carry procs/stats/haste** (Boon of the Garou, Night's Dark Terror, Illusion:
+> Werewolf) and, once illusion was narrowed, the vision rule inherited the same failure and swallowed
+> the wolf/hunter forms (427, 1562, 1563, 3579, 4107) purely for their ultravision. Any new rule here
+> gets the same treatment: prune the spell that does *only* the junk thing.
 
 `spell_pool.lua` is generated from `spells_new`, indexed by learn level. The reward is
 **expansion-capped by level**: a char is only offered spells at/below its level, and a spell's
@@ -449,6 +524,16 @@ GM `#resetaa aa` only *refunds* spent → unspent (doesn't zero the pool). The m
   force is removed and `char_create_combinations` restored to all classes. Existing chars stay Bard.
 - **`spells_new.classes8`** = the spell's min learnable level (= the reward-pool index). It's now also
   opened across every class column (`classes1..16`) so all classes can scribe/cast the reward spells.
+- ⚠️ **Combat specials: NATIVE ones are auto-granted, the rest are picker rewards.** Every class now
+  has a `skill_caps` entry for all twelve (it must, or a picked reward cannot be granted), so
+  `CanHaveSkill` is no longer a useful filter and the DB can no longer say what was native.
+  `skill_pool.NATIVE` is the only record. `global_player.grant_native_combat_skills` grants a class
+  its own on connect AND on level up (some cap curves only open above level 1);
+  `spell_choice.gather_skill_candidates` offers only `skill_pool.rotatable_for(class)`.
+- ⚠️ **`skill_pool.lua` is now a MODULE, not a bare table.** It exposes `.SKILLS`, `.NATIVE`,
+  `.is_native()` and `.rotatable_for()`. `pairs(skills)` no longer yields skill ids -- use
+  `pairs(skills.SKILLS)`. A `__index` metatable keeps `skills[id]` working for existing callers, but
+  `pairs` does NOT follow it.
 - **Bard `skill_caps`** (`class_id=8`) raised so skills scale; client also needs the exported
   `SkillCaps.txt` (`export_client_files`) installed in the EQ root.
 - **Expansion lock:** `rule_values Expansion:CurrentExpansion = 0` (Classic).
@@ -516,6 +601,9 @@ class, `classes8`, skill caps, expansion). The windows are generic (`SPELLCHOICE
   rank ids above **65535** both fail this way, no error anywhere. Take over an existing ability
   instead: keep its id, rank ids, `title_sid` and rank chain, replace only `aa_rank_effects` and the
   `db_str` strings (`custom/sql/aotv4_aa_tank_hosted.sql`).
+- ⚠️⚠️ **`aa_rank_prereqs` IS A SEPARATE TABLE AND MUST BE CLEARED TOO.** A hosted AA inherits its
+  host's prerequisites, so it appears in the window but **refuses to train with no message**.
+  Clearing `aa_rank_effects` does nothing to it. Eight AAs were untrainable this way.
 - ⚠️ **Walk the rank chain via `next_id` — rank ids are NOT contiguous.** Natural Durability's chain
   is **107 → 108 → 109 → 7541 → 7542 → 7543**; assuming `first_rank_id + 0..4` wrote costs and levels
   onto ranks 110/111, which belong to a different ability. Terminate a chain early with
@@ -548,6 +636,13 @@ class, `classes8`, skill caps, expansion). The windows are generic (`SPELLCHOICE
 - **AA names come from `db_str`** (type 1 title, type 4 description) resolved by the CLIENT out of
   its own `dbstr_us.txt`, so a `db_str` change needs `./export_client_files` + reinstalling that
   file. `title_sid = -1` renders **no row at all** — it does not fall back to `aa_ability.name`.
+- ⚠️⚠️ **`title_sid` and `desc_sid` are INDEPENDENT, and neither is guaranteed to equal
+  `first_rank_id`.** 22 of our 23 hosts have `title_sid = desc_sid = first_rank_id`, which makes it
+  look like a rule — **Quick Damage (44) does not**: `title_sid 141`, `desc_sid` **12863**. Writing
+  the description to the title sid gave an AA with the right NAME and the host's ORIGINAL
+  description, with no error anywhere. Always
+  `SELECT title_sid, desc_sid FROM aa_ranks WHERE id = <first_rank_id>` before writing `db_str` for
+  a new host, or repoint `desc_sid` to match the title sid as `aotv4_aa_ranged.sql` now does.
 - **`items` (and `spells_new`) ARE in shared memory** — unlike AAs, item edits need a full rebuild:
   stop world+zones, `cd build/bin && ./shared_memory`, restart world (zones reboot on demand). Do it
   with world DOWN, or world keeps the stale mmap.
@@ -559,6 +654,15 @@ class, `classes8`, skill caps, expansion). The windows are generic (`SPELLCHOICE
   spelldmg/healamt, +½ heroic on every stat+resist, instruments ×2, **No Drop**). All three tiers:
   classes/races=65535, not-lore; **native + Hallowed tradeable, only Mythic No Drop**. Derived stats
   use the scaled (×2) values.
+  - ⚠️ **Tier rows ALREADY inherit `price`/`sellrate` from the native — do not "fix" this** (checked
+    2026-07-28: 0 of 54,292 tier rows differ from their base on either column). The clone is
+    `INSERT … SELECT *` and nothing in the script touches those columns. 33,720 tier rows show a
+    price of 0 only because **the base item's price is 0 too**; there is nothing to inherit.
+  - ⚠️⚠️ **"Mythic won't sell" is NO DROP, not price.** `Handle_OP_ShopPlayerSell` bails at
+    `if (!item->NoDrop) return;` (`client_packet.cpp:15221`) *before* price is read, and
+    `Client::AdvLootSellValue` returns 0 for the same reason (`:10674`). A Mythic carries the native's
+    full price and still cannot be sold to a vendor — that is the design, not a bug. The 17 Hallowed
+    rows that also refuse are the **epics**, forced Lore + No Drop at the end of the tier script.
   Two C++ hooks (tracked patches): `NPC::AddLootDropTable` (loot.cpp) rolls **25% Hallowed / 5%
   Mythic** per base drop (mode-independent, since `lootdrop_entries.chance` is a weight in the
   dominant weighted loot mode); `AoTv4MythicReward` (questmgr.cpp + lua_client.cpp) upgrades
@@ -1083,9 +1187,16 @@ the corpse. **No raid** — loot rights are granted directly, which disturbs nob
 latecomers. Pure Lua + SQL, no C++. **Test plan + known failure points: `WORLD_BOSS.md`.**
 
 - **Files**: `lua_modules/aotv4_worldboss.lua` (core), `lua_modules/commands/worldboss.lua` (`#worldboss`
-  / `status` / `clear`, access **200** via `command_settings`), `custom/sql/aotv4_worldboss.sql`
+  / `status` / `clear`, access **200**), `custom/sql/aotv4_worldboss.sql`
   (npc **2000200 `#The_Nameless`**, loottable 200020). Hooks: `global_player.event_enter_zone` →
   `on_enter_zone`, `global_npc.event_death_complete` → `on_death`.
+- ⚠️⚠️ **A LUA COMMAND IS REGISTERED IN `lua_modules/command.lua`, NOT in `command_settings`.** That
+  table is for **C++ commands only** — the zone deletes any row whose command has no C++ handler,
+  logging *"Command [x] no longer exists. Deleting orphaned entry from `command_settings`"*. A file
+  in `lua_modules/commands/` that is not listed in `command.lua`'s `commands` table is simply never
+  reachable. **`#worldboss` was unregistered and therefore did nothing from the day it was written
+  until 2026-07-27**, which is also why it was never caught: it was only ever going to fail the
+  moment somebody typed it. `commands["name"] = { access, require("commands/file") }`.
 - ⚠️ **ARMING AND SPAWNING ARE SEPARATE, and must be.** You cannot spawn into a zone nobody occupies:
   zones are dynamic (idle ones self-terminate) and `eq.spawn2` is zone-local. So the command records
   `aotv4_worldboss = "zone|npcid|expiry"` in a GLOBAL bucket + announces, and the **first player to
@@ -1206,3 +1317,279 @@ docker cp <ID>:/tmp/peq_recovered.sql.gz C:\AoTv3\AoTv4\peq_recovered.sql.gz
   pre-achievements) and a `Dump completed on …` marker at the tail. **36 MB gzipped ≈ 341 MB SQL is normal.**
 - **Canonical recovery point is now `/src/peq_recovered.sql.gz`** (Jul 24 23:18, full `peq`, achievements
   included), NOT the stale `/src/aotv4_current.sql` (Jul 21) that `POST_REBUILD_RECOVERY.md` used to point at.
+
+## 18. Server-wide buffs — `#worldbuff` — 2026-07-27
+
+`#worldbuff <spellid> [minutes]` puts any spell on everybody, everywhere. Also `status` and `clear`.
+Access **200**. Pure Lua, no C++.
+
+- **Files**: `lua_modules/aotv4_worldbuff.lua` (core), `lua_modules/commands/worldbuff.lua` (the
+  command), registered in `lua_modules/command.lua`. Hooks: `global_player.event_connect` and
+  `event_enter_zone` → `on_player`, `event_timer "worldbuff"` → `on_sweep`.
+- ⚠️ **THERE IS NO SINGLE CALL THAT REACHES THE WHOLE SERVER.** Lua can only enumerate clients in its
+  OWN zone (`eq.get_entity_list():GetClientList()`), and every zone is a separate process. The
+  cross-zone bindings are all targeted — `cross_zone_cast_spell_by_char_id` / `_client_name` /
+  `_group_id` / `_guild_id` / `_raid_id` / `_expedition_id` — there is no "by everyone". So coverage
+  is assembled from four places: the command buffs its own zone at once, `event_connect` catches
+  logins, `event_enter_zone` catches zoning, and a per-client repeating timer catches the player who
+  is parked somewhere and does neither.
+- State is ONE global bucket, `aotv4_worldbuff = "spellid|expiry_epoch"`, so every zone reads the
+  same thing and it survives restarts. Same shape as `aotv4_worldboss`.
+- ⚠️ **`ApplySpellBuff`, not `SpellFinished`.** `SpellFinished` runs a real cast: it can be resisted
+  and it honours target type, so a beneficial spell with the wrong `targettype` will not land on an
+  arbitrary player. `ApplySpellBuff` puts the buff straight on, which is what "the GM said everyone
+  gets this" has to mean — and it is why **any** spell id works rather than only self/single-target.
+- ⚠️ The sweep re-checks with `FindBuff` before applying, so it does not reset the duration every
+  tick; a 10-minute buff lasts 10 minutes, not as long as the window.
+- ⚠️ **The timer is PER CLIENT**, so `on_sweep` does per-client work. Calling `apply_zone()` from it
+  would walk the whole client list once per player per sweep.
+- `clear` stops new grants; buffs already handed out run out on their own.
+
+## 19. Autoskill window — `/autoskill` — 2026-07-27
+
+⚠️ **The autoskill SYSTEM predates this and was NOT changed.** It was already: `GetAvailableAutoSkills`
+(the ten activated specials), `GetAutoSkillsList` (those you have), `Get/SetAutoSkillStatus`
+(per-skill on/off in `autoskill.<id>` data buckets), and the auto-fire loop in `Client::Process` that
+runs enabled specials while auto-attacking a **non-client** target. `#autoskill [skill]
+[enable|disable|status]` / `#autoskill list` still work untouched. Section 19 is only the **window**.
+
+- **Server**: `Client::SendAutoSkillData` / `HandleAutoSkillSay` / `GetAutoSkillCooldown` /
+  `GetAutoSkillReuse`, all in `zone/special_attacks.cpp`; say intercept in
+  `Client::ChannelMessageReceived` beside the AdvLoot one. **Needs a zone rebuild.**
+- **Client**: `core_autoskill.cpp/.h` (own TU, no detours) + `EQUI_AoTAutoSkillWnd.xml`, flag
+  `areAutoSkillWindowEnabled`. `/autoskill` from `core_bazaar.h`. Install:
+  `aotv4_client_install/AUTOSKILL_WINDOW_INSTALL.md`.
+- **Protocol**: `ASKILLDATA <n>^skillid|name|enabled|cooldown_secs|reuse_secs^…` out;
+  `/say askset <skillid> <0|1>` and `/say askrefresh` in.
+- ⚠️ **`GetAutoSkillCooldown` lives in `special_attacks.cpp` on purpose** — `AOTV4_SKILL_TIMER_BASE`
+  is file-scope there, and duplicating it elsewhere is how the two silently drift apart.
+- ⚠️⚠️ **TAUNT USES A DIFFERENT TIMER.** Every other special uses `AOTV4_SKILL_TIMER_BASE + skill`;
+  Taunt runs on the stock `pTimerTaunt` (the auto-fire loop special-cases it for the same reason).
+  Reading the wrong one reports a permanently-ready Taunt.
+- ⚠️⚠️ **`PersistentTimer::GetRemainingTime` returns `0xFFFFFFFF` when the timer exists but is
+  DISABLED**, not 0. Unguarded, a ready skill displays a 49-day cooldown. (`PTimerList` returns a
+  plain 0 for a timer that was never created at all, which is fine.) Reuse times are **seconds**
+  (`BashReuseTime = 5`, `common/features.h`).
+- ⚠️ **The countdown runs CLIENT-side.** The server sends remaining seconds; the dll ticks them down
+  per frame and resyncs every 2.5 s **only while the window is on screen**. Streaming a line per
+  second per player is exactly the chat burst RoF2 drops (§15). Closed window, zero traffic.
+- ⚠️⚠️ **THE TIMERS TAB IS GONE (2026-07-28) and should not come back in that shape.** It listed the
+  firing skills with Ready In and Reuse columns, and that does not work: **Bash and Kick reuse in about
+  FIVE SECONDS** (`BashReuseTime = 5`, `common/features.h`), so the number was ready again before the
+  eye found it and the page looked permanently broken. A grid of buttons with the countdown drawn on
+  each face was tried next and was not wanted either. The window is now a SINGLE page, no `TabBox`.
+- ✅ **The real lever is a CAP, not a display.** `AOTV4_AUTOSKILL_MAX = 4` (`zone/special_attacks.cpp`)
+  limits how many abilities may be enabled at once, enforced in `Client::HandleAutoSkillSay` -- the
+  only path that turns one on. Without it the correct play is to enable everything and the choice of
+  which specials to run stops being a choice. ⚠️ Enforced SERVER side on purpose: a client-side cap is
+  bypassed by the `/say askset` the window sends, or by typing `#autoskill`. Turning one OFF is always
+  allowed. The dll mirrors it in `AUTOSKILL_CAP` only so "All On" does not ask for a fifth and collect
+  a red refusal per extra skill.
+- Cooldowns are still parsed and ticked locally even though nothing shows them, so a future short-buff
+  / autoskill tracker (§17b) finds them already running.
+- ⚠️ **The list is rebuilt only when the rows change** (skill gained, or one toggled) — `Refresh()`
+  calls `DeleteAll`, which clears the selection, so rebuilding on every resync would yank it out
+  from under the player. Otherwise only the timer column is rewritten.
+
+## 20. Spell window tabs — Choose / Known / Pool — `/journal` — 2026-07-27
+
+⚠️ **This began as a SEPARATE window and is not one any more.** `EQUI_AoTSpellJournalWnd.xml` and a
+`SpellJournalWnd` class existed for one iteration, then the two panels were folded into the EXISTING
+reward picker so there is a single spell window. The standalone XML is kept as a backup and is
+**unused** — do not copy it or `<Include>` it. `core_spelljournal.cpp` now owns **no window**: it is
+the data and rendering service behind two tabs whose widgets belong to `core_spellchoice_native.cpp`.
+
+**Three tabs**: **Choose** (the reward cards, icons and two-step Confirm — UNCHANGED),
+**Known**, **Pool**. **Known** = what this character has scribed, grouped under
+level-band headers. **Pool** = what can still be OFFERED at a chosen level, with a `<<`/`>>` stepper.
+The Pool tab is the point: the pool is **2,154 spells over 78 levels** and was previously invisible —
+a player could only ever see what they had been handed, never what they might be.
+
+- **Files**: `core_spelljournal.cpp/.h` (own TU, no detours, no window) + the Known/Pool widgets in
+  the GENERATED `EQUI_AoTSpellChoiceWnd.xml`, flag `areSpellJournalEnabled`. `/journal` and
+  `/spells` from `core_bazaar.h` call `SpellChoiceOpen()`. Server: `spell_choice.send_pool` /
+  `handle_journal_say`, routed from `global_player.event_say`. Install:
+  `aotv4_client_install/SPELL_JOURNAL_INSTALL.md`.
+- **Protocol**: `SJPOOLDATA <level> <chunk> <chunks>^id:known,id:known,…` out; `/say sjpool <level>` in.
+- ⚠️⚠️ **The Pool tab lists TWO pools, and combat abilities are the second one.** `spell_pool.lua` is
+  spells only; the activated combat abilities live in `skill_pool.lua` and were invisible on the tab
+  until 2026-07-28, which read as "not obtainable" — wrong, the picker spends a slot on one roughly
+  every eighth level. They ride the same line as **`k<skillid>:<known>:<name>`** and the client lifts
+  them to **`SJ_SKILL_BASE (1000000) + skillid`** so one `sjinfo <id>` can ask about either kind.
+  ⚠️ Without the offset a skill id (0-76) *is* a valid spell id — `sjinfo 8` would describe spell 8.
+  ⚠️ The **name is on the wire** because this dll has no skill-name table; hardcoding one is the
+  `kIcons[]` drift trap again (§3). ⚠️ `SKILL_ID_BASE` (spell_choice.lua) and `SJ_SKILL_BASE`
+  (core_spelljournal.cpp) must match. Abilities are **not level-banded** (`rotatable_for(class)`
+  ignores level), so they list once at the top for every level; a class never sees its own natives.
+- ⚠️ **Bard songs ARE in the pool** (150 of them, ~1-2 per level, only 3 blacklisted) — they are just
+  sparse and carry no marker, so "no songs" is nearly always "did not spot one" rather than a filter.
+- **Adapted from `New folder (2)/AoT_Spell_Book.cpp`** (an earlier AoT generation). That window is
+  where the two-native-tabs + four-listboxes layout was first proven on this client — it is the file
+  §16 cites. What was deliberately NOT taken:
+  - its **progression model** (one spell slot per character level, tiers of 5, a Roll button, mastery
+    ranks bit-packed into synthetic spell ids: `15-13` mastery / `12-8` tier / `7-0` index). Ours
+    scribes real `spells_new` rows chosen three at a time on level-up; none of that machinery applies.
+  - its **transport** — it talks over opcodes (`0x196A`/`0x196B`, range 6500-6504). This dll has **no
+    raw-packet send at all** and every window it owns rides the shared `dsp_chat` detour.
+- ✅ **Descriptions are built CLIENT SIDE** from the client's own spell record (`GetSpellByID`, then
+  `Attrib[]`/`Base[]`/`DurationType`). This is the technique worth having from that reference. It
+  removes the standing two-source problem in §14: the picker's text comes from `spell_desc.lua` over
+  `SPELLDESCDATA` while the spellbook's comes from `db_str` via an exported `dbstr_us.txt`, and those
+  must be kept in sync by hand. Text derived from the spell cannot drift from it and costs no traffic.
+  ⚠️ The SPA label table is deliberately NOT exhaustive — an unknown SPA falls through to a generic
+  `SPA n: base` line so it is visibly unlabelled rather than silently absent.
+- ⚠️ **IDS ONLY on the wire; the client resolves names.** Sending names would roughly quadruple the
+  payload (level 70 holds 125 pool spells: ~1.1 KB as `id:known` vs ~4 KB with names).
+- ⚠️ **And it is CHUNKED anyway (60/line).** An oversized chat line is silently TRUNCATED, which looks
+  like a short pool rather than an error — and §15 already records RoF2 dropping/reordering bursts.
+  Each line carries its own chunk index, and a chunk whose level ≠ the level on screen is **dropped**
+  (chat can arrive out of order; without that guard two levels would merge into one list).
+- ⚠️ **Row index is NOT a data index on either list** — Known inserts a band header every 10 levels,
+  so both lists keep an explicit row→spell-id map. Same trap as the Autoskill Timers page (§19).
+- ⚠️ **An all-254 spell shows "Handled by the server; no client-visible effects."**, not "no effects".
+  Several of ours are deliberate inert marker buffs paid by Lua (the Thirst line 43342-43347, the
+  Shield Wall buffs). The wording is deliberate.
+- The Known tab costs **zero** server traffic — it reads `CHARINFO2::SpellBook` directly.
+
+### ⚠️⚠️ 43000-43149 is RETIRED from the pool (2026-07-27)
+The generator's clause that offered the 20 all-slots-254 members of that band is **removed** — see
+the comment block in `gen_stock_pool.pl`. That band is the retired 113-spell custom reward set
+(Ember, Zap, Kick, Strike, Counterattack, Moonfire…): mostly redundant with native spells, and being
+inert markers they render as "no effects" in any client-side description. Pool went 2,174 → **2,154**.
+The **rows remain in `spells_new`** (dormant; referenced by their `quests/global/spells/43xxx.lua`
+scripts and the 43150-43199 helpers) — only the offering stopped. Full restore of all 202 custom rows
+is `custom/sql/aotv4_custom_spells_backup.sql`.
+
+⚠️⚠️ **"Get rid of the 43xxx spells" must NEVER be read as the whole range.** The band is not
+homogeneous and everything from 43300 up is live: **43300-43349** the custom spell lines (reptile,
+sloth, moonfire, promised, kindred, mark, thirst — all still offered), **43350-43399** their triggers
+plus the Shield Wall buffs, **43400-43454** the AA-tree buffs and pet wards, **43500-43565** the class
+auras. Deleting the range would destroy all four AA trees, Shield Wall, the pet wards and the
+achievement auras.
+
+### The tabs live in the GENERATED picker XML (`gen_choice_xml.pl`)
+⚠️ `EQUI_AoTSpellChoiceWnd.xml` is generated, so the Known/Pool widgets are emitted by
+`aotv4_client_install/gen_choice_xml.pl`, NOT hand-written. Rerun it after any pool regen (it already
+had to be rerun for the icon set) and copy the result. The generator now emits three `<Page>`s inside
+one `<TabBox>`.
+⚠️ **The `<Screen>` lists ONLY `ASC_Tabs`.** Every other piece belongs to a page; naming one on the
+screen as well places it twice and it draws outside its tab.
+⚠️ The card coordinates were NOT moved — each page sits at `Y=TAB_Y` (22) and its pieces are
+positioned relative to the page, so the Choose layout is byte-for-byte the old one. The window grew
+450 → 500 tall to pay for the tab strip.
+- `SpellChoiceShow()` still refuses to open with nothing pending (Ctrl+Q's "is a reward owed" test
+  keeps its meaning); **`SpellChoiceOpen()`** is the new browse entry point that ignores that.
+- The transport calls back via `SjSetPoolReadyCallback` rather than touching the window, so
+  `core_spelljournal` stays ignorant of who owns the widgets.
+
+### ⚠️⚠️ Forward-declaring a client widget type in one of OUR headers
+`core_spelljournal.h` was the first header in this dll to take a `CListWnd*`/`CXWnd*` in a signature,
+and the obvious way to do it is wrong:
+```cpp
+class CListWnd;   // WRONG -- declares a second, unrelated ::CListWnd
+```
+The client classes live in **`namespace EQClasses`**, and `EQClasses.h` ends (line ~6973) with
+`using namespace EQClasses;`. A global forward declaration therefore creates a *different* type, and
+every later mention becomes **`'CListWnd': ambiguous symbol`** plus
+**`cannot convert from 'EQClasses::CXWnd *' to 'CXWnd *'`** — over a hundred errors from one line,
+almost all of them cascades that point nowhere near the cause.
+```cpp
+namespace EQClasses { class CListWnd; class CXWnd; }   // RIGHT
+void SjRefreshKnown(EQClasses::CListWnd* list);        // and QUALIFY the signatures
+```
+Qualify rather than adding a global `using`, so the header works whether it is included before or
+after `EQClasses.h`. Inside a `.cpp` the bare names are fine — `MQ2Main.h` pulls the using-directive
+in first.
+
+## 21. Launcher — `/aot` — 2026-07-27
+
+One button per custom window, so none of them needs a remembered slash command. A narrow vertical
+strip meant to sit under the stock **SC / EQ** buttons so it reads as part of that bar; draggable,
+and the client persists its position, so it is placed once.
+
+- **Files**: `core_aotmenu.cpp/.h` (own TU, no detours) + `EQUI_AoTMenuWnd.xml`, flag
+  `areAoTMenuEnabled`. `/aot` and `/menu` from `core_bazaar.h`.
+- **Buttons**: Spells, Autoskill, Adv Loot, Trader, Achievements, Search, Last Death.
+- ⚠️ **Two different open mechanisms, and the split is deliberate.** Windows whose module exposes a
+  show function are called directly (`SpellChoiceOpen`, `AutoSkillShow`, `AdvLootShow`,
+  `ShowSearchWindow`, `LostWindowShow`). Windows whose CONTENTS come from the server are opened by
+  **queueing their command** instead — Trader (`/trader` → `SHOPINVDATA`) and Achievements (`/ach` →
+  `ACH|window|show`). Calling their internal show directly would put an EMPTY window on screen, and
+  for the shop it would show the last stale listing.
+- ✅ **It DOCKS to the left of the stock SC / EQ bar** on every open, so both are usable and neither
+  covers the other. The bar is `EQMainWnd` and the client keeps a pointer at **`pinstCEQMainWnd`**
+  (`eqgame.h` 0xF713C0), already in the address table -- so nothing is found by name and nothing stock
+  is hooked. `CXWnd::GetScreenRect` (0x8638D0) and `CXWnd::Move(CXRect)` (**`CXWnd__Move1_x`**,
+  0x8686F0) are both mapped on this build. ⚠️ `CXWnd__GetClientRect_x` is **NOT** defined here -- use
+  GetScreenRect.
+  ⚠️⚠️ **`CXRect::A,B,C,D` are left/top/right/bottom and are `DWORD` -- UNSIGNED.** Cast to `int`
+  before any arithmetic: `bar.A - width` wraps to ~4 billion when the bar sits near the left edge,
+  flinging the window off screen instead of clamping. If there is no room on the left it flips to the
+  bar's right.
+  ⚠️ Docking runs on OPEN, not per frame -- a per-frame reposition would fight the player dragging the
+  window. Move the EQ bar, then reopen the launcher to re-dock.
+- ⚠️⚠️ **DO NOT PUT BUTTONS INTO THE STOCK SC / EQ BAR. IT WAS TRIED AND IT CRASHES.** An `EQM_AoTButton`
+  was added to `EQUI_EQMainWnd.xml` and its click caught by copying `EQMainWnd`'s vtable and
+  overwriting **entry 34** (the slot `SetWndNotification` writes) -- necessary because
+  `CCustomWnd::ReplacevfTable` only ever operates on `this`. **It crashed on the first click.** The
+  code and the XML edit are both reverted; `EQUI_EQMainWnd.xml` is back to stock and is NOT shipped.
+  Do not re-attempt: it patches a window this dll did not construct, on a build whose UI structs are
+  already documented as not matching the headers (§13), and it can only fail at runtime -- there is no
+  static check that would have caught it. The list is our OWN window, which gets notifications the
+  ordinary way and cannot corrupt anything stock.
+- **It auto-shows once per session** on entering the world (`AoTMenuTick` watching `pinstLocalPlayer`),
+  then stays closed if closed. `AoTMenuOnUiReset` re-arms it so it survives a `/loadskin`.
+
+### ⚠️⚠️ Listbox text colours are `0xAARRGGBB` — the ALPHA byte is mandatory (2026-07-28)
+A colour written **`0x00RRGGBB` is fully transparent**, so the text is drawn and is completely
+invisible. The Autoskill window showed an empty red selection bar and no skills at all for this
+reason, and the spell Known/Pool tabs had the same fault. Use **`0xFF……`**. `core_advloot.cpp` and
+`core_achievements_native.cpp` were already correct (`0xFFE0DCCD` etc.), which is why they looked fine
+and made the others look like a data problem rather than a colour one.
+⚠️ Second, separate trap in the same place: **`CListWnd::AddString` colours COLUMN 0 ONLY.** A cell
+written afterwards with `SetItemText` has no colour and draws **black**. Every extra column needs an
+explicit `SetItemColor(row, col, colour)` — the `Cell()` helpers in `core_autoskill.cpp` and
+`core_spelljournal.cpp` now take a colour and do both.
+
+### Blacklist as of 2026-07-28 — 619 pruned, **2008 offerable**
+```
+travel 170 · discipline 157 · summonitem 183 · illusion 23 · vision 19
+enchant 20 · rez 15 · ldon 18 · curecurse 7 · corpse 3 · sense 3 · truenorth 1
+```
+- ⚠️ **`discipline` MIRRORS `common/spdat.cpp IsDiscipline` EXACTLY** — `mana = 0 AND (EndurCost > 0 OR
+  EndurUpkeep > 0)`. Do not simplify it to "has an endurance cost": that would misclassify anything
+  carrying both, and the rule must agree with what the ENGINE calls a discipline or the picker and the
+  grant path disagree.
+  Disciplines are excluded because they are not spells and do not behave like one: a picked discipline
+  trains into the **Combat Abilities** window, not the spellbook, and autoskill cannot fire it either —
+  that handles only the ten activated specials in `Client::GetAvailableAutoSkills`. A reward that lands
+  somewhere the player is not looking, driven by none of our systems, is not a reward. Throw Stone,
+  Leg Strike, Head Strike and Provoke were all being offered this way.
+- ⚠️ **Rule ORDER decides which bucket a spell is counted in.** Adding `discipline` moved 16 spells out
+  of `summonitem` (199 → 183): they matched both. The counts are per-rule-first-match, not disjoint
+  categories — a shifting count in one bucket after adding a rule is expected, not a regression.
+- ⚠️ `truenorth`, `sense`, `illusion` and `vision` all test PURITY: pruned only when the junk effect is
+  the ONLY thing the spell does. A spell that senses/disguises/points north AND does something real is
+  kept. Any new rule of that kind gets the same treatment.
+
+### ⚠️⚠️ Syntax-check Lua before restarting zones — `.devcontainer/custom/tools/luacheck`
+The container ships **no `lua` or `luac` binary**, so for most of this project's life a broken quest
+module could only be found by restarting zones and reading a player's CHAT log. That is how a mangled
+string literal in `spell_choice.lua` took down the **entire** level-up picker: `global_player.lua`
+`require`s it at line 4, so the failed module aborted the whole global player script, and the only
+symptom was `error loading module 'spell_choice'` in game.
+
+`luacheck.c` builds against the system Lua 5.1 and calls `luaL_loadfile`, which parses and compiles
+but never RUNS the file — so quest scripts full of `eq.*` calls are safe to check.
+
+```bash
+cc -O1 -o .devcontainer/custom/tools/luacheck .devcontainer/custom/tools/luacheck.c \
+   -I/usr/include/lua5.1 -llua5.1
+find .devcontainer/repo/quests -name '*.lua' -print0 | xargs -0 .devcontainer/custom/tools/luacheck
+```
+
+⚠️⚠️ **DO NOT EDIT LUA WITH `perl -0pi -e`.** Both corruptions came from that: perl interpolates
+`$"`, `$+` and friends inside the replacement, and a Lua pattern is *full* of them —
+`"^sjinfo%s+(%d+)%s*$"` became `"^sjinfoH  PA u+(1990222272+)  +z * )`. It also silently inlined the
+whole slurped file into `gen_stock_pool.pl` when a `$_` appeared in a replacement. Use the Edit tool,
+or single-quoted `sed` with explicit line numbers, and run luacheck afterwards either way.
