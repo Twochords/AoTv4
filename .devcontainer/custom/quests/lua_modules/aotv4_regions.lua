@@ -43,6 +43,22 @@ M.REGIONS = {
     [6] = "Cabilis",
 }
 
+-- ⚠️ The hub zone each region drops you into when you open it. Verified against `zone_regions`, which
+-- maps these exact zones to these exact region ids -- if that table is ever re-pointed, this must
+-- follow or a player is delivered to a zone their new region does not cover and is bounced straight
+-- back out by RegionManager::CanEnterZone.
+-- 📌 Short names, not ids, because MoveZone takes the short name and resolves the zone's own safe
+-- point for us. Hardcoding coordinates here would be a second copy of something the DB already
+-- knows, and safe points do get retuned.
+M.HOME = {
+    [1] = "gfaydark",     -- Kelethin, in the trees
+    [2] = "freportw",     -- West Freeport
+    [3] = "thurgadina",   -- The City of Thurgadin
+    [4] = "firiona",      -- Firiona Vie
+    [5] = "qeynos",       -- South Qeynos
+    [6] = "cabeast",      -- Cabilis East
+}
+
 local function ckey(c) return "region_credits_" .. c:CharacterID() end
 
 function M.credits(c) return tonumber(eq.get_data(ckey(c))) or 0 end
@@ -99,6 +115,21 @@ function M.open(c, region_id)
     c:Message(15, string.format("%s is open to you. (%d unlock%s remaining)",
         name, n - 1, (n - 1) == 1 and "" or "s"))
     eq.world_emote(15, string.format("%s has opened the way to %s.", c:GetCleanName(), name))
+
+    -- ⚠️⚠️ TRAVEL IS PART OF OPENING, NOT A SEPARATE STEP. Resplendent has no zone line to anywhere,
+    -- so a player who opened a region and was left standing here had a region they could not reach --
+    -- which is exactly how it read in testing. Deliver them to the region's hub.
+    -- ⚠️ MOVE LAST, after the unlock and the credit are both committed. MoveZone tears this client
+    -- down to hand it to another zone, so anything after it may not run; the bucket write and the
+    -- messages have to be already done. Same "destroy the thing you are standing in last" rule the
+    -- delve teardown follows.
+    -- ⚠️ MoveZone(short) with no coordinates lands on the zone's own safe point, which is what makes
+    -- this safe in six different zones without six sets of hand-picked coordinates.
+    local home = M.HOME[region_id]
+    if home then
+        c:Message(15, "The way opens. Step through.")
+        c:MoveZone(home)
+    end
 end
 
 -- ---------------------------------------------------------------- say routing
