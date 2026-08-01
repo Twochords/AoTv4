@@ -58,8 +58,10 @@ M.CLASS_NAME = {
 M.RACE_ORDER = {1,2,3,4,5,6,7,8,9,10,11,12,128,130,330,522}
 
 function M.legal(race, class)
-    for _, c in ipairs(M.LEGAL[race] or {}) do if c == class then return true end end
-    return false
+    -- AoTv4: EVERY race/class combo is allowed. Was restricted to the 112 native-legal pairs in
+    -- M.LEGAL; now any known race can be any class (1-16). Illegal-by-Live combos may lack polished
+    -- client art, but the server sets race+class and the client renders it.
+    return (M.RACE_NAME[race] ~= nil) and class >= 1 and class <= 16
 end
 
 -- ---------------------------------------------------------------- the gate

@@ -10,14 +10,18 @@
 
 local reforge = require("aotv4_reforge")
 
+-- ⚠️⚠️ `e.other` IS THE PLAYER; `e.self` IS VAEL. This file had it backwards in all four places, and
+-- unlike Alessa's crash it failed SILENTLY: GetClass and GetRace exist on any Mob, so the menus were
+-- built from VAEL's race and class and offered the wrong options, while can_reforge checked HIS level
+-- instead of the player's -- meaning the "level 1 only" gate was never actually applied to anyone.
 local function gate(e)
-    local ok, why = reforge.can_reforge(e.self)
+    local ok, why = reforge.can_reforge(e.other)
     if not ok then e.self:Say(why) end
     return ok
 end
 
 local function offer_races(e)
-    local c = e.self
+    local c = e.other          -- the PLAYER, not Vael
     local class = c:GetClass()
     e.self:Say("These forms can hold a " .. (reforge.CLASS_NAME[class] or "?") .. ":")
     -- ⚠️ RACE_ORDER, not ipairs -- the race ids are sparse (128, 130, 330, 522) and ipairs would stop
@@ -32,7 +36,7 @@ local function offer_races(e)
 end
 
 local function offer_classes(e)
-    local c = e.self
+    local c = e.other          -- the PLAYER, not Vael
     local race = c:GetRace()
     e.self:Say("A " .. (reforge.RACE_NAME[race] or "?") .. " may follow these callings:")
     for cl = 1, 16 do
@@ -43,7 +47,7 @@ local function offer_classes(e)
 end
 
 function event_say(e)
-    local c = e.self
+    local c = e.other          -- the PLAYER, not Vael
 
     if e.message:findi("hail") then
         e.self:Say("I am Vael. I unmake and remake -- but only what has not yet been lived in.")

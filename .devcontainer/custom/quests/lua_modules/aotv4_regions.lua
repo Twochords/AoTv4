@@ -43,6 +43,19 @@ M.REGIONS = {
     [6] = "Cabilis",
 }
 
+-- ⚠️ The SINGLE "starting zone" PoK book each region connects to. A region can span several
+-- book-zones (Freeport also has ecommons/misty, Qeynos also qeytoqrg/rathemtn), but unlocking a
+-- region only attunes THIS one -- the city book -- so the travel window opened by the Resplendent
+-- book shows exactly one destination per region held. Short names must match pok_portals.lua.
+M.REGION_BOOK = {
+    [1] = "gfaydark",     -- Kelethin
+    [2] = "freportw",     -- Freeport
+    [3] = "greatdivide",  -- Thurgadin
+    [4] = "firiona",      -- Firiona Vie
+    [5] = "qeynos2",      -- Qeynos
+    [6] = "fieldofbone",  -- Cabilis
+}
+
 local function ckey(c) return "region_credits_" .. c:CharacterID() end
 
 function M.credits(c) return tonumber(eq.get_data(ckey(c))) or 0 end
@@ -99,6 +112,19 @@ function M.open(c, region_id)
     c:Message(15, string.format("%s is open to you. (%d unlock%s remaining)",
         name, n - 1, (n - 1) == 1 and "" or "s"))
     eq.world_emote(15, string.format("%s has opened the way to %s.", c:GetCleanName(), name))
+
+    -- AoTv4: connect this region's starting-zone PoK book so it appears in the travel window opened
+    -- by the Resplendent book. discover() attunes exactly this one zone (none are grant_sets keys).
+    local book = M.REGION_BOOK[region_id]
+    if book then require("pok_travel").discover(c, book) end
+
+    -- Wayfinder Alessa points the player at the book behind her (they are standing at her in Resplendent).
+    local alessa = eq.get_entity_list():GetMobByNpcTypeID(2000400)
+    if alessa and alessa.valid then
+        alessa:Say(string.format("The way to %s is open. Step to the book behind me and it will carry you there.", name))
+    else
+        c:Message(15, "Click the book to travel to your opened region.")
+    end
 end
 
 -- ---------------------------------------------------------------- say routing

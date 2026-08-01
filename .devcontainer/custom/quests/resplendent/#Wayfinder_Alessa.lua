@@ -27,8 +27,14 @@ local function grant_starting_credit(c)
     return true
 end
 
+-- ⚠️⚠️ IN AN NPC SCRIPT `e.self` IS THE NPC AND `e.other` IS THE PLAYER. Getting this backwards is
+-- what broke her: `e.self:CharacterID()` is nil on an NPC, so the hail died with "attempt to call
+-- method 'CharacterID' (a nil value)" after she had already spoken her lines -- which read as her
+-- working right up until the moment she was supposed to do something.
+-- 📌 The opposite convention holds in global_player.lua, where `e.self` IS the player. That is why
+-- aotv4_regions.M.handle_say uses e.self and is correct; do not "fix" it to match this file.
 local function offer(e)
-    local c = e.self
+    local c = e.other
     local n = regions.credits(c)
 
     if n < 1 then
@@ -47,7 +53,7 @@ local function offer(e)
 end
 
 function event_say(e)
-    local c = e.self
+    local c = e.other          -- ⚠️ the PLAYER; e.self is Alessa
 
     if e.message:findi("hail") then
         e.self:Say("Well met. I am Alessa, and I keep the ways out of this place.")
