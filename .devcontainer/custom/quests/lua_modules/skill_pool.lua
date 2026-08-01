@@ -20,7 +20,6 @@ M.SKILLS = {
 	[30] = { name = "Kick",         icon = 203 },
 	[16] = { name = "Disarm",       icon = 202 },
 	[73] = { name = "Taunt",        icon = 203 },
-	[72] = { name = "Berserking",   icon = 203 },
 	[74] = { name = "Frenzy",       icon = 49 },
 	[21] = { name = "Dragon Punch", icon = 203 },
 	[23] = { name = "Eagle Strike", icon = 203 },
@@ -53,7 +52,6 @@ M.NATIVE = {
 	[30] = { 1, 4, 7, 15, 16 },          -- Kick
 	[38] = { 7 },                        -- Round Kick   Monk
 	[52] = { 7 },                        -- Tiger Claw   Monk
-	[72] = { },                          -- Berserking   no class had a cap at all
 	[73] = { 1, 3, 4, 5 },               -- Taunt
 	[74] = { 16 },                       -- Frenzy       Berserker
 }
