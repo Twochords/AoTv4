@@ -1,5 +1,27 @@
 base/
 !base/*.json
 override/
-repo/
+# ⚠️⚠️ `repo/` USED TO BE IGNORED WHOLESALE, AND THAT HID THE ENTIRE SERVER-SIDE LUA FROM THIS REPO.
+# repo/quests is now TRACKED HERE so a clone of Twochords/AoTv4 brings the quests the live server
+# actually runs. It was a nested git clone of ProjectEQ/projecteqquests; its .git was moved to
+# /src/repo_backups/quests_dotgit (and bundled) so the tree could be stored as FILES -- git records a
+# directory containing .git as a bare commit SHA, which clones as an EMPTY directory and silently
+# delivers nothing.
+# 📌 Consequence: `git pull` from ProjectEQ upstream no longer applies to this tree. It is heavily
+# customised and was never pulled from them, so that is the intended trade.
+#
+# ⚠️⚠️ THE DLL REPO STAYS IGNORED, AND MUST. It is CLIENT mod source the server never reads, and it
+# carries 266MB of Visual Studio cache including a 139MB .ipch -- GitHub hard-fails any file over
+# 100MB, so staging it does not make a large push, it makes a REJECTED one. Its history is bundled at
+# /src/repo_backups/eqcoredll_*.bundle. Ignore the build cache before ever reconsidering this.
+#
+# ⚠️⚠️ `repo/` HOLDS FOUR TREES, NOT TWO -- IGNORE BY EXCEPTION, NEVER BY REMOVING THE RULE.
+# Un-ignoring `repo/` wholesale exposes 3.6GB, including TWO files past GitHub's 100MB hard limit:
+#     repo/maps/master.zip                          1007MB
+#     repo/eq-core-dll/.vs/.../EQGAME.ipch           139MB
+# Either one turns the push into a rejection, and a 3.2GB maps tree would bloat the clone the live
+# server has to pull forever. Only `repo/quests` is wanted here.
+repo/eq-core-dll/
+repo/maps/
+repo/eqemu-definitions/
 cache/
