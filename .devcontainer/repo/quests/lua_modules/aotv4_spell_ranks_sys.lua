@@ -30,6 +30,24 @@ M.MAX_KEPT      = 2
 M.FRAGMENT_ITEM = 147920
 M.INK_ITEM      = 147921
 
+-- ⚠️⚠️ BOTH ARE ALTERNATE CURRENCY, NOT INVENTORY. They used to be carried items, and the roguelite
+-- death destroys carried inventory -- so a death ate the fragments the PREVIOUS death had paid out,
+-- and any ink gathered during the run. Rank 5 costs 240 fragments; saving that up was impossible.
+-- `character_alt_currency` is untouched by the death path, cannot be dropped, traded or vendored,
+-- and the client shows a running balance in its own window.
+-- ⚠️ Must match custom/sql/aotv4_spell_rank_currency.sql. The ITEM ids above are still needed: the
+-- currency's name and icon are resolved from the paired item, and the ink item is what actually
+-- drops (global_player.event_loot converts it on pickup).
+M.FRAGMENT_CURRENCY = 57
+M.INK_CURRENCY      = 58
+
+-- One place that answers "how much has this character got", so the display, the affordability test
+-- and the charge can never disagree about where the balance lives.
+function M.balance(c)
+    return c:GetAlternateCurrencyValue(M.FRAGMENT_CURRENCY),
+           c:GetAlternateCurrencyValue(M.INK_CURRENCY)
+end
+
 -- ⚠️ Fragments DOUBLE per rank (against ~31 from a deep death); ink is a flat 10 per rank. The two
 -- scale differently on purpose: fragments come from dying, so they track how hard you have been
 -- pushing, while ink comes from killing, so it tracks time played. A rank costs both.
@@ -245,8 +263,8 @@ function M.upgrade_info(c, spell_id)
         next    = cost and nxt or nil,
         frag    = cost and cost.frag or 0,
         ink     = cost and cost.ink  or 0,
-        have_f  = c:CountItem(M.FRAGMENT_ITEM),
-        have_i  = c:CountItem(M.INK_ITEM),
+        have_f  = c:GetAlternateCurrencyValue(M.FRAGMENT_CURRENCY),
+        have_i  = c:GetAlternateCurrencyValue(M.INK_CURRENCY),
         rankable = (ranks.chain[base] ~= nil),
     }
 end
@@ -268,8 +286,10 @@ function M.upgrade(c, spell_id)
     -- ⚠️⚠️ ORDER IS LOAD-BEARING: take the materials, THEN record the rank. There is no refund path,
     -- but recording first and failing to charge would hand out free ranks. Same reasoning as the
     -- reroll gate order in spell_choice.
-    c:RemoveItem(M.FRAGMENT_ITEM, i.frag)
-    c:RemoveItem(M.INK_ITEM, i.ink)
+    -- ⚠️ Charged against ALTERNATE CURRENCY, not inventory. RemoveItem would find nothing now that
+    -- both are currencies, and would silently succeed -- handing out free ranks.
+    c:RemoveAlternateCurrencyValue(M.FRAGMENT_CURRENCY, i.frag)
+    c:RemoveAlternateCurrencyValue(M.INK_CURRENCY, i.ink)
     set_rank(c, i.base, i.next)
 
     -- If it happens to be scribed right now, swap the copy in hand to the new rank too.
@@ -318,7 +338,7 @@ function M.send_state(c)
             base, M.rank_of(c, base), kept[base] and 1 or 0, M.origin_of(c, base) or 0)
     end
 
-    local frag, ink = c:CountItem(M.FRAGMENT_ITEM), c:CountItem(M.INK_ITEM)
+    local frag, ink = M.balance(c)
     local chunks = math.max(1, math.ceil(#rows / M.CHUNK))
     for ci = 1, chunks do
         local part = {}
@@ -343,7 +363,7 @@ function M.handle_say(e)
     if e.message == "spellrankreq" then M.send_state(c) return true end
     if e.message == "spellkept" then
         local kept = M.kept(c)
-        c:Message(15, string.format("Fragments %d, Ink %d.", c:CountItem(M.FRAGMENT_ITEM), c:CountItem(M.INK_ITEM)))
+        local bf, bi = M.balance(c); c:Message(15, string.format("Fragments %d, Ink %d.", bf, bi))
         if #kept == 0 then c:Message(15, "You are keeping no spells.") end
         for _, base in ipairs(kept) do
             local lv = M.origin_of(c, base)

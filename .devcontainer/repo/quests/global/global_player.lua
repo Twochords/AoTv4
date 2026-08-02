@@ -941,3 +941,27 @@ end
 function event_disconnect(e)
   aotv4_dungeon.on_disconnect(e.self)
 end
+
+-- ⚠️⚠️ INK OF THE LOST IS A CURRENCY THAT ARRIVES AS AN ITEM. It drops from global loot, so it is
+-- looted like anything else -- but as a carried item the roguelite death destroyed it along with the
+-- rest of the bags, which is exactly what the move to alternate currency was meant to stop.
+-- EQEmu does NOT auto-convert an alternate-currency item on pickup (nothing in the loot path looks
+-- at the `alternate_currency` table), so the conversion has to happen here: bank the value, then
+-- remove the physical copy.
+--
+-- ⚠️ The item row is still needed and is NOT being retired: alternate currency is defined as a
+-- currency/item PAIR and the client reads the currency's name and icon from the item.
+-- ⚠️ Fragments need no equivalent hook -- they are paid straight into the currency by death_loss.
+function event_loot(e)
+  local ranksys = require("aotv4_spell_ranks_sys")
+  if e.item and e.item.valid and e.item:GetID() == ranksys.INK_ITEM then
+    local n = e.item:GetCharges()
+    if not n or n < 1 then n = 1 end
+    e.self:AddAlternateCurrencyValue(ranksys.INK_CURRENCY, n)
+    -- ⚠️ Taken back out of the bags, or the player holds both the currency AND the item, and the
+    -- item is destroyed on the next death while the currency is not -- which reads as the drop
+    -- having been stolen.
+    e.self:RemoveItem(ranksys.INK_ITEM, n)
+    e.self:Message(MT.Yellow, string.format("You gather %d Ink of the Lost.", n))
+  end
+end

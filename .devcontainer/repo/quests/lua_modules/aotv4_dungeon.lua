@@ -253,7 +253,7 @@ M.SWARM_CAP = 40
 
 -- ⚠️ TEMPORARY. Prints the swarm decision to the killer on every trash death in Swarm mode. Turn OFF
 -- once splitting is confirmed working in play -- it is one chat line per kill, per player.
-M.SWARM_DEBUG = true
+M.SWARM_DEBUG = false
 
 -- ---------------------------------------------------------------- Onslaught clock
 -- ⚠️ MUST MATCH `tasks.duration` on the Onslaught task rows (2000340-2000345), which is 1800. The
@@ -427,6 +427,15 @@ local function as_npc(mob)
     return nil
 end
 
+-- ⚠️⚠️ FORWARD DECLARATION, and it is load bearing. `party_clients_here` is a `local function`
+-- defined much further down with the other party helpers, but M.stock_chest below calls it -- and in
+-- Lua a reference to a local made BEFORE its declaration compiles to a GLOBAL lookup, which is nil at
+-- call time. That is not a syntax error, so luacheck passes it happily; it fails only when the chest
+-- is actually stocked, i.e. at the end of a run, with "attempt to call a nil value".
+-- The same trap is recorded for `get_cleared` in aotv4_regions.lua. Declaring the name here and
+-- ASSIGNING to it below (no second `local`) keeps one upvalue that both sides share.
+local party_clients_here
+
 function M.stock_chest(c, chest, run, L)
     if not c or not c.valid then return end
 
@@ -451,13 +460,33 @@ function M.stock_chest(c, chest, run, L)
 
     local affix = run and run.modedef and run.modedef.id ~= M.MODE_DEFAULT
     local plat  = layer_level * M.CHEST_PLAT_PER_LEVEL * (affix and M.CHEST_AFFIX_MULT or 1)
-    -- ⚠️ AddCash takes copper, silver, gold, platinum IN THAT ORDER -- passing the amount first
-    -- would pay out in copper and look like the reward silently failed.
-    chest:AddCash(0, 0, 0, plat)
 
-    c:Message(MT.Yellow, string.format(
-        "The chest holds a tier %d augment and %d platinum%s.",
-        tier, plat, affix and string.format(" (doubled for %s)", run.modedef.name) or ""))
+    -- ⚠️⚠️ PAID DIRECTLY, NOT PUT ON THE CHEST. `chest:AddCash(0,0,0,plat)` was how this worked, and
+    -- the coin then lived on the chest's CORPSE -- where the only thing that ever hands it over is
+    -- Corpse::MakeLootRequestPackets, i.e. the STOCK loot window. A player who takes the augment
+    -- through the Advanced Loot window never calls that function (AdvLootSlot synthesizes the loot
+    -- session rather than going through it), so the platinum stayed on the corpse and decayed with
+    -- it. Reported as the run reward losing its platinum.
+    -- This is the same reasoning that made mob coin pay at death under individual loot (section 31):
+    -- coin has no inventory constraint, so there is nothing to gain by routing it through a window
+    -- that may never open.
+    -- ⚠️ Paid to EVERY member standing in the instance, matching how the score and the charm already
+    -- work for a group -- the chest is one physical reward, but the coin is not a physical object.
+    local paid = party_clients_here(run.instance)
+    if #paid == 0 then paid = { c } end
+    for _, m in ipairs(paid) do
+        m:AddMoneyToPP(0, 0, 0, plat, true)
+    end
+
+    -- ⚠️ Says the coin is ALREADY yours, because it is -- it was paid above, not placed in the chest.
+    -- The old wording ("the chest holds ... platinum") described coin sitting on the corpse, which is
+    -- exactly the thing that was going missing; telling a player to look for it there would send them
+    -- hunting for something that is already in their pocket.
+    for _, m in ipairs(paid) do
+        m:Message(MT.Yellow, string.format(
+            "The chest holds a tier %d augment. You receive %d platinum%s.",
+            tier, plat, affix and string.format(" (doubled for %s)", run.modedef.name) or ""))
+    end
     if tier < 3 then
         c:Message(MT.Yellow, string.format(
             "Four tier %d augments combine in a Refining Crucible into one tier %d.", tier, tier + 1))
@@ -573,7 +602,7 @@ end
 -- iterator is `.entries` -- ipairs over it yields NOTHING and the function silently returns empty,
 -- which here would read as "the party is gone" and tear the instance down under everyone. This is the
 -- idiom M.on_npc_spawn already uses; match it.
-local function party_clients_here(inst)
+function party_clients_here(inst)   -- assigns the forward-declared local above; do NOT re-add `local`
     local out = {}
     if not inst or eq.get_zone_instance_id() ~= inst then return out end
     local clients = eq.get_entity_list():GetClientList()
@@ -1035,7 +1064,16 @@ function M.on_npc_spawn(e)
     -- 📌 They carry NO spell list and are level 1, so they are NOT the source of any large hit -- see
     -- the spellscale note in aotv4_dungeon_scale.M.scale_npc for what actually was. Removing them is
     -- tidying, not a damage fix.
-    if npc:GetRace() == 127 then
+    -- ⚠️⚠️ RACE 127 ALONE IS NOT ENOUGH -- IT KILLED THE CLASS AURAS. Every aura npc (2000100-2000115)
+    -- is also race 127 bodytype 11, because an aura is an invisible marker exactly like a DoN event
+    -- actor. So casting an aura inside a delve spawned it, this handler depopped it on the spot, and
+    -- recasting did the same thing again: "auras turn off in delves and cannot be re-applied".
+    -- ⚠️ The pet guard above does NOT catch them: `Aura` keeps its owner in its own `m_owner` member
+    -- (zone/aura.cpp:31), not in NPC::ownerid, so Mob::GetOwnerID() returns 0 for an aura. There is
+    -- no IsAura binding either.
+    -- The id band is the reliable divider: everything AoTv4 adds lives at 2000000+, while the DoN
+    -- zones' own npcs are 338xxx-343xxx. Only stock content is swept.
+    if npc:GetRace() == 127 and npcid < 2000000 then
         npc:Depop()
         return
     end
@@ -1562,10 +1600,29 @@ function M.leave(c, reason)
     -- left standing in a destroyed instance is stuck in a zone that no longer exists. The bind point
     -- is the fallback (there is no MoveToSafeCoords binding on Lua_Client -- only MovePC and the
     -- MoveZone family).
-    if zid then
-        c:MovePC(tonumber(zid), tonumber(x), tonumber(y), tonumber(z), 0)
+    -- ⚠️⚠️ REPORTED AS "it says I leave the delve but does not port me out". The message above had
+    -- already printed, so M.leave was definitely running -- the move itself was the part that did
+    -- nothing, and nothing here said why. These lines name the destination that was attempted so the
+    -- next failure identifies itself instead of needing another round trip.
+    -- ⚠️ The bind fallback is the suspect worth watching: a bind zone id of 0 makes MovePC a silent
+    -- no-op, and the back bucket is missing whenever M.leave has already run once for this run (the
+    -- chest's close timer and the Exit button BOTH route through here).
+    local dest_zone = zid and tonumber(zid) or c:GetBindZoneID()
+    local dest_x    = zid and tonumber(x) or c:GetBindX()
+    local dest_y    = zid and tonumber(y) or c:GetBindY()
+    local dest_z    = zid and tonumber(z) or c:GetBindZ()
+    local dest_h    = zid and 0 or c:GetBindHeading()
+
+    if not dest_zone or dest_zone == 0 then
+        -- Nowhere valid to send them. Say so rather than appearing to work: a silent MovePC(0,...)
+        -- leaves the player standing in a dungeon they have just been told they left.
+        c:Message(MT.Red, string.format(
+            "Could not find your way out (back='%s', bind zone=%s). You are still inside; use Exit again or camp.",
+            back, tostring(c:GetBindZoneID())))
     else
-        c:MovePC(c:GetBindZoneID(), c:GetBindX(), c:GetBindY(), c:GetBindZ(), c:GetBindHeading())
+        c:Message(MT.Yellow, string.format("[delve] returning you to zone %d (%d, %d, %d)",
+            dest_zone, math.floor(dest_x or 0), math.floor(dest_y or 0), math.floor(dest_z or 0)))
+        c:MovePC(dest_zone, dest_x, dest_y, dest_z, dest_h)
     end
 
     -- ⚠️ Destroy LAST, after the player is out. Destroying an instance somebody is standing in is
@@ -1762,7 +1819,17 @@ function M.on_npc_death(e)
     -- by id so a cleared dungeon does not erupt.
     if (mode.swarm or 0) > 0 and e.self and e.self.valid then
         local id = e.self:GetNPCTypeID()
-        if id ~= M.CHEST_NPC and id ~= M.BOSS_NPC then
+        -- ⚠️⚠️ A SWARM-SPAWNED MOB DOES NOT SPLIT AGAIN, OR THE MODE CANNOT BE FINISHED.
+        -- If the copies split too, every kill is net +2 forever: kill one of the three and it puts
+        -- three more back. Once the live cap is reached that settles into a treadmill where killing
+        -- one spawns exactly one, so the population NEVER falls and the dungeon cannot be cleared --
+        -- reported from play as "it summons 3 every time I kill 1, so it is impossible".
+        -- With this, each ORIGINAL creature splits once into three and those three are final, so the
+        -- population rises to about four times the trash and then drains as you fight through it.
+        -- ⚠️ The tag is the same one the live cap counts (set on spawn below), so there is one marker
+        -- for both jobs and they cannot disagree about what a swarm mob is.
+        local is_swarm_child = (e.self:GetEntityVariable("delve_swarm") or "") ~= ""
+        if id ~= M.CHEST_NPC and id ~= M.BOSS_NPC and not is_swarm_child then
             -- ⚠️⚠️ COUNT ONLY THE BODIES SWARM ITSELF ADDED, NOT EVERY NPC IN THE ZONE. This counted
             -- the whole NPC list and compared it against SWARM_CAP (40) -- but a delve instance
             -- naturally holds 150 to 470 creatures, so `alive < 40` was NEVER true and Swarm has

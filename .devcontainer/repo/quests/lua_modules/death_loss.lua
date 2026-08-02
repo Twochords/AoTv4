@@ -107,7 +107,12 @@ function M.process(client)
 	-- Pay the fragments: one per spell the wipe destroyed, which is the rank system's currency.
 	-- ⚠️ Awarded after the wipe but COUNTED before it -- counting here would always yield 0.
 	if destroyed > 0 then
-		client:SummonItem(147920, destroyed)   -- Parchment Fragment
+		-- ⚠️⚠️ ALTERNATE CURRENCY, NOT AN ITEM. SummonItem put fragments in the player's bags, and this
+		-- very function destroys carried inventory -- so the fragments survived the death that created
+		-- them and were eaten by the NEXT one. Rank 5 costs 240 of them, and a death is the only thing
+		-- that pays them, so saving up was impossible by construction.
+		-- character_alt_currency is outside the inventory and nothing here touches it.
+		client:AddAlternateCurrencyValue(57, destroyed)   -- 57 = Parchment Fragment
 		lost[#lost + 1] = string.format("(%d spells left Parchment Fragments behind)", destroyed)
 	end
 

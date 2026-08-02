@@ -66,7 +66,10 @@ function M.tap_bonus(e, endurance)
 	-- it the whole mechanic is invisible -- which is exactly why "it did not return any endurance"
 	-- was indistinguishable from the event never firing at all. Report what was ACTUALLY gained
 	-- (restored - cur), not the tier amount, or a cast against a nearly-full bar overstates itself.
-	caster:Message(15, string.format("You draw %d endurance from your target.", restored - cur))
+	-- ⚠️ Chat::Spells (MT.Spells), not the raw colour 15 (Yellow) this used to use. A raw colour is
+	-- not a filterable channel, so the player had no way to turn it off; the moonfire and thirst
+	-- lines announce themselves on the same channel, so all three Lua-paid lines behave alike.
+	caster:Message(MT.Spells, string.format("You draw %d endurance from your target.", restored - cur))
 end
 
 return M

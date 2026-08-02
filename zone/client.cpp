@@ -3125,7 +3125,12 @@ bool Client::CheckIncreaseSkill(EQ::skills::SkillType skillid, Mob *against_who,
 	}
 
 	auto skillval = GetRawSkill(skillid);
-	auto maxskill = GetMaxSkillAfterSpecializationRules(skillid, MaxSkill(skillid));
+	// AoTv4: cap looked up at the high-water level for weapon/casting skills, so a death does not
+	// re-cap them back to the level-1 ceiling of 10. See AoTv4SkillCapLevel.
+	auto maxskill = GetMaxSkillAfterSpecializationRules(
+		skillid,
+		MaxSkill(skillid, GetClass(), AoTv4SkillCapLevel(skillid))
+	);
 
 	if (parse->PlayerHasQuestSub(EVENT_USE_SKILL)) {
 		const auto& export_string = fmt::format(
@@ -3269,6 +3274,60 @@ uint16 Client::MaxSkill(EQ::skills::SkillType skill_id, uint8 class_id, uint8 le
 	}
 
 	return SkillCaps::Instance()->GetSkillCap(class_id, skill_id, level).cap;
+}
+
+// ================================================================================================
+// AoTv4: weapon and casting skills keep the cap they EARNED
+// ================================================================================================
+// The roguelite death sets the character back to level 1, and the level-1 cap for these skills is
+// 10 (skill_caps). The stored VALUE survives -- nothing on the server resets it, and Client::GetSkill
+// does not clamp to the cap, so a 125 Channeling stays 125 and stays fully effective -- but
+// CheckIncreaseSkill gates further gains on MaxSkill(), so the skill froze until the character had
+// re-levelled all the way back past it. Every run therefore began by re-treading skill ground that
+// had already been won, which is the one kind of progress the roguelite is not supposed to eat.
+//
+// m_pp.level2 is the high-water level and is exactly the right source: exp.cpp only ever RAISES it
+// (`if (set_level > m_pp.level2)`), so it is untouched by the death's SetLevel(1). No new bucket, no
+// new column, nothing to keep in sync.
+//
+// ⚠️⚠️ SCOPED TO WEAPON + CASTING SKILLS ON PURPOSE, and the exclusion is load-bearing. The twelve
+// reward-gated combat abilities (skill_pool.lua -- Backstab, Bash, Kick, the monk strikes...) are
+// reset to 0 by death_loss.lua so they are re-earned through the level-up picker. Those are gated by
+// being 0, not by their cap, but handing them a level-70 ceiling at level 1 would let a granted one
+// self-train straight to the top and quietly devalue the pick. Specialization skills are also left
+// out: they carry their own stock balance rule (GetMaxSkillAfterSpecializationRules resets them when
+// more than one exceeds 50) and should not be widened here without considering it.
+static bool AoTv4IsHighWaterSkill(EQ::skills::SkillType skill_id)
+{
+	switch (skill_id) {
+	case EQ::skills::Skill1HBlunt:
+	case EQ::skills::Skill1HSlashing:
+	case EQ::skills::Skill2HBlunt:
+	case EQ::skills::Skill2HSlashing:
+	case EQ::skills::Skill1HPiercing:
+	case EQ::skills::Skill2HPiercing:
+	case EQ::skills::SkillHandtoHand:
+	case EQ::skills::SkillArchery:
+	case EQ::skills::SkillThrowing:
+	case EQ::skills::SkillAbjuration:
+	case EQ::skills::SkillAlteration:
+	case EQ::skills::SkillChanneling:
+	case EQ::skills::SkillConjuration:
+	case EQ::skills::SkillDivination:
+	case EQ::skills::SkillEvocation:
+		return true;
+	default:
+		return false;
+	}
+}
+
+uint8 Client::AoTv4SkillCapLevel(EQ::skills::SkillType skill_id) const
+{
+	if (!RuleB(AoT, SkillCapHighWater) || !AoTv4IsHighWaterSkill(skill_id)) {
+		return GetLevel();
+	}
+
+	return std::max(static_cast<uint8>(GetLevel()), m_pp.level2);
 }
 
 uint8 Client::GetSkillTrainLevel(EQ::skills::SkillType skill_id, uint8 class_id)

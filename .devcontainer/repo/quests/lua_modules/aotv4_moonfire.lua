@@ -35,7 +35,16 @@ function M.tap_bonus(e, bonus)
 	if not caster or not caster.valid then
 		return          -- caster zoned or died mid-cast
 	end
+	-- ⚠️ The engine pays 1x and prints the ordinary lifetap line for it; this bonus is 2x MORE and
+	-- produced no message at all, so three quarters of the line's healing was invisible and it read
+	-- as an ordinary tap. Report the bonus only -- adding the engine's 1x would double-count what the
+	-- player has already been told, and the post-resist figure is not available here anyway.
+	-- Chat::Spells is the same filterable channel the thirst and sinew lines use, so all three
+	-- Lua-paid lines announce themselves the same way.
 	caster:HealDamage(bonus)
+	if caster:IsClient() then
+		caster:Message(MT.Spells, string.format("The moonfire knits your wounds for %d hit points.", bonus))
+	end
 end
 
 return M

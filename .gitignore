@@ -148,7 +148,3 @@ custom/spell_usage.csv
 # textures plus a repack script and let the build produce the archive, exactly as
 # aotv4_client_install/gen_choice_xml.pl generates the picker XML from spell_icons.lua.
 /*.s3d
-
-# Recovered git histories of the formerly-nested repos (quests, eq-core-dll) plus bundles.
-# Local safety net only -- never part of the pushed tree.
-repo_backups/

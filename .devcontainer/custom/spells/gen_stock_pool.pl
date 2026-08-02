@@ -220,6 +220,25 @@ my @RULES = (
                    AND effectid7  IN (58,254) AND effectid8  IN (58,254) AND effectid9  IN (58,254)
                    AND effectid10 IN (58,254) AND effectid11 IN (58,254) AND effectid12 IN (58,254)},
                 "illusions with no other effect -- pure costume"],
+    # ⚠️⚠️ A COSTUME THAT ONLY DISABLES YOU STILL PASSES THE PURITY TEST ABOVE. Root (99) and
+    # MovementSpeed (3) are real effects, so an illusion carrying one is "not pure" and survives --
+    # but the question the purity rule is actually asking is "does this do anything for you besides
+    # change how you look", and the answer here is "no, it does something TO you". Both offenders are
+    # targettype 6 (Self) with a 360 tick duration, so as a level-up reward they are strictly worse
+    # than nothing:
+    #     287 Minor Illusion    lvl 1    MovementSpeed -7000  -- immobile for an hour
+    #     601 Illusion: Tree    lvl 15   Root, and NOTHING else
+    # ⚠️ Deliberately narrow: only a NEGATIVE MovementSpeed counts, and the spell must have no other
+    # rider at all. That is what keeps the classic druid regen forms -- Treeform (258), Spirit of Oak
+    # (1564) and Spirit of Ash (3580) all self-root too, but they pay for it with HP/mana regen, which
+    # is a real tradeoff rather than a pure penalty. A positive MovementSpeed is the wolf-form run
+    # buff and must never be caught here.
+    ["rootform", q{58 IN (effectid1,effectid2,effectid3,effectid4,effectid5,effectid6)
+                   AND targettype = 6 AND }
+                 . join(' AND ', map {
+                       "(effectid$_ IN (58,99,254) OR (effectid$_ = 3 AND effect_base_value$_ < 0))"
+                   } 1 .. 12),
+                "costume forms whose only extra effect roots or immobilises the caster"],
     # SeeInvis 13, InfraVision 65, UltraVision 66, MagnifyVision 87 (the "Glimpse" telescope line).
     # Same purity test as illusions, and for the same reason: the wolf and hunter forms carry
     # ultravision (SPA 66) ALONGSIDE their stats, so a bare "has a vision SPA" test caught every one
