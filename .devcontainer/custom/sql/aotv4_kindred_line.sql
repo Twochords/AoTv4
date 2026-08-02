@@ -1,5 +1,16 @@
 -- aotv4_kindred_line.sql -- a melee proc buff that heals YOUR GROUP on a swing.
 -- =============================================================================================
+-- ⚠️⚠️ CLEAR EVERY EFFECT SLOT THE TEMPLATE USED, NOT JUST THE ONE YOU ARE REPLACING.
+-- The proc rows clone stock 3131 "Call of Fire Strike", which is a DAMAGE AND STUN proc:
+--     slot 1  SPA 10  filler          slot 2  SPA 0  base -65   slot 3  SPA 21  stun 1000
+-- The original script overwrote slot 1 with the heal and flipped goodEffect/targettype, and left
+-- slots 2 and 3 exactly as the template had them. The result was a "group heal" proc that healed
+-- the group for 12 and then hit the whole group for 65 AND STUNNED THEM -- reported from play as
+-- "Kindred Spark is nuking the user", which is precisely what it was doing.
+-- Slots 2 and 3 are now blanked to 254 on every proc row. If the template is ever changed, check
+-- EVERY slot it populates, not just the one being replaced. This is the same trap section 5 already
+-- records for Light of Marr: a clone inherits everything you do not explicitly overwrite.
+-- =============================================================================================
 -- Self buff. While it holds, your melee swings have a chance to proc a small heal on your whole
 -- group. Offensive proc (on your swing), not a defensive one (on being hit) -- so it is the mirror
 -- of the sloth line rather than a copy of it.
@@ -59,32 +70,44 @@ CREATE TEMPORARY TABLE aotv4_tmpl LIKE spells_new;
 -- SPA 0 positive heal, goodEffect 1, targettype 41. See the header for why those decide who heals.
 DELETE FROM aotv4_tmpl; INSERT INTO aotv4_tmpl SELECT * FROM spells_new WHERE id = 3131;
 UPDATE aotv4_tmpl SET id=43374, name='Kindred Spark Effect',    descnum=43374, spellgroup=43374,
-  effectid1=0, effect_base_value1=12, goodEffect=1, targettype=41, resisttype=0, `range`=100, new_icon=99, spell_category=-99;
+  effectid1=0, effect_base_value1=12, goodEffect=1, targettype=41, resisttype=0, `range`=100, new_icon=99, spell_category=-99,
+  effectid2=254, effect_base_value2=0, effect_limit_value2=0, max2=0,
+  effectid3=254, effect_base_value3=0, effect_limit_value3=0, max3=0;
 INSERT INTO spells_new SELECT * FROM aotv4_tmpl;
 
 DELETE FROM aotv4_tmpl; INSERT INTO aotv4_tmpl SELECT * FROM spells_new WHERE id = 3131;
 UPDATE aotv4_tmpl SET id=43375, name='Kindred Ember Effect',    descnum=43375, spellgroup=43375,
-  effectid1=0, effect_base_value1=25, goodEffect=1, targettype=41, resisttype=0, `range`=100, new_icon=99, spell_category=-99;
+  effectid1=0, effect_base_value1=25, goodEffect=1, targettype=41, resisttype=0, `range`=100, new_icon=99, spell_category=-99,
+  effectid2=254, effect_base_value2=0, effect_limit_value2=0, max2=0,
+  effectid3=254, effect_base_value3=0, effect_limit_value3=0, max3=0;
 INSERT INTO spells_new SELECT * FROM aotv4_tmpl;
 
 DELETE FROM aotv4_tmpl; INSERT INTO aotv4_tmpl SELECT * FROM spells_new WHERE id = 3131;
 UPDATE aotv4_tmpl SET id=43376, name='Kindred Flame Effect',    descnum=43376, spellgroup=43376,
-  effectid1=0, effect_base_value1=45, goodEffect=1, targettype=41, resisttype=0, `range`=100, new_icon=99, spell_category=-99;
+  effectid1=0, effect_base_value1=45, goodEffect=1, targettype=41, resisttype=0, `range`=100, new_icon=99, spell_category=-99,
+  effectid2=254, effect_base_value2=0, effect_limit_value2=0, max2=0,
+  effectid3=254, effect_base_value3=0, effect_limit_value3=0, max3=0;
 INSERT INTO spells_new SELECT * FROM aotv4_tmpl;
 
 DELETE FROM aotv4_tmpl; INSERT INTO aotv4_tmpl SELECT * FROM spells_new WHERE id = 3131;
 UPDATE aotv4_tmpl SET id=43377, name='Kindred Blaze Effect',    descnum=43377, spellgroup=43377,
-  effectid1=0, effect_base_value1=70, goodEffect=1, targettype=41, resisttype=0, `range`=100, new_icon=99, spell_category=-99;
+  effectid1=0, effect_base_value1=70, goodEffect=1, targettype=41, resisttype=0, `range`=100, new_icon=99, spell_category=-99,
+  effectid2=254, effect_base_value2=0, effect_limit_value2=0, max2=0,
+  effectid3=254, effect_base_value3=0, effect_limit_value3=0, max3=0;
 INSERT INTO spells_new SELECT * FROM aotv4_tmpl;
 
 DELETE FROM aotv4_tmpl; INSERT INTO aotv4_tmpl SELECT * FROM spells_new WHERE id = 3131;
 UPDATE aotv4_tmpl SET id=43378, name='Kindred Radiance Effect', descnum=43378, spellgroup=43378,
-  effectid1=0, effect_base_value1=100, goodEffect=1, targettype=41, resisttype=0, `range`=100, new_icon=99, spell_category=-99;
+  effectid1=0, effect_base_value1=100, goodEffect=1, targettype=41, resisttype=0, `range`=100, new_icon=99, spell_category=-99,
+  effectid2=254, effect_base_value2=0, effect_limit_value2=0, max2=0,
+  effectid3=254, effect_base_value3=0, effect_limit_value3=0, max3=0;
 INSERT INTO spells_new SELECT * FROM aotv4_tmpl;
 
 DELETE FROM aotv4_tmpl; INSERT INTO aotv4_tmpl SELECT * FROM spells_new WHERE id = 3131;
 UPDATE aotv4_tmpl SET id=43379, name='Kindred Beacon Effect',   descnum=43379, spellgroup=43379,
-  effectid1=0, effect_base_value1=150, goodEffect=1, targettype=41, resisttype=0, `range`=100, new_icon=99, spell_category=-99;
+  effectid1=0, effect_base_value1=150, goodEffect=1, targettype=41, resisttype=0, `range`=100, new_icon=99, spell_category=-99,
+  effectid2=254, effect_base_value2=0, effect_limit_value2=0, max2=0,
+  effectid3=254, effect_base_value3=0, effect_limit_value3=0, max3=0;
 INSERT INTO spells_new SELECT * FROM aotv4_tmpl;
 
 -- ---------------------------------------------------------------- the buffs (what is scribed)

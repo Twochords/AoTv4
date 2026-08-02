@@ -145,6 +145,7 @@ bool Client::Process() {
 
 		if (charm_update_timer.Check()) {
 			CalcItemScale();
+			AoTv4RefreshPetWard();
 		}
 
 		if (TaskPeriodic_Timer.Check() && task_state)

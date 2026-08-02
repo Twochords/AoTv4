@@ -36787,16 +36787,16 @@
 43411^6^Faith answered in kind. Absorbs damage until it is spent.^0
 43412^6^Everything you had, spent at once and set between you and the next blow.^0
 43413^6^Everything you had, spent at once and set between you and whatever comes next.^0
-43420^6^Heat rolls off it in waves, and whatever strikes it is burned for the trouble.^0
-43421^6^What is wounded closes over, the way water closes over a stone.^0
-43422^6^Its hide is not hide at all, and blows land on it like blows land on a wall.^0
-43423^6^It moves the way weather moves, and strikes far more often than its size suggests.^0
-43424^6^It takes what it kills, and is a little less dead for every wound it opens.^0
-43425^6^There is nothing tame in it. Its blows land with a hunter conviction.^0
-43426^6^Threads of the spell that made it hang about it still, and turn aside what would unmake it.^0
-43427^6^It is only half here. Blows meant for it find rather less than they expected.^0
-43428^6^Its attention is your attention, and what it notices returns to you as clarity.^0
-43429^6^Bound in service, and bound a little against harm.^0
+43420^6^Heat rolls off it in waves, and whatever strikes it is burned for the trouble. Damage shield: attackers take 1 damage per hit.^0
+43421^6^What is wounded closes over, the way water closes over a stone. Regeneration: heals 1 health every tick.^0
+43422^6^Its hide is not hide at all, and blows land on it like blows land on a wall. Fortitude: increases maximum health by 10.^0
+43423^6^It moves the way weather moves, and strikes far more often than its size suggests. Haste: attacks 10 percent faster.^0
+43424^6^It takes what it kills, and is a little less dead for every wound it opens. Lifetap: heals for 8 percent of the melee damage it deals.^0
+43425^6^There is nothing tame in it. Its blows land with a hunter conviction. Ferocity: melee damage increased by 8 percent.^0
+43426^6^Threads of the spell that made it hang about it still, and turn aside what would unmake it. Rune: absorbs the first 5 damage of each hit.^0
+43427^6^It is only half here. Blows meant for it find rather less than they expected. Evasion: 1 percent additional chance to avoid melee.^0
+43428^6^Its attention is your attention, and what it notices returns to you as clarity. Clarity: grants 1 mana every tick.^0
+43429^6^Bound in service, and bound a little against harm. Fortitude: increases maximum health by 5.^0
 43430^6^Its defences against magic are eaten away.^0
 43431^6^Its defences against fire are eaten away.^0
 43432^6^Its defences against cold are eaten away.^0

@@ -95,15 +95,20 @@ void Mob::AoTv4ApplyPetWard(Mob *pet, const char *pet_type)
 	const uint16 ward = WardForPetType(pet_type);
 	pet->SpellOnTarget(ward, pet);
 
+	// ⚠️⚠️ REMEMBERED UNCONDITIONALLY, not just when Kindred Bond is trained. Two things need it and
+	// only one of them is the AA:
+	//   * AoTv4PetWardEnded strips the owner's copy when the pet dies (the original reason).
+	//   * AoTv4RefreshPetWard re-applies it every 6 seconds if it has gone missing, and CANNOT
+	//     recompute it -- `Mob::GetPetType()` returns the pet-type ENUM, not the `pets`.`type`
+	//     string, and the string is only in scope here at creation.
+	// Setting it at rank 0 is harmless: AoTv4PetWardEnded then fades a buff the owner never had.
+	m_aotv4_petward_spell = ward;
+
 	// ------------------------------------------------------------------ Kindred Bond
 	const int rank = static_cast<int>(GetAA(AA_KINDRED));
 	if (rank < 1) {
 		return;
 	}
-
-	// Remembered so the ward can be stripped when the pet dies -- by then the pet is gone and the
-	// family can no longer be looked up.
-	m_aotv4_petward_spell = ward;
 	pet->SpellOnTarget(ward, this);
 
 	// Rank 2 spreads it to the group. Cast from the pet as well, for the same reason.
@@ -161,4 +166,47 @@ void Mob::AoTv4PetWardEnded()
 			}
 		}
 	}
+}
+
+// =================================================================================================
+// Called every 6 seconds from Client::Process (beside CalcItemScale). `this` is the OWNER.
+//
+// The ward is applied once, in Mob::MakePoweredPet -- at summon, and again on zone-in because the
+// restore path re-runs that same function. Nothing refreshed it in between, so anything that removed
+// it left the pet permanently without it until it was resummoned.
+//
+// ⚠️ THE REALISTIC WAY TO LOSE IT IS BUFF SLOT PRESSURE, NOT DISPEL. There is no dispel on this
+// server, so that is not the case being defended against: a pet has a limited buff bar, and an owner
+// stacking enough buffs on it can push the ward out of the last slot. That is silent, permanent, and
+// indistinguishable from the ward never having existed.
+//
+// ⚠️ Deliberately hung off an EXISTING per-client timer rather than a new one, and off a CLIENT timer
+// rather than the pet's AI tick: this is one FindBuff per player every six seconds, bounded by player
+// count. On the NPC side it would run for every creature in the zone.
+//
+// ⚠️ Re-applied FROM THE PET, matching MakePoweredPet, so inspecting the buff still credits the pet
+// rather than the summoner. Kindred Bond's copies on the owner and group are NOT refreshed here --
+// those are bound to the pet's life and are torn down by AoTv4PetWardEnded; reapplying them on a
+// timer would resurrect a share the owner is no longer entitled to.
+// =================================================================================================
+void Mob::AoTv4RefreshPetWard()
+{
+	Mob *pet = GetPet();
+	if (!pet || pet->GetHP() <= 0) {
+		return;
+	}
+
+	// ⚠️ The ward is the one recorded at summon, NOT recomputed. `Mob::GetPetType()` looks like the
+	// right call and is not -- it returns the pet-type enum (charmed, animation, familiar), while the
+	// ward is keyed on the `pets`.`type` STRING, which is only in scope inside MakePoweredPet.
+	const uint16 ward = m_aotv4_petward_spell;
+	if (!IsValidSpell(ward)) {
+		return;
+	}
+
+	if (pet->FindBuff(ward)) {
+		return;   // still there; nothing to do
+	}
+
+	pet->SpellOnTarget(ward, pet);
 }

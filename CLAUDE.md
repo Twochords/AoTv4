@@ -1323,6 +1323,13 @@ A native SIDL **Advanced Loot** window in **complement mode**: the stock RoF2 lo
 **Loot All**, and a persistent **Never** filter list. Same "server → chat line → dll → window" pattern as
 §3/§6/§11/§13/§15.
 
+> ⚠️⚠️ **READ §31 BEFORE TOUCHING ANY LOOT PATH.** Individual loot (2026-08-01) rolls the table once
+> per player and stamps an owner on every item, which changes three things this section assumes:
+> lootslots are numbered **per player** (not once per corpse), `MakeLootRequestPackets` is **no longer
+> untouched** (complement mode was the hole — the stock window showed everyone's drops), and the
+> need/greed/sell layer in `advloot.cpp` is **dead** while `AoT:IndividualLoot` is on. Any new path
+> that reads a lootslot or acts on a corpse item needs the guards described there.
+
 - **Protocol (chat, dll swallows all of it):** server → `LOOTDATA <n>^lootslot|itemid|icon|name|npcname|qty^…`
   (pushed from `Handle_OP_LootRequest`; `qty` = stack size for stackables else 1, appended **last** so an
   older 5-field dll parse still works), `FILTERDATA <n>^itemid|icon|name|rule^…`, `LOOTCLOSE`
@@ -2780,3 +2787,118 @@ and so nobody reads "done" as "proven".
   (Wayfinder Alessa / Reforger Vael / Herald Coren) have never been hailed by a real player.
 - **Spell ranks (§29)** — the whole chain (keep 2, forfeit the picks, spend fragments + ink, receive
   the `Rk.` row) is untested in play.
+- ⚠️⚠️ **Individual loot (§31)** — nothing has died with two players on it. The sharp test needs
+  **two grouped characters killing ONE npc**, then confirming the lists are disjoint in **both**
+  windows (the `/advl` window *and* the stock right-click one — the native path was the hole, so
+  checking only ours proves nothing). Also confirm both were paid coin **without opening anything**,
+  and that a GM `#peekloot` shows the corpse holding both rolls.
+
+## 31. Individual loot — everybody gets their own roll — 2026-08-01
+
+The loot table is rolled **once per eligible player** and each roll belongs to that player alone, so a
+group never contends for a drop. It replaces the need/greed/sell system rather than sitting beside it:
+`AdvLootManager` still compiles but is **not consulted** while the rule is on. Rule
+**`AoT:IndividualLoot`** (default **true**); set false to restore one shared roll plus the old rolls.
+**Needs a zone rebuild** (`ruletypes.h` and `common/loot.h` are in `common/`, so it is a wide one).
+
+- **Files**: `common/loot.h` (`LootItem::owner_char_id`), `common/ruletypes.h`, `zone/attack.cpp`
+  (`NPC::Death`, the per-player loop), `zone/spawn2.cpp` (spawn roll suppressed), `zone/loot.cpp`
+  (`AddLootDrop` stamps the owner), `zone/npc.h` (`SetLootOwner`/`GetLootOwner`), `zone/corpse.h` +
+  `zone/corpse.cpp` (`AoTv4AbsorbOwnedLoot`, per-player `AssignLootSlots`, the two native-path
+  guards), `zone/client_packet.cpp` (`AdvLootOwnedByOther` + every AdvLoot path).
+- **Ownership rides on the ITEM** (`owner_char_id`, 0 = shared), not on the lootslot: slots are
+  renumbered constantly, so a slot-keyed side table would desync the moment anything renumbered.
+  ⚠️ **Runtime only** — never written to `character_corpse_items`. NPC corpses are not persisted and a
+  player corpse has no use for it, which is also why the guards are no-ops on your own corpse.
+- ⚠️⚠️ **THE ROLL MOVED FROM SPAWN TO DEATH, and it had to.** Eligibility is not known until
+  `NPC::Death` has run the `AllowPlayerLoot` block, so the loop sits **immediately after** it. The
+  spawn-time `AddLootTable()` in `spawn2.cpp` is suppressed for the same reason — leaving it would put
+  an extra **unowned** copy of the table on every corpse, i.e. a free shared roll on top of
+  everybody's personal one.
+  ⚠️ **Global loot still rolls at spawn and stays SHARED.** Deliberate: a 1.5 percent Ink of the Lost
+  (§29) multiplied by group size is a different drop rate.
+- **The NPC's loot list is a STAGING AREA.** Each pass sets `SetLootOwner(cid)`, rolls, then
+  `Corpse::AoTv4AbsorbOwnedLoot` moves the items onto the corpse and empties the NPC again, and the
+  owner is restored to **0 immediately**. ⚠️ Anything rolling outside that window — quest
+  `npc:AddItem`, forage, the global tables — must stay shared, which is exactly what the restore buys.
+  ⚠️ The absorb must leave the list **empty** or the next player's absorb collects the previous
+  player's items too.
+  📌 Safe because the `Corpse` constructor already did `m_item_list = *item_list; item_list->clear()`,
+  so the NPC's list is empty when the loop starts and pre-existing quest drops are on the corpse as
+  shared.
+- **Coin is paid DIRECTLY at death**, per player, and is the one thing that does not wait for a
+  window. `AddLootTable` re-rolls `m_loot_*` on every non-global call, so each pass leaves that
+  player's own amount sitting there — reusing it keeps the stock distribution, `avgcoin` weighting
+  included. ⚠️ It is zeroed after each pass so the corpse cannot also carry it. ⚠️ This is *why* it is
+  paid directly: `Corpse::MakeLootRequestPackets` was the only thing that ever called `AddMoneyToPP`,
+  and AdvLoot mode skips it, so routing coin through the corpse made money vanish entirely.
+  - ⚠️⚠️ **THE "You receive … from the corpse of …" MESSAGE IS LOAD-BEARING — do not remove it as
+    chat noise.** No coin ever lands on the corpse (the `Corpse` constructor calls `SetCash` from the
+    NPC *before* this roll, so it captures 0) and no loot window is involved, which leaves a silently
+    changed money total as the only evidence anything happened. This was reported as *"coins do not
+    come off mobs when they die"* when the coin was in fact being paid correctly. The message IS the
+    loot event now. A `LogLoot` line beside it reports the rolled amount per player — enable with
+    `#logs` (Loot category) to tell "paid nothing" apart from "rolled nothing".
+- ⚠️⚠️ **A CORPSE NOBODY HAS KILL CREDIT ON GETS ONE SHARED ROLL, or it is EMPTY FOREVER.** An NPC
+  killed by another NPC — guards, faction fights, a charmed or unowned pet — never reaches
+  `AllowPlayerLoot`, so `m_allowed_looters` stays empty; and `Corpse::CanPlayerLoot` returns
+  `looters == 0`, meaning such a corpse is lootable by **anyone**. Stock rolled at spawn so it always
+  had loot. Rolling only per eligible player therefore handed back an openable, permanently empty
+  corpse. The fallback rolls once with owner 0 (shared, which is right for a corpse with no owner) and
+  puts the coin **on the corpse**, collected the stock way, since there is nobody to pay directly.
+
+### ⚠️⚠️ LOOTSLOTS ARE NUMBERED PER PLAYER — this is what makes the design fit the client
+A corpse has only **34 addressable slots** (`CORPSE_BEGIN..CORPSE_END`, = `slotGeneral1 .. +slotCursor`).
+Individual loot puts one roll per eligible player on a single corpse, so a global numbering **runs
+out**: tables average 2.1 drops and 324 of them yield >5, so a full group of six on a rich table
+overflows and everything past the 34th silently becomes `0xFFFF` — invisible and unlootable, with no
+error. The world boss (§17c, up to **72** looters) would overflow almost immediately.
+`Corpse::AssignLootSlots(Client*)` therefore numbers from ONE player's point of view: somebody else's
+drop gets **no handle at all**, so their items do not consume slots out of your range and the ceiling
+applies **per player** instead of per corpse.
+- ⚠️ Cached per character (`m_loot_slots_char_id`), not with a plain bool — re-numbering is skipped
+  when the same player asks again (so a snapshot of slots stays valid while they loot down it) and
+  redone when a different player asks. `Corpse::RemoveItem` deliberately does not renumber, so
+  removals cannot invalidate a snapshot either.
+- ⚠️⚠️ **EVERY path must number for the acting player BEFORE reading a lootslot.** `alslootall` did
+  not, which was harmless under global numbering and a real bug under this one: it snapshotted
+  whatever numbering the corpse last had, and `AdvLootSlot` then renumbered for the acting player, so
+  the handles pointed at different items by the time they were used.
+- ⚠️ `MakeLootRequestPackets` **is** a per-player numbering (it re-stamps from `CORPSE_BEGIN` filtered
+  by the client's `CorpseBitmask`), so it stamps the cache with that character id. Without that,
+  AdvLoot would consider the corpse unnumbered, renumber it behind the client, and every handle just
+  sent to them would resolve to a different item.
+
+### ⚠️⚠️ THE STOCK LOOT WINDOW IS A PATH TOO — it was the hole
+Advanced Loot runs in **complement mode** (§16): the native RoF2 loot window still opens and
+`MakeLootRequestPackets` is untouched by it. It walked `m_item_list` with **no ownership filter**, so
+right-clicking a corpse listed **every player's personal drop** and `Corpse::LootCorpseItem` handed
+them over — the whole system bypassable from the one path that was not part of it. Filtering only our
+own window proves nothing; **test both**.
+- **`Corpse::LootCorpseItem` is the central guard**, because both windows funnel through it — AdvLoot
+  synthesizes an `OP_LootItem` and calls straight into it, and the stock window sends one directly.
+  ⚠️ It also catches a client sending the **`0xFFFF` sentinel**, which `Corpse::GetItem` would
+  otherwise resolve to the first *unnumbered* item — i.e. somebody else's.
+- ⚠️ Filtering a display is presentation; the guards in `LootCorpseItem`, `AdvLootSlot` and
+  `AdvLootSell` are the rule. A modified dll can name any slot it was never shown.
+
+### ⚠️ Four AdvLoot paths that each needed the same guard
+Ownership was originally enforced in `AdvLootSlot` only. All four below act on corpse items and all
+were reachable; the shared helper is **`AdvLootOwnedByOther`** (`client_packet.cpp`).
+| Path | What it did |
+|---|---|
+| `AdvLootSell` | `/say alspick <slot> sell` sold **another player's** drop — item gone, coin paid, unrecoverable |
+| `alssellall` | "Sell All" swept every group mate's individual loot off the shared corpse |
+| standing rules in `SendAdvLootData` | an Always Sell rule fired on group mates' drops **at death**, before either player had seen a window |
+| `alslootall` | refused per item downstream, but one refusal message per group mate's drop |
+- ⚠️⚠️ **Sale proceeds DO NOT SPLIT AT ALL — the seller keeps the full value.** Stock divides a Sell
+  between everyone entitled to roll on the corpse, which is right for something jointly earned and
+  exactly wrong here: nothing is jointly owned, so a split would tax every personal drop by group size
+  and pay people who cannot even see the item. ⚠️ Shared items (owner 0) are **not** an exception —
+  they are rare, and a Sell that sometimes splits and sometimes does not is worse than one that never
+  does, because the player cannot tell the two cases apart from the item alone.
+- ⚠️⚠️ **Every player counts as SOLO for standing rules** while the rule is on. Two reasons, and the
+  second is the one that bites: nothing is contested, so seeding a 30-second need/greed roll would
+  stall a player's own drop behind a vote nobody can cast; **and `AdvLootManager` keys its share map
+  on `(corpse_id, lootslot)`**, which now aliases between players, so any roll it did start would
+  resolve against the wrong item.

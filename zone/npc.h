@@ -214,6 +214,12 @@ public:
 	void RemoveItem(uint32 item_id, uint16 quantity = 0, uint16 slot = 0);
 	void CheckTrivialMinMaxLevelDrop(Mob *killer);
 	void ClearLootItems();
+
+	// AoTv4 individual loot: the character that every subsequent AddLootDrop belongs to, 0 = shared.
+	// Set around a per-player AddLootTable call in Mob::Death and restored to 0 immediately, so
+	// nothing rolling outside that window (quest AddItem, forage, global tables) is ever owned.
+	void   SetLootOwner(uint32 character_id) { m_loot_owner = character_id; }
+	uint32 GetLootOwner() const { return m_loot_owner; }
 	inline const LootItems &GetLootItems() { return m_loot_items; }
 	LootItem *GetItem(int slot_id);
 	void AddLootCash(uint32 in_copper, uint32 in_silver, uint32 in_gold, uint32 in_platinum);
@@ -657,6 +663,15 @@ protected:
 	uint32    m_loot_silver;
 	uint32    m_loot_gold;
 	uint32    m_loot_platinum;
+	// AoTv4 individual loot: the character that every subsequent AddLootDrop belongs to, 0 = shared.
+	// Set around a per-player AddLootTable call at death and restored to 0 immediately afterwards, so
+	// nothing that rolls outside that window (quest AddItem, forage) is ever accidentally owned.
+	// ⚠️ This block is inside `protected:` -- do NOT wrap the accessors in public:/private: here. Doing
+	// that demotes everything below (npc_spells_id and friends) from protected to private and breaks
+	// bot.h with errors that point at bot.h rather than at this file. The public accessors live up in
+	// the public section with the other loot methods.
+	uint32 m_loot_owner{0};
+
 	LootItems m_loot_items;
 
 	// zone state

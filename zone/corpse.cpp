@@ -1224,16 +1224,29 @@ void Corpse::ReleaseLootSession(Client *c)
 // See the header. LootItem::lootslot has no initialiser and stock EQEmu only fills it in
 // MakeLootRequestPackets, so on a corpse nobody has opened the values are meaningless and usually
 // identical -- which makes Corpse::GetItem(lootslot) return the first item for every handle.
-void Corpse::AssignLootSlots()
+void Corpse::AssignLootSlots(Client *c)
 {
-	if (m_loot_slots_assigned) {
+	// AoTv4 individual loot: number the corpse from ONE player's point of view. 0 means the old
+	// global numbering (rule off, or no client in context).
+	const uint32 for_char =
+		(c && RuleB(AoT, IndividualLoot)) ? (uint32) c->CharacterID() : 0;
+
+	if (m_loot_slots_assigned && m_loot_slots_char_id == for_char) {
 		return;
 	}
 	m_loot_slots_assigned = true;
+	m_loot_slots_char_id  = for_char;
 
 	int slot = EQ::invslot::CORPSE_BEGIN;
 	for (auto *i : m_item_list) {
 		if (!i) {
+			continue;
+		}
+		// ⚠️ Somebody else's personal drop gets NO handle at all. That is both the enforcement (an
+		// unnumbered item cannot be named by any packet) and the reason the 34-slot ceiling now
+		// applies per player: their items do not consume slots out of our range.
+		if (for_char && i->owner_char_id != 0 && i->owner_char_id != for_char) {
+			i->lootslot = 0xFFFF;
 			continue;
 		}
 		// Beyond the client's corpse-slot range there is no valid handle, so mark those unusable
@@ -1456,6 +1469,17 @@ void Corpse::MakeLootRequestPackets(Client *c, const EQApplicationPacket *app)
 		// or to a valid enumerated client-versioned corpse slot (lootslot is not equip_slot)
 		i->lootslot = 0xFFFF;
 
+		// ⚠️⚠️ AoTv4 individual loot: THE STOCK LOOT WINDOW MUST FILTER TOO. Advanced Loot runs in
+		// complement mode (this function is untouched by it), so right-clicking a corpse comes
+		// straight here -- without this the native window listed every player's personal drop and
+		// LootCorpseItem happily handed them over, which defeats the whole system from the one path
+		// nobody was looking at. Skipping before a slot is consumed is also what keeps the 34-slot
+		// ceiling per player rather than per corpse.
+		if (RuleB(AoT, IndividualLoot) && i->owner_char_id != 0 &&
+			i->owner_char_id != (uint32) c->CharacterID()) {
+			continue;
+		}
+
 		// align server and client corpse slot mappings so translators can function properly
 		while (loot_slot <= EQ::invslot::CORPSE_END && (((uint64) 1 << loot_slot) & corpse_mask) == 0)
 			++loot_slot;
@@ -1511,6 +1535,12 @@ void Corpse::MakeLootRequestPackets(Client *c, const EQApplicationPacket *app)
 
 		i->lootslot = loot_slot++;
 	}
+
+	// This loop IS a per-player numbering, so record whose it is. Otherwise Advanced Loot's own
+	// AssignLootSlots would consider the corpse unnumbered, renumber it behind this client's back,
+	// and every handle we just sent them would resolve to a different item.
+	m_loot_slots_assigned = true;
+	m_loot_slots_char_id  = RuleB(AoT, IndividualLoot) ? (uint32) c->CharacterID() : 0;
 
 	// Disgrace: Client seems to require that we send the packet back...
 	c->QueuePacket(app);
@@ -1613,6 +1643,21 @@ void Corpse::LootCorpseItem(Client *c, const EQApplicationPacket *app)
 	}
 	else {
 		item_data = GetItem(lootitem->slot_id, bag_item_data);
+	}
+
+	// ⚠️⚠️ AoTv4 individual loot: the LAST line of defence, and the only one both windows share.
+	// Advanced Loot synthesizes an OP_LootItem and calls straight into here, and the stock window
+	// sends one directly, so a slot number that was never issued to this player still arrives here as
+	// an ordinary request. Filtering the display is presentation; this is the rule.
+	//
+	// ⚠️ A player corpse never carries an owner (owner_char_id is only ever stamped on an NPC's death
+	// roll), so this is a no-op for own-corpse looting and for anything quest-placed or global.
+	if (RuleB(AoT, IndividualLoot) && item_data && item_data->owner_char_id != 0 &&
+		item_data->owner_char_id != (uint32) c->CharacterID()) {
+		c->Message(Chat::Yellow, "That is not your loot.");
+		c->QueuePacket(app);
+		SendEndLootErrorPacket(c);
+		return;
 	}
 
 	if (GetPlayerKillItem() <= 1 && item_data != 0) {
@@ -2603,4 +2648,41 @@ void Corpse::SyncEntityVariablesToCorpseDB()
 	std::string serialized = j.dump();
 
 	CharacterCorpsesRepository::UpdateEntityVariables(database, m_corpse_db_id, serialized);
+}
+
+// ================================================================ AoTv4 individual loot
+// Move the NPC's freshly rolled items onto this corpse, preserving owner_char_id.
+//
+// ⚠️⚠️ THE NPC'S LIST IS A STAGING AREA AND MUST BE LEFT EMPTY. Mob::Death rolls one player at a
+// time and calls this after each roll; if anything were left behind, the next player's absorb would
+// pick it up too and they would receive a copy of the previous player's loot.
+//
+// ⚠️ Ownership is NOT re-derived here -- it was stamped in NPC::AddLootDrop while m_loot_owner was
+// set. Recomputing it from anything on this side would be a second source of truth.
+void Corpse::AoTv4AbsorbOwnedLoot(NPC *from)
+{
+	if (!from) {
+		return;
+	}
+
+	// GetLootItems() is const; take our own copy of the pointers so removing from the NPC cannot
+	// invalidate what we are walking.
+	std::vector<LootItem *> staged;
+	for (auto *it : from->GetLootItems()) {
+		if (it) {
+			staged.push_back(it);
+		}
+	}
+
+	for (auto *src : staged) {
+		auto *copy = new LootItem(*src);       // the corpse owns its own nodes
+		m_item_list.push_back(copy);
+	}
+
+	// ⚠️ Clears the NPC's staging list AND frees its nodes. RemoveItem would renumber and fire the
+	// stock loot bookkeeping, which is wrong for something no player has ever seen.
+	from->ClearLootItems();
+
+	// The corpse's slots are renumbered wholesale once every player has rolled -- doing it per
+	// absorb would hand out handles that the next absorb immediately invalidates.
 }

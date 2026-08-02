@@ -69,7 +69,12 @@ sub mysql {
 # Stock pool: the same filter the original setup used. classes8 is the lowest level any class can
 # learn the spell at, which doubles as the pool index.
 my @stock = mysql(q{
-    SELECT s.id, s.name, s.classes8, s.new_icon, IFNULL(d.value,'')
+    SELECT s.id, s.name, s.classes8, s.new_icon, IFNULL(d.value,''), IFNULL(s.teleport_zone,''),
+           (33 IN (effectid1,effectid2,effectid3,effectid4,effectid5,effectid6,effectid7,effectid8,effectid9,effectid10,effectid11,effectid12)
+         OR 71 IN (effectid1,effectid2,effectid3,effectid4,effectid5,effectid6,effectid7,effectid8,effectid9,effectid10,effectid11,effectid12)
+         OR 152 IN (effectid1,effectid2,effectid3,effectid4,effectid5,effectid6,effectid7,effectid8,effectid9,effectid10,effectid11,effectid12)
+         OR 106 IN (effectid1,effectid2,effectid3,effectid4,effectid5,effectid6,effectid7,effectid8,effectid9,effectid10,effectid11,effectid12)
+         OR 108 IN (effectid1,effectid2,effectid3,effectid4,effectid5,effectid6,effectid7,effectid8,effectid9,effectid10,effectid11,effectid12)) AS is_pet
     FROM spells_new s LEFT JOIN db_str d ON d.id = s.descnum AND d.type = 6
     WHERE s.id < 10000
       AND s.name NOT LIKE '% Rk. %'
@@ -95,7 +100,12 @@ my @stock = mysql(q{
 # their triggers plus the Shield Wall buffs, 43400-43454 the AA tree buffs and pet wards, 43500-43565
 # the class auras. "Get rid of the 43xxx spells" must never be read as this whole range.
 my @custom = mysql(q{
-    SELECT s.id, s.name, s.classes8, s.new_icon, IFNULL(d.value,'')
+    SELECT s.id, s.name, s.classes8, s.new_icon, IFNULL(d.value,''), IFNULL(s.teleport_zone,''),
+           (33 IN (effectid1,effectid2,effectid3,effectid4,effectid5,effectid6,effectid7,effectid8,effectid9,effectid10,effectid11,effectid12)
+         OR 71 IN (effectid1,effectid2,effectid3,effectid4,effectid5,effectid6,effectid7,effectid8,effectid9,effectid10,effectid11,effectid12)
+         OR 152 IN (effectid1,effectid2,effectid3,effectid4,effectid5,effectid6,effectid7,effectid8,effectid9,effectid10,effectid11,effectid12)
+         OR 106 IN (effectid1,effectid2,effectid3,effectid4,effectid5,effectid6,effectid7,effectid8,effectid9,effectid10,effectid11,effectid12)
+         OR 108 IN (effectid1,effectid2,effectid3,effectid4,effectid5,effectid6,effectid7,effectid8,effectid9,effectid10,effectid11,effectid12)) AS is_pet
     FROM spells_new s LEFT JOIN db_str d ON d.id = s.descnum AND d.type = 6
     WHERE s.classes8 BETWEEN 1 AND 100
       AND s.id BETWEEN 43300 AND 43349
@@ -240,12 +250,70 @@ for my $r (@RULES) {
     }
 }
 
-my (%pool, %icons, %descs, $n_stock, $n_custom);
+# ---------------------------------------------------------------- pet wards
+# ⚠️⚠️ EVERY PET CARRIES A STANDING WARD (zone/aotv4_pet_aa.cpp) AND NOTHING TOLD THE PLAYER.
+# A summon spell's stock description talks only about the pet; the ward its family gets -- a damage
+# shield, regeneration, a lifetap -- was invisible until you inspected the pet's buffs. Picking a pet
+# spell in the reward window is exactly when that matters, so the ward is appended to the description.
+#
+# ⚠️ `teleport_zone` IS THE PET TYPE, NOT A ZONE (CLAUDE.md section 5). Every pet, familiar, warder
+# and Eye of Zomm spell stores its summon type there, which is the same string pets.type carries and
+# the same string the C++ matches on.
+#
+# ⚠️⚠️ THIS TABLE MIRRORS `kPetWards` IN zone/aotv4_pet_aa.cpp AND MUST BE KEPT IN STEP WITH IT.
+# Matching is by PREFIX for the same reason it is there: SumFireR10 through SumFireR37 are all
+# "SumFire". Anything unmatched falls through to the generic ward, so the text is never wrong, only
+# less specific -- which is also true of the server behaviour it describes.
+my @PET_WARDS = (
+    [ 'SumFire',     'a damage shield'            ],
+    [ 'SumWater',    'health regeneration'        ],
+    [ 'SumEarth',    'increased maximum health'   ],
+    [ 'SumAir',      'increased attack speed'     ],
+    [ 'skel_pet',    'a melee lifetap'            ],
+    [ 'animateDead', 'a melee lifetap'            ],
+    [ 'blood_skel',  'a melee lifetap'            ],
+    [ 'BLpet',       'increased melee damage'     ],
+    [ 'Animation',   'an absorbing rune'          ],
+    [ 'SpiritWolf',  'improved avoidance'         ],
+    [ 'Familiar',    'mana regeneration'          ],
+    [ 'CasterWolf',  'mana regeneration'          ],
+);
+my $PET_WARD_FALLBACK = 'increased maximum health';
+
+# ⚠️⚠️ GATED ON A PET SPA, NOT ON `teleport_zone` BEING NON-EMPTY. That column names "an NPC OR a
+# ZONE", so every TRAVEL spell fills it in with a destination -- keying off it alone tagged 328
+# spells with a ward line, including ports and gates, when there are only about a hundred real pet
+# spells. This is the same trap section 5 records for the travel blacklist rule, arrived at from the
+# opposite direction: there `teleport_zone` wrongly caught pets, here it wrongly caught travel.
+# The SPAs are the reliable signal: 33/71/152 pets, 106 warders, 108 familiars.
+sub pet_ward_text {
+    my ($pet_type, $is_pet) = @_;
+    return '' unless $is_pet;
+    return '' unless defined $pet_type && length $pet_type;
+    for my $w (@PET_WARDS) {
+        my ($prefix, $text) = @$w;
+        return $text if lc(substr($pet_type, 0, length $prefix)) eq lc($prefix);
+    }
+    return $PET_WARD_FALLBACK;
+}
+
+my (%pool, %icons, %descs, $n_stock, $n_custom, $n_ward);
 for my $r (@stock, @custom) {
-    my ($id, $name, $lvl, $icon, $desc) = @$r;
+    my ($id, $name, $lvl, $icon, $desc, $pet_type, $is_pet) = @$r;
     push @{ $pool{$lvl} }, { id => $id, name => $name };
     $icons{$id} = $icon if $icon && $icon > 0;
     my $d = sanitize_desc($desc);
+
+    # ⚠️ Appended AFTER sanitize_desc, not before: that function spells out '%' because the client
+    # treats it as a printf token (section 14). The ward text carries no '%' today, but appending
+    # afterwards means a future edit to it cannot reintroduce one behind the sanitiser's back.
+    my $ward = pet_ward_text($pet_type, $is_pet);
+    if (length $ward) {
+        $d .= ' ' if length $d;
+        $d .= "Your pet gains $ward for as long as it lives.";
+        $n_ward++;
+    }
+
     $descs{$id} = $d if length $d;
     $id >= 43000 ? $n_custom++ : $n_stock++;
 }
@@ -307,7 +375,7 @@ printf "regenerated from the stock spell set:\n";
 printf "  spell_pool.lua   %d levels, %d stock + %d unique custom = %d spells\n",
        scalar(keys %pool), $n_stock, $n_custom, $n_stock + $n_custom;
 printf "  spell_icons.lua  %d icons\n", scalar(keys %icons);
-printf "  spell_desc.lua   %d descriptions\n", scalar(keys %descs);
+printf "  spell_desc.lua   %d descriptions (%d with a pet ward line)\n", scalar(keys %descs), $n_ward;
 printf "  spell_blacklist.lua %d pruned:\n", scalar(keys %black);
 printf "      %-10s %5d  %s\n", $_->[0], ($cat_n{$_->[0]} // 0), $_->[2] for @RULES;
 printf "  => %d spells actually offerable\n",

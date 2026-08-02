@@ -3110,6 +3110,111 @@ bool NPC::Death(Mob* killer_mob, int64 damage, uint16 spell, EQ::skills::SkillTy
 			}
 		}
 
+		// ================================================================ AoTv4 INDIVIDUAL LOOT
+		// Roll the loot table ONCE PER ELIGIBLE PLAYER and pay each of them their own coin. Nobody
+		// shares anything, so there is nothing to contend over and the need/greed/sell machinery in
+		// advloot.cpp is simply never consulted.
+		//
+		// ⚠️⚠️ THIS MUST RUN HERE, AFTER THE AllowPlayerLoot BLOCK ABOVE. Eligibility is not known
+		// until then -- that block is what decides who has kill credit -- and it is also why the roll
+		// cannot happen at spawn (see spawn2.cpp, where the spawn roll is suppressed for this).
+		//
+		// ⚠️ Items are added to the CORPSE, not to the player. The player still chooses from the
+		// Advanced Loot window and takes it through the native Corpse::LootCorpseItem, so lore,
+		// weight, cursor and corpse-removal remain the stock checks. Nothing auto-loots unless the
+		// player's own standing rules say so.
+		//
+		// ⚠️ COIN IS PAID DIRECTLY and is the one thing that does not wait for the window. It has no
+		// inventory constraints, and routing it through the corpse is what made money vanish entirely
+		// when the stock loot window stopped opening -- Corpse::MakeLootRequestPackets was the only
+		// thing that ever called AddMoneyToPP, and AdvLoot mode skips it.
+		if (RuleB(AoT, IndividualLoot) && IsNPC() && GetLoottableID()) {
+			NPC *npc_self   = CastToNPC();
+			int  rolled_for = 0;
+			for (int i = 0; i < MAX_LOOTERS; i++) {
+				const int cid = corpse->GetAllowedLooter(i);
+				if (!cid) { continue; }
+				rolled_for++;
+
+				// Roll this player's own copy of the table onto the corpse.
+				// ⚠️ Restore the owner to 0 immediately after -- anything that rolls outside this
+				// loop (quest AddItem, forage) must stay shared.
+				npc_self->SetLootOwner(static_cast<uint32>(cid));
+				npc_self->AddLootTable(npc_self->GetLoottableID());
+				npc_self->SetLootOwner(0);
+
+				// Hand the freshly rolled items to the corpse. The NPC's list is the staging area;
+				// the corpse already took everything that existed before this loop.
+				corpse->AoTv4AbsorbOwnedLoot(npc_self);
+
+				// Their own coin, paid now.
+				// 📌 No separate roll needed: AddLootTable above already rolled cash into the NPC's
+				// m_loot_* fields (loot.cpp zeroes and re-rolls them on every non-global call), so
+				// each pass through this loop leaves that player's own amount sitting there. Reusing
+				// it means the coin distribution is the stock one, avgcoin weighting included.
+				if (Client *looter = entity_list.GetClientByCharID(cid)) {
+					const uint32 copp = npc_self->GetCopper();
+					const uint32 silv = npc_self->GetSilver();
+					const uint32 gold = npc_self->GetGold();
+					const uint32 plat = npc_self->GetPlatinum();
+					if (copp || silv || gold || plat) {
+						looter->AddMoneyToPP(copp, silv, gold, plat, true);
+
+						// ⚠️⚠️ THE MESSAGE IS NOT DECORATION -- WITHOUT IT THE FEATURE LOOKS BROKEN.
+						// Paying directly means no coin ever appears on the corpse and no loot window
+						// is involved, so the only evidence a player has is a silently changed money
+						// total they were not watching. Reported as "coins do not come off mobs" when
+						// the coin was in fact being paid correctly. This IS the loot event now, so it
+						// has to say so.
+						looter->Message(
+							Chat::Yellow,
+							fmt::format(
+								"You receive {} from the corpse of {}.",
+								Strings::Money(plat, gold, silv, copp),
+								GetCleanName()
+							).c_str()
+						);
+					}
+					// ⚠️ Detail, NOT LogLoot. This fires once PER PLAYER PER KILL, so at General level
+					// it puts two lines in every admin's chat on every corpse -- and it has already
+					// done its job (it is what proved the coin was being rolled and paid per player).
+					// Kept because "paid nothing" vs "rolled nothing" is otherwise indistinguishable.
+					LogLootDetail(
+						"Individual loot: char [{}] npc [{}] loottable [{}] coin [{}p {}g {}s {}c]",
+						cid, GetCleanName(), GetLoottableID(), plat, gold, silv, copp
+					);
+				}
+				// ⚠️ Zero it so the corpse cannot ALSO carry this player's coin. Corpse construction
+				// already happened above, but leaving it set would let any later path pay it twice.
+				npc_self->SetCopper(0);
+				npc_self->SetSilver(0);
+				npc_self->SetGold(0);
+				npc_self->SetPlatinum(0);
+			}
+
+			// ⚠️⚠️ NOBODY HAS KILL CREDIT -> ONE SHARED ROLL, or the corpse is EMPTY FOREVER.
+			// An NPC killed by another NPC (guards, faction fights, a charmed or unowned pet) never
+			// reaches AllowPlayerLoot, so m_allowed_looters stays empty -- and Corpse::CanPlayerLoot
+			// returns `looters == 0`, i.e. such a corpse is lootable by ANYONE. Stock rolled at spawn
+			// so it always had loot; rolling only per eligible player would silently hand back an
+			// empty corpse that everyone can open. Owner stays 0, so the drop is shared, which is
+			// exactly right for a corpse with no owner.
+			if (rolled_for == 0) {
+				npc_self->AddLootTable(npc_self->GetLoottableID());
+				corpse->AoTv4AbsorbOwnedLoot(npc_self);
+				// No one to pay directly, so the coin goes on the corpse and is collected the stock
+				// way, through the loot window.
+				corpse->SetCash(
+					npc_self->GetCopper(), npc_self->GetSilver(),
+					npc_self->GetGold(), npc_self->GetPlatinum()
+				);
+				npc_self->SetCopper(0);
+				npc_self->SetSilver(0);
+				npc_self->SetGold(0);
+				npc_self->SetPlatinum(0);
+			}
+		}
+
 		// AoTv4 Advanced Loot: live's rule is that loot enters your personal list when you get KILL
 		// CREDIT, not when you open the corpse. Every AllowPlayerLoot above just decided exactly who
 		// that is, so push the refreshed list to each of them now (this is what auto-pops the window).

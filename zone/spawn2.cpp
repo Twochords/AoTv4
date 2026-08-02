@@ -296,7 +296,15 @@ bool Spawn2::Process() {
 		npc->SetResumedFromZoneSuspend(m_resumed_from_zone_suspend);
 		m_resumed_from_zone_suspend = false;
 
-		npc->AddLootTable();
+		// ⚠️⚠️ AoTv4 INDIVIDUAL LOOT ROLLS AT DEATH, NOT AT SPAWN. The table is rolled once per
+		// eligible player in Mob::Death, because until something dies we do not know who is eligible.
+		// Rolling here as well would put an extra, unowned copy of the table on every corpse -- a
+		// free shared roll on top of everyone's personal one.
+		// ⚠️ Global loot still rolls here and stays SHARED (owner 0). It is deliberately not per
+		// player: a 1.5 percent Ink of the Lost drop multiplied by group size is a different rate.
+		if (!RuleB(AoT, IndividualLoot)) {
+			npc->AddLootTable();
+		}
 		if (npc->DropsGlobalLoot()) {
 			npc->CheckGlobalLootTables();
 		}

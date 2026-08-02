@@ -10410,6 +10410,32 @@ static bool AdvLootApplyFilters(SharedDatabase &db, uint32 char_id)
 	return v.empty() || v == "1";
 }
 
+// AoTv4 individual loot: is this item somebody ELSE'S personal drop?
+//
+// ⚠️⚠️ EVERY path that acts on a corpse item must ask this, not just the one that draws the window.
+// The list is a display; `/say alspick` and `/say alssellall` carry raw slot numbers straight from
+// the client, so a modified dll can name a slot it was never shown. Ownership is the whole design
+// (see NPC::Death), and a gap in any single caller hands one player another player's drop.
+//
+// owner 0 is SHARED on purpose -- quest-placed items (npc:AddItem during the NPC's life) and the
+// global loot tables are rolled once for everybody and stay contestable.
+static bool AdvLootOwnedByOther(const Client *c, const LootItem *li)
+{
+	if (!RuleB(AoT, IndividualLoot) || !c || !li) { return false; }
+	return li->owner_char_id != 0 && li->owner_char_id != (uint32) const_cast<Client *>(c)->CharacterID();
+}
+
+// Has this player pressed Leave on this item? Unlike the ownership test above this is DISPLAY ONLY --
+// the item stays on the corpse and the stock loot window will still hand it over, so Leave declines a
+// row rather than destroying anything. Every path that would act on the player's behalf honours it,
+// or "Leave" would be undone the moment Loot All or a standing rule ran.
+static bool AdvLootDeclinedBy(const Client *c, const LootItem *li)
+{
+	if (!c || !li) { return false; }
+	return li->declined_by_char_id != 0 &&
+	       li->declined_by_char_id == (uint32) const_cast<Client *>(c)->CharacterID();
+}
+
 // Live's rule: "when you receive credit for a kill" the items enter your PERSONAL loot list -- not
 // "when you open the corpse". So this lists every corpse in the zone we hold loot rights to
 // (Corpse::CanPlayerLoot, which NPC::Death already populates for the killer / group / raid per
@@ -10431,7 +10457,7 @@ void Client::SendAdvLootData()
 
 		// The player never opened this corpse, so nothing has numbered its items yet. Without this
 		// every row would carry an aliased handle and actions would land on the wrong item.
-		corpse->AssignLootSlots();
+		corpse->AssignLootSlots(this);
 
 		// Standing rules act the moment the item lands in your list -- that is the whole point of
 		// them. What "act" means depends on whether anyone else could contest it:
@@ -10443,10 +10469,27 @@ void Client::SendAdvLootData()
 		//
 		// Snapshot the slots first: looting and selling both mutate the corpse's item list.
 		{
-			const bool solo = (AdvLootManager::GroupKeyFor(this) == 0);
+			// ⚠️⚠️ AoTv4 individual loot makes EVERY player solo for this purpose, which is the rule's
+			// stated contract ("AdvLootManager is not consulted while this is true"). Two reasons it
+			// must be enforced and not merely assumed:
+			//   - Nothing is contested. Seeding a 30-second need/greed roll on an item only one
+			//     player can even see would stall their own drop behind a vote nobody else can cast.
+			//   - AdvLootManager keys its share map on (corpse_id, lootslot), and lootslots are now
+			//     PER PLAYER -- so the same key means different items to different people, and any
+			//     roll it did start would resolve against the wrong item.
+			const bool solo = RuleB(AoT, IndividualLoot) || (AdvLootManager::GroupKeyFor(this) == 0);
 			std::vector<std::pair<uint16, int>> acts;   // lootslot -> rule
 			for (auto *it : corpse->GetLootItems()) {
 				if (!it || it->lootslot == 0xFFFF) { continue; }
+				// ⚠️ Your standing rules act on YOUR loot only. Without this an Always Sell on some
+				// common item would fire the moment a group mate's copy landed on the corpse, selling
+				// their drop for them -- and SendAdvLootData runs for every eligible player at death,
+				// so it would happen before either of them had seen the window.
+				if (AdvLootOwnedByOther(this, it)) { continue; }
+				// ⚠️ You pressed Leave on this one. Nothing that acts on your behalf -- a standing
+				// rule, Loot All, Sell All -- may quietly overrule that, or Leave is undone by the
+				// next sweep and looks like it never worked.
+				if (AdvLootDeclinedBy(this, it)) { continue; }
 				const auto ri = rules.find(it->item_id);
 				if (ri != rules.end() && ri->second != ADVLOOT_RULE_NV) {
 					acts.emplace_back(it->lootslot, ri->second);
@@ -10480,13 +10523,31 @@ void Client::SendAdvLootData()
 		// game: the row is simply absent. Items were reported missing (rogue poisons, tradeskill and
 		// trash) with no way to tell WHICH gate dropped them, so each one is counted and the totals are
 		// logged. Enable with #logs (Loot category) and open a corpse.
-		int skip_noslot = 0, skip_never = 0, skip_nodata = 0, skip_cap = 0;
+		int skip_noslot = 0, skip_never = 0, skip_nodata = 0, skip_cap = 0, skip_left = 0,
+		    skip_notyours = 0;
 
 		for (auto *it : corpse->GetLootItems()) {
 			if (!it) { continue; }
+			// AoTv4 individual loot: you see YOUR items and the shared ones (owner 0 -- quest-placed
+			// drops and global loot), never anybody else's. This is the whole of the "no contention"
+			// design: two people looting the same corpse are looking at disjoint lists.
+			//
+			// ⚠️⚠️ TESTED FIRST, BEFORE THE 0xFFFF CHECK, PURELY SO THE DIAGNOSTIC STAYS HONEST.
+			// Per-player numbering gives somebody else's item no lootslot, so it would otherwise be
+			// counted as `no_corpse_slot` -- which means "ran past the 34-slot ceiling" and would read
+			// as the overflow bug that ceiling exists to warn about. Ordinary two-player loot was
+			// logging `no_corpse_slot [2]` on every kill and looking like a fault.
+			if (RuleB(AoT, IndividualLoot) && it->owner_char_id != 0 &&
+			    it->owner_char_id != (uint32) CharacterID()) {
+				skip_notyours++;
+				continue;
+			}
 			// No client-addressable corpse slot. Corpse::MakeLootRequestPackets re-stamps every
 			// lootslot from the client's CorpseBitmask each loot session, so this can change under us.
+			// Now that ownership is filtered above, a non-zero count here really is the ceiling.
 			if (it->lootslot == 0xFFFF) { skip_noslot++; continue; }
+			// Declined with Leave. Counted like every other hide here, per this block's own rule.
+			if (AdvLootDeclinedBy(this, it)) { skip_left++; continue; }
 			const auto ri   = rules.find(it->item_id);
 			const int  rule = (ri == rules.end()) ? ADVLOOT_RULE_NONE : ri->second;
 			// NV only hides while "Apply Filters" is checked -- live's exact wording. The item is never
@@ -10524,13 +10585,16 @@ void Client::SendAdvLootData()
 
 		// One line per corpse, and only when something was actually dropped, so a healthy corpse is
 		// silent. This is the diagnostic for "item X is not in my loot window".
-		if (skip_noslot || skip_never || skip_nodata || skip_cap) {
+		// ⚠️ `not_yours` is EXPECTED on any multi-player kill and is not a fault, so it does not on its
+		// own justify a log line -- otherwise every corpse in a group logs forever. The other counters
+		// all mean something was hidden that the player might have wanted.
+		if (skip_noslot || skip_never || skip_nodata || skip_cap || skip_left) {
 			LogLoot(
 				"AdvLoot [{}] corpse [{}] showed [{}] hid [{}]: no_corpse_slot [{}] never_rule [{}] "
-				"not_in_shared_memory [{}] row_cap [{}]",
+				"not_in_shared_memory [{}] row_cap [{}] left [{}] not_yours [{}]",
 				GetCleanName(), corpse->GetID(), n,
-				skip_noslot + skip_never + skip_nodata + skip_cap,
-				skip_noslot, skip_never, skip_nodata, skip_cap
+				skip_noslot + skip_never + skip_nodata + skip_cap + skip_left + skip_notyours,
+				skip_noslot, skip_never, skip_nodata, skip_cap, skip_left, skip_notyours
 			);
 		}
 
@@ -10597,12 +10661,29 @@ bool Client::AdvLootSlot(uint16 corpse_id, int slot)
 	Corpse *corpse = entity_list.GetCorpseByID(corpse_id);
 	if (!corpse || slot < 0) { return false; }
 
+	// ⚠️ Resolve the slot in THIS player's numbering. Lootslots are per player now, so a corpse last
+	// numbered for somebody else would resolve our handle to their item (the ownership guard below
+	// would then refuse a request that was perfectly legitimate).
+	corpse->AssignLootSlots(this);
+
 	// Group decision layer (advloot.cpp). In FFA this always passes; under Master Looter or Need/Greed
 	// it blocks anyone the group hasn't awarded the item to. Rights were already settled by
 	// Corpse::CanPlayerLoot -- this only arbitrates between people who all have rights.
 	if (LootItem *li = corpse->GetItem((uint16) slot)) {
+		// ⚠️⚠️ AoTv4 individual loot: ownership is enforced HERE, server side, not by the window
+		// filtering it out. The window is a display; a modified client can ask for any slot number,
+		// and without this it would be handed somebody else's drop.
+		if (RuleB(AoT, IndividualLoot) && li->owner_char_id != 0 &&
+		    li->owner_char_id != (uint32) CharacterID()) {
+			Message(Chat::Yellow, "That is not your loot.");
+			return false;
+		}
+
 		std::string why;
-		if (!advloot_manager.CanLoot(this, corpse_id, (uint16) slot, li->item_id, why)) {
+		// ⚠️ The group decision layer below is DEAD while IndividualLoot is on -- nobody ever contends
+		// for a drop, so there is nothing to arbitrate. Left in place so the rule can turn it back on.
+		if (!RuleB(AoT, IndividualLoot) &&
+		    !advloot_manager.CanLoot(this, corpse_id, (uint16) slot, li->item_id, why)) {
 			if (!why.empty()) { Message(Chat::Yellow, "%s", why.c_str()); }
 			return true;                                      // handled, just not allowed
 		}
@@ -10690,13 +10771,28 @@ bool Client::AdvLootSell(uint16 corpse_id, int slot, bool quiet)
 	Corpse *corpse = entity_list.GetCorpseByID(corpse_id);
 	if (!corpse || slot < 0) { return false; }
 
+	corpse->AssignLootSlots(this);   // per-player numbering; see AdvLootSlot
+
 	LootItem *li = corpse->GetItem((uint16) slot);
 	if (!li) { return false; }
 
 	// same rights the loot path enforces
 	if (!corpse->CanPlayerLoot(CharacterID())) { return false; }
+
+	// ⚠️⚠️ AoTv4 individual loot: enforced HERE as well as in AdvLootSlot. Selling is a SECOND way to
+	// dispose of an item and it is the destructive one -- the item is gone and the coin is already
+	// paid, so there is nothing to hand back. This guard is what stops `/say alspick <slot> sell`
+	// from turning another player's drop into your money.
+	if (AdvLootOwnedByOther(this, li)) {
+		Message(Chat::Yellow, "That is not your loot.");
+		return false;
+	}
+
 	std::string why;
-	if (!advloot_manager.CanLoot(this, corpse_id, (uint16) slot, li->item_id, why)) {
+	// ⚠️ Dead while IndividualLoot is on, exactly as in AdvLootSlot: nothing is contested, so there is
+	// no group decision to consult. Left in place so the rule can turn the roll system back on.
+	if (!RuleB(AoT, IndividualLoot) &&
+	    !advloot_manager.CanLoot(this, corpse_id, (uint16) slot, li->item_id, why)) {
 		if (!why.empty()) { Message(Chat::Yellow, "%s", why.c_str()); }
 		return true;
 	}
@@ -10718,10 +10814,25 @@ bool Client::AdvLootSell(uint16 corpse_id, int slot, bool quiet)
 	// Proceeds are divided between everyone entitled to roll on the corpse, exactly as a resolved
 	// Sell vote is. Paying the clicker 100% would make Sell a way to pocket the whole value of
 	// something the group jointly earned.
+	//
+	// ⚠️⚠️ AoTv4 individual loot DOES NOT SPLIT AT ALL -- the seller keeps the full value. Splitting
+	// only makes sense when the group jointly owns the drop, and here nothing is jointly owned: an
+	// owned item was rolled for one player and nobody else can even see it, so a split would quietly
+	// tax every personal drop by group size and pay people who had no claim on it.
+	// ⚠️ Shared items (owner 0: quest-placed and global loot) are NOT an exception. They are rare,
+	// and a Sell that sometimes splits and sometimes does not is worse than one that never does --
+	// the player cannot tell the two cases apart from the item alone.
 	std::vector<uint32> entitled;
-	for (int i = 0; i < MAX_LOOTERS; i++) {
-		const int cid = corpse->GetAllowedLooter(i);
-		if (cid) { entitled.push_back((uint32) cid); }
+	if (RuleB(AoT, IndividualLoot)) {
+		// owner and seller are the same character (the guard above enforces it); prefer the owner so
+		// this stays correct if selling on someone's behalf is ever added.
+		entitled.push_back(li->owner_char_id != 0 ? li->owner_char_id : (uint32) CharacterID());
+	}
+	else {
+		for (int i = 0; i < MAX_LOOTERS; i++) {
+			const int cid = corpse->GetAllowedLooter(i);
+			if (cid) { entitled.push_back((uint32) cid); }
+		}
 	}
 	if (entitled.empty()) { entitled.push_back(CharacterID()); }   // unrestricted corpse
 
@@ -10775,6 +10886,7 @@ LootItem *Client::AdvLootResolve(uint16 corpse_id, int slot, uint32 expect_item)
 {
 	Corpse *corpse = entity_list.GetCorpseByID(corpse_id);
 	if (!corpse) { return nullptr; }
+	corpse->AssignLootSlots(this);   // per-player numbering; resolve in OUR mapping, not the last one used
 	LootItem *li = corpse->GetItem((uint16) slot);
 	if (!li) { return nullptr; }
 	if (expect_item && li->item_id != expect_item) { return nullptr; }   // slot now holds something else
@@ -10812,6 +10924,28 @@ bool Client::HandleAdvLootSay(const char *msg)
 						return true;
 					}
 					AdvLootSell(corpse_id, slot);
+				}
+				// ⚠️⚠️ "leave" USED TO FALL THROUGH TO THE RULE BRANCH AND DO ABSOLUTELY NOTHING --
+				// not even reply -- because it matches none of the rule verbs and the branch is gated
+				// on `rule >= 0`. Leave is not a persistent per-item rule like Always Need/Never; it
+				// is a one-off "not this one", so it needs its own branch here.
+				else if (strcmp(act, "leave") == 0) {
+					LootItem *li = AdvLootResolve(corpse_id, slot, want);
+					if (!li) {
+						Message(Chat::Yellow, "That item is no longer there; the list has been refreshed.");
+						SendAdvLootData();
+						return true;
+					}
+					if (AdvLootOwnedByOther(this, li)) {
+						Message(Chat::Yellow, "That is not your loot.");
+						return true;
+					}
+					li->declined_by_char_id = CharacterID();
+					if (const EQ::ItemData *d = database.GetItem(li->item_id)) {
+						// Say where it went, or "it vanished from my list" reads as having lost it.
+						Message(Chat::Yellow, "You leave %s on the corpse.", d->Name);
+					}
+					SendAdvLootData();
 				}
 				else {
 					// AN / AG / Never / clear -- persistent per-ITEM rules, so resolve the row to its item id
@@ -10889,9 +11023,22 @@ bool Client::HandleAdvLootSay(const char *msg)
 			if (!corpse || corpse->IsPlayerCorpse()) { continue; }
 			if (!corpse->CanPlayerLoot(CharacterID())) { continue; }
 			if (corpse->IsBeingLooted() && !corpse->IsBeingLootedBy(this)) { continue; }
+			// ⚠️ Number for US before reading any lootslot. The snapshot below is only valid in one
+			// player's numbering, and AdvLootSlot renumbers for the acting player -- so without this
+			// a corpse last numbered for somebody else yields handles that point at other items by
+			// the time we act on them.
+			corpse->AssignLootSlots(this);
 			// no range filter: kill credit is what grants the loot, not proximity
 			for (auto *it : corpse->GetLootItems()) {
 				if (!it || it->lootslot == 0xFFFF) { continue; }
+				// Loot All sweeps only YOUR items. AdvLootSlot refuses somebody else's anyway, but
+				// silently skipping here is the difference between a clean sweep and one refusal
+				// message per group mate's drop on every corpse.
+				if (AdvLootOwnedByOther(this, it)) { continue; }
+				// ⚠️ You pressed Leave on this one. Nothing that acts on your behalf -- a standing
+				// rule, Loot All, Sell All -- may quietly overrule that, or Leave is undone by the
+				// next sweep and looks like it never worked.
+				if (AdvLootDeclinedBy(this, it)) { continue; }
 				const auto ri = rules.find(it->item_id);
 				// Loot All must honour the same NV filter the list is showing
 				if (filter && ri != rules.end() && ri->second == ADVLOOT_RULE_NV) { continue; }
@@ -10943,9 +11090,16 @@ bool Client::HandleAdvLootSay(const char *msg)
 			if (!corpse || corpse->IsPlayerCorpse()) { continue; }
 			if (!corpse->CanPlayerLoot(CharacterID())) { continue; }
 			if (corpse->IsBeingLooted() && !corpse->IsBeingLootedBy(this)) { continue; }
-			corpse->AssignLootSlots();
+			corpse->AssignLootSlots(this);
 			for (auto *it : corpse->GetLootItems()) {
 				if (!it || it->lootslot == 0xFFFF) { continue; }
+				// ⚠️⚠️ Sell All is the sharpest case: without this it sold every group mate's
+				// individual drop off the shared corpse and split the proceeds, irreversibly.
+				if (AdvLootOwnedByOther(this, it)) { continue; }
+				// ⚠️ You pressed Leave on this one. Nothing that acts on your behalf -- a standing
+				// rule, Loot All, Sell All -- may quietly overrule that, or Leave is undone by the
+				// next sweep and looks like it never worked.
+				if (AdvLootDeclinedBy(this, it)) { continue; }
 				const auto ri = rules.find(it->item_id);
 				if (filter && ri != rules.end() && ri->second == ADVLOOT_RULE_NV) { continue; }
 				picks.emplace_back(corpse->GetID(), it->lootslot);

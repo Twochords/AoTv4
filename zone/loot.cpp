@@ -383,6 +383,11 @@ void NPC::AddLootDrop(
 
 	auto item = new LootItem;
 
+	// AoTv4 individual loot: stamp whoever this roll is being made for. m_loot_owner is non-zero only
+	// inside the per-player loop in Mob::Death, so every other path (quest AddItem, forage, the global
+	// tables) leaves it 0 and stays shared.
+	item->owner_char_id = m_loot_owner;
+
 	if (EQEmuLogSys::Instance()->log_settings[Logs::Loot].is_category_enabled == 1) {
 		EQ::SayLinkEngine linker;
 		linker.SetLinkType(EQ::saylink::SayLinkItemData);
