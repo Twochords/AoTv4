@@ -1182,6 +1182,10 @@ RULE_CATEGORY_END()
 
 
 RULE_CATEGORY(AoT)
+RULE_BOOL(AoT, AAExpSlowdownEnabled,    	true, "Slow NORMAL experience the more AA a character has earned, so that accumulated AA power does not make each re-climb to the level cap progressively trivial. Multiplier = (Base + aa) / (Base + Factor * aa).")
+RULE_INT(AoT, AAExpSlowdownBase,        	100,  "Numerator base of the AA experience slowdown. Larger = the slowdown starts more gently. With the default 100/10, half rate is reached at 12.5 AA.")
+RULE_INT(AoT, AAExpSlowdownFactor,      	10,   "Denominator factor of the AA experience slowdown. The multiplier asymptotes to 1/Factor, so 10 means normal experience never drops below 10 percent however much AA is earned.")
+RULE_INT(AoT, AAExpMinLevel,            	1,    "Lowest level at which a character may earn AA experience. Stock EQ hardcodes 51 in two places in zone/exp.cpp; on a server whose cap is below that, AA would be completely unearnable.")
 RULE_INT(AoT, DamageCapBaseDelayPct,    	50, "Base damage cap as a percent of weapon delay (50 = 50% of delay)")
 RULE_INT(AoT, DamageCapLevelPctPerLevel, 	5, "Additional cap percent of weapon delay added per character level (5 = +5% of delay per level)")
 RULE_INT(AoT, DamageCapTwoHandBonusPct,  	80, "Additional percent bonus to the damage cap for two-handed weapons (80 = +80%, so 180% of 1H cap)")
@@ -1223,6 +1227,11 @@ RULE_INT(AoT, ShieldRecastSeconds,      	6,	"Recast on /shield in seconds (stock
 RULE_INT(AoT, ShieldDistance,           	25,	"How far apart the shielder and shield target may drift before the shield drops (stock is 15).")
 RULE_INT(AoT, ShieldWallPenaltyPercent, 	20,	"Extra damage per ADDITIONAL person sharing a hit. Share = (damage/N) * (100 + penalty*(N-1))/100, so 2 sharers take 60 percent each (120 total) and 3 take ~47 percent each (140 total). Splitting smooths spikes but costs total HP.")
 RULE_INT(AoT, ShieldWallMaxSharers,     	4,	"Maximum people sharing one hit, including the aggro holder.")
+RULE_INT(AoT, SpecialEndurancePct,      	50,	"Endurance a damaging combat special costs, as a percent of the damage it actually dealt. 50 = a 200 damage Backstab costs 100 endurance. 0 disables the cost entirely. Charged AFTER the hit, because the cost depends on the damage rolled.")
+RULE_INT(AoT, SpecialEnduranceMinToUse, 	1,	"Endurance you must have BEFORE a damaging special will fire. Deliberately low: the real brake is the post-hit cost draining you, not a per-use gate. 0 lets specials fire at zero endurance, which makes the cost meaningless.")
+RULE_BOOL(AoT, IndividualLoot,          	true,	"Individual loot: on an NPC death the loot table is rolled ONCE PER ELIGIBLE PLAYER, and each roll belongs to that player alone -- a group never contends for a drop and everybody sees only their own items in the Advanced Loot window. Coin is rolled and paid per player at the same moment, which is also why coin no longer depends on a loot window opening. Replaces the need/greed/sell group-roll system: AdvLootManager still compiles but is not consulted while this is true. Set false to restore one shared roll plus the old rolls.")
+RULE_BOOL(AoT, SkillCapHighWater,       	true,	"Weapon and casting skills (1H/2H Blunt+Slash+Pierce, Hand to Hand, Archery, Throwing, Abjuration, Alteration, Channeling, Conjuration, Divination, Evocation) keep the cap of the HIGHEST level the character has ever reached, not the one their current level allows. The roguelite death sends you to level 1, where those caps are 10 -- so a hard-earned 125 Channeling could not rise again until you had re-levelled all the way back past it, and every run began by re-treading skill ground you had already won. The stored VALUE was never lost; this is purely about being allowed to keep gaining. Deliberately excludes the reward-gated combat abilities (skill_pool.lua), which death resets to 0 on purpose so they are re-earned through the level-up picker.")
+RULE_BOOL(AoT, TownFactionFloor,        	true,	"Floor the faction con at Dubious for the factions listed in aotv4_town_factions, so no race is killed on sight in a town. Every race may be any class and go anywhere here, but stock faction starts an Ogre at -1000 with Kelethin. Dubious, not Indifferent: the city still dislikes you, it just does not murder you, and Dubious already trades. Only these factions are affected, so monster factions stay lethal.")
 RULE_CATEGORY_END()
 
 #undef RULE_CATEGORY

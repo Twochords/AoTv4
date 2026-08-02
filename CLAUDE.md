@@ -117,6 +117,36 @@ can't grant an arbitrary reward — only one of the three it was actually offere
 - `spell_pool.lua` (**generated**, see §5), `spell_icons.lua` (**generated**),
   `spell_blacklist.lua` (**generated**), `skill_pool.lua` (hand-curated; see §4).
 
+### Reroll — pay coin for three different rewards — 2026-07-28
+Do not like the three offered? Press **Reroll** under the description pane on the Choose tab and pay.
+Price box sits beside the button. Pure Lua + the picker XML; **no item and no vendor NPC**.
+`spell_choice.M.reroll` / `.reroll_cost` / `.send_reroll_cost`. Protocol: `/say spellreroll` out,
+**`SPELLREROLLCOST <copper>`** back (both swallowed by the dll).
+- **Price = `5p × (rerolls_bought + 1)`** — 5p, 10p, 15p, … Counted per character in bucket
+  `rerollbuy_<charid>` and ⚠️ **never reset by the roguelite death**: rerolls get dearer over a
+  character's whole life, not per run.
+- ⚠️⚠️ **A TOKEN ITEM + VENDOR WAS BUILT FIRST AND THEN DELETED** (item 147495 "Destiny Fragment",
+  npc 2000210). Charging coin straight from the button is simpler and needs no shared-memory rebuild,
+  no spawn rows and no hand-in script. If a token is ever wanted again, the reason the vendor could
+  not be a `merchantlist` merchant still stands: **merchantlist prices are STATIC** — no per-character
+  column, no hook — so an escalating price cannot be expressed there at all.
+- ⚠️⚠️ **Gate ORDER in `M.reroll` is load-bearing**: pending offer → funds → **build** → *then* charge.
+  `TakeMoneyFromPP` has no refund path, so charging before building would bill for a reroll that turns
+  out to have nothing left to offer.
+- ⚠️ **It REPLACES the queue's front offer, never appends** — the front is what the window shows, so
+  appending would leave the disliked set still pickable and the player would have paid for nothing.
+- ⚠️ `GetCarriedMoney` is **carried** coin only, not bank. The refusal message says so, because
+  "you cannot afford it" while standing on 500p in the bank reads as a bug.
+- ⚠️ `build_offer()` is shared by `M.offer` and `M.reroll` deliberately: two copies would drift on the
+  skill chance, level band and shuffle. Reroll bumps the same `spell_seed_` counter, which is what
+  makes it produce a *different* set rather than re-deriving the one you paid to remove.
+- ⚠️ The dll validates **nothing** — `g_rerollCost` is a DISPLAY value. Pricing, the affordability
+  check and taking the coin are all server-side, so a modified client cannot reroll for free.
+- ⚠️ The cost box is an **STMLbox, not a Label** — Label has no confirmed border on this build, and the
+  price must arrive from the server (it is per character) rather than being hardcoded client-side.
+- ⚠️ In `gen_choice_xml.pl` the detail box shrank 174 → **140** to make room; it could not move *up*
+  because the three cards occupy 34..208 and `DETNAME_Y` sits directly under them.
+
 ### Client side (`core_spellwindow.cpp` → `dinput8.dll`)
 Gated by `areSpellChoiceWindowEnabled` (`_options.h`). RoF2, image base `0x400000`, addresses
 rebased at runtime:
@@ -310,6 +340,9 @@ zone rebuild** (§8).
 >     `IsDamageSpell`/`IsAnyDamageSpell`/`IsDamageOverTimeSpell` and drives the tap emote.
 >     ⚠️ No tier is named "Moonfire": stock **2877 Moonfire** (Druid 60 nuke) is already in the pool
 >     and would be a real duplicate.
+>     ⚠️⚠️ **This line's Lua bonus never actually ran until 2026-07-29** — `EVENT_SPELL_EFFECT_NPC`
+>     had no argument builder, so `e.caster_id` was nil against any monster and `tap_bonus` returned
+>     early every time. Moonfire was a plain 1:1 engine-paid lifetap for its whole life. See §10.
 >   - `custom/sql/aotv4_promised_line.sql` — **delayed "bloom" heals**, ids **43324-43329** / blooms
 >     43368-43373. Cast it, wait 3 ticks, it heals when the buff expires naturally. Uses the native
 >     **SPA 289 `CastOnFadeEffect`** (`common/spdat.h:1352`) — no Lua needed, unlike 43017 Languid
@@ -369,6 +402,66 @@ zone rebuild** (§8).
 >     likewise an inert buff (slots = filler 10) with `numhits 100, type 5`; native charges run 5-800.
 >     ⚠️ Charge and heal are counted in **different places**, so a hit absorbed to 0 damage spends a
 >     charge without paying a heal. The `numhitstype` legend is in `spell_effects.cpp:7077`.
+>   - `custom/sql/aotv4_sinew_line.sql` — a **damage tap that returns ENDURANCE**, weighted **75
+>     percent damage / 25 percent endurance**, ids **43318-43323** (Sinewbite → Sinewreave, levels
+>     8/18/28/38/48/58, damage 27/90/120/225/360/525, return = **damage / 3**). The structural
+>     mirror of the Moonfire line, which splits the same way but returns health. **It exists because
+>     of §22**: specials now cost endurance in proportion to their damage, and this refills the bar.
+>     Damage sits just under the average native single-target nuke for the level (averages read out
+>     of the DB, not from memory) because the cast also returns a resource; every damage value is
+>     divisible by 3 so the return is a clean integer.
+>     ⚠️⚠️ **NOT a lifetap, and must not be "fixed" into one.** `targettype` stays **5**. Setting it
+>     to 13 is what `IsLifetapSpell` keys on (`common/spdat.cpp:108`) and makes `Mob::Damage` heal
+>     the caster 1× the damage in **health** (`int64 healed = damage;`, `zone/attack.cpp:4287`) —
+>     free HP nobody asked for, on top of the endurance. Moonfire *wants* that engine-paid 1× and is
+>     a genuine tap; this line does not, so Lua pays **the whole** return.
+>     ⚠️⚠️ **The return is not expressible in the DB at all** — there is no endurance-tap SPA. SPA
+>     189 `SE_CurrentEndurance` applies to the spell's TARGET, and the target of a nuke is the thing
+>     you are hitting, so it would hand the **monster** the endurance; a recourse could aim it at the
+>     caster but only for a flat amount unrelated to the tier. Hence plain nukes +
+>     `quests/global/spells/433xx.lua` → `lua_modules/aotv4_sinewtap.lua`. **Change a damage value in
+>     the SQL and you MUST change that tier script's return (= damage / 3).**
+>     ⚠️ **Clients only** — that is the shape of the mechanic, not a rare-case guard. `Mob::GetEndurance`
+>     is a virtual returning 0 and `Mob::SetEndurance` a no-op (`zone/mob.h:674`, `:677`); only
+>     `Client` overrides them (`zone/client.h:751`, `:756`). Resolve the caster with
+>     **`GetClientByID`, not `GetMobID`** — it resolves invalid for a pet or NPC caster, which is
+>     exactly the case to skip. ⚠️ There is **no `AddEndurance` binding** (only `Get`/`Set`,
+>     `zone/lua_client.cpp:1304-1321`), so the max-endurance clamp is applied by hand or a cast at a
+>     full bar sets endurance above max.
+>     ⚠️ Cloned from stock **466 Lightning Shock**; only `new_icon` is overridden, to **47** — the
+>     icon 44 native lifetaps use, so it reads as draining rather than lightning. Named "Sinew"
+>     because it collides with nothing; deliberately **not** "Marrow" (stock 8608 Marrow Drain / 8803
+>     Marrow Bend would sit beside it in the picker).
+>     📌 Damage/mana is untuned until it is played (dpm 1.13 → 1.59 across the tiers).
+>   - ⚠️⚠️ **A re-runnable script's cleanup `DELETE` must only name the ids that script itself
+>     creates.** `aotv4_moonfire_line.sql` opened with `DELETE … WHERE id BETWEEN 43312 AND 43323`
+>     to sweep up leftovers from an earlier pass — which silently covers **43318-43323, the whole
+>     Sinew line**. Re-running moonfire would have deleted six spells belonging to another script,
+>     with no error. Narrowed to `43312 AND 43317` (2026-07-29).
+>
+> ⚠️⚠️ **CLONING A STOCK SPELL INHERITS ITS DAMAGE FORMULA — overriding `effect_base_value1` is NOT
+> enough** (bit the Sinew line, 2026-07-29). `spells_new` carries `formulaN` and `maxN` beside every
+> base value. **Formula 1-99 means `base + caster_level * formula`** (`zone/spell_effects.cpp`, the
+> default branch of the formula switch); **100 means "= base"**, the static case. 466 Lightning Shock
+> ships `formula1 = 5, max1 = 570`, so the cloned tier dealt **27 + 8×5 = 67** at level 8 instead of
+> 27, heading for 277 by level 50, with the top tier clipped at 570.
+> - ⚠️ For a hand-tuned tier ladder this breaks the **design**, not just the numbers: any Lua-paid
+>   companion value (the Sinew line's endurance return, a Moonfire-style bonus heal) is a **flat**
+>   amount, so damage that climbs with level while the return stands still destroys the ratio the
+>   line exists to express.
+> - Fix is `formula1 = 100, max1 = 0`. An audit of all of **43300-43347** found the Sinew line to be
+>   the **only** offender — every other custom line is already `formula 100 / max 0`, because they
+>   cloned either a static stock buff or (Moonfire) a custom that was already static. That is also
+>   why this had never shown up before.
+> - 📌 **Check `formulaN`/`maxN` on any future clone before trusting its numbers**, the same way the
+>   proc-slot note below says to check the template.
+>
+> ⚠️ **Observed damage will still exceed the base — that is DC Overpower, not a bug.**
+> `zone/mob.cpp:8860` adds bonus spell damage scaled off how far the caster's DC exceeds the
+> target's resist (`AoT:DCOverpower*` rules), which against a weak mob was contributing ~24 at
+> level 8. It also means a **tap's engine-paid 1× follows the INFLATED damage while the Lua bonus
+> stays flat**, so Moonspark healed ~100 rather than its nominal 75. Expected, and the same class of
+> approximation already recorded for partial resists.
 >
 > ⚠️ The proc SPA sits in **slot 4** on the reptile line but **slot 3** on the sloth line — check the
 > template before overriding. ⚠️ SPA 11 base is the attacker's resulting melee **speed**, not the slow
@@ -537,7 +630,9 @@ GM `#resetaa aa` only *refunds* spent → unspent (doesn't zero the pool). The m
 - **Bard `skill_caps`** (`class_id=8`) raised so skills scale; client also needs the exported
   `SkillCaps.txt` (`export_client_files`) installed in the EQ root.
 - **Expansion lock:** `rule_values Expansion:CurrentExpansion = 0` (Classic).
-- Test char `Ashrem`: Bard, GM. (Reset a char's combat skills via
+- Test char `Ashrem`: charid **1**, GM — **Warrior (class 1)** as of 2026-07-29, not Bard; it was
+  remade after the all-classes pivot (§14), so it also exercises the melee-as-caster path.
+  (Reset a char's combat skills via
   `UPDATE character_skills SET value=0 WHERE id=<charid> AND skill_id IN (...)` — only sticks
   while that char is at **character select**, else the live zone saves over it.)
 
@@ -571,6 +666,29 @@ class, `classes8`, skill caps, expansion). The windows are generic (`SPELLCHOICE
 `spellpick N`; `AACHOICEDATA name|icon|cost` / `aapick N`). `aa.cpp` stays stock.
 
 ## 10. Gotchas / lessons learned
+- ⚠️⚠️ **A Lua SPELL SCRIPT GETS AN EMPTY `e` WHEN THE TARGET IS AN NPC — fixed 2026-07-29,
+  `zone/lua_parser.cpp`.** `SpellArgumentDispatch` is filled with `handle_spell_null` for every
+  event (`:240`) and then only **four** are given a real argument builder. `EVENT_SPELL_EFFECT_NPC`,
+  `EVENT_SPELL_EFFECT_BUFF_TIC_NPC` and the two BOT equivalents were **not among them**, so they
+  fell through to `handle_spell_null` — a function with an **empty body**
+  (`lua_parser_events.cpp:2182`). The event table therefore arrived with **no fields at all**: no
+  `caster_id`, no `target`, no `spell_id`, no `tics_remaining`.
+  - ⚠️⚠️ **The script still RUNS, which is why this hides so well.** `event_spell_effect` fires
+    exactly as expected when you nuke a monster; every field on `e` is just nil, so a script that
+    reads `e.caster_id` silently does nothing. The symptom is "the spell did not fire" with **no
+    error anywhere** — and it is invisible to luacheck, to the zone log, and to reading the script.
+  - **It only ever worked when the target was a PLAYER.** Beneficial/self spells land on a Client →
+    `EVENT_SPELL_EFFECT_CLIENT`, which *was* registered. Of the 56 scripts in
+    `quests/global/spells/`, **34 beneficial ones were fine and 22 detrimental ones were dead**:
+    982, the retired customs 43010/43011/43015/43030/43052/43054/43055, helpers 43150/43155, **the
+    whole Moonfire line 43312-43317** and the Sinew line 43318-43323.
+  - ⚠️ **Moonfire had never worked in play.** Its 2× bonus heal (§5) reads `e.caster_id`, so against
+    a monster it returned early every time and the line was a plain 1:1 lifetap paid entirely by the
+    engine — for as long as it has existed. Nothing reported it.
+  - The fix is registration only: `handle_spell_event` was **already written** for this case (its
+    first branch is `if (mob)`, the NPC one), it was simply never wired to those four events.
+  - 📌 **Before writing any new spell script, confirm the event you need has a real builder in
+    `SpellArgumentDispatch`** — a missing entry is silent, not an error.
 - **Lua + server-code reloads:** `#reloadquest` does NOT reload `require`d Lua modules, and a
   rebuilt `zone` binary only takes effect in **freshly-booted** zones. After a Lua or C++ change,
   kill **all** zone procs (`for p in $(pgrep -x zone); do kill -9 $p; done`) so `eqlaunch`
@@ -636,6 +754,23 @@ class, `classes8`, skill caps, expansion). The windows are generic (`SPELLCHOICE
 - **AA names come from `db_str`** (type 1 title, type 4 description) resolved by the CLIENT out of
   its own `dbstr_us.txt`, so a `db_str` change needs `./export_client_files` + reinstalling that
   file. `title_sid = -1` renders **no row at all** — it does not fall back to `aa_ability.name`.
+- ⚠️⚠️ **AN AA HAS *THREE* NAMES IN `db_str`, AND THE HOTKEY ONE IS SPLIT ACROSS TWO ROWS.**
+  `aa_ranks` carries `title_sid` **and** `upper_hotkey_sid` **and** `lower_hotkey_sid`, and the
+  client selects on `(id, type)`: **type 1** the window title, **type 2** the hotkey's UPPER line,
+  **type 3** its LOWER line, **type 4** the description. Renaming an AA by writing types 1 and 4 —
+  which is what `aotv4_aa_rename.sql` did — leaves the **host's** hotkey text in place, so the AA
+  window reads "Iron Will" while a hotkey made from that same ability reads **"Frenzied Burnout"**.
+  Fixed for all 10 activated abilities by `custom/sql/aotv4_aa_hotkey_names.sql` (first word to
+  type 2, remainder to type 3; passives carry `-1` and are skipped).
+  - ⚠️⚠️ **The split is why this is nearly unsearchable.** The string on screen never exists in the
+    data: grepping `db_str`, `dbstr_us.txt` **and** `eqgame.exe` for `Frenzied Burnout` all return
+    **zero**, because it is stored as `Frenzied` + `Burnout`. That produced three separate wrong
+    conclusions (a stale `spells_us.txt`, a clone-source name, a hardcoded client string) before
+    `SELECT id, type, value FROM db_str WHERE id = <sid>` — **dump every type for the sid** — showed
+    it instantly. Search a single word, or dump the sid; never grep the rendered string.
+  - ⚠️ In our pool `title_sid`, `upper_hotkey_sid` and `lower_hotkey_sid` are all the **same sid**,
+    so these are three rows of one id. That is exactly what makes it look like fixing the title
+    should have fixed the hotkey: the id matches, only the **type** differs.
 - ⚠️⚠️ **`title_sid` and `desc_sid` are INDEPENDENT, and neither is guaranteed to equal
   `first_rank_id`.** 22 of our 23 hosts have `title_sid = desc_sid = first_rank_id`, which makes it
   look like a rule — **Quick Damage (44) does not**: `title_sid 141`, `desc_sid` **12863**. Writing
@@ -663,11 +798,92 @@ class, `classes8`, skill caps, expansion). The windows are generic (`SPELLCHOICE
     `Client::AdvLootSellValue` returns 0 for the same reason (`:10674`). A Mythic carries the native's
     full price and still cannot be sold to a vendor — that is the design, not a bug. The 17 Hallowed
     rows that also refuse are the **epics**, forced Lore + No Drop at the end of the tier script.
-  Two C++ hooks (tracked patches): `NPC::AddLootDropTable` (loot.cpp) rolls **25% Hallowed / 5%
-  Mythic** per base drop (mode-independent, since `lootdrop_entries.chance` is a weight in the
-  dominant weighted loot mode); `AoTv4MythicReward` (questmgr.cpp + lua_client.cpp) upgrades
-  **quest-reward** gear to its Mythic tier (epics never hand out native). Re-run the SQL → rebuild
-  shared memory → restart.
+  Two C++ hooks (tracked patches): `NPC::ResolveTierDrop` (loot.cpp) decides **which tier** a rolled
+  item drops as — **5% Mythic / 25% Hallowed / else base** (mode-independent, since
+  `lootdrop_entries.chance` is a weight in the dominant weighted loot mode); `AoTv4MythicReward`
+  (questmgr.cpp + lua_client.cpp) upgrades **quest-reward** gear to its Mythic tier (epics never hand
+  out native). Re-run the SQL → rebuild shared memory → restart.
+  - ✅ **CRAFTING ALWAYS YIELDS MYTHIC** (`ZoneDatabase::GetTradeRecipe`, tradeskills.cpp ~:1746). Every
+    combine output is swapped for its Mythic tier when one exists, so crafted gear is top-tier and stays
+    relevant as later expansions unlock better base items. Epics are tiered, so they are covered too.
+    - ⚠️⚠️ **ONE choke point serves BOTH overloads.** `GetTradeRecipe(container, …)` resolves the recipe
+      id from the container's contents and then **delegates** to `GetTradeRecipe(recipe_id, …)` (`:1600`,
+      `:1639`), so the trade window and the world-container path both pass through here exactly once.
+      Never copy the upgrade into a caller — two copies drift, per §22's reasoning.
+    - ⚠️ It normalises through **`AoTv4TierBaseId` first**. Adding the step to an id that is *already* a
+      tier would land outside the reserved band where no item exists, so the swap would silently no-op;
+      normalising makes a Hallowed output upgrade and a Mythic output idempotent. (No stock recipe
+      outputs a tier id today — 0 of 19,464 — so this is a guard, not a live path.)
+    - 📌 **Only WEARABLES are affected, and that falls out of the data rather than a test.** The gate
+      used to be `Slots > 0`, which was redundant: `aotv4_gear_tiers.sql` only generates tiers for
+      slots>0 items, so the "does a Mythic exist" lookup already *is* the wearable test. Of the enabled
+      recipes, **12,323 produce a wearable** (all 8,889 distinct outputs have a Mythic row) and **11,031
+      produce a non-wearable** — 5,112 plain components, 728 food/drink, 71 containers, and 5 junk
+      outliers. **Do not tier those**: a component has no stats to scale, so a "Mythic" one would be
+      byte-identical to its base and would only split **2,556** component stacks across two ids.
+    - ⚠️ Only the **success** list is upgraded — `onfail` and `salvage` are untouched, and quest recipes
+      (5 of 19,464) hand out items from Lua/Perl and bypass this entirely.
+  - ⚠️⚠️ **A TIER REPLACES THE DROP, IT DOES NOT ADD ONE (fixed 2026-07-29).** The original
+    `AddTierUpgrades` rolled the two tiers **independently** and called `AddLootDrop` for each *on top
+    of* the base, so one base item could put **three items on the corpse at once** (base + Hallowed +
+    Mythic). A lucky roll meant **more** loot rather than **better** loot, and every upgrade dragged
+    its own inferior copies along with it. Now one item goes in and one comes out.
+  - ⚠️ The 5/25 rates are unchanged but are now **mutually exclusive bands of a single roll**, so
+    **Mythic is tested first** — it is the rarer band and testing Hallowed first would swallow it
+    entirely. Expect marginally fewer Hallowed than before (25% of drops, not 25% plus the 5% that
+    also rolled Mythic).
+  - **The tiers are always created in PAIRS** — `aotv4_gear_tiers.sql` generates Hallowed and Mythic
+    from the same base set, and the DB confirms it: 27,146 rows each, **zero** Hallowed without a
+    Mythic and zero Mythic without a Hallowed (checked 2026-07-29). So the split really is a clean
+    5 / 25 / 70, and the only item that is native 100% of the time is one with **no tier rows at all**
+    (quest paper, whatever the tier script skipped), which returns the base untouched.
+  - 📌 The Mythic branch **falls through** to the Hallowed test instead of returning, so a half-tiered
+    item would degrade to Hallowed rather than to base. Given the pairing invariant above that branch
+    is **unreachable** — it is a safety net for a hand-edited or partially-regenerated tier set, not a
+    live code path. Do not read it as evidence that half-tiered items exist.
+  - ⚠️ In the weighted path the **`multiplier`/charges loop rolls its own tier per copy** — it
+    previously got no upgrade at all, and sharing one roll would hand out one upgraded item plus N
+    base duplicates.
+  - 📌 loot.cpp now uses `zone/aotv4_tiers.h` (`AOTV4_TIER_STEP` / `AoTv4IsTierId`) instead of literal
+    `300000`/`600000` — it was touched for another reason, which is exactly the condition that header
+    names for migrating one of the five hardcoded copies. Four remain (npc/questmgr/attack/tradeskills).
+  - ✅ **QUESTS ACCEPT ANY TIER — do not "scrub" the 8,000 quest scripts, it is already handled in
+    five C++ choke points** (audited 2026-07-28). `zone/aotv4_tiers.h` holds the id maths now
+    (`AoTv4TierBaseId`, `AOTV4_TIER_STEP`); the five OLDER hardcoded copies (loot/npc/questmgr/attack/
+    tradeskills) were deliberately left alone — migrate one only if it is touched for another reason.
+    | Path | Covers |
+    |---|---|
+    | `NPC::CheckHandin` (npc.cpp, pre-existing) | **all turn-ins** — Lua `check_turn_in` (1,039 files) *and* Perl `plugin::check_handin` (1,281) both funnel here |
+    | `Lua_Client::CountItem` / `Perl_Client_CountItem` / `QuestManager::countitem` | possession checks |
+    | `Lua_Client::HasItemOnCorpse` | the corpse fallback inside `Client:HasItem` |
+    | `Client:HasItem` (`lua_modules/client_ext.lua`) | ~230 Lua files — it **scans slots itself**, never calls CountItem, so it needs its own `aotv4_same_item` |
+    | `Perl_Client_HasItemOnCorpse` (**added 2026-08-01**) | the corpse fallback inside `plugin::check_hasitem` |
+    | `plugin::check_hasitem` (`plugins/check_hasitem.pl`, **added 2026-08-01**) | **133 Perl files** — the Perl twin of `Client:HasItem`, and it scans slots itself the same way |
+    - ⚠️ **Scoped to the QUEST bindings, never `Client::CountItem` itself** — the engine calls that for
+      merchants, corpses and NPC inventories, where "a Mythic Rusty Dagger is a Rusty Dagger" is the
+      WRONG answer.
+    - ⚠️ 7 Perl files compare `$itemN ==` directly and bypass all of it. Audited: 5 of the 6 ids are
+      untiered quest paper, and the 6th (26015 Pulsing Goo) only ever appears as a
+      `quest::ChooseRandom` reward roll — a script-local, never a hand-in. **No real gaps.**
+    - ⚠️⚠️ **THE 2026-07-28 AUDIT MISSED THE WHOLE PERL POSSESSION PATH** (found and fixed 2026-08-01).
+      It reasoned in terms of the *Lua* call graph, fixed `Client:HasItem` when it turned out to scan
+      slots itself — and never asked whether Perl had the same shape. It does: `plugin::check_hasitem`
+      does a raw `GetItemIDAt($slot) == $item_id` (plus the same on every augment socket), reaching
+      none of the C++ choke points, so **133 Perl quest scripts told a player holding only the Mythic
+      copy that they did not have the item.** Its corpse fallback `Perl_Client_HasItemOnCorpse` was
+      unnormalised too, while `Lua_Client::HasItemOnCorpse` had been fixed. The tell was in plain
+      sight: the comment in `client_ext.lua` lists the covered paths and names `Perl_Client_CountItem`
+      but not `Perl_Client_HasItemOnCorpse`.
+      📌 **`aotv4_same_item` now exists TWICE — `lua_modules/client_ext.lua` and
+      `plugins/check_hasitem.pl`. Fix them together.** And when auditing a rule like this, enumerate
+      by *mechanism* (who scans slots directly?) rather than by language, or one interpreter's half
+      gets checked and the other does not.
+    - 📌 **Crafting makes this load-bearing rather than cosmetic.** Every combine output is swapped for
+      its Mythic tier (§ the crafting note above), so **25 quest turn-in requirements are craftable
+      wearables** whose only obtainable form is now Mythic — if the normalisation broke, those quests
+      would be uncompletable rather than merely awkward. Verified 2026-08-01: all 25 have Mythic rows,
+      none is touched by the 7 direct-comparison files, and the Lua chain resolves
+      `items.check_turn_in` → `trade.self:CheckHandin` → `NPC::CheckHandin` (`npc.cpp:4376`).
   - ⚠️ **Tier offset = 300,000 (step), NOT 1,000,000.** RoF2 item LINKS encode the id in a
     5-hex-digit field masked to `0xFFFFF` (1,048,575, see `common/say_link.cpp`), so an item id
     ≥ 1,048,576 makes its chat link render as garbage (and can desync the client link parser for
@@ -1107,6 +1323,13 @@ A native SIDL **Advanced Loot** window in **complement mode**: the stock RoF2 lo
 **Loot All**, and a persistent **Never** filter list. Same "server → chat line → dll → window" pattern as
 §3/§6/§11/§13/§15.
 
+> ⚠️⚠️ **READ §31 BEFORE TOUCHING ANY LOOT PATH.** Individual loot (2026-08-01) rolls the table once
+> per player and stamps an owner on every item, which changes three things this section assumes:
+> lootslots are numbered **per player** (not once per corpse), `MakeLootRequestPackets` is **no longer
+> untouched** (complement mode was the hole — the stock window showed everyone's drops), and the
+> need/greed/sell layer in `advloot.cpp` is **dead** while `AoT:IndividualLoot` is on. Any new path
+> that reads a lootslot or acts on a corpse item needs the guards described there.
+
 - **Protocol (chat, dll swallows all of it):** server → `LOOTDATA <n>^lootslot|itemid|icon|name|npcname|qty^…`
   (pushed from `Handle_OP_LootRequest`; `qty` = stack size for stackables else 1, appended **last** so an
   older 5-field dll parse still works), `FILTERDATA <n>^itemid|icon|name|rule^…`, `LOOTCLOSE`
@@ -1116,6 +1339,24 @@ A native SIDL **Advanced Loot** window in **complement mode**: the stock RoF2 lo
   `SendAdvLootClose` / `AdvLootSlot` / `HandleAdvLootSay`. The `/say als*` commands are intercepted in
   **`Client::ChannelMessageReceived`** (`zone/client.cpp`, before EVENT_SAY/broadcast) so they never spam
   chat or reach quests — **NOT** in Lua, unlike the other windows. **Needs a zone rebuild.**
+- ✅ **Loot / Loot All are HIDDEN while the group owns the decision** (2026-07-28). **Loot** goes when
+  the *selected* row is still votable (`RowIsVotable` — a "Rolling N" status, not `Yours`/`Free Grab`/
+  `Won by`); **Loot All** goes for the whole session under any non-FFA `g_lootMode`, since it would
+  sweep contested rows along with settled ones.
+  - ⚠️⚠️ **This is PRESENTATION, not enforcement.** `AdvLootManager::CanLoot` (`zone/advloot.cpp`)
+    already refused both cases server-side *with a reason* — racing the button never worked, it just
+    LOOKED like it should, and a live button that silently does nothing reads as a broken window
+    rather than as a rule. **Never move the check to the client**: a modified dll would just un-hide.
+  - ⚠️ **HIDDEN, not greyed.** There is no address-mapped enable setter on this build — `eqgame.h`
+    maps nothing for it and `EQClasses.h` only *declares* `CXWnd::IsEnabled` — and writing a raw
+    `->Enabled` member offset is the unreliable-struct-offset trap from §13. `Show` **is** mapped.
+  - ⚠️ **FFA is deliberately untouched**: there the server permits looting and first-come *is* the
+    rule, so hiding the button would break ordinary group play rather than protect it.
+  - ⚠️ `ApplyVis` now takes the selected row as a parameter and the list's click handler passes
+    `m_sel` — `GetCurSel()` is one click behind inside that notification, so a live read would briefly
+    offer Loot on a row that is still rolling. Safe to call from there because `ApplyVis` touches only
+    buttons and labels, never the listbox (rebuilding a list inside its own click is the §3 Death Book
+    crash).
 - ⚠️ **Looting reuses the NATIVE `Corpse::LootCorpseItem`** — `AdvLootSlot` synthesizes an `OP_LootItem`
   packet and calls it, so lore/cursor/weight/corpse-removal are the stock checks and there is **no bespoke
   item-grant path** (the lesson from the escrow work, §13). It only works while the corpse is actually being
@@ -1264,6 +1505,10 @@ parallel system — the native path already does the pairing, the distance break
   Counterattack, the Thirst line): they exist to be *seen*, not to do anything.
 
 ## 17. Database access from Windows + container recovery — 2026-07-24
+
+> ⚠️⚠️ **See §25 first.** This section's "a rebuild does NOT destroy the DB — the old container still
+> has it" is correct but incomplete: the same root cause also produces a **stale-but-present**
+> database that looks entirely healthy. `db_sanity.sh` detects it in one second.
 
 ### Connecting a GUI client (HeidiSQL) to the peq DB
 MariaDB runs **inside the dev container** (`eqemu_config.json` → `127.0.0.1:3306`; there is no separate DB
@@ -1451,21 +1696,53 @@ a player could only ever see what they had been handed, never what they might be
   Shield Wall buffs). The wording is deliberate.
 - The Known tab costs **zero** server traffic — it reads `CHARINFO2::SpellBook` directly.
 
-### ⚠️⚠️ 43000-43149 is RETIRED from the pool (2026-07-27)
-The generator's clause that offered the 20 all-slots-254 members of that band is **removed** — see
-the comment block in `gen_stock_pool.pl`. That band is the retired 113-spell custom reward set
-(Ember, Zap, Kick, Strike, Counterattack, Moonfire…): mostly redundant with native spells, and being
-inert markers they render as "no effects" in any client-side description. Pool went 2,174 → **2,154**.
-The **rows remain in `spells_new`** (dormant; referenced by their `quests/global/spells/43xxx.lua`
-scripts and the 43150-43199 helpers) — only the offering stopped. Full restore of all 202 custom rows
-is `custom/sql/aotv4_custom_spells_backup.sql`.
+### ⚠️⚠️ 43000-43112 is DELETED (2026-08-01) — retired from the pool 2026-07-27, rows removed now
+That band was the 113-spell custom reward set (Ember, Zap, Kick, Strike, Counterattack, Moonfire…):
+mostly redundant with native spells, and being all-slots-254 inert markers they rendered as "no
+effects" in any client-side description. The generator's clause that offered them was removed on
+2026-07-27 (pool 2,174 → 2,154); **the rows themselves went on 2026-08-01** via
+`custom/sql/aotv4_retire_43000_43112.sql`, together with everything that called them:
+- deleted `lua_modules/aotv4_pets.lua` and `lua_modules/aotv4_summon_table.lua`
+- deleted the 14 scripts `quests/global/spells/{43010,43011,43015,43017,43025,43027,43028,43030,
+  43035,43052,43054,43055,43056,43059}.lua`
+- `global_player.lua` — the pets require, the **repeating 5-second `aotpet` timer** and its branch
+- `global_npc.lua` — the pets require, `on_pet_spawn`, and the **whole `event_damage_given`**, which
+  existed only to drive the summoned-pet behaviours. ⚠️ The player-side damage hooks (Thirst, Sinew,
+  reactions) are in `global_player.lua` and are untouched — do not re-add it looking for them.
+- `aotv4_reactions.lua` — the four reaction branches (Divine Aura 43022, Blade Turn 43035,
+  Counterattack 43056, Vengeful Aura 43059), their charge tables, tuning and `arm_`/`clear_` API.
+Full restore of all 202 original custom rows is `custom/sql/aotv4_custom_spells_backup.sql`; a
+targeted pre-delete dump of 43000-43199 is `peq_pre_43xxx_purge.sql.gz`.
+- ✅ **`on_damage_taken` got measurably cheaper**, which matters because it runs on **every damage
+  event for every player**. It used to resolve `CastToClient` + `CharacterID` **and an
+  `eq.get_entity_list():GetMobID()` lookup — an entity-list walk per hit** — before its first
+  early-out, purely to feed those four branches. All three are gone; only the duel block remains.
+- ⚠️⚠️ **42 STOCK ITEMS REFERENCE THE DELETED BAND, AND THAT IS EXPECTED — LEAVE THEM ALONE.** The
+  50xxx → 43xxx renumber (§14) landed on ids **stock EQ already used**, so items 143000+ (*Tome:
+  Breather*, *Tome: Cyclone Roar*, *Tome: Insult*, *Tome: Warrior's Bulwark*…) carry a `scrolleffect`
+  pointing into it. Those stock disciplines were overwritten and no longer exist anywhere in
+  `spells_new` — checked by name. The tomes are **unobtainable here** (0 rows in `lootdrop_entries`,
+  0 on any merchant; level 70+ content behind a Classic lock and a level 30 cap), so the collision
+  was never reachable. They now point at nothing rather than at the wrong spell, which is strictly
+  better. 📌 Revisit only if a future expansion unlock makes them obtainable.
+- ⚠️ **The 11 helpers at 43150-43199 are now ORPHANED and were deliberately kept.** 43150 (Open
+  Wounds mark) was applied by 43052 and 43155 (Duel lock) by 43030, both in the deleted 113, so
+  nothing applies them. `43150.lua`, `43155.lua` and the `aotv4_reactions` code that reads them still
+  compile and still work — they simply never fire. Removing them is a separate decision.
+- ⚠️ `aotv4_abilities.lua` **survives**: `43150.lua` requires it, and `aotv4_reactions.bleed_tick`
+  still uses `ab.SKILL_OFFENSE`. It is no longer only-for-the-retired-set.
+- ⚠️ Two names survive in shared memory and are **not** leftovers: `Smolder` and `Counterattack` are
+  genuine **stock** spells (917 and 42175) that happened to share names with the customs.
 
 ⚠️⚠️ **"Get rid of the 43xxx spells" must NEVER be read as the whole range.** The band is not
-homogeneous and everything from 43300 up is live: **43300-43349** the custom spell lines (reptile,
-sloth, moonfire, promised, kindred, mark, thirst — all still offered), **43350-43399** their triggers
-plus the Shield Wall buffs, **43400-43454** the AA-tree buffs and pet wards, **43500-43565** the class
-auras. Deleting the range would destroy all four AA trees, Shield Wall, the pet wards and the
-achievement auras.
+homogeneous and everything from 43150 up is live or still referenced: **43150-43199** the helpers
+(11, now dormant — see above), **43300-43349** the custom spell lines (reptile, sloth, moonfire,
+promised, kindred, mark, thirst — all still offered), **43350-43399** their triggers plus the Shield
+Wall buffs, **43400-43454** the AA-tree buffs and pet wards, **43500-43565** the class auras,
+**43576-44327** the 752 spell-rank rows (§29). Deleting the range would destroy all four AA trees,
+Shield Wall, the pet wards, the achievement auras and every spell rank.
+📌 The 2026-08-01 purge above is the *only* part of the band that was safe to remove, and it took a
+five-way reference check first — pool, other spells, AA, items and the Lua call graph.
 
 ### The tabs live in the GENERATED picker XML (`gen_choice_xml.pl`)
 ⚠️ `EQUI_AoTSpellChoiceWnd.xml` is generated, so the Known/Pool widgets are emitted by
@@ -1477,6 +1754,23 @@ screen as well places it twice and it draws outside its tab.
 ⚠️ The card coordinates were NOT moved — each page sits at `Y=TAB_Y` (22) and its pieces are
 positioned relative to the page, so the Choose layout is byte-for-byte the old one. The window grew
 450 → 500 tall to pay for the tab strip.
+⚠️⚠️ **THAT `Y=TAB_Y` IS LOAD-BEARING — A `Page` IS NOT AUTOMATICALLY PLACED BELOW ITS TAB STRIP.**
+A page's origin is the TabBox's top-left corner, **tabs included**, so a page at offset 0 puts its
+first row of pieces directly ON TOP of the tab captions and both texts overprint into an unreadable
+smear. The strip has to be paid for by hand on every page. Cost a round trip on
+`EQUI_AoTLostWnd.xml` (§6) when its flat layout was restructured into tabs and the offset was left
+at 0; 24 clears it on this build.
+⚠️⚠️ **CONVERTING A FLAT WINDOW TO TABS DROPS ITS ANCHORS IF YOU ONLY MOVE THE PIECES.** Anything
+that should grow with the window needs `AutoStretch` **plus** its four anchor tags; a piece without
+them keeps its fixed `Size` forever, so dragging the window larger just adds empty space around a
+small list. Same file, same session, immediately before the offset bug — the two together made a
+resizable window look completely broken.
+⚠️ A **sizable** window has its size AND position **saved per character** by the client, so an
+edited `<Size>` only applies to a character that has never opened it. If it comes back wrong, drag
+it once or delete its entry from `UI_<char>_<server>.ini` — the XML is not being ignored.
+⚠️ `validate_ui_xml.sh` counts tags **inside comments**, so prose like `UI_<char>_<server>.ini` or
+a bare `<Size>` in an explanatory note fails the tag-balance check. Write those without angle
+brackets; the failure names a tag that does not exist in the markup at all, which is confusing.
 - `SpellChoiceShow()` still refuses to open with nothing pending (Ctrl+Q's "is a reward owed" test
   keeps its meaning); **`SpellChoiceOpen()`** is the new browse entry point that ignores that.
 - The transport calls back via `SjSetPoolReadyCallback` rather than touching the window, so
@@ -1551,11 +1845,16 @@ written afterwards with `SetItemText` has no colour and draws **black**. Every e
 explicit `SetItemColor(row, col, colour)` — the `Cell()` helpers in `core_autoskill.cpp` and
 `core_spelljournal.cpp` now take a colour and do both.
 
-### Blacklist as of 2026-07-28 — 619 pruned, **2008 offerable**
+### Blacklist as of 2026-07-29 — 637 pruned, **1996 offerable**
 ```
 travel 170 · discipline 157 · summonitem 183 · illusion 23 · vision 19
-enchant 20 · rez 15 · ldon 18 · curecurse 7 · corpse 3 · sense 3 · truenorth 1
+enchant 20 · rez 15 · ldon 36 · curecurse 7 · corpse 3 · sense 3 · truenorth 1
 ```
+⚠️ These counts are only true as of the last `gen_stock_pool.pl` run — **re-read them off the
+generator's own output rather than trusting this block**, which drifts the moment any SQL touches
+`spells_new`. The 2026-07-28 figures recorded here (619 pruned / 2008 offerable / `ldon 18`) were
+already stale before the Sinew line was added: `ldon` had moved 18 → 36 on its own.
+Pool is **2633** spells (2585 stock + 48 custom) over 78 levels before the blacklist is applied.
 - ⚠️ **`discipline` MIRRORS `common/spdat.cpp IsDiscipline` EXACTLY** — `mana = 0 AND (EndurCost > 0 OR
   EndurUpkeep > 0)`. Do not simplify it to "has an endurance cost": that would misclassify anything
   carrying both, and the rule must agree with what the ENGINE calls a discipline or the picker and the
@@ -1593,3 +1892,1013 @@ find .devcontainer/repo/quests -name '*.lua' -print0 | xargs -0 .devcontainer/cu
 `"^sjinfo%s+(%d+)%s*$"` became `"^sjinfoH  PA u+(1990222272+)  +z * )`. It also silently inlined the
 whole slurped file into `gen_stock_pool.pl` when a `$_` appeared in a replacement. Use the Edit tool,
 or single-quoted `sed` with explicit line numbers, and run luacheck afterwards either way.
+
+## 24. Scaling dungeon — "Delve" — `/delve` — 2026-07-29
+
+Pick a level in a window, get dropped into a private **instance** of a Dragons of Norrath zone with
+every mob scaled to that level and a real quest in the journal. Finish it and a chest drops where you
+finished it; loot the chest or press Exit and the instance closes. **Pure Lua + SQL + one window —
+no C++ server change at all**, because all four primitives are already native and Lua-bound:
+`eq.create_instance` / `assign_to_instance_by_char_id` / `destroy_instance`, `client:MovePCInstance`,
+`npc:ScaleNPC(level)`, and the task system for the journal.
+
+- **Files**: `lua_modules/aotv4_dungeon.lua`, `custom/sql/aotv4_dungeon.sql`,
+  `eq-core-dll/src/core_dungeon.cpp/.h`, `EQUI_AoTDungeonWnd.xml`. Hooks:
+  `global_player` `event_say` + `event_task_complete` + `event_enter_zone` + `event_death` +
+  `event_connect` + **`event_disconnect`**, `global_npc` `event_spawn` + `event_death_complete`.
+  ⚠️ `event_disconnect` is **not** only a camp hook — see the trap below; it fires on every zone
+  change, including the one that carries the player INTO the delve.
+- **Protocol**: `DUNGDATA <unlocked>^level|name|cleared^…` out; `/say delve`,
+  `/say delveenter <level>`, `/say delveexit` in. Command is `/delve` (alias `/dungeon`), plus a
+  **Delve** button on the `/aot` launcher (§21; `EQUI_AoTMenuWnd.xml` grew 232 → 262 tall for it).
+  Install: `aotv4_client_install/DUNGEON_WINDOW_INSTALL.md`.
+- ⚠️ On the launcher, Delve sits in the **"open directly"** group, not the "queue the command" group,
+  even though its contents come from the server — `DungeonShow()` opens the window *and* queues
+  `/say delve` itself, so it is never shown empty. That distinction is the whole point of §21's split.
+- Debug trace: `<EQ>\aotv4_dungeon.log`, which is what tells an unbuilt dll (no file) apart from a
+  missing `EQUI.xml` `<Include>` (`pXWnd=NULL`) — otherwise identical symptoms.
+- **Fifteen rungs, level 1 → 70** in fives, cycling the six DoN zones (`delvea` 341, `delveb` 342,
+  `stillmoona` 338, `stillmoonb` 339, `thundercrest` 340, `thenest` 343), each at its own mission
+  version. ⚠️ It **started at 50** originally, which meant a new character could not reach the first
+  delve at all and clearing it jumped straight to 55 — the top of a ladder with no ladder under it.
+- ⚠️ Six zones over fifteen rungs means a zone is **reused at several difficulties**, which is why the
+  tasks are per **ZONE** (six of them) with **no level in the title** and `min_level 1`: a title of
+  "[50]" would be wrong on 11 of the 15 rungs. The authoritative rung table is `M.LAYERS`.
+
+- ⚠️⚠️ **DoN is the ONLY expansion past OoW with instanced content.** `dynamic_zone_templates` holds
+  215 rows: Classic 6, LDoN 24 (14 zones), GoD 16 (9), OoW 28 (16), **DoN 141 (6 zones)** — and
+  **zero** for DoDH through RoF. The 141 sit on 6 zones because each ships many *versions* with
+  genuinely different populations (delvea 9, stillmoona 9, thenest 14…), i.e. ~59 ready-made layouts.
+  Any zone can still be instanced by `create_instance`; the templates only say what stock content
+  instances.
+- ⚠️⚠️ **An EMPTY `npc_match_list` matches EVERY npc** — that is the mechanic, not an oversight.
+  `task_client_state.cpp:528` wraps the whole name test in `if (!activity.npc_match_list.empty() &&
+  …)`, so an empty list makes any kill in the listed zone count. `zones` holds the **base** zone id
+  (instances keep it), so one task row serves every instance.
+- ⚠️ **Layers unlock in order and only unlocked ones are ever SENT.** With loot out of scope the
+  reward is XP, so a freely pickable level would be a power-level machine. The window cannot show or
+  ask for a layer it was never told about, and `M.enter` re-checks anyway.
+- ⚠️ **Gate order in `M.enter` is load-bearing**: validate → create instance → assign → task → move.
+  Creating first leaks an instance on every refusal; moving before `AssignTask` puts the player in the
+  dungeon with no journal entry, which reads as the quest having failed.
+- ⚠️⚠️ **THE VERSION IS NEVER 0 (fixed 2026-07-29).** Version 0 is the **open world** spawn set, so
+  instancing it produces a private copy of the ordinary zone — genuinely instanced (the zone boots
+  with its own `inst_id`, verified in the log) but identical in layout and population to just walking
+  in, which reads as "it opened the open world, not a DZ". The non-zero versions are the real DoN
+  mission layouts. Entry coordinates come from **`dynamic_zone_templates.zone_in_*`** for that exact
+  (zone, version) pair — the point DoN itself uses — **not** `zone.safe_x/y/z`, which can sit in a
+  part of the map the mission layout does not populate. Mission versions are **smaller** (delvea 154
+  points against version 0's 262) and the kill goals are set against them, not against version 0.
+- ⚠️⚠️ **`eq.get_zone_id()` TAKES NO ARGUMENTS** — it returns the *current* zone. `eq.get_zone_id(name)`
+  is a hard Lua error (`int get_zone_id()` + stack traceback) and it silently broke Exit, which had
+  already printed its "you step back out" message before dying. Use `eq.get_zone_id_by_name()`, or
+  better, record the numeric zone id on the way IN so no lookup is needed on the way out.
+- ⚠️ **A FRESH instance every time.** `eq.get_instance_id` would hand back the one this character used
+  last, still full of corpses and an emptied spawn table.
+- ⚠️⚠️ **`e.other` IS A `Lua_Mob`, NOT A `Lua_Client`.** `IsClient()` returns true on it, but
+  **`CharacterID` is only defined on `Lua_Client`**, so passing it straight into anything that keys a
+  data bucket is *"attempt to call method 'CharacterID' (a nil value)"* — which fired on **every kill**
+  in a delve. `CastToClient` is not reliably bound either; resolve through
+  **`eq.get_entity_list():GetClientByID(mob:GetID())`** (what `aotv4_sinewtap.lua` already does).
+  `M.as_client()` is the shared helper.
+- ⚠️⚠️ **DoN zones have real zone lines out of them**, and walking one drops you into the ordinary
+  world with the run bucket set, the task live and the instance open. `M.on_enter_zone` (from
+  `global_player.event_enter_zone`) **fails the run** and returns you to where you entered from. ⚠️ The
+  test is *"am I somewhere other than my delve"* (zone short name **and** instance id), not "did I
+  zone" — the same hook fires on the way **in**. ⚠️ Unlike the death path this one **does** move the
+  player, because the zone change has already taken them out of the instance.
+- ⚠️ **The chest has to be findable.** It lands wherever the last blow happened — a corridor, a corner,
+  behind a corpse pile — and a default chest on a dark DoN floor is easy to walk straight past. Four
+  things stack: `texture 1` (gilded), `size 12`, `light 10` on the npc row, plus `AddNimbusEffect(412)`
+  at runtime and a message. ⚠️ **412 is the only nimbus id proven to work in this codebase**
+  (`guildhall/#Healer.lua`); a wrong nimbus id fails silently.
+- ⚠️⚠️⚠️ **`EVENT_DISCONNECT` FIRES ON EVERY ZONE TRANSFER, NOT JUST CAMP / LINK-DEAD — and this
+  single fact made the Delve un-enterable for an entire session (fixed 2026-07-30).**
+  `zone/client_process.cpp` tests `bZoning` for other work in the very same function —
+  `if (!bZoning) { SetDynamicZoneMemberStatus(Offline); }` (**:735**) — and then fires the event
+  **unconditionally** thirty lines later (**:765**). So the instant `M.enter` moved a player into
+  their delve, the source zone raised `event_disconnect`, `M.on_disconnect` concluded the run was
+  over, and it deleted the run bucket, the back bucket and the `instance_list_player` row **while the
+  player was still on the loading screen**. World then failed its own entry check (next bullet) and
+  redirected them out. Guarded by a **transit flag** (`delve_transit_<charid>`): set immediately
+  before the move, cleared on arrival *and* on landing anywhere else, expiring after 60 s so a real
+  camp mid-transit still tears down on next login. `Client::IsZoning()` exists (`zone/client.h:855`)
+  but is **NOT Lua-bound**, hence the flag.
+  - ⚠️⚠️ **The tell is which teardown path DIDN'T run.** `on_disconnect` is the only one that
+    deliberately leaves the journal entry alone, so the fingerprint was buckets + membership row
+    vanishing while the **task survived**. Polling the DB five times a second is what found it:
+    `.934` everything correct → `.368` buckets and ILP row gone → `.029` evicted. **Reach for a
+    DB poller early on anything that fails this silently** — three separate "fixes" were aimed at
+    downstream symptoms before anything was actually measured.
+  - 📌 Any future handler that tears state down on `event_disconnect` needs the same guard.
+- ⚠️⚠️ **A CHARACTER MUST BE REGISTERED ON AN INSTANCE OR WORLD SILENTLY REDIRECTS THEM.**
+  `world/client.cpp:929` runs `VerifyInstanceAlive` → `CheckInstanceByCharID` (an
+  `instance_list_player` row); on failure it calls `MoveCharacterToInstanceSafeReturn` and zeroes
+  the instance. Symptom is **"it opens the delve and then ports me to the bazaar"** — no error, no
+  log line, and nothing wrong in the zone that booted. `eq.create_instance` creates the instance but
+  **adds nobody to it**; `eq.assign_to_instance_by_char_id(instance_id, character_id)` is what
+  registers them (⚠️ that argument order, not the reverse). The stock `#zoneinstance` does exactly
+  this before its move (`zone/gm_commands/zone_instance.cpp`), which is why the GM command worked
+  when `/delve` did not — the cheapest way to bisect this class of bug.
+  - 📌 `Client::SendToInstance` (`zone/client.cpp:11003`, Lua-bound, wrapped by
+    `quests/plugins/Instances.pl`) is the native one-call form: `AssignToInstance` + `MovePC`. It is
+    exactly the two calls above, so it is a tidier spelling rather than a different mechanism — but
+    it caches the instance id in a data bucket keyed by type/name/identifier/zone, so it **reuses**
+    an instance unless the identifier is varied per run.
+- ⚠️⚠️ **DO NOT CREATE AN EXPEDITION AND ZONE INTO IT IN THE SAME BREATH — world reaps it first.**
+  `world/dynamic_zone.cpp:104`: `if (!HasMembers() || IsExpired())` and the dz zoneserver has
+  `NumPlayers() == 0`, the DZ is `ExpiredEmpty` and **deleted**, taking its `instance_list_player`
+  rows with it. Creating and moving together tears the source-zone `Client` down mid-handshake,
+  before world's copy of the DZ has its member list, so it looks memberless — measured at ~270 ms
+  from create to delete. Expeditions themselves are **fine** on this build: AoTv3's Progressive
+  Dungeons uses them (`server/quests/draniksscar/302093.lua`, repo `Twochords/AoTv3`) but creates the
+  expedition and then **stops**, telling the player *"Click the dungeon portal to enter your active
+  mission"* — entry is a separate act through the engine's own DZ portal, exactly as live EQ does it.
+  The Delve therefore uses a **plain instance**; the cost is no Ctrl+Z entry, no compass and no
+  engine-managed safe return. Revisit only by decoupling entry from creation (portal / confirm step),
+  never by adding a delay.
+- ⚠️⚠️ **CAMPING (`/q`) IS THE THIRD WAY OUT** and needs its own handling: the character is **saved
+  standing inside the instance**, so if that instance is later gone the next login asks world to place
+  them somewhere that no longer exists. The engine falls back gracefully (the world log shows
+  `delvea(105)` → `tutorialb`), but every camp leaves an **orphaned instance** and a run bucket
+  claiming the player is in a dungeon they left. `M.on_disconnect` (`event_disconnect`, which this
+  server had **no** handler for at all) ends the run; ⚠️ it deliberately does **not** move the player
+  or touch the task — the client is already leaving. `M.on_connect` drops the stale journal entry on
+  the way back in, guarded on there being no live run so a camp-and-return mid-delve is not disrupted.
+- ⚠️⚠️ **`DungeonOnUiReset` must `delete` the window, not just null the pointer.** `/q` tears the UI
+  down through `CleanGameUI`; nulling alone leaks the `CCustomWnd` **and leaves it registered with the
+  client's window manager** after its widgets are freed, so the next thing to walk the window list
+  touches freed memory. Every other native window here deletes (`core_lostwindow`, `core_autoskill`,
+  `core_advloot`, `core_allaclone`) — the delve window was the odd one out.
+- ⚠️ **Dying ends the run** (`M.on_death`, from `global_player.event_death`): the roguelite reset puts
+  the character at **level 1**, so the mission cannot continue. It uses **`FailTask`**, not
+  `RemoveTaskByTaskID` — a death is a real failure and should read as one, where walking out
+  voluntarily should not. ⚠️ It is the **one teardown path that does NOT move the player**: the engine
+  is already sending them to their bind point as part of the death flow, and a competing `MovePC` from
+  inside `event_death` risks breaking the respawn. Drop the task *before* destroying the instance.
+- ⚠️ **Destroy the instance LAST**, after the player is out, or you strand a client in a zone that no
+  longer exists. `M.leave` is the single teardown path for both the chest and the Exit button.
+- ⚠️ **`AssignTask(id, 0, false)`** — `enforce_level_requirement` is false on purpose. The tasks carry
+  DoN-style `min_level` tiers so they *read* native, but the unlock chain is the real gate.
+- ⚠️ `RemoveTaskByTaskID` (custom binding, `lua_client.cpp`) is used on exit, not `CancelAllTasks`: it
+  clears the DB rows too, so an abandoned delve does not leave a permanent journal entry.
+- ⚠️ **`ScaleNPC`'s Lua binding passes `always_scale = true`** (`lua_npc.cpp:782`), so it scales mobs
+  not flagged for scaling — every stock DoN mob. No `npc_types` editing needed. The chest is skipped
+  explicitly or it would get 70th-level HP and become a fight.
+- ⚠️ `M.on_npc_spawn` runs for **every NPC spawn on the server** — the instance-id early-out rejects
+  the whole normal world before anything else is read.
+- ⚠️ **`AddLooter` is on `Lua_Corpse`, not `Lua_NPC`**, so it cannot be applied to the living chest.
+  Loot is out of scope for now, so the chest is an empty marker whose death ends the run.
+- ⚠️ There is **no `MoveToSafeCoords`** binding on `Lua_Client` (only `MovePC` and the `MoveZone`
+  family) — the bind point is the fallback exit.
+- ⚠️ npc_types columns were hand-listed on a first pass and `aggro_spell_id` does not exist on this
+  schema. The chest is cloned from stock 119179 `a_gilded_chest` **via a temp table**, same rule as
+  the custom spell lines.
+- 📌 Not built yet: loot in the chest, group entry (`assign_to_instance` is per character today),
+  a floor/ascent chain, and any Torghast-style in-run power picker.
+
+### Player-relative creature scaling — `aotv4_dungeon_scale.lua` — 2026-07-29
+The layer level is only the **floor**. Creatures also scale by how far the player sits above the
+**naked expectation** for their level, which is the gear-bloat correction. `/say delvepower` prints
+the whole calculation axis by axis.
+
+- **Why it can be measured at all**: in EQ, stats / AC / resists **do not grow with level** on their
+  own — a naked level 70 has the same STR as a naked level 1, because all of it is gear. Only HP and
+  mana scale with level. So gear bloat is directly "actual over naked expectation", and only the
+  HP/mana axis needs a per-level curve.
+- **Baseline** = the level 1 reference character (Warrior/Karana): HP 38, MP 40, AC **31**,
+  stats sum **585**, resists sum **130**. ⚠️ Stats and resists are race/class dependent, so one
+  universal baseline is an approximation — the axis that matters most (HP) comes from `base_data`.
+- ⚠️⚠️ **`base_data` gives the exact per-level curve, so do not guess it.** `hp` for any class is
+  `CLASS_HP[class] × shape(level)`, and the shape is **identical for all 16 classes** (warrior/magician
+  HP is a constant 1.25 ratio at every level). The shape is **linear to 40 then double rate**:
+  `shape(L) = L` for L ≤ 40, else `40 + 2×(L−40)`, hitting exactly 100 at level 70. Treating it as
+  linear throughout understates level 70 by 30% (70 vs 100) and makes every high-level character look
+  geared while naked.
+- **Weights** hp .30 / mana .15 / ac .20 / stats .20 / resists .15, then `effective =
+  layer + 12×(power−1)`, clamped to −5 / +20. The reference character scores **power ≈ 1.05**, i.e.
+  baseline difficulty.
+- ⚠️ **Renormalise by the weight actually used.** A Warrior has no `base_data` mana, so that axis is
+  skipped; dividing by the full weight total would score every melee class 15% weaker than it is and
+  quietly soften their delves. (Melee mana here is a flat `level × 40` from §14 and carries no gear
+  signal at all, so skipping it is also correct on the merits.)
+- ⚠️ The HP expectation uses the player's **current STA**, so stamina-granted HP lands in the stats
+  axis instead of being counted twice.
+- ⚠️ **`ScaleNPC` must come before any `ModifyNPCStat`** — it rewrites stats wholesale from
+  `npc_scale_global_base`, discarding anything applied first. `ModifyNPCStat` takes **strings** and
+  accepts `max_hp`, `min_hit`, `max_hit`, `ac`, `atk`, `accuracy`, `avoidance`, the resists and `level`.
+- ⚠️⚠️ **Re-scaling mid-run is OUT-OF-COMBAT ONLY** (`M.rescale_zone`, a 10s per-client timer). This is
+  what catches entering stripped and then gearing up. Re-scaling something you are *fighting* would
+  refill it to a new max_hp mid-swing, and re-scaling **down** would be the exploit in the other
+  direction (strip, soften the boss, re-gear). A pulled mob keeps the difficulty it was pulled at.
+  ⚠️ A `RESCALE_DELTA` deadband (0.08) stops one buff landing or fading churning the whole zone.
+  ⚠️ The tick guards on **zone and instance id**, not just the run bucket — that bucket survives a
+  crash or GM port, and without the guard the sweep would rescale mobs in an ordinary zone.
+
+#### ⚠️⚠️ Rewards must never be computed from gear at the END of a run
+The ledger records **the effective level of every mob actually killed, at the moment it died**
+(stamped on the NPC via `SetEntityVariable("delve_eff")` when it was scaled). Clearing the dungeon
+naked and putting gear on before turning it in therefore *cannot* inflate anything — the number was
+already banked. That makes the whole class of gear-swap exploits **structurally impossible rather
+than merely detected**, which is why the ledger keys off the mob and not off the player.
+- `M.ledger` returns `kills`, `avg`, `lo`, `hi`. **`avg` is what pays.** `hi − lo` is the *swing* — a
+  naked clear followed by a gear-up reads as a low average with a high maximum, and the player is told
+  as much on completion.
+- ⚠️ The ledger is wiped in `M.enter` **before** entry; a stale one would credit this run with the
+  last run's kills, which is exactly the accounting an exploiter wants.
+- 📌 The scale reference is the **first client found** in the instance — fine for solo, a known
+  simplification for groups (it should become the strongest member, or an average).
+
+#### The score sheet — per-kill value + run history
+- **`M.kill_value(eff, named)` is QUADRATIC**: `eff² / 25`, ×3 for a named. Level 25 → 25, 50 → 100,
+  70 → 196. ⚠️ Linear scoring would make grinding a soft layer for volume beat clearing a hard one —
+  the exact behaviour the scaling system exists to discourage. "Named" uses the same heuristic as
+  §17c and `quest_difficulty.pl`: EQ trash is lowercase, named mobs are proper nouns (or lead with `#`).
+- Each run also builds a **five-level band histogram** (`45-12,50-20,55-15`), so a run reads as a
+  *shape* rather than one average. ⚠️ Bands use `-` internally because `|` and `^` are the wire
+  separators and `,` separates the bands.
+- **History** in `delve_hist_<charid>`, newest last, **capped at 20** with the oldest dropped — a data
+  bucket is one string, and §20 records that an oversized chat line is silently **truncated**, which
+  looks like a short list rather than an error. Outcome letters: `C` cleared, `F` died, `A` abandoned.
+- ⚠️ Recorded in **three separate places** (clear / death / abandon), not one shared helper, because
+  the outcome letter is what makes the row meaningful. ⚠️ In `M.leave` the "still active?" test must be
+  taken **before** `RemoveTaskByTaskID` — after it, it always reads false and no abandon is ever
+  recorded; and looting the chest also routes through `M.leave`, so without the test every clear would
+  be double-counted.
+- ⚠️ `M.send_history` resolves the layer **name** server side rather than sending an index: the client
+  only ever learns the names of layers it has *unlocked*, so an old run in a now-invisible layer would
+  render blank. It is also sorted newest-first server side rather than in the dll.
+- **Client tab** = the Death Book pattern (`core_lostwindow.cpp`), and all three of its traps apply
+  identically: the toggle is **deferred to `DungeonTick`** (`RefreshHistory` → `DeleteAll` would
+  destroy the listbox's rows from inside its own click notification), the selection is read **after**
+  `CSidlScreenWnd::WndNotification` (inside it `GetCurSel` is one click behind), and the row index is
+  **not** a data index — every click goes through `g_histRowRun[]`.
+- ⚠️ `DungeonHistTransport` **preserves which runs were open** across a rebuild, keyed on the run's
+  timestamp. The server pushes fresh history after every finished run, and collapsing the sheet each
+  time would fight a player reading it. Newest run defaults to open.
+- ⚠️ Both server lines route through the single `DungeonParseTransport` entry point, so the `dsp_chat`
+  chain needs one call, not two.
+
+## 23. Quest difficulty scoring — `quest_difficulty.pl` — 2026-07-29
+
+`.devcontainer/custom/tools/quest_difficulty.pl` scores every quest on the server as ONE float.
+Read-only (database + quest scripts); no server restart, nothing generated into the game.
+
+```
+score = LEVEL BAND . AT-LEVEL DIFFICULTY
+        floor(1 + level/10), clamped 1..8      0.00 .. 0.99
+```
+A level 30 quest bands at **4**, a level 60 quest at **7**, so sorting by score sorts by level first
+— level being the dominant input. The decimal is how hard it is **assuming you are the right level**.
+
+- **Terms** (weights): turn-ins **0.35** (distinct items 0.75 / extra hand-in steps 0.25), travel
+  **0.35**, gear **0.30** (required content tier 0.70 / turn-in item quality 0.30). Each saturates
+  via `sat(x, full)` so no single outlier can push a quest out of its band; the decimal is hard-capped
+  at 0.99 for the same reason.
+- ⚠️ **The gear term is LEVEL-RELATIVE, deliberately** — `over_level()` scores how far the required
+  content sits *above* the quest's own level (at-level = 0, +15 levels = 1). Scoring it absolutely
+  made every level 60 quest look hard purely for being level 60, which the integer part already says.
+  Turn-ins and travel stay absolute: ten hand-ins is ten hand-ins at any level.
+- **Both corpora, one model**: `SCRIPT` = 2,743 rows parsed from `quests/<zone>/<NPC>.lua|.pl`
+  (`check_turn_in{item1..}` / `check_handin(…, id => n)`); `TASK` = `tasks` + `task_activities`
+  (activitytype **1 Deliver / 2 Kill / 3 Loot**, `common/tasks.h`). Only extraction differs.
+- Flags: `--zone= --source=script|task --limit= --min= --explain --tsv`.
+- Current spread: bands 1→8 hold 351/111/134/312/366/470/785/214, mean decimal **0.313**.
+
+### ⚠️⚠️ Three modelling traps, all of which produced plausible-looking but wrong numbers
+1. **Travel is the number of zones you must GO to, not the union of everywhere an item exists.** A
+   common drop comes from forty zones; you visit **one**. Unioning them reported quests spanning
+   **185-217 zones**. Each item now costs one trip, to the cheapest source available, preferring
+   ground spawn → merchant → loot (picking something up beats having to kill for it), and free if the
+   quest's own zone can supply it.
+2. **A zone that DEMANDS an item does not SUPPLY it.** The scanner registered every turn-in item as
+   available in the very zone requiring it, so "can I get this without leaving?" was always true and
+   script travel was **exactly zero on all 2,743 rows** — while tasks looked fine, which is what made
+   it read like a data gap rather than a bug. Providers are summonitem/loot/ground/merchant **only**.
+3. **MIN dropper level, not MAX.** A player farms the *easiest* source. MAX let one high-level
+   dropper somewhere in the world pin the gear term at its ceiling — every quest scored exactly
+   0.700 — which looks like a constant, not a bug.
+- ⚠️ Also: match summonitem **on the actual call**. An earlier regex matched `item_id`/`itemid`
+  anywhere in a file and swept up merchant tables and config.
+- 📌 **Unit of "a quest" is one NPC FILE**, so an NPC implementing several independent quests reads as
+  one many-step quest (`abysmal/Rilwind_Sitnai` shows 19 steps). The steps term saturates at 4 extra
+  to blunt this. Real chains spanning several NPCs are only partly captured — via the 1,604 of 5,592
+  turn-in ids that some other script summons.
+- 📌 Coverage is honest, not total: 5,589/5,592 turn-in ids resolve to real items, but only 57% have
+  any loot source, so gear scores 0 where nothing is derivable rather than guessing.
+
+## 22. Combat specials COST ENDURANCE — 2026-07-29
+
+Stock EQEmu charges nothing to Bash/Kick/Backstab/the monk strikes — the only brake is the reuse
+timer. Here a damaging special costs endurance **in proportion to the damage it actually dealt**, so
+the specials are a resource to spend rather than a rotation to mash. Pure C++, no Lua, no client
+change. **Needs a zone rebuild** (and `ruletypes.h` is in `common/`, so expect a wide one).
+
+- **Files**: `common/ruletypes.h` (two rules) + `zone/special_attacks.cpp`
+  (`Mob::DoSpecialAttackDamage`, the gate at ~:235 and the charge at ~:333).
+- **Rules**: `AoT:SpecialEndurancePct` (**50** — a 200-damage Backstab costs 100 endurance; `0`
+  disables the whole mechanic, gate included) and `AoT:SpecialEnduranceMinToUse` (**1**).
+- ⚠️⚠️ **`DoSpecialAttackDamage` IS THE ONLY PLACE THIS GOES.** Bash, Kick, Frenzy, Backstab and
+  every monk strike (via `MonkSpecialAttack`) funnel through it, so one edit covers the
+  player-pressed path **and** the autoskill auto-fire loop (§19). Per-ability copies would be five
+  that drift — the same reasoning that put the skill-gating in one place in §4.
+- ⚠️⚠️ **CHARGED AFTER THE HIT, and it has to be.** The cost is a share of the damage and the damage
+  is not known until `DoAttack` has rolled it. That is *why* the pre-swing test is a cheap "have you
+  got anything left at all" (`SpecialEnduranceMinToUse`) rather than a real affordability check —
+  **you cannot price something before you know what it costs.** Don't "fix" the gate into a proper
+  cost check; it can't be one.
+- ⚠️⚠️ **The reuse timer STILL STARTS on a winded whiff.** The caller begins it after the function
+  returns (`p_timers.Start`, e.g. `special_attacks.cpp:490` for Bash) across six-plus call sites, so
+  gating there would be six copies. Deliberate as well as convenient: spending the swing is what
+  stops a player mashing specials at zero endurance, which is the entire point of the cost. Setting
+  `SpecialEnduranceMinToUse` to 0 removes the gate — and with it any reason not to mash.
+- ⚠️ **Clients only.** `Mob::GetEndurance` is a virtual returning **0** (`zone/mob.h:674`) and
+  `Mob::SetEndurance` a **no-op** (`:677`); only `Client` overrides them (`zone/client.h:751/756`).
+  An NPC would silently "pay" nothing, so the `IsClient()` guard is there to stop a later reader
+  believing NPCs are costed.
+- ⚠️ **A miss costs nothing by construction** — 50 percent of zero damage is zero. No special case.
+- ⚠️ Multiply before dividing (`damage * pct / 100`) or a small hit truncates to a free swing. Same
+  trap as the Shield Wall split (§17b).
+- 📌 Untuned: 50 percent is a guess until it is played. It interacts with the §19 autoskill cap —
+  the cap limits how many specials may fire, this limits how long they keep firing.
+- **The refill is the Sinew line** (§5, `custom/sql/aotv4_sinew_line.sql`, ids 43318-43323): a damage
+  tap returning endurance equal to a third of its damage. This cost is what gave endurance a sink
+  worth spending on in the first place, so tune the two together — at the default 50 percent, the
+  top tier's 175 endurance buys roughly 350 damage worth of specials.
+
+## 25. ⚠️⚠️ THE STALE-DATABASE TRAP — "a session's work vanished" — 2026-07-24, 2026-07-30
+
+**The single most expensive recurring failure in this project.** It has struck at least twice and
+cost most of a session both times. Nothing errors, nothing logs, and the server runs perfectly —
+you are just connected to an **older copy of `peq`** than the one your last session's work went
+into. Because every symptom points at "the data was lost", the natural reaction is to re-apply SQL
+or import a snapshot, and **that is what actually destroys the work** — the real database is still
+sitting on disk somewhere the whole time.
+
+**Run `bash .devcontainer/custom/tools/db_sanity.sh` BEFORE starting the stack or applying any SQL.**
+It exits 1 and prints why. On 2026-07-30 it reported the datadir as **138 hours older** than the
+shared-memory blobs — the diagnosis that had just taken an hour of manual work.
+
+### What it looks like
+`git status` is clean and correct, every source file is where you left it, the server boots, and
+the DB answers every query — but recent content is simply **absent**. In 2026-07-30's case: the
+Sinew line, the Delver's Sigil, all delve tasks and the chest NPC were missing, while the class
+auras and achievements (older work) were present, which made it read like a partial failure of one
+feature rather than a whole-database problem.
+
+### Why it happens — ⚠️⚠️ TWO DOCKER ENGINES, TWO VOLUMES, ONE NAME
+**This is the confirmed 2026-07-30 cause, and it is not what it looks like.** Nothing was on a
+container's writable layer, no mount failed, and no data was ever lost. There are **two Docker
+engines**, each with its own `/var/lib/docker`, and each holding a volume named `aotv4-mysql-data`.
+
+⚠️⚠️ **THE TWO ENGINES ARE *NOT* THE TWO `docker context ls` ENTRIES.** That was the first guess and
+it is wrong: Docker Desktop publishes **both** `default` (`npipe:////./pipe/docker_engine`) and
+`desktop-linux` (`npipe:////./pipe/dockerDesktopLinuxEngine`), and they reach the **same** daemon.
+Proof — the dev container is invisible to both:
+```powershell
+docker --context default      stop <dev container id>   # No such container
+docker --context desktop-linux stop <dev container id>  # No such container
+```
+⚠️⚠️ **THE SECOND ENGINE IS `docker-ce` RUNNING INSIDE THE WSL `Ubuntu` DISTRO, AND VS CODE USES IT
+EVEN THOUGH VS CODE IS LAUNCHED FROM WINDOWS.** Confirmed from the Dev Containers log
+(`Ctrl+Shift+P` → *Dev Containers: Show Container Log*), which is the fastest way to settle this:
+```
+Running Dev Containers CLI: read-configuration --workspace-folder /mnt/c/AoTv3/AoTv4
+Start: Run in Host: /home/michael/.vscode-remote-containers/bin/.../node
+docker version --> {"Client":{"Version":"29.4.0","Context":"default"},"Server":null}
+Cannot connect to the Docker daemon at unix:///var/run/docker.sock
+```
+`/mnt/c/...` and `/home/<user>/` are **WSL** paths: the extension runs its CLI inside Ubuntu and
+therefore uses **Ubuntu's** `docker-ce` daemon on `unix:///var/run/docker.sock` — a different engine
+from Docker Desktop, with its own volumes. **"I always open VS Code from Windows" does not rule this
+out**, which is exactly why it took so long to find.
+- 📌 The same log shows VS Code helpfully launching `Docker Desktop.exe` when the daemon is
+  unreachable (*"backend already running, signaling show-dashboard"*). That **does not help** — the
+  CLI is still pointed at Ubuntu's socket, so starting Docker Desktop fixes nothing and makes it look
+  like a Docker Desktop problem when it is not.
+- ⚠️ A container **keeps running after its dockerd dies**, so the dev container stays usable while
+  every `docker exec` from the host fails. Symptom in the log: repeated
+  `Port forwarding ... Cannot connect to the Docker daemon`.
+
+**THE FIX — give WSL one engine.** Enable Docker Desktop → *Settings → Resources → WSL Integration →
+Ubuntu* (this is the step that matters: it makes `docker` inside Ubuntu resolve to Docker Desktop),
+**and** disable Ubuntu's own daemon so it can never shadow it again:
+```powershell
+wsl -d Ubuntu -u root -- systemctl disable --now docker   # or: service docker stop
+wsl -d Ubuntu -- docker ps -a                             # must now list Docker Desktop's containers
+```
+⚠️ **`wsl -u root` is the way in — this WSL user has NO sudo password**, so anything written as
+`sudo …` simply prompts forever. If systemd is not enabled in the distro, `systemctl` errors with
+*"System has not been booted with systemd"*; use `service docker stop` + `update-rc.d docker disable`.
+Until one of these is done this recurs at random, because it depends on which daemon happened to be
+alive when the workspace was opened.
+
+Establish which engine you are on from **inside** the container, which always works:
+```bash
+hostname                                             # the dev container's own id
+grep ' /var/lib/mysql ' /proc/self/mountinfo         # -> /var/lib/docker/volumes/<name>/_data
+```
+⚠️⚠️ **A NAMED VOLUME IS SCOPED TO ITS ENGINE, SO `aotv4-mysql-data` EXISTS TWICE** — two entirely
+separate volumes that share a name. Both containers mount `aotv4-mysql-data` at `/var/lib/mysql`
+exactly as `devcontainer.json` says; they simply resolve to **different disks**:
+
+| engine | volume contents |
+|---|---|
+| `desktop-linux` | the **live** database — 930 MB, `character_data.ibd` dated Jul 30 17:38 |
+| `default` | the **Jul 24 import**, written once and untouched since |
+
+So **whichever engine VS Code happens to build the dev container on decides which database you
+get**, silently. That is the "drift every once in a while" — it is not random, it is whichever
+engine won that day. Verify with:
+```powershell
+docker inspect <ID> --format "{{range .Mounts}}{{.Type}} {{.Name}} -> {{.Destination}}{{end}}"
+```
+⚠️ **The fix is to pin every dev container to ONE engine** (`docker context use desktop-linux`, or
+VS Code's `dev.containers.dockerPath` / Docker extension context setting). It is *not* a data
+migration — the good data is already on a persistent volume and already survives rebuilds **on its
+own engine**.
+⚠️⚠️ **When deleting the stale copy, name the engine explicitly**:
+`docker --context default volume rm aotv4-mysql-data`. The Docker Desktop UI only ever lists
+`desktop-linux`'s volumes, so the two are indistinguishable by name there — and deleting the wrong
+one causes exactly the loss this section exists to prevent.
+- 📌 A **different** mechanism produced the same symptom on 2026-07-24 (§17): a container created
+  *before* the volume mount was added kept `/var/lib/mysql` on its own writable layer, so the
+  freshly-mounted volume came up empty. Both causes present identically — "the database is old" —
+  so diagnose by evidence (below) rather than by assuming either one.
+
+⚠️⚠️ **DOCKER DESKTOP SHOWS ONLY ITS OWN ENGINE'S CONTAINERS AND VOLUMES.**
+On 2026-07-30 the dev container's own id was not known to the daemon Docker Desktop was talking to:
+```
+docker port 1a8ad2c4c550   ->   Error response from daemon: No such container
+```
+The container list therefore looked *incomplete* when it was in fact complete **for that daemon**.
+Do not conclude "there is only one container" from the Docker Desktop UI. Confirm the id you are
+running in (`hostname` inside the container) against `docker ps -a`; if it is absent, you are
+looking at a different engine/context than the one hosting your shell.
+- ⚠️ Two containers running at once also **split the host port bindings**. `d0efd1c563ed` published
+  only part of 7000-7029 (missing 7003, 7006-7009, 7018, 7023, 7028) plus no 3307 and no 9001,
+  because the other container had grabbed them first — so §0's "zone unavailable" bug was still
+  live on a container that looked correctly configured. Port publishing is fixed **at container
+  start**: freeing a port later does nothing until that container is restarted.
+
+### How to detect it — the `/src` artifacts are the evidence
+⚠️ **`/src` is a BIND MOUNT and survives every container**, so anything on it that was *generated
+from* the database is datable proof of what the DB held at that moment. That asymmetry is the whole
+trick, and it is what `db_sanity.sh` automates:
+
+| artifact | written by | what it proves |
+|---|---|---|
+| `build/bin/shared/items`, `shared/spells` | `./shared_memory` | the item/spell tables at that timestamp |
+| `build/bin/logs/**` | the running server | the stack was alive, and against which content |
+| `build/bin/logs/zone/<zone>_..._inst_id_N_*.log` | a booted zone | the feature genuinely worked then |
+
+If any of these is **hours newer** than the newest file in `/var/lib/mysql/peq`, the database in
+front of you did not produce them. On 2026-07-30 `shared/items` contained all ten Delver's Sigils
+and `shared/spells` contained `Sinewbite`, while the live DB contained neither — conclusive.
+- ⚠️ **`sudo` is mandatory when inspecting the datadir.** The per-database dirs are `drwx------
+  mysql`, so an unprivileged `find`/`du` returns nothing and reports **"no data" on a machine
+  holding the full database**. Same trap as `docker exec -u root` (§17); it caught `db_sanity.sh`
+  itself on its first run.
+- ⚠️ **Check content markers by NAME, not only by id range.** An id-range count cannot tell "never
+  created" apart from "renumbered". Grep a dump for an apostrophised name with care, too:
+  `Delver's Sigil` is written `Delver\'s Sigil` in a mysqldump, so a literal grep finds **zero** and
+  looks like proof of absence.
+
+### Recovery — never import a snapshot first
+> ⚠️ **First ask whether recovery is needed at all.** If the cause is the engine split above, the
+> real database is sitting safe on the other engine's volume and the answer is to *point at it*, not
+> to dump and import. On 2026-07-30 a full dump was taken (`peq_live_recovered.sql.gz`, 242 tables,
+> verified) before this was understood — harmless as a belt-and-braces backup, but the actual fix was
+> to build the dev container on `desktop-linux`. Below is for the case where the data really is
+> stranded on a container you are about to discard.
+The order that works, and the one CLAUDE.md §17 and `POST_REBUILD_RECOVERY.md` §STEP 0 both insist
+on. Every command runs on the **Windows host**; `-u root` throughout.
+```powershell
+docker ps -a --format "{{.ID}}  {{.CreatedAt}}  {{.Status}}  {{.Names}}"
+docker exec -u root <ID> sh -c "hostname; ls -l /var/lib/mysql/peq/character_data.ibd; du -sh /var/lib/mysql/peq"
+```
+`character_data.ibd`'s date **is the answer** — it is the newest-dated file that always exists.
+Then dump straight onto the bind mount, where the dev container can verify it without any port
+juggling or `docker cp` of a 750 MB datadir:
+```powershell
+docker exec -u root <ID> sh -c "service mariadb start; sleep 8; mysqldump --single-transaction --routines --events --databases peq | gzip > /src/peq_live_recovered.sql.gz"
+```
+⚠️ **Verify before importing and before deleting anything**: `gzip -t`, a `^CREATE TABLE` count
+(**242** as of 2026-07-30; it was 233 pre-delve), a `Dump completed on` tail marker, and a spot
+check for the newest feature you remember building.
+⚠️ **Keep the source container STOPPED, not removed**, until the import is verified — until then its
+layer is the only live copy.
+
+### Prevention
+- Run `db_sanity.sh` at the start of every session. Add a marker row to it whenever a datable
+  feature lands; it is only as good as its markers.
+- ⚠️⚠️ **NEVER OPEN OR REBUILD THE DEV CONTAINER WHILE DOCKER DESKTOP IS DOWN OR STILL STARTING.**
+  Wait until it is fully up, then open VS Code. This is the suspected trigger for the whole
+  2026-07-30 incident: Docker Desktop was failing to load, and a dev container was created at 19:08
+  in the middle of that outage. With its engine unreachable, VS Code cannot see the workspace's
+  EXISTING container (`d0efd1c563ed`, holding the live DB) and ends up building a fresh one
+  somewhere else — which is how a second container appeared on an engine Docker Desktop cannot see,
+  on a machine where the project is only ever opened from Windows. Correlation, not proof, but the
+  cost of waiting two minutes is nil and the cost of getting it wrong was most of a session.
+  📌 The same outage also *hides* the problem: with Docker down, `docker ps -a` cannot be run, so the
+  two-container split has to be inferred from datadir mtimes and `/src` artifacts (below) instead of
+  simply being read off a list. That inference took about an hour.
+- ⚠️⚠️ **Build every dev container on the SAME engine — Docker Desktop's.** This is the whole fix
+  for the 2026-07-30 incident. The data is already on a persistent volume and already survives
+  rebuilds *on its own engine*; the only thing that goes wrong is being built on the other one.
+  Confirm with `hostname` inside the container against `docker ps -a` on the host — **if your
+  container's id is not in that list, you are on the wrong engine** and the database in front of you
+  is not the one you were working on.
+- **Get the database onto the named volume and keep it there.** A volume mount only becomes real for
+  a container created *after* the mount exists, so after any recovery the DB must be imported into a
+  container that actually mounts `aotv4-mysql-data` (the 2026-07-24 mechanism, §17).
+- Prefer **one** container. Two split the host port bindings — on 2026-07-30 the second one silently
+  stole 7003, 7006-7009, 7018, 7023, 7028, 3307 and 9001 — and make "which DB am I on?" ambiguous.
+- ⚠️ **Never `docker system prune`, "Reset to factory defaults", or "Clean / Purge data"** while
+  diagnosing this. Those delete container layers and volumes and are the only way to turn a
+  recoverable access problem into real data loss.
+
+## 26. Delve rewards — the Delver's Sigil and the Delve augments — 2026-07-31
+
+Two reward lines come out of the delve (§24), and they work by **completely different mechanisms** —
+which is the single most important thing to know before touching either:
+
+| | Delver's Sigil (147500-147509) | Delve augments (147600-147915) |
+|---|---|---|
+| what it is | a native **evolving item** | **ordinary items**, `evoitem = 0` |
+| how it grows | delve **score** | **combining 4 of a tier** in the Refining Crucible |
+| where progress shows | the client's native evolving window | nowhere; the item simply changes |
+
+- **Files**: `custom/sql/aotv4_delve_charm.sql`, `custom/sql/aotv4_delve_augs.sql` (**generated** by
+  `custom/tools/gen_delve_augs.pl`), `custom/sql/aotv4_delve_remove_native_augs.sql`;
+  `zone/aotv4_tiers.h` (tier id blocks), `zone/tradeskills.cpp` (`AoTv4RefineCombine`),
+  `zone/lua_client.cpp` (`AddEvolveProgress`); `lua_modules/aotv4_dungeon.lua`
+  (`stock_chest` / `roll_aug_tier` / `award_charm` / `on_close_timer`), `aotv4_dungeon_scale.lua`.
+
+### ⚠️⚠️ WHY THE AUGMENTS ARE NOT EVOLVING ITEMS — do not "restore" `evoitem = 1`
+They were, for one day, and it does not work: **an augment can never appear in the client's
+evolving-item window.** That list is enumerated CLIENT side inside `eqgame.exe` — there is **no
+enumeration packet anywhere**, the only server→client evolve message is `OP_EvolveItem UPDATE_ITEMS`
+keyed by a unique id the client must already know — and its walk does not descend into augment
+sockets. So the sigil showed natively while augments needed a second, custom window, and the design
+goal was ONE evolve window. Combining removes the problem rather than working around it.
+Three further reasons it was a bad fit, all still true and all invisible from the evolving code:
+1. **They never accrue.** `Client::ProcessEvolvingItem` walks `GetInv().GetWorn()` — top-level worn
+   items. An augment lives *inside* one and is never visited.
+2. **They are never registered.** `EvolvingItemsManager::DoLootChecks` is the only thing that inserts
+   a `character_evolving_items` row and is gated on `EQUIPMENT_BEGIN..EQUIPMENT_END`
+   (`common/evolving_items.cpp:80`).
+3. **Their in-memory evolve state is never loaded.** `SharedDatabase::GetInventory` rebuilds each
+   augment with `PutAugment` → `CreateItem` (`shareddb.cpp:751`) — a fresh instance — then attaches
+   evolve state only to the **host** (`:756`).
+- 📌 A **runeword** system (D2 style: runes in sockets, in order, transform the base item) was
+  evaluated against `EQEmu_Runewords_Source_Package` and **not built**. It drops in cleanly at the
+  API level, but `MatchesRecipe` requires every socket past the last rune to be EMPTY, which fights
+  the stat augments for the same sockets. Parked, not rejected.
+
+### ⚠️⚠️ `required_amount` IS A PER-LEVEL COST, NOT A CUMULATIVE TOTAL (the sigil)
+`current_amount` **resets to 0 on every evolve**, so each row states only what THAT level costs.
+This was documented backwards for a day. Three things make the reset non-obvious:
+1. the evolve path never transfers the amount — `SetEvolveCurrentAmount` appears ONLY in the XP
+   transfer window paths (`client_evolving_items.cpp:469/471/517/519`);
+2. the swap is `RemoveItemBySerialNumber` → `DeleteItemInInventory`, which **soft-deletes the row**
+   (`zone/inventory.cpp:988`);
+3. the replacement comes from `database.CreateItem()` — a fresh instance at 0 — and `DoLootChecks`
+   inserts a NEW row for it.
+⚠️ **Level 1 cannot tell the two readings apart** (same number either way), so a single observed run
+at level 1 confirms nothing. That is exactly why the wrong version survived a live test.
+
+### ⚠️ Evolving rewards ACTIVATE THEMSELVES — `AoTv4EnsureEvolveActivated` (zone/lua_client.cpp)
+Gating accrual on the `activated` flag looks correct and is a trap: `NewEntity()` defaults it to 0,
+and the native evolve creates a **brand new row** for the replacement item — so an item that was
+active comes back INACTIVE after every evolve and silently stops progressing. The flag exists
+natively to choose which item soaks a SHARED experience pool; our score is awarded explicitly, so it
+buys nothing. Activate and carry on.
+⚠️ `DoEvolveItemToggle` (`client_evolving_items.cpp`) had a **null dereference** reachable the moment
+an evolving item could sit in a socket: `_HasItem` finds augments but returns the sentinel
+`invslot::SLOT_AUGMENT_GENERIC_RETURN`, and `GetItem()` on that is nullptr. Guarded; keep the guard.
+
+### The augment generator — `gen_delve_augs.pl`
+316 rows in three CONTIGUOUS id blocks: **T1 147600-147615** (16, weight 2, single stat, exhaustive
+one-per-stat-line), **T2 147616-147715** (100, weight 4, 1-2 lines), **T3 147716-147915** (200,
+weight 8, 2-3 lines). hp/mana/endurance pay **10 points per weight**, so the tiers read 20/40/80 on
+those lines and 2/4/8 on everything else — without that a "2 hp" T1 is a dead roll.
+- ⚠️⚠️ **THE RNG IS A FIXED-SEED LCG AND MUST STAY THAT WAY.** These ids are live on player
+  characters; a regen with a different seed silently rewrites the stats of augments people are
+  wearing. Perl's own `rand()` is deliberately unused — it is per-process seeded and not stable
+  across perl builds.
+- ⚠️⚠️ **`sort` EVERY `keys` WHOSE ORDER CAN REACH THE OUTPUT.** Perl randomises hash key order per
+  process; a bare `keys` in the weight distributor made the generator non-deterministic (three runs,
+  three different files). **Verify after any change by regenerating and diffing.**
+- ⚠️⚠️ **Rolls are deduped on the STAT SIGNATURE, not the name.** The first version deduped names
+  only — when two rolls came out stat-identical it appended a roman numeral and kept both — which
+  left **10 of 40 tier 2 rows redundant, 6 of them the same `CR 4`**. A quarter of the pool was
+  wasted and Frost was six times likelier than any other single-stat T2.
+- ⚠️ The requested count must stay well under the combination space or rejection sampling hangs:
+  T2 weight 4 over 1-2 lines is ~376 combinations, T3 weight 8 over 2-3 lines is ~12,600.
+  `$MAX_REROLLS` turns overshoot into a loud failure instead of a spin.
+- ⚠️ `items.Name` is **varchar(64)**; longer is silently truncated, which can also collapse two
+  distinct names into one. The generator widens the name then falls back to a roman numeral.
+- ⚠️ `nodrop`/`norent` are **INVERTED**: `nodrop = 0` is No Drop, `norent = 1` is permanent.
+- ⚠️ The DELETE clears the whole reserved band (147600-148199), not just the current rows — an
+  earlier layout ran to 148007 and would otherwise strand its tail as orphans.
+- ⚠️ **`items` is shared memory**: world down → `./shared_memory` → restart.
+
+### The Refining Crucible does two different jobs — `AoTv4RefineCombine`
+Item **2000060**, gated by item id (not bagtype). Four IDENTICAL gear items become 1 of the next gear
+tier (+`AOTV4_TIER_STEP`); four **delve augments OF THE SAME TIER** become 1 **random** augment of the
+next tier.
+- ⚠️⚠️ **NOT "4 identical" for augments, and that difference is the point.** T2 and T3 have 100 and
+  200 variants, so requiring four of the same roll would take hundreds of drops per upgrade. Four of
+  a TIER is what makes the loop work.
+- ⚠️ Each produced item rolls **independently** — combining eight gives two different results.
+- ⚠️ Tier 3 is the top; four T3s are left alone rather than silently eaten.
+- ⚠️⚠️ **THE TIER ID BLOCKS ARE MIRRORED IN THREE PLACES AND NOTHING ENFORCES IT**:
+  `gen_delve_augs.pl`, `zone/aotv4_tiers.h`, and `aotv4_dungeon.lua M.AUG_TIER_BLOCK`. Change the
+  variant counts and all three must move together — nothing fails to compile, the chest and the
+  crucible just start handing out the wrong tier.
+- 📌 `AOTV4_TIER_STEP`/`AoTv4TierBaseId` were migrated out of tradeskills.cpp into
+  `zone/aotv4_tiers.h` when this landed (the header's own note says to migrate a duplicate the next
+  time its file is touched). **Four duplicate sites remain**: loot.cpp, npc.cpp, questmgr.cpp,
+  attack.cpp.
+
+### The chest, the loot and the close timer
+- ⚠️⚠️ **THE REWARD IS PLACED AT SPAWN AND THE DELVE DOES NOT CLOSE IMMEDIATELY.** The
+  `on_chest_looted` hook fires on the chest's **death** — the instant the corpse appears, before
+  anyone could have looted it. It used to call `M.leave` there, which destroyed the instance out from
+  under the player **and took the augment and the platinum with it**. It now starts a client timer
+  (`delveclose`, 120 s). ⚠️ A client timer **repeats** — `StopTimer` first in the handler, and
+  `M.leave` stops it on every other way out.
+- ⚠️ Loot goes on the **npc at spawn**: a corpse built from a lootless npc has nothing to add to.
+  `AddCash(copper, silver, gold, platinum)` — **that argument order**.
+  ⚠️ The coin is credited the moment the loot window OPENS (`AddMoneyToPP`, `corpse.cpp:1404`), and
+  splits across the group if auto-split is on. The augment still has to be dragged out.
+- **Coin = 10 platinum per rung, doubled under any affix** (non-Standard mode).
+- ⚠️⚠️ **`eq.spawn2` RETURNS A `Lua_Mob`, NOT A `Lua_NPC`.** `AddItem`/`AddCash`/`ScaleNPC` are bound
+  on Lua_NPC only, so calling one on the spawn2 result is *"attempt to call method 'AddItem' (a nil
+  value)"* at runtime with nothing to warn you at write time. `CastToNPC` **is** bound (on
+  Lua_Entity) — unlike `CastToClient`, so §24's entity-list workaround does not apply here.
+  ⚠️ The cost when it bit was far wider than the chest: the error aborted the rest of
+  `on_task_complete`, so the clear also paid no score and wrote no history. **The accounting now runs
+  BEFORE the chest is touched** — everything irreplaceable is settled first.
+- ⚠️⚠️ **DELVE MOBS DROP NOTHING** (`M.on_npc_spawn` → `ClearItemList` + `RemoveCash`). These are DoN
+  zones and the stock drops are from an expansion the server has not unlocked. Done at spawn and
+  **not** by editing loottable rows, because these are instances of REAL zones — stripping the tables
+  would empty those zones for everyone, permanently. The nine stock augments that dropped in the six
+  delve zones are removed from `lootdrop_entries` (verified to drop nowhere else); the two cosmetic
+  ornaments are deliberately kept.
+
+### ⚠️⚠️ THE SIGIL CURVE AND THE SCORING FUNCTION ARE ONE CALIBRATION, NOT TWO
+`kill_value` is **`eff * eff`** (×3 named), no divisor and no minimum clamp. The sigil ladder
+(**`4400 * n^2`**, written as per-level increments) is DERIVED from it — change one and the other is
+wrong. **Delve score feeds the SIGIL ONLY**; augments are combined, not fed.
+- ⚠️⚠️ **RETUNED `24000 * n^2` → `4400 * n^2` (2026-08-01) BECAUSE THE LEVEL CAP BECAME 30.** Exactly
+  one input of the derivation changed: it assumes a player working on charm level n sits at rung
+  **`7n`** (charm 10 ↔ rung 70), which was right at a cap of 70; a rung is only clearable if you can
+  fight mobs scaled to it, so at a cap of 30 the reachable ceiling is ~30 and the mapping is **`3n`**.
+  ⚠️ Run income is **quadratic in the rung**, so cutting the ceiling 70 → 30 does not halve run scores,
+  it drops them by `(30/70)² ≈ 5.4×`. **Halving the cap does NOT mean halving this constant** — that
+  intuition gives 12000 and is wrong by more than a factor of 2. Re-derive, don't scale.
+  📌 `aotv4_dungeon.M.MAX_LEVEL` is deliberately **left at 70** (owner's call), so rungs above ~30 exist
+  and stay unreachable. That is why the derivation uses the **character cap**, not `M.MAX_LEVEL` —
+  reading the rung count puts it straight back to `7n`.
+  Pace after the retune: ~90 runs climbing, ~28 parked at rung 30, ~25,600 farming rung 1.
+- ⚠️ **`items_evolving_details` IS NOT SHARED MEMORY** — `EvolvingItemsManager::LoadEvolvingItems`
+  reads it straight from the content DB (`common/evolving_items.cpp:31`) and is called once from
+  `zone/main.cpp:376`. **Retuning the ladder alone needs only a zone restart**, no world down and no
+  `./shared_memory`. (The sigil's `items` rows *are* shared memory; the charm SQL's header used to
+  claim the ladder needed the same, which is wrong and would have cost a needless full cutover.)
+- ⚠️⚠️ **`character_evolving_items.progression` is `double(22,0)` — ZERO decimal places**, i.e. an
+  integer percent. Anything under 1% stores and displays as **0**, so a sigil that is genuinely
+  accruing reads as "evolution experience didn't gain". Diagnose with `current_amount`, which is the
+  real banked figure, never the percentage. This is what a 211-score run against the old 96,000
+  level-2 requirement looked like (0.22% → 0).
+- ⚠️⚠️ It used to be `floor(eff*eff/25)` clamped to a minimum of 1, and `floor(49/25)` is 1 — so
+  **every effective level from 1 to 7 paid identically**, the quadratic did not engage until eff 8,
+  and farming rung 1 was as efficient as rung 7.
+- ⚠️⚠️ The ladder used to **double** each level (150, 450 … 76650). Doubling is EXPONENTIAL in the
+  charm level while run score is QUADRATIC in the rung: charm levels 2-5 each took **under one run**,
+  and the full chain was 18 runs against a stated design of ten per level. **An absolute number here
+  means nothing on its own** — always divide it by what a run is actually worth.
+- ⚠️⚠️ **UNSCALED MOBS MUST NEVER BE SCORED AT THEIR OWN LEVEL.** These are DoN zones, so an unscaled
+  mob sits at level 60-70; `record_kill`'s fallback is the RUNG, never `npc:GetLevel()`. Nine such
+  kills in a **level 3** delve were worth 4,900 each and produced a run score of **59,622** — enough
+  to evolve the sigil outright — from a dungeon whose other 32 creatures were level 1. Three separate
+  faults had to line up: the instance populates **before the player finishes zoning in** (so
+  `on_npc_spawn` had no reference client and returned without scaling), the rescale sweep's power
+  deadband was a **whole-sweep early return** that did nothing on any run after the first, and the
+  ledger paid out at native level. All three fixed: with no player present a mob scales to the layer
+  at power 1.0, the deadband is now a per-mob test that never skips an unstamped mob, and the
+  fallback is the rung.
+
+### 📌 OPEN — the level 35 rework invalidates most of the numbers above
+The level cap is moving from 70 to **35**. Nothing here has been re-tuned for it, and the mismatch is
+large enough to matter:
+- **The augments are 1-7× an entire item at that cap.** Gear reachable at ≤35 averages **7.3 stat
+  points / 6.3 AC / 10.8 HP** (banded by minimum dropper level — `reclevel` is useless for this,
+  classic gear mostly leaves it 0, which is the §23 lesson again). A single T3 is 8 stat points or
+  80 HP. Deliberately left as-is for now.
+- **The delve is 70 rungs and `kill_value` is `eff²`**, so halving the ceiling **quarters** top-end
+  run scores; the sigil ladder is then off by ~4×.
+- `quest_difficulty.pl` bands on `level/10` clamped 1-8 and would only ever produce 1-4.
+- 📌 A **craft-to-a-real-drop** system was designed but not built: feed augments into socketed gear
+  and receive an actual droppable item whose stats match. The reachable pool at a 35 cap is **1,353
+  items** banded 251 / 486 / 616 by minimum dropper level, which maps cleanly onto the three augment
+  tiers. Parked until the cap rework lands, because the augment weights are an input to the matching.
+
+## 27. Zone sharding (live's `/pick`) — NATIVE, built, deliberately NOT enabled — 2026-07-31
+
+EQEmu already has live's picking system and it needs **no custom code**. Recorded here because it is
+easy to miss and easy to re-implement by accident.
+
+- **The switch is per zone**: `zone.shard_at_player_count` (0 = off). **0 of 618 zones use it today.**
+- **Assignment is automatic on zone-in** (`zone/zoning.cpp:820`): it counts players per instance of
+  that zone, drops you in the first shard **under** the threshold, and if all are full **creates a
+  new instance** and puts you there. Players do not choose; they just land somewhere with room.
+- **`#zoneshard`** is the player-facing command and is already `AccountStatus::Player` (access 0).
+  Bare, it opens a saylink menu of live shards with populations (`Client::ShowZoneShardMenu`);
+  `#zoneshard <zone> <instance>` jumps to one. ⚠️ `instance_id = -1` is the sentinel for "the normal
+  unsharded zone", not an error.
+- ⚠️ **Refused in combat** (`GetAggroCount() > 0`).
+- ⚠️ Shards are created with a ~100 year duration (3,155,760,000 s), so they persist rather than
+  expiring under the people standing in them.
+- Rule `Zone:ZoneShardQuestMenuOnly` (currently false) suppresses the automatic assignment so only
+  quests surface the menu — i.e. makes sharding opt-in.
+
+### ⚠️⚠️ EVERY SHARD IS AN INSTANCE, SO EVERY SHARD COSTS A ZONE PROCESS AND A ZONE PORT
+This is the reason it is off. The port range was widened to **7000-7029** on 2026-07-30 because six
+was not enough for the `zone` launcher's **28 dynamics** (§0), and the Delve already burns an instance
+per run (§24). Sharding stacks on top of both, and the failure mode is the one already seen: *"That
+zone is unavailable"* and a bounce to character select. **Before enabling it anywhere, raise
+`launcher.dynamics` AND the `appPort` / `eqemu_config.json` port range together** — those two must
+always match, per §0.
+📌 Enabling it later is one UPDATE on the target zone plus that headroom; nothing needs rebuilding.
+
+## 28. Town factions — nobody is killed in a town for their race — 2026-08-01
+
+All 16 races may be any class and go anywhere (§14 + the region system), but stock EQ faction is
+built the opposite way round: an Ogre is born at −1000 with Kelethin and is cut down on sight by the
+guards of a city the server has just told him he may walk into. Fixed by flooring the faction **con**
+at Dubious for a curated set of civic factions. **Needs a zone rebuild** (`ruletypes.h` is in
+`common/`, so it is a wide one).
+
+- **Files**: `common/ruletypes.h` (`AoT:TownFactionFloor`), `zone/zone.h` + `zone/zone.cpp`
+  (`LoadTownFactions` / `IsTownFaction`), `zone/client.cpp` (`Client::GetFactionLevel`),
+  `custom/sql/aotv4_town_factions.sql` (the table + the 74-row list + the full derivation).
+- ⚠️⚠️ **EVERY aggro branch requires the con to be exactly `FACTION_THREATENINGLY` or
+  `FACTION_SCOWLS`** (`zone/aggro.cpp:326`, `:516`, `:545`) — and **`AlwaysAggro()` / `npc_aggro`
+  sits in the ELIGIBILITY half of those conditions, not the faction half**, so an aggro-flagged NPC
+  still needs a hostile con to swing. That is why the floor works at all, and equally why it would
+  pacify **anything** it were applied to. Scope is the whole safety argument here.
+- Thresholds are rules (`Faction:*FactionMinimum`): below −750 Scowls, −750..−501 Threatening, −500
+  and up **Dubious**. `CalculateFaction` (`common/faction.cpp:57`) sums
+  `earned + base + class_mod + race_mod + deity_mod`, so a fresh character's con **is** the race mod.
+- ⚠️ **Dubious, not Indifferent.** The city still visibly dislikes you; it just does not murder you.
+  The stock **merchant fix** immediately above our block (`client.cpp:8342`) already treats Dubious
+  as tradeable, so shops keep working with no second exception.
+- ⚠️ **The floor runs BEFORE the `CheckAggro` line**, which restores `THREATENINGLY` for an NPC that
+  already has aggro on you — so a guard you attack still fights back. It prevents being attacked for
+  existing, not combat you started.
+
+### ⚠️⚠️ Why a con floor and NOT an edit to `faction_list_mod`
+There are **7,134 negative race modifiers across 499 factions** (worst −2000) and clamping them was
+the obvious move. It changes stored faction **values**, which is what quests read. **144 quest files**
+test `e.other:GetFaction(e.self)`, and in EQ **lower is better** (Ally 1 … Scowls 9), so all of them
+are "good enough?" tests at the opposite end of the scale from anything the floor touches — it only
+ever moves 8/9 → 7. The four that test the hostile end were checked individually and all still pass:
+`erudnext/Collier.lua` (`>= 7`, satisfied *by* a floor of 7), `erudnext/Weligon_Steelherder.lua`
+(`> 5`), `felwithea/Tynkale.lua` (`> 4`), `westwastes/Sontalak.lua` (`>= 5`).
+⚠️ **Re-verify that list if the floor is ever raised above Dubious** — Collier is the one that breaks.
+
+### ⚠️⚠️ Why a FACTION list and not a ZONE list
+**Kelethin is not a zone** — it is a treetop city inside `gfaydark`, which is also a real hunting
+zone full of Crushbone orcs. A zone-scoped floor must choose between leaving Kelethin's guards lethal
+and pacifying the orcs standing under it. Scoping by the NPC's own faction separates the two and
+covers every other city for free. (`cancombat = 0` fails for the same reason, and more bluntly:
+`GetFactionLevel` returns `FACTION_INDIFFERENTLY` outright when `!zone->CanDoCombat()`, `:8307`.)
+
+### How the 74 were derived — and the two traps in deriving them
+Candidates must be able to be hostile **by race alone** (some race below −500 before any earned
+faction), then: named like a civic body, **and** show commerce — own merchants, or a majority of
+their NPCs standing in a zone with 10+ merchants.
+- ⚠️⚠️ **The commerce test is what keeps dungeon and raid factions with civic names OUT**: Nest
+  Guardians (2,769 NPCs), Thunder Guardians (2,429), Citizens of Takish-Hiz (2,257), Inhabitants of
+  **Hate** (900), Fallen Guard of Illsalin, Guardians of Veeshan, Befallen Inhabitants. All match the
+  naming; all have zero merchants outside cities.
+- ⚠️⚠️ **THE NAME TEST IS A KEYWORD LIST, NOT A CLASSIFIER, AND IT SILENTLY UNDER-COVERS.** It is
+  built from Antonican and Faydwer vocabulary (*Merchants of, Guards of, Knights of, Militia,
+  Residents*) and **nothing in Kunark is named that way** — a per-hub coverage check found Cabilis
+  protected only by `Cabilis Residents` while its actual city guard, **`Legion of Cabilis`**, was
+  still killing people on sight. Five Iksar guilds and `Jaggedpine Treefolk` were hand-added after
+  verifying commerce. **📌 Check coverage per city after any change here; do not trust the name test.**
+- The remaining gap was then closed by sweeping on **commerce alone, no name test**, which found six.
+  Only three were towns (Heretics/Paineel, Wolves of the North/Halas, Gem Choppers). ⚠️ **The other
+  three are raid content** — `Claws of Veeshan` (Skyshrine's dragons; Skyshrine and Great Divide both
+  have merchants, so it scores 66% "city") and the three Seru factions (Sanctus Seru is literally a
+  city *and* a raid target). **Commerce identifies civilisation, not friendliness** — which is why
+  that sweep is a diagnostic, not the rule.
+- ⚠️ **Deliberately left hostile** after being checked: `The Forsaken` (0 merchants; only 6 of its 263
+  NPCs are in Cabilis — pacifying 257 wilderness mobs to fix 6 in town is the wrong trade),
+  `Tunare's Scouts` (0 merchants, half its NPCs are inside Crushbone), `Pack of Tomar` (Dreadlands).
+- ⚠️⚠️ **NEVER add a monster faction.** Crushbone Orcs, Sabertooths of Blackburrow, Goblins of
+  Mountain Death, Frogloks of Guk, Trakanon and Vox all stay lethal. Adding one stops that content
+  aggroing **server-wide, in every zone**, with no other symptom.
+- ⚠️ Read at **zone boot**, not shared memory (only `items` and `spells` are shared) — editing the
+  table needs a zone restart, no `./shared_memory` rebuild. A missing table is not an error: the
+  server just behaves like stock.
+- ⚠️ `faction_list_mod`.`mod` is a **MariaDB reserved word** and needs backticks everywhere.
+
+## 29. Spell ranks, kept spells, and the parchment economy — 2026-07-31
+
+**This system was live and completely undocumented here until 2026-08-01** — the only record was
+`SPELL_RANKS.md`, a design draft still headed *"proposal, nothing built"*, which `.gitignore` was
+also excluding (§0). Read that file for the design reasoning; this section is what actually shipped.
+
+Three things are deliberately separate, and conflating them is the main way to misread the code:
+
+| | what it is | survives death? |
+|---|---|---|
+| **KNOWN** | every spell this character has ever been awarded | **yes**, permanent |
+| **RANK** | per BASE spell, 1-5 | **yes**, permanent |
+| **KEPT** | at most **2** spells you START a run holding | this is the only part death touches |
+
+- **Files**: `lua_modules/aotv4_spell_ranks_sys.lua` (all the logic), `lua_modules/spell_ranks.lua`
+  (**generated** base → `{r2,r3,r4,r5}` map), `custom/tools/gen_spell_ranks.pl`,
+  `custom/sql/aotv4_spell_ranks.sql` (the rows), `custom/sql/aotv4_spell_rank_economy.sql` (the two
+  items + the global drop). Buckets, all per character: `spellrank_` / `spellknown_` / `spellkeep_`
+  (permanent) and `pickspent_`.
+- ⚠️⚠️ **A RANK IS A DIFFERENT SPELL ROW, NOT A MODIFIER.** 188 base spells × 4 ranks = **752 rows at
+  43576-44327**, named `"… Rk. II"` … `"Rk. V"`. "Applying a rank" scribes a *different id*, which is
+  why the native spellbook shows the real damage and the real mana cost with no client work at all.
+- ⚠️⚠️ **THE NAMING IS LOAD-BEARING.** `gen_stock_pool.pl` filters the offerable pool with
+  `name NOT LIKE '% Rk. %'` (§5), so the picker can only ever award a **base** spell, which this
+  module then upgrades on the way in. **Renaming the rank rows would drop 752 upgraded spells straight
+  into the reward pool.**
+- ⚠️⚠️ **RANK IS A PROPERTY OF THE CHARACTER, NOT OF A SCRIBED COPY.** Earn rank III on a spell once
+  and *every* future award of it arrives at rank III — from the picker, from a kept slot, from
+  anywhere. It lives in a data bucket, so it survives the roguelite wipe like AA does.
+  ⚠️ Therefore **keeping is NOT how you protect a rank** — the rank was never at risk. Keeping buys
+  only the spell *in hand at level 1*, paid for by forfeiting the level-up pick at the level that
+  spell was originally taken (`pickspent_`). Two kept, two picks lost: neutral in count, positive in
+  control.
+- ⚠️ **`ranked_id()` is the single funnel.** Everything that awards a spell goes through it, so there
+  is one place that knows how to resolve base → owned rank. Do not add a second.
+- **Economy**: **Parchment Fragment 147920** (one per spell destroyed on death, so income scales with
+  how deep the run got — a full climb scribes ~31) and **Ink of the Lost 147921** (a `global_loot`
+  drop at **1.5%**). Costs live in `M.COST` and **double for fragments while ink is flat +10**:
+  rank 2 = 30/10, 3 = 60/20, 4 = 120/30, 5 = 240/40.
+  ⚠️ The two scale differently **on purpose**: fragments come from *dying* so they track how hard you
+  have been pushing, ink comes from *killing* so it tracks time played. A rank costs both.
+  ⚠️ **Tune `M.COST` ONLY** — it is sent to the client as `SPELLRANKCOST` and the window renders
+  whatever it says. There is no second copy in the dll, deliberately (the `kIcons[]` drift trap, §3).
+- ⚠️⚠️ **FEEDBACK GOES TO THE WINDOW, NOT TO CHAT** (`SPELLRANKMSG`, written into the requirement panel
+  under the description). Keeping and ranking happen inside a window that is already on screen, so a
+  chat reply is both noise and the wrong place to look — and it is the player's own chat.
+  ⚠️ **Both halves are needed**: the dll must also swallow the `/say spellkeep`-style **echoes**, or
+  the commands stay visible even with every reply silenced. Say commands are intercepted in
+  `Client::ChannelMessageReceived` (`spellkeep`, `spellrelease`, `spellrank`, `spellrankreq`,
+  `spellkept`), the same place as the AdvLoot ones (§16), so they never reach chat or quests.
+- ⚠️ **Ranks cover damage and healing only.** Buffs have no hook in either direction — a stat buff's
+  magnitude is read straight from the spell row in `SpellEffect` — so there is nothing to scale.
+- 📌 The cost curve is a first guess and should move once fragment income is *observed* rather than
+  modelled. Same caveat as the sigil ladder in §26, and the same rule applies: divide it by what a
+  run is actually worth before deciding it is too high or too low.
+
+## 30. ⚠️ What is BUILT but NOT YET EXERCISED IN GAME (as of 2026-08-01)
+
+Everything below compiles, applies and has been verified against the database or by static analysis,
+but **no character has actually performed the action**. Listed so a tester knows where to look first
+and so nobody reads "done" as "proven".
+
+- **Town faction floor (§28)** — no character has walked into a hostile city as a KOS race. Fastest
+  check: an Ogre in Kelethin or Felwithe, and an Iksar-hated race in Cabilis (Cabilis was the case
+  that was actually broken and hand-fixed). Confirm guards ignore you AND that a guard you *attack*
+  still fights back.
+- **Crafting always yields Mythic** — no combine has been made. Any wearable recipe will do; the
+  result should be the `Mythic …` name.
+- **The two quest tier-matching fixes** — hand a **Mythic** copy of a craftable turn-in item to one of
+  the 25 affected NPCs (Ghoulbane, Jagged Blade of War, Trueshot Longbow, Robe of the Lost Circle …).
+  Those quests can now only ever *receive* a Mythic, so this is the sharp case.
+- **The retuned sigil ladder (§26)** — one delve clear should now move the charm's percentage visibly.
+  ⚠️ Remember `progression` is `double(22,0)`, so anything under 1 percent still reads **0**; judge it
+  by `current_amount`, not the bar.
+- **Delve rewards end to end** — no death has paid Parchment Fragments, no Ink of the Lost has
+  dropped, no region-unlock achievement has fired, and the three Resplendent hub NPCs
+  (Wayfinder Alessa / Reforger Vael / Herald Coren) have never been hailed by a real player.
+- **Spell ranks (§29)** — the whole chain (keep 2, forfeit the picks, spend fragments + ink, receive
+  the `Rk.` row) is untested in play.
+- ⚠️⚠️ **Individual loot (§31)** — nothing has died with two players on it. The sharp test needs
+  **two grouped characters killing ONE npc**, then confirming the lists are disjoint in **both**
+  windows (the `/advl` window *and* the stock right-click one — the native path was the hole, so
+  checking only ours proves nothing). Also confirm both were paid coin **without opening anything**,
+  and that a GM `#peekloot` shows the corpse holding both rolls.
+
+## 31. Individual loot — everybody gets their own roll — 2026-08-01
+
+The loot table is rolled **once per eligible player** and each roll belongs to that player alone, so a
+group never contends for a drop. It replaces the need/greed/sell system rather than sitting beside it:
+`AdvLootManager` still compiles but is **not consulted** while the rule is on. Rule
+**`AoT:IndividualLoot`** (default **true**); set false to restore one shared roll plus the old rolls.
+**Needs a zone rebuild** (`ruletypes.h` and `common/loot.h` are in `common/`, so it is a wide one).
+
+- **Files**: `common/loot.h` (`LootItem::owner_char_id`), `common/ruletypes.h`, `zone/attack.cpp`
+  (`NPC::Death`, the per-player loop), `zone/spawn2.cpp` (spawn roll suppressed), `zone/loot.cpp`
+  (`AddLootDrop` stamps the owner), `zone/npc.h` (`SetLootOwner`/`GetLootOwner`), `zone/corpse.h` +
+  `zone/corpse.cpp` (`AoTv4AbsorbOwnedLoot`, per-player `AssignLootSlots`, the two native-path
+  guards), `zone/client_packet.cpp` (`AdvLootOwnedByOther` + every AdvLoot path).
+- **Ownership rides on the ITEM** (`owner_char_id`, 0 = shared), not on the lootslot: slots are
+  renumbered constantly, so a slot-keyed side table would desync the moment anything renumbered.
+  ⚠️ **Runtime only** — never written to `character_corpse_items`. NPC corpses are not persisted and a
+  player corpse has no use for it, which is also why the guards are no-ops on your own corpse.
+- ⚠️⚠️ **THE ROLL MOVED FROM SPAWN TO DEATH, and it had to.** Eligibility is not known until
+  `NPC::Death` has run the `AllowPlayerLoot` block, so the loop sits **immediately after** it. The
+  spawn-time `AddLootTable()` in `spawn2.cpp` is suppressed for the same reason — leaving it would put
+  an extra **unowned** copy of the table on every corpse, i.e. a free shared roll on top of
+  everybody's personal one.
+  ⚠️ **Global loot still rolls at spawn and stays SHARED.** Deliberate: a 1.5 percent Ink of the Lost
+  (§29) multiplied by group size is a different drop rate.
+- **The NPC's loot list is a STAGING AREA.** Each pass sets `SetLootOwner(cid)`, rolls, then
+  `Corpse::AoTv4AbsorbOwnedLoot` moves the items onto the corpse and empties the NPC again, and the
+  owner is restored to **0 immediately**. ⚠️ Anything rolling outside that window — quest
+  `npc:AddItem`, forage, the global tables — must stay shared, which is exactly what the restore buys.
+  ⚠️ The absorb must leave the list **empty** or the next player's absorb collects the previous
+  player's items too.
+  📌 Safe because the `Corpse` constructor already did `m_item_list = *item_list; item_list->clear()`,
+  so the NPC's list is empty when the loop starts and pre-existing quest drops are on the corpse as
+  shared.
+- **Coin is paid DIRECTLY at death**, per player, and is the one thing that does not wait for a
+  window. `AddLootTable` re-rolls `m_loot_*` on every non-global call, so each pass leaves that
+  player's own amount sitting there — reusing it keeps the stock distribution, `avgcoin` weighting
+  included. ⚠️ It is zeroed after each pass so the corpse cannot also carry it. ⚠️ This is *why* it is
+  paid directly: `Corpse::MakeLootRequestPackets` was the only thing that ever called `AddMoneyToPP`,
+  and AdvLoot mode skips it, so routing coin through the corpse made money vanish entirely.
+  - ⚠️⚠️ **THE "You receive … from the corpse of …" MESSAGE IS LOAD-BEARING — do not remove it as
+    chat noise.** No coin ever lands on the corpse (the `Corpse` constructor calls `SetCash` from the
+    NPC *before* this roll, so it captures 0) and no loot window is involved, which leaves a silently
+    changed money total as the only evidence anything happened. This was reported as *"coins do not
+    come off mobs when they die"* when the coin was in fact being paid correctly. The message IS the
+    loot event now. A `LogLoot` line beside it reports the rolled amount per player — enable with
+    `#logs` (Loot category) to tell "paid nothing" apart from "rolled nothing".
+- ⚠️⚠️ **A CORPSE NOBODY HAS KILL CREDIT ON GETS ONE SHARED ROLL, or it is EMPTY FOREVER.** An NPC
+  killed by another NPC — guards, faction fights, a charmed or unowned pet — never reaches
+  `AllowPlayerLoot`, so `m_allowed_looters` stays empty; and `Corpse::CanPlayerLoot` returns
+  `looters == 0`, meaning such a corpse is lootable by **anyone**. Stock rolled at spawn so it always
+  had loot. Rolling only per eligible player therefore handed back an openable, permanently empty
+  corpse. The fallback rolls once with owner 0 (shared, which is right for a corpse with no owner) and
+  puts the coin **on the corpse**, collected the stock way, since there is nobody to pay directly.
+
+### ⚠️⚠️ LOOTSLOTS ARE NUMBERED PER PLAYER — this is what makes the design fit the client
+A corpse has only **34 addressable slots** (`CORPSE_BEGIN..CORPSE_END`, = `slotGeneral1 .. +slotCursor`).
+Individual loot puts one roll per eligible player on a single corpse, so a global numbering **runs
+out**: tables average 2.1 drops and 324 of them yield >5, so a full group of six on a rich table
+overflows and everything past the 34th silently becomes `0xFFFF` — invisible and unlootable, with no
+error. The world boss (§17c, up to **72** looters) would overflow almost immediately.
+`Corpse::AssignLootSlots(Client*)` therefore numbers from ONE player's point of view: somebody else's
+drop gets **no handle at all**, so their items do not consume slots out of your range and the ceiling
+applies **per player** instead of per corpse.
+- ⚠️ Cached per character (`m_loot_slots_char_id`), not with a plain bool — re-numbering is skipped
+  when the same player asks again (so a snapshot of slots stays valid while they loot down it) and
+  redone when a different player asks. `Corpse::RemoveItem` deliberately does not renumber, so
+  removals cannot invalidate a snapshot either.
+- ⚠️⚠️ **EVERY path must number for the acting player BEFORE reading a lootslot.** `alslootall` did
+  not, which was harmless under global numbering and a real bug under this one: it snapshotted
+  whatever numbering the corpse last had, and `AdvLootSlot` then renumbered for the acting player, so
+  the handles pointed at different items by the time they were used.
+- ⚠️ `MakeLootRequestPackets` **is** a per-player numbering (it re-stamps from `CORPSE_BEGIN` filtered
+  by the client's `CorpseBitmask`), so it stamps the cache with that character id. Without that,
+  AdvLoot would consider the corpse unnumbered, renumber it behind the client, and every handle just
+  sent to them would resolve to a different item.
+
+### ⚠️⚠️ THE STOCK LOOT WINDOW IS A PATH TOO — it was the hole
+Advanced Loot runs in **complement mode** (§16): the native RoF2 loot window still opens and
+`MakeLootRequestPackets` is untouched by it. It walked `m_item_list` with **no ownership filter**, so
+right-clicking a corpse listed **every player's personal drop** and `Corpse::LootCorpseItem` handed
+them over — the whole system bypassable from the one path that was not part of it. Filtering only our
+own window proves nothing; **test both**.
+- **`Corpse::LootCorpseItem` is the central guard**, because both windows funnel through it — AdvLoot
+  synthesizes an `OP_LootItem` and calls straight into it, and the stock window sends one directly.
+  ⚠️ It also catches a client sending the **`0xFFFF` sentinel**, which `Corpse::GetItem` would
+  otherwise resolve to the first *unnumbered* item — i.e. somebody else's.
+- ⚠️ Filtering a display is presentation; the guards in `LootCorpseItem`, `AdvLootSlot` and
+  `AdvLootSell` are the rule. A modified dll can name any slot it was never shown.
+
+### ⚠️ Four AdvLoot paths that each needed the same guard
+Ownership was originally enforced in `AdvLootSlot` only. All four below act on corpse items and all
+were reachable; the shared helper is **`AdvLootOwnedByOther`** (`client_packet.cpp`).
+| Path | What it did |
+|---|---|
+| `AdvLootSell` | `/say alspick <slot> sell` sold **another player's** drop — item gone, coin paid, unrecoverable |
+| `alssellall` | "Sell All" swept every group mate's individual loot off the shared corpse |
+| standing rules in `SendAdvLootData` | an Always Sell rule fired on group mates' drops **at death**, before either player had seen a window |
+| `alslootall` | refused per item downstream, but one refusal message per group mate's drop |
+- ⚠️⚠️ **Sale proceeds DO NOT SPLIT AT ALL — the seller keeps the full value.** Stock divides a Sell
+  between everyone entitled to roll on the corpse, which is right for something jointly earned and
+  exactly wrong here: nothing is jointly owned, so a split would tax every personal drop by group size
+  and pay people who cannot even see the item. ⚠️ Shared items (owner 0) are **not** an exception —
+  they are rare, and a Sell that sometimes splits and sometimes does not is worse than one that never
+  does, because the player cannot tell the two cases apart from the item alone.
+- ⚠️⚠️ **Every player counts as SOLO for standing rules** while the rule is on. Two reasons, and the
+  second is the one that bites: nothing is contested, so seeding a 30-second need/greed roll would
+  stall a player's own drop behind a vote nobody can cast; **and `AdvLootManager` keys its share map
+  on `(corpse_id, lootslot)`**, which now aliases between players, so any roll it did start would
+  resolve against the wrong item.

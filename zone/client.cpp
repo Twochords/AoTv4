@@ -1217,6 +1217,63 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 		return;
 	}
 
+	// ⚠️⚠️ AoTv4 Shield Wall: `/say shieldwall` is how a NON-WARRIOR reaches /shield at all.
+	// The server side has been open to every class and level for a long time (AoT:ShieldAnyClass,
+	// AoT:ShieldMinLevel 1, and Mob::ShieldAbility has no class test) -- but the RoF2 CLIENT refuses
+	// the /shield command itself for anyone who is not a Warrior and never sends OP_Shielding, so
+	// none of that was ever reachable. Layer two of section 4's three layers, again.
+	// This routes around the client entirely: it needs no dll change and no client file.
+	if (chan_num == ChatChannel_Say && !strcasecmp(message, "shieldwall")) {
+		Mob *t = GetTarget();
+		if (!t) {
+			Message(Chat::Yellow, "Target the person you want to shield, then say shieldwall again.");
+		}
+		else {
+			// ⚠️ Straight into the shared body, NOT a copy of it -- the toggle, the recast and the
+			// permanent duration all live there and must behave identically on both paths.
+			AoTv4Shield(t->GetID());
+		}
+		return;
+	}
+
+	// AoTv4 Allaclone search + quest journal: the dll issues
+	//   /say srch <kind> <term>   /say srchdet <kind> <id>   /say qtrack <n>   /say quntrack <n>
+	//
+	// ⚠️⚠️ THESE ARE HANDLED IN LUA, NOT HERE, so unlike the AdvLoot and autoskill blocks above we
+	// must NOT simply return -- that would swallow them before global_player's event_say ever runs
+	// and the window would go dead. We fire the player quest event ourselves and then return, which
+	// gives Lua the message while SKIPPING the fall-through to
+	// entity_list.ChannelMessage(). That broadcast is the whole problem: a plain say reaches every
+	// nearby client and fires EVENT_SAY on every NPC in range, so without this the window's traffic
+	// is audible to other players ("Ashrem says, 'qtrack 5'") and can trip quest dialogue.
+	//
+	// ⚠️ Suppressing our OWN echo in the dll is not sufficient and never was: it only hides the line
+	// from the person who sent it. Both halves are required.
+	if (chan_num == ChatChannel_Say && message && (
+	        !strncasecmp(message, "srch ",         5) ||
+	        !strncasecmp(message, "srchdet ",      8) ||
+	        !strncasecmp(message, "qtrack ",       7) ||
+	        !strncasecmp(message, "quntrack ",     9) ||
+	        // Spell rank window (aotv4_spell_ranks_sys). Same treatment: handled in Lua, so the event
+	        // must still fire, but the broadcast must not.
+	        !strncasecmp(message, "spellkeep ",   10) ||
+	        !strncasecmp(message, "spellrelease ",13) ||
+	        !strncasecmp(message, "spellrank ",   10) ||
+	        !strncasecmp(message, "spellrankreq",  12) ||
+	        !strncasecmp(message, "spellkept",      9) ||
+	        // Region unlocks. ⚠️ `openregion` arrives from a SAYLINK, not from typing, so without this
+	        // clicking a region in the Wayfinder's list would announce "Ashrem says, 'openregion 4'"
+	        // to everyone in the hub -- exactly where every new character is standing.
+	        !strncasecmp(message, "openregion ",   11) ||
+	        !strncasecmp(message, "regions",        7) ||
+	        !strncasecmp(message, "reforgerace ",  12) ||
+	        !strncasecmp(message, "reforgeclass ", 13))) {
+		if (parse->PlayerHasQuestSub(EVENT_SAY)) {
+			parse->EventPlayer(EVENT_SAY, this, message, 0);
+		}
+		return;
+	}
+
 	if (RuleB(Chat, AlwaysCaptureCommandText)) {
 		if (message[0] == COMMAND_CHAR) {
 			if (command_dispatch(this, message, false) == -2) {
@@ -3068,7 +3125,12 @@ bool Client::CheckIncreaseSkill(EQ::skills::SkillType skillid, Mob *against_who,
 	}
 
 	auto skillval = GetRawSkill(skillid);
-	auto maxskill = GetMaxSkillAfterSpecializationRules(skillid, MaxSkill(skillid));
+	// AoTv4: cap looked up at the high-water level for weapon/casting skills, so a death does not
+	// re-cap them back to the level-1 ceiling of 10. See AoTv4SkillCapLevel.
+	auto maxskill = GetMaxSkillAfterSpecializationRules(
+		skillid,
+		MaxSkill(skillid, GetClass(), AoTv4SkillCapLevel(skillid))
+	);
 
 	if (parse->PlayerHasQuestSub(EVENT_USE_SKILL)) {
 		const auto& export_string = fmt::format(
@@ -3212,6 +3274,60 @@ uint16 Client::MaxSkill(EQ::skills::SkillType skill_id, uint8 class_id, uint8 le
 	}
 
 	return SkillCaps::Instance()->GetSkillCap(class_id, skill_id, level).cap;
+}
+
+// ================================================================================================
+// AoTv4: weapon and casting skills keep the cap they EARNED
+// ================================================================================================
+// The roguelite death sets the character back to level 1, and the level-1 cap for these skills is
+// 10 (skill_caps). The stored VALUE survives -- nothing on the server resets it, and Client::GetSkill
+// does not clamp to the cap, so a 125 Channeling stays 125 and stays fully effective -- but
+// CheckIncreaseSkill gates further gains on MaxSkill(), so the skill froze until the character had
+// re-levelled all the way back past it. Every run therefore began by re-treading skill ground that
+// had already been won, which is the one kind of progress the roguelite is not supposed to eat.
+//
+// m_pp.level2 is the high-water level and is exactly the right source: exp.cpp only ever RAISES it
+// (`if (set_level > m_pp.level2)`), so it is untouched by the death's SetLevel(1). No new bucket, no
+// new column, nothing to keep in sync.
+//
+// ⚠️⚠️ SCOPED TO WEAPON + CASTING SKILLS ON PURPOSE, and the exclusion is load-bearing. The twelve
+// reward-gated combat abilities (skill_pool.lua -- Backstab, Bash, Kick, the monk strikes...) are
+// reset to 0 by death_loss.lua so they are re-earned through the level-up picker. Those are gated by
+// being 0, not by their cap, but handing them a level-70 ceiling at level 1 would let a granted one
+// self-train straight to the top and quietly devalue the pick. Specialization skills are also left
+// out: they carry their own stock balance rule (GetMaxSkillAfterSpecializationRules resets them when
+// more than one exceeds 50) and should not be widened here without considering it.
+static bool AoTv4IsHighWaterSkill(EQ::skills::SkillType skill_id)
+{
+	switch (skill_id) {
+	case EQ::skills::Skill1HBlunt:
+	case EQ::skills::Skill1HSlashing:
+	case EQ::skills::Skill2HBlunt:
+	case EQ::skills::Skill2HSlashing:
+	case EQ::skills::Skill1HPiercing:
+	case EQ::skills::Skill2HPiercing:
+	case EQ::skills::SkillHandtoHand:
+	case EQ::skills::SkillArchery:
+	case EQ::skills::SkillThrowing:
+	case EQ::skills::SkillAbjuration:
+	case EQ::skills::SkillAlteration:
+	case EQ::skills::SkillChanneling:
+	case EQ::skills::SkillConjuration:
+	case EQ::skills::SkillDivination:
+	case EQ::skills::SkillEvocation:
+		return true;
+	default:
+		return false;
+	}
+}
+
+uint8 Client::AoTv4SkillCapLevel(EQ::skills::SkillType skill_id) const
+{
+	if (!RuleB(AoT, SkillCapHighWater) || !AoTv4IsHighWaterSkill(skill_id)) {
+		return GetLevel();
+	}
+
+	return std::max(static_cast<uint8>(GetLevel()), m_pp.level2);
 }
 
 uint8 Client::GetSkillTrainLevel(EQ::skills::SkillType skill_id, uint8 class_id)
@@ -8303,6 +8419,26 @@ FACTION_VALUE Client::GetFactionLevel(uint32 char_id, uint32 npc_id, uint32 p_ra
 	// merchant fix
 	if (tnpc && tnpc->IsNPC() && tnpc->CastToNPC()->MerchantType && (fac == FACTION_THREATENINGLY || fac == FACTION_SCOWLS))
 		fac = FACTION_DUBIOUSLY;
+
+	// AoTv4: nobody is killed in a town for being the wrong race.
+	// ⚠️⚠️ EVERY aggro branch in NPC::CheckWillAggro requires the con to be exactly THREATENINGLY or
+	// SCOWLS (aggro.cpp:326, :516, :545) -- and AlwaysAggro()/npc_aggro sits in the ELIGIBILITY half
+	// of those tests, not the faction half. So flooring to DUBIOUSLY here is what actually stops the
+	// guards, and it would equally pacify anything else it were applied to. Hence the list is scoped
+	// to civic factions only (custom/sql/aotv4_town_factions.sql); monster factions must never be
+	// added to it or that content stops aggroing server-wide, in every zone, with no other symptom.
+	// ⚠️ Dubious, not Indifferent: the city still dislikes you, and the merchant fix above already
+	// treats Dubious as tradeable, so shops keep working with no second exception.
+	// ⚠️ This runs BEFORE the CheckAggro line below on purpose -- an NPC that already has aggro on
+	// you is restored to THREATENINGLY there, so a guard you attack still fights back. The floor
+	// prevents being attacked for existing, not combat you started.
+	if (
+		RuleB(AoT, TownFactionFloor) &&
+		(fac == FACTION_THREATENINGLY || fac == FACTION_SCOWLS) &&
+		zone && zone->IsTownFaction(pFaction)
+	) {
+		fac = FACTION_DUBIOUSLY;
+	}
 
 	if (tnpc != 0 && fac != FACTION_SCOWLS && tnpc->CastToNPC()->CheckAggro(this))
 		fac = FACTION_THREATENINGLY;

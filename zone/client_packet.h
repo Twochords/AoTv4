@@ -301,6 +301,10 @@
 	void Handle_OP_SetStartCity(const EQApplicationPacket *app);
 	void Handle_OP_SetTitle(const EQApplicationPacket *app);
 	void Handle_OP_Shielding(const EQApplicationPacket *app);
+	// AoTv4: the shared body of /shield. Also reached by "/say shieldwall", which is the ONLY way a
+	// non-Warrior can use the ability -- the RoF2 client refuses the /shield command for other
+	// classes and never sends OP_Shielding. See the note on the definition.
+	void AoTv4Shield(uint32 target_id);
 	void Handle_OP_ShopEnd(const EQApplicationPacket *app);
 	void Handle_OP_ShopPlayerBuy(const EQApplicationPacket *app);
 	void Handle_OP_ShopPlayerSell(const EQApplicationPacket *app);

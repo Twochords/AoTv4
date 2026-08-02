@@ -19,6 +19,17 @@ native "You Lost" window.
 
 Back up the originals first — these overwrite stock EQ files.
 
+## 1b. Loading screens — `<EQ>\Resources\` and `<EQ>\uifiles\default\loadscreens\`
+
+| File | Why |
+|---|---|
+| `Resources/loadscreen.jpg` | The Age of Titans atlas as the zone/world loading screen. Fixed path, cannot be diluted. |
+| `uifiles_default/loadscreens/loadscreen1.jpg` | Same image in the folder the client actually globs. |
+
+⚠️ **Also delete the stock `loadscreen*.jpg` files already in that folder**, or the atlas only shows
+up at random — the client picks from everything matching the glob. Full detail, including where the
+paths come from in `eqgame.exe`: **`LOADSCREEN_INSTALL.md`**.
+
 ## 2. `<EQ>\uifiles\default\`
 
 | File | Why |

@@ -980,6 +980,9 @@ public:
 
 	uint16 MaxSkill(EQ::skills::SkillType skill_id, uint8 class_id, uint8 level) const;
 	inline uint16 MaxSkill(EQ::skills::SkillType skill_id) const { return MaxSkill(skill_id, GetClass(), GetLevel()); }
+	// AoTv4: the level a skill's CAP is looked up at. Normally the current level; for weapon and
+	// casting skills it is the highest level ever reached, so a roguelite death does not re-cap them.
+	uint8 AoTv4SkillCapLevel(EQ::skills::SkillType skill_id) const;
 	uint8 GetSkillTrainLevel(EQ::skills::SkillType skill_id, uint8 class_id);
 	void MaxSkills();
 

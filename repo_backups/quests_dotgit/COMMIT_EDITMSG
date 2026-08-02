@@ -1,0 +1,6 @@
+AoTv4: delve system, region unlocks, scaling and travel fixes
+
+Records the working tree before the quests repo is absorbed into /src so it
+can be pushed with the server. Includes the modules that had never been
+committed anywhere: aotv4_dungeon, aotv4_dungeon_scale, aotv4_regions,
+aotv4_spell_ranks_sys, aotv4_worldboss, aotv4_worldbuff and others.

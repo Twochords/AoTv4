@@ -1394,6 +1394,7 @@ public:
 
 	void AoTv4ApplyPetWard(Mob *pet, const char *pet_type);
 	void AoTv4PetWardEnded();
+	void AoTv4RefreshPetWard();   // 6s upkeep: re-apply the pet ward if it has been pushed out
 
 	// AoTv4 Melee AA tree -- implementation in zone/aotv4_melee_aa.cpp.
 	// `this` is the DEFENDER for AoTv4SunderMitigation and the ATTACKER for all the others.

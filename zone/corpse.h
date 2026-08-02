@@ -218,6 +218,11 @@ public:
 	uint16 GetFirstLootSlotByItemID(uint32 item_id);
 	std::vector<int> GetLootList();
 	inline const LootItems &GetLootItems() { return m_item_list; }
+
+	// AoTv4 individual loot: move everything currently staged on the NPC onto this corpse, keeping
+	// each item's owner_char_id. Called once per eligible player in Mob::Death, straight after that
+	// player's personal roll, so the NPC's list is empty again before the next player rolls.
+	void AoTv4AbsorbOwnedLoot(NPC *from);
 	void LootCorpseItem(Client *c, const EQApplicationPacket *app);
 	void EndLoot(Client *c, const EQApplicationPacket *app);
 	void MakeLootRequestPackets(Client *c, const EQApplicationPacket *app);
@@ -285,9 +290,21 @@ public:
 	// corpse. LootItem::lootslot has no initialiser, so until that happens the values are garbage or
 	// all zero -- and Corpse::GetItem(lootslot) returns the FIRST item that matches. Advanced Loot
 	// lists corpses the player never opened, so it must number them itself or every handle it issues
-	// aliases onto the same item. Idempotent: only the first call numbers, so a corpse two players are
-	// both looking at cannot be renumbered underneath one of them.
-	void AssignLootSlots();
+	// aliases onto the same item.
+	//
+	// ⚠️⚠️ AoTv4 individual loot: THE NUMBERING IS PER PLAYER, which is what makes the design fit the
+	// client at all. A corpse has only 34 addressable slots (CORPSE_BEGIN..CORPSE_END) and individual
+	// loot puts one roll per eligible player on it, so a single global numbering runs out -- a group
+	// of six on a rich table overflows, and everything past the 34th silently becomes unlootable. Only
+	// the requesting player's own items (plus shared owner-0 ones) consume slots, so the limit applies
+	// per player instead of per corpse. Pass the client that is about to act; nullptr keeps the old
+	// global numbering for the rule-off path.
+	//
+	// ⚠️ Cached per character, not with a plain bool: re-numbering is skipped when the SAME player asks
+	// again (so a snapshot of slots stays valid while they loot down it), and redone when a different
+	// player asks. Corpse::RemoveItem deliberately does not renumber, so removals cannot invalidate a
+	// snapshot either.
+	void AssignLootSlots(Client *c = nullptr);
 
 	// character_id granted loot rights in slot i (0 = empty). Lets NPC::Death push the refreshed
 	// Advanced Loot list to exactly the set AllowPlayerLoot just decided, without duplicating the
@@ -326,6 +343,8 @@ private:
 	Timer                    m_corpse_graveyard_timer;
 	Timer                    m_loot_cooldown_timer;
 	bool                     m_loot_slots_assigned = false;   // see AssignLootSlots
+	// Which character the current lootslot numbering belongs to (0 = the global, unfiltered numbering).
+	uint32                   m_loot_slots_char_id  = 0;
 	Timer                    m_check_owner_online_timer;
 	Timer                    m_check_rezzable_timer;
 	uint8                    m_killed_by_type;

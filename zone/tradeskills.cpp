@@ -24,6 +24,7 @@
 #include "common/repositories/tradeskill_recipe_entries_repository.h"
 #include "common/repositories/tradeskill_recipe_repository.h"
 #include "common/rulesys.h"
+#include "zone/aotv4_tiers.h"   // AoTv4: delve augment tier blocks for the crucible
 #include "zone/queryserv.h"
 #include "zone/quest_parser_collection.h"
 #include "zone/string_ids.h"
@@ -253,13 +254,27 @@ void Object::HandleAugmentation(Client* user, const AugmentItem_Struct* in_augme
 	}
 }
 
-// AoTv4 "Refining Crucible" (item 2000060): a generic upgrade bag. Any 4 identical items whose next
-// gear tier exists are consumed into 1 of that next tier (Hallowed = base id +1,000,000, Mythic =
-// +2,000,000, so each step is +1,000,000). Handles several distinct 4-stacks in one combine. The
-// crucible itself is never consumed. Gated by item id (NOT bagtype) so real bagtype-30 quest
-// containers are untouched.
+// AoTv4 "Refining Crucible" (item 2000060): a generic upgrade bag. It does two jobs.
+//
+// 1. GEAR: any 4 IDENTICAL items whose next gear tier exists become 1 of that next tier
+//    (Hallowed = base +300,000, Mythic = +600,000, so each step is +AOTV4_TIER_STEP).
+//    ⚠️ This comment used to say the step was +1,000,000; that was the ORIGINAL scheme and it is
+//    long gone -- Mythic ids past 1,048,575 broke every chat link, so everything was renumbered to
+//    a 300,000 step (see zone/aotv4_tiers.h). The constant below was right and the prose was stale.
+//
+// 2. DELVE AUGMENTS: any 4 augments OF THE SAME TIER become 1 RANDOM augment of the next tier.
+//    ⚠️⚠️ NOT "4 identical" like the gear path, and that difference is the whole point. Tier 2 and 3
+//    augments are randomly rolled -- 40 variants each -- so requiring four of the SAME roll would
+//    take hundreds of drops per upgrade. Four of a TIER is what makes the loop work: you feed it the
+//    rolls you did not want and get back one better roll you also did not choose.
+//
+// Handles several distinct 4-stacks in one combine. The crucible itself is never consumed. Gated by
+// item id (NOT bagtype) so real bagtype-30 quest containers are untouched.
 static const uint32 AOTV4_REFINE_BAG_ID = 2000060;
-static const uint32 AOTV4_TIER_STEP     = 300000;    // native->Hallowed(+300k) and Hallowed->Mythic(+600k)
+// ⚠️ AOTV4_TIER_STEP and AoTv4TierBaseId now come from zone/aotv4_tiers.h. This file used to carry
+// its own copies -- it was one of the five places the step was duplicated, and the header's own note
+// says to migrate one of them the next time it is touched for another reason. Adding the delve
+// augment blocks was that reason, so the local copies are gone rather than shadowing the header.
 
 static bool AoTv4IsEpicItem(uint32 id);   // defined below; used to keep epics out of the crucible
 
@@ -271,11 +286,17 @@ static void AoTv4RefineCombine(Client* user, EQ::ItemInstance* container, int co
 	}
 
 	// group the bag's contents by item id, remembering each item's bag slot
+	// ⚠️ Delve augments are grouped by TIER instead, under a synthetic key, so four DIFFERENT rolls
+	// of the same tier stack together. The key is offset past any real item id so it can never
+	// collide with the gear path's grouping.
+	static const uint32 AOTV4_AUG_KEY_BASE = 0xF0000000;
 	std::map<uint32, std::vector<uint8>> by_id;
 	for (uint8 s = 0; s < bag->BagSlots; ++s) {
 		const EQ::ItemInstance *it = container->GetItem(s);
 		if (it && it->GetItem()) {
-			by_id[it->GetItem()->ID].push_back(s);
+			const uint32 iid  = it->GetItem()->ID;
+			const int    tier = AoTv4AugTier(iid);
+			by_id[tier ? (AOTV4_AUG_KEY_BASE + tier) : iid].push_back(s);
 		}
 	}
 
@@ -283,6 +304,30 @@ static void AoTv4RefineCombine(Client* user, EQ::ItemInstance* container, int co
 	for (auto &kv : by_id) {
 		uint32 id = kv.first;
 		auto  &ss = kv.second;
+
+		// ---- delve augments: 4 of a tier -> 1 RANDOM roll of the next tier
+		if (id >= AOTV4_AUG_KEY_BASE) {
+			const int tier = static_cast<int>(id - AOTV4_AUG_KEY_BASE);
+			uint32 first = 0, last = 0;
+			// ⚠️ Tier 3 is the top: there is no block above it, so four tier 3s are left alone
+			// rather than being silently eaten for nothing.
+			if (ss.size() < 4 || !AoTv4AugTierBlock(tier + 1, first, last)) {
+				continue;
+			}
+
+			const int sets = static_cast<int>(ss.size() / 4);
+			for (int i = 0; i < sets * 4; ++i) {
+				user->DeleteItemInInventory(EQ::InventoryProfile::CalcSlotId(container_slot, ss[i]), 0, true);
+			}
+			for (int i = 0; i < sets; ++i) {
+				// ⚠️ Rolled per produced item, not once for the batch: combining eight augments
+				// should give two independent rolls, not the same one twice.
+				user->SummonItem(zone->random.Int(static_cast<int>(first), static_cast<int>(last)));
+			}
+			produced += sets;
+			continue;
+		}
+
 		if (ss.size() < 4 || id >= 2 * AOTV4_TIER_STEP) {   // need 4+; Mythic is already top tier
 			continue;
 		}
@@ -309,7 +354,8 @@ static void AoTv4RefineCombine(Client* user, EQ::ItemInstance* container, int co
 	}
 	else {
 		user->Message(Chat::Yellow,
-			"Place 4 of the same item (one that has a higher-quality version) in the crucible, then Combine.");
+			"Place 4 of the same item (one with a higher-quality version), or 4 delve augments of the "
+			"same tier, in the crucible and then Combine.");
 	}
 }
 
@@ -1336,9 +1382,8 @@ void Client::CheckIncreaseTradeskill(int16 bonusstat, int16 stat_modifier, float
 // AoTv4: tier items (Hallowed = base+300,000, Mythic = base+600,000) count as their base item when
 // matching tradeskill recipes, so a combine works with any quality tier of a required component (the
 // combine analog of the any-quality quest turn-in). Ids outside the reserved band pass through.
-static uint32 AoTv4TierBaseId(uint32 id) {
-	return (id >= 300000 && id < 900000) ? (id % 300000) : id;
-}
+// ⚠️ AoTv4TierBaseId is defined in zone/aotv4_tiers.h -- this file's own copy was removed when that
+// header was included here; the two were identical.
 
 // AoTv4: is this item id an epic (items.epicitem<>0)? The runtime EQ::ItemData doesn't carry the epic
 // flag, so we cache the id set once from the DB (rebuilt on zone restart, which item edits require
@@ -1698,14 +1743,33 @@ bool ZoneDatabase::GetTradeRecipe(
 	for(auto row : results) {
 		uint32       item_id       = Strings::ToUnsignedInt(row[0]);
 		const uint8  success_count = Strings::ToUnsignedInt(row[1]);
-		// AoTv4: every WEARABLE (slots>0) combine output comes out MYTHIC when a Mythic tier exists -- so
-		// crafted GEAR is always top-tier and stays relevant as later expansions unlock better base items.
-		// (Epics are wearable + always have a Mythic tier, so this covers them too.) Non-wearable outputs
-		// -- components, food, reagents, the refine bag -- are untouched.
+		// AoTv4: EVERY combine output comes out MYTHIC when a Mythic tier exists, so crafted gear is
+		// always top-tier and stays relevant as later expansions unlock better base items. Epics are
+		// always tiered, so this covers them too.
+		//
+		// ⚠️⚠️ THIS IS THE SINGLE CHOKE POINT FOR BOTH OVERLOADS. GetTradeRecipe(container, ...)
+		// resolves the recipe id from the container's contents and then delegates to this one (:1600,
+		// :1639), so every combine in the game -- the trade window, the object/world container path and
+		// the /says that drive them -- passes through here exactly once. Do not copy this upgrade into
+		// the caller; two copies would drift, the same reasoning that keeps the endurance cost in one
+		// place in section 22.
+		//
+		// ⚠️ Normalise through AoTv4TierBaseId FIRST. A recipe whose output id is already a tier id
+		// would otherwise get another +600,000 stacked on it and land outside the reserved band, where
+		// no item exists -- so it would silently stay whatever it already was. Normalising makes a
+		// Hallowed output upgrade to Mythic and a Mythic output idempotent.
+		//
+		// 📌 There is deliberately NO "is it wearable" test any more. It used to be gated on Slots > 0,
+		// which was redundant: aotv4_gear_tiers.sql only ever generates tiers for slots>0 items, so the
+		// GetItem() lookup below is already the real gate. Dropping it makes the rule read as written --
+		// if a Mythic exists, that is what you get. It is a no-op for the ~5,900 non-wearable craft
+		// outputs (5,112 plain components, 728 food/drink, 71 containers), which have no tier rows
+		// because a component has no stats to scale: a "Mythic" one would be byte-identical to its base
+		// and would only split 2,556 component stacks across two ids.
 		{
-			const EQ::ItemData *base_item = GetItem(item_id);
-			if (base_item && base_item->Slots > 0 && GetItem(item_id + 600000)) {
-				item_id += 600000;   // wearable -> always Mythic
+			const uint32 mythic_id = AoTv4TierBaseId(item_id) + 2 * AOTV4_TIER_STEP;
+			if (GetItem(mythic_id)) {
+				item_id = mythic_id;
 			}
 		}
 		spec->onsuccess.emplace_back(std::pair<uint32, uint8>(item_id, success_count));

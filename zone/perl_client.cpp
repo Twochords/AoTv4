@@ -24,6 +24,7 @@
 #include "zone/dynamic_zone.h"
 #include "zone/embperl.h"
 #include "zone/titles.h"
+#include "aotv4_tiers.h"     // AoTv4: quest item checks span every quality tier
 
 void Perl_Client_SendSound(Client* self) // @categories Script Utility
 {
@@ -2222,9 +2223,15 @@ void Perl_Client_SendToInstance(Client* self, std::string instance_type, std::st
 	self->SendToInstance(instance_type, zone_short_name, instance_version, x, y, z, heading, instance_identifier, duration);
 }
 
+// AoTv4: counts EVERY quality tier of the item. See Lua_Client::CountItem for the full reasoning --
+// this is the Perl half of the same rule, and the two must agree or a quest would behave differently
+// depending only on which language it happens to be written in.
 uint32 Perl_Client_CountItem(Client* self, uint32 item_id)
 {
-	return self->CountItem(item_id);
+	const uint32 base = AoTv4TierBaseId(item_id);
+	return self->CountItem(base)
+	     + self->CountItem(base + AOTV4_TIER_STEP)
+	     + self->CountItem(base + 2 * AOTV4_TIER_STEP);
 }
 
 void Perl_Client_RemoveItem(Client* self, uint32 item_id) // @categories Spells and Disciplines
@@ -3099,9 +3106,18 @@ void Perl_Client_SummonItemIntoInventory(Client* self, perl::reference table_ref
 	);
 }
 
+// AoTv4: every quality tier counts, same rule as CountItem -- the Perl twin of
+// Lua_Client::HasItemOnCorpse. plugin::check_hasitem falls through to this for its corpse check, so
+// without it a player whose only copy is the Hallowed or Mythic one, sitting on their corpse, is
+// told by 133 Perl quest scripts that they do not have the item.
+// ⚠️ This was MISSED when the Lua side was done -- the comment in client_ext.lua listing the covered
+// paths names Perl_Client_CountItem but not this one. Keep the two in step.
 bool Perl_Client_HasItemOnCorpse(Client* self, uint32 item_id)
 {
-	return self->HasItemOnCorpse(item_id);
+	const uint32 base = AoTv4TierBaseId(item_id);
+	return self->HasItemOnCorpse(base)
+	    || self->HasItemOnCorpse(base + AOTV4_TIER_STEP)
+	    || self->HasItemOnCorpse(base + 2 * AOTV4_TIER_STEP);
 }
 
 void Perl_Client_ClearXTargets(Client* self)
