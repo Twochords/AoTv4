@@ -552,7 +552,16 @@ void Client::AddEXP(ExpSource exp_source, uint64 in_add_exp, uint8 conlevel, boo
 			const double factor = static_cast<double>(RuleI(AoT, AAExpSlowdownFactor));
 			if (base > 0.0 && factor > 0.0) {
 				const double mult = (base + total_aa) / (base + factor * total_aa);
-				exp = static_cast<uint64>(exp * mult);
+				// ⚠️⚠️ `exp` here is the NEW TOTAL: CalculateExp already ran `add_exp = GetEXP() + gain`
+				// (exp.cpp:498), so it is current-exp + this-kill's-gain, NOT the gain alone. Multiplying
+				// the whole total by mult<1 shrank it BELOW the current exp for any character with AA ->
+				// "You have lost experience" on every kill and the level could never fill (Shadorn, 1 AA,
+				// stuck at 1974/2000). Slow ONLY the gain portion; never touch the exp already banked.
+				const uint64 had_exp = GetEXP();
+				if (exp > had_exp) {
+					const uint64 gained = exp - had_exp;
+					exp = had_exp + static_cast<uint64>(gained * mult);
+				}
 			}
 		}
 	}
