@@ -10,18 +10,26 @@
 
 local reforge = require("aotv4_reforge")
 
--- ⚠️⚠️ `e.other` IS THE PLAYER; `e.self` IS VAEL. This file had it backwards in all four places, and
--- unlike Alessa's crash it failed SILENTLY: GetClass and GetRace exist on any Mob, so the menus were
--- built from VAEL's race and class and offered the wrong options, while can_reforge checked HIS level
--- instead of the player's -- meaning the "level 1 only" gate was never actually applied to anyone.
+-- ⚠️⚠️ `e.other` IS THE PLAYER; `e.self` IS VAEL -- BUT `e.other` ARRIVES AS A `Lua_Mob`, NOT A
+-- `Lua_Client` (CLAUDE.md section 24). GetClass/GetRace/GetLevel exist on a Mob so the menus read
+-- right, but can_reforge calls `c:Message()` on its failure paths and that is a Client-only method
+-- (nil on a Mob). Resolve the real client the way every stock NPC script here does:
+--     eq.get_entity_list():GetClientByID(e.other:GetID())
+-- (This file also once had e.self/e.other backwards in all four places, building the menus from
+-- VAEL's race/class and gating on HIS level; fixed to e.other, then resolved to a client here.)
+local function player(e) return eq.get_entity_list():GetClientByID(e.other:GetID()) end
+
 local function gate(e)
-    local ok, why = reforge.can_reforge(e.other)
+    local c = player(e)
+    if not c then return false end
+    local ok, why = reforge.can_reforge(c)
     if not ok then e.self:Say(why) end
     return ok
 end
 
 local function offer_races(e)
-    local c = e.other          -- the PLAYER, not Vael
+    local c = player(e)         -- the PLAYER (real Lua_Client), not Vael
+    if not c then return end
     local class = c:GetClass()
     e.self:Say("These forms can hold a " .. (reforge.CLASS_NAME[class] or "?") .. ":")
     -- ⚠️ RACE_ORDER, not ipairs -- the race ids are sparse (128, 130, 330, 522) and ipairs would stop
@@ -36,7 +44,8 @@ local function offer_races(e)
 end
 
 local function offer_classes(e)
-    local c = e.other          -- the PLAYER, not Vael
+    local c = player(e)         -- the PLAYER (real Lua_Client), not Vael
+    if not c then return end
     local race = c:GetRace()
     e.self:Say("A " .. (reforge.RACE_NAME[race] or "?") .. " may follow these callings:")
     for cl = 1, 16 do
@@ -47,7 +56,8 @@ local function offer_classes(e)
 end
 
 function event_say(e)
-    local c = e.other          -- the PLAYER, not Vael
+    local c = player(e)         -- the PLAYER as a real Lua_Client; e.other is a Lua_Mob, e.self is Vael
+    if not c then return end
 
     if e.message:findi("hail") then
         e.self:Say("I am Vael. I unmake and remake -- but only what has not yet been lived in.")

@@ -27,14 +27,20 @@ local function grant_starting_credit(c)
     return true
 end
 
--- ⚠️⚠️ IN AN NPC SCRIPT `e.self` IS THE NPC AND `e.other` IS THE PLAYER. Getting this backwards is
--- what broke her: `e.self:CharacterID()` is nil on an NPC, so the hail died with "attempt to call
--- method 'CharacterID' (a nil value)" after she had already spoken her lines -- which read as her
--- working right up until the moment she was supposed to do something.
--- 📌 The opposite convention holds in global_player.lua, where `e.self` IS the player. That is why
--- aotv4_regions.M.handle_say uses e.self and is correct; do not "fix" it to match this file.
+-- ⚠️⚠️ IN AN NPC SCRIPT `e.self` IS THE NPC AND `e.other` IS THE PLAYER -- BUT `e.other` ARRIVES AS A
+-- `Lua_Mob`, NOT A `Lua_Client` (CLAUDE.md section 24). GetClass/GetRace/GetLevel exist on a Mob, so
+-- those read fine, but Client-only methods are NIL on it: `e.other:CharacterID()` (region buckets)
+-- and `e.other:HasRegion()` both died with "attempt to call method '...' (a nil value)" AFTER she
+-- had spoken her lines -- which read as her working right up until the moment she did something.
+-- The fix is to resolve the real client the way every stock NPC script here does:
+--     eq.get_entity_list():GetClientByID(e.other:GetID())
+-- 📌 The opposite convention holds in global_player.lua, where `e.self` IS ALREADY the client. That
+-- is why aotv4_regions.M.handle_say uses e.self and is correct; do not "fix" it to match this file.
+local function player(e) return eq.get_entity_list():GetClientByID(e.other:GetID()) end
+
 local function offer(e)
-    local c = e.other
+    local c = player(e)
+    if not c then return end
     local n = regions.credits(c)
 
     if n < 1 then
@@ -53,7 +59,8 @@ local function offer(e)
 end
 
 function event_say(e)
-    local c = e.other          -- ⚠️ the PLAYER; e.self is Alessa
+    local c = player(e)        -- ⚠️ the PLAYER as a real Lua_Client; e.other is a Lua_Mob, e.self is Alessa
+    if not c then return end
 
     if e.message:findi("hail") then
         e.self:Say("Well met. I am Alessa, and I keep the ways out of this place.")
