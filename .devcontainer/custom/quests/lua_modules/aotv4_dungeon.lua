@@ -169,6 +169,18 @@ M.BOSS_NPC        = 2000301
 M.DURATION_SECS   = 21600      -- 360 minutes, the same as every native DoN mission
 M.SAY_TRIGGER     = "delve"
 
+-- ---------------------------------------------------------------- group scaling
+-- How much harder the delve gets per EXTRA person beyond the first. Applied last of all, on top of
+-- both the level scaling and the difficulty mode.
+-- ⚠️ HP rises much faster than damage, deliberately. N players bring roughly N times the damage
+-- output, so mob health has to keep pace or a group simply melts a dungeon tuned for one. Incoming
+-- damage per player should rise only a little: a group that dies to one-shots is not "difficult", it
+-- is just unplayable, and the point of grouping is that the fight LASTS longer.
+-- 📌 At the defaults a full group of 6 fights mobs with 5.25x health hitting 2x as hard. Untuned
+-- until it is played -- these two numbers are the whole difficulty dial for group delves.
+M.GROUP_HP_PER_EXTRA  = 0.85
+M.GROUP_DMG_PER_EXTRA = 0.20
+
 -- ---------------------------------------------------------------- difficulty modes
 -- ⚠️⚠️ EACH MODE NEEDS ITS OWN TASK ROWS, and that is not a style choice: `task_activities.goalcount`
 -- is a STATIC DB COLUMN. Nothing can change a kill target at runtime, so a mode that alters the count
@@ -232,7 +244,23 @@ function M.task_for(L, mode) return L.task + mode.taskoff end
 
 -- Live population cap for Swarm. Each kill is net +2 creatures, so ninety kills would otherwise try
 -- to put 270 extra bodies in the zone; spawns above the cap are silently skipped rather than queued.
+-- ⚠️⚠️ THIS COUNTS SWARM-SPAWNED MOBS ONLY, not the zone's population. It was originally compared
+-- against the FULL NPC list, and since a delve instance naturally holds 150-470 creatures the test
+-- `alive < 40` could never pass -- Swarm never split anything, ever. Raising the number would have
+-- been the wrong fix: the zones differ by a factor of three (delvea 188, thenest 472), so no single
+-- total can mean the same thing in each. Counting only what Swarm added does.
 M.SWARM_CAP = 40
+
+-- ⚠️ TEMPORARY. Prints the swarm decision to the killer on every trash death in Swarm mode. Turn OFF
+-- once splitting is confirmed working in play -- it is one chat line per kill, per player.
+M.SWARM_DEBUG = true
+
+-- ---------------------------------------------------------------- Onslaught clock
+-- ⚠️ MUST MATCH `tasks.duration` on the Onslaught task rows (2000340-2000345), which is 1800. The
+-- task system owns the actual failure; this constant only drives the countdown announcements, so if
+-- the two drift the warnings simply lie about a deadline the engine still enforces.
+M.ONSLAUGHT_SECS      = 1800
+M.ONSLAUGHT_WARN_EVERY = 5     -- minutes between chat warnings
 
 -- ---------------------------------------------------------------- buckets
 -- cleared_<charid>  highest layer index cleared        (permanent -- this is the unlock chain)
@@ -244,8 +272,31 @@ local function get_cleared(c)
     return tonumber(eq.get_data(bkey(c, "cleared"))) or 0
 end
 
+-- ⚠️⚠️ THE LADDER ADVANCES BY AT MOST ONE RUNG PER CLEAR, AND THAT CLAMP IS THE ANTI-CARRY RULE.
+-- Group delves credit every member with the full clear (they fought a dungeon scaled up for the whole
+-- party), but crediting the RUNG outright would mean a character who has cleared nothing could be
+-- taken into rung 10 by friends and walk out with rungs 1-10 all unlocked -- skipping the entire
+-- ladder in one run, and with it every difficulty step the ladder exists to impose.
+--
+-- ⚠️ This is a NO-OP for solo play, by construction rather than by luck: `unlocked_count` is
+-- `cleared + 1`, so entering rung N at all requires `cleared >= N-1`, which makes `cleared + 1 >= N`
+-- and the clamp never binds. It only ever bites on somebody carried above their own progress.
+--
+-- ⚠️ Enforced HERE rather than at the call site, so the invariant cannot be bypassed by a future
+-- second caller -- the same reasoning that put the ScaleNPC ordering inside scale.scale_npc.
 local function set_cleared(c, n)
-    if n > get_cleared(c) then eq.set_data(bkey(c, "cleared"), tostring(n)) end
+    local cur = get_cleared(c)
+
+    -- ⚠️⚠️ ONE RUNG PER CLEAR, FULL STOP. The ladder is a record of what this character has beaten, so
+    -- it advances by exactly one step however deep the dungeon was.
+    -- This is what stops a group carry handing out the ladder: a character who has cleared nothing,
+    -- taken into rung 30 by friends, walks out with rung 1 -- they still have to beat 1, then 2, then
+    -- 3 themselves. Grouping can make each step easier; it cannot skip any of them.
+    -- ⚠️ A level term was briefly added to this ceiling to match a level-based unlock. Both are gone
+    -- -- see M.unlocked_count for why character level must not open rungs.
+    if n > cur + 1 then n = cur + 1 end
+
+    if n > cur then eq.set_data(bkey(c, "cleared"), tostring(n)) end
 end
 
 
@@ -451,6 +502,89 @@ end
 
 local function clear_run(c) eq.delete_data(bkey(c, "run")) end
 
+-- ---------------------------------------------------------------- the party manifest
+-- ⚠️⚠️ THE ROSTER IS LOCKED AT ENTRY AND IS KEYED BY INSTANCE, NOT BY CHARACTER.
+-- Keyed by instance because every other zone has to be able to answer "is this character allowed in
+-- delve 105?" -- a per-character bucket could only answer it for whoever is asking. Locked at entry
+-- because the group can change while the run is going: someone invited to the group ten minutes in
+-- was not there when it started and must not be able to walk into a dungeon that was scaled without
+-- them. The manifest is the ONLY definition of membership; the live group object is not consulted
+-- again after entry.
+-- 📌 A solo run writes a one-name manifest rather than skipping it, so nothing downstream needs a
+-- "was this a group?" branch -- solo is just a party of one.
+local function pkey(inst) return "delve_party_" .. tostring(inst) end
+
+local function set_party(inst, ids)
+    eq.set_data(pkey(inst), table.concat(ids, ","))
+end
+
+local function get_party(inst)
+    local out = {}
+    for id in (eq.get_data(pkey(inst)) or ""):gmatch("(%d+)") do
+        out[#out + 1] = tonumber(id)
+    end
+    return out
+end
+
+local function clear_party(inst) eq.delete_data(pkey(inst)) end
+
+local function in_party(inst, char_id)
+    for _, id in ipairs(get_party(inst)) do
+        if id == char_id then return true end
+    end
+    return false
+end
+
+-- ⚠️⚠️ IS ANYBODY ELSE STILL ON THIS RUN? THE TEARDOWN TEST, AND IT MUST NOT USE THE ENTITY LIST.
+-- Three of the four teardown paths run from OUTSIDE the instance -- walking a zone line and camping
+-- both fire in the zone the player has arrived in, and death fires as the engine is already sending
+-- them to their bind point. `eq.get_entity_list()` only ever reaches the CALLING zone, so an
+-- entity-list count would read zero from any of them and cheerfully destroy a dungeon full of people.
+-- Data buckets are global, so each member's own run bucket answers the question from anywhere.
+-- 📌 A link-dead member still holds their run bucket (M.on_disconnect deliberately leaves it), so
+-- they keep the instance alive for their own return -- which is the whole point of the rejoin rule.
+-- The instance's own 6 hour timer is the backstop if nobody ever comes back.
+local function party_still_running(inst, exclude_char_id)
+    for _, id in ipairs(get_party(inst)) do
+        if id ~= exclude_char_id then
+            local raw = eq.get_data("delve_run_" .. tostring(id)) or ""
+            local i   = raw:match("^%d+|(%d+)|")
+            if i and tonumber(i) == inst then return true end
+        end
+    end
+    return false
+end
+
+-- How many people the dungeon was scaled for. Read from the manifest rather than counted live, so a
+-- member who is link-dead or has stepped out does NOT soften the mobs for everyone still fighting.
+local function party_size(inst)
+    local n = #get_party(inst)
+    if n < 1 then n = 1 end
+    return n
+end
+
+-- Every party member currently standing in this instance, as Lua_Client. Used to pay out a clear and
+-- to decide whether the instance still has anyone in it.
+-- ⚠️ There is NO `Lua_Client:GetInstanceID()` binding on this build -- only `eq.get_zone_instance_id()`,
+-- which is the zone's. That is not a limitation here: a zone PROCESS serves exactly one instance, so
+-- every client in this entity list is in the same one by construction. Checking the zone once is both
+-- correct and cheaper than a per-client test that does not exist.
+-- ⚠️ `for cl in list.entries do`, NOT ipairs. GetClientList() returns a luabind container whose
+-- iterator is `.entries` -- ipairs over it yields NOTHING and the function silently returns empty,
+-- which here would read as "the party is gone" and tear the instance down under everyone. This is the
+-- idiom M.on_npc_spawn already uses; match it.
+local function party_clients_here(inst)
+    local out = {}
+    if not inst or eq.get_zone_instance_id() ~= inst then return out end
+    local clients = eq.get_entity_list():GetClientList()
+    for cl in clients.entries do
+        if cl and cl.valid and in_party(inst, cl:CharacterID()) then
+            out[#out + 1] = cl
+        end
+    end
+    return out
+end
+
 -- ⚠️⚠️ TRANSIT FLAG -- the thing that makes entering a delve possible at all.
 --
 -- `EVENT_DISCONNECT` FIRES ON EVERY ZONE TRANSFER, not just on camping or going link-dead. In
@@ -547,7 +681,21 @@ function M.send_history(c)
 end
 
 -- ---------------------------------------------------------------- unlock state
--- A layer is offerable if it is the first, or the one below it has been cleared.
+-- A layer is offerable if it is the first, or the one below it has been cleared. That is the whole
+-- rule: depth is EARNED by clearing, never granted.
+--
+-- ⚠️⚠️ DO NOT ADD A LEVEL TERM HERE. It was tried (2026-08-01) so that a level 7 character who had
+-- never delved could enter rung 7 instead of grinding up from rung 1, and it is wrong: character
+-- level is not an achievement in this system, so letting it hand out rungs is a free ride into
+-- harder content nobody cleared their way to. The ladder is the record of what you have BEATEN.
+--
+-- 📌 The thing that makes this humane, and the reason it does not need a level term, is that
+-- `delve_cleared_<charid>` is PERMANENT and survives the roguelite death reset (see M.on_death --
+-- it clears the run, the back point and the boss/chest keys, and deliberately never touches this).
+-- Levels are per run; delve depth is meta progression, like AA. So the grind up from rung 1 is paid
+-- ONCE per character, not once per life: after a death drops you to level 1, every rung you had
+-- already beaten is still open, and you pick the one that matches whatever level you have levelled
+-- back to.
 function M.unlocked_count(c)
     local n = get_cleared(c) + 1
     if n > #M.LAYERS then n = #M.LAYERS end
@@ -687,7 +835,8 @@ function M.enter(c, level, mode_id)
         return
     end
 
-    set_run(c, idx, inst, L.zone, mode.id)
+    -- ⚠️ set_run is done per member in the party loop below, not here -- every member needs their own
+    -- run bucket or exit, death and the tick only work for the leader.
 
     -- ⚠️⚠️ REGISTER THE CHARACTER ON THE INSTANCE EXPLICITLY. Without this the client is told to zone,
     -- world records the destination, the delve zone boots and approves the transfer -- and then the
@@ -705,11 +854,74 @@ function M.enter(c, level, mode_id)
     -- `eq.create_instance` creates the instance but adds nobody to it. It is not optional and it has
     -- no fallback: without it every entry ends in an eviction to the safe return.
     -- ⚠️ Argument order is (instance_id, character_id), NOT the reverse.
-    eq.assign_to_instance_by_char_id(inst, c:CharacterID())
+    -- ⚠️⚠️ THE ROSTER IS TAKEN HERE AND NEVER AGAIN. Everyone grouped with the leader AND standing in
+    -- this zone right now is in; anyone invited later is not, and anyone in another zone is not.
+    --   * Zone-local is a hard constraint, not a policy choice: `eq.get_entity_list()` only reaches
+    --     THIS zone, so a member in Freeport cannot be resolved to a Lua_Client, cannot be assigned
+    --     and cannot be moved. They are told they were left behind rather than silently dropped.
+    --   * `Lua_Group:GetMember(i)` returns a **Lua_Mob**, not a Lua_Client -- `CharacterID` does not
+    --     exist on Lua_Mob and calling it is a runtime nil (the §24 `e.other` trap). Everything goes
+    --     through M.as_client, which resolves via the entity list.
+    local party, party_c = {}, {}
+    local grp = c:GetGroup()
+    if grp and grp.valid then
+        for i = 0, grp:GroupCount() - 1 do
+            local m = M.as_client(grp:GetMember(i))
+            -- ⚠️ Skip anyone already inside a delve rather than yanking them out of it.
+            if m and m.valid and not M.current_run(m) then
+                party[#party + 1]   = m:CharacterID()
+                party_c[#party_c + 1] = m
+            end
+        end
+    end
+    -- The leader is always in, even ungrouped -- and guard against them already being counted.
+    local have_leader = false
+    for _, id in ipairs(party) do if id == c:CharacterID() then have_leader = true break end end
+    if not have_leader then
+        table.insert(party, 1, c:CharacterID())
+        table.insert(party_c, 1, c)
+    end
+
+    set_party(inst, party)
+
+    -- ⚠️ Assign EVERY member before ANY of them moves. `eq.create_instance` adds nobody, and a member
+    -- who is moved without a membership row is silently evicted by world's own entry check
+    -- (VerifyInstanceAlive -> CheckInstanceByCharID) -- see the note below. Doing this in one pass
+    -- first means a slow assign cannot race somebody else's move.
+    -- ⚠️ Argument order is (instance_id, character_id), NOT the reverse.
+    for _, id in ipairs(party) do
+        eq.assign_to_instance_by_char_id(inst, id)
+    end
 
     -- ⚠️ Wipe the difficulty ledger BEFORE entering. It is per run, and a stale one would credit this
     -- run with the kills of the last -- which is exactly the accounting a gear-swapper wants.
     scale.reset_ledger(c)
+
+    -- ---------------------------------------------------------------- per member setup
+    -- Everything each member needs in order to be a full participant rather than a passenger: their
+    -- own way home, their own run bucket, their own clean ledger.
+    -- ⚠️ Their OWN back position, read from where each of them is standing. Sending the group back to
+    -- the leader's spot on exit would teleport people across the zone they were standing in.
+    -- ⚠️ The leader is in this list too, so their bucket is simply written twice -- harmless, and much
+    -- safer than a special case that has to stay in step with the loop.
+    for _, m in ipairs(party_c) do
+        eq.set_data(bkey(m, "back"), string.format("%d|%d|%d|%d",
+            eq.get_zone_id(), math.floor(m:GetX()), math.floor(m:GetY()), math.floor(m:GetZ())))
+        set_run(m, idx, inst, L.zone, mode.id)
+        scale.reset_ledger(m)
+        -- Onslaught's countdown clock. Stamped for every member so each of them gets their own
+        -- warnings, and cleared warning state so a previous run cannot suppress this run's.
+        eq.set_data(bkey(m, "start"), tostring(os.time()))
+        eq.delete_data(bkey(m, "warn"))
+    end
+
+    -- Tell anyone who was in the group but could not be brought, so being left standing in the field
+    -- is a message rather than a mystery.
+    if grp and grp.valid and #party < grp:GroupCount() then
+        c:Message(MT.Yellow, string.format(
+            "%d of your group could not be brought -- they must be in this zone and not already in a delve.",
+            grp:GroupCount() - #party))
+    end
 
     -- The journal entry. ⚠️ enforce_level_requirement = false: the task's min_level tiers exist so it
     -- READS like a native DoN mission, but the unlock chain is the real gate and a level 45 character
@@ -718,17 +930,27 @@ function M.enter(c, level, mode_id)
     -- (`L.task + mode.taskoff`) because goalcount and duration are static DB columns -- see M.MODES.
     -- ⚠️ Clear ANY delve task, not just this mode's: switching modes between runs would otherwise
     -- leave the previous mode's journal entry sitting alongside the new one.
+    -- ⚠️ EVERY member gets their own journal entry. Tasks are per character here, so a member without
+    -- one has no visible objective and no completion event of their own -- they would be along for the
+    -- ride with nothing in the journal and nothing paid out at the end.
     local task_id = M.task_for(L, mode)
-    for _, m in ipairs(M.MODES) do
-        local t = M.task_for(L, m)
-        if c:IsTaskActive(t) then c:RemoveTaskByTaskID(t) end
+    for _, m in ipairs(party_c) do
+        for _, md in ipairs(M.MODES) do
+            local t = M.task_for(L, md)
+            if m:IsTaskActive(t) then m:RemoveTaskByTaskID(t) end
+        end
+        m:AssignTask(task_id, 0, false)
     end
-    c:AssignTask(task_id, 0, false)
 
-    if mode.id == M.MODE_DEFAULT then
-        c:Message(MT.Yellow, string.format("The way into %s opens before you.", L.name))
-    else
-        c:Message(MT.Yellow, string.format("The way into %s opens before you -- %s.", L.name, mode.name))
+    local opening = (mode.id == M.MODE_DEFAULT)
+        and string.format("The way into %s opens before you.", L.name)
+        or  string.format("The way into %s opens before you -- %s.", L.name, mode.name)
+    for _, m in ipairs(party_c) do
+        m:Message(MT.Yellow, opening)
+        if #party > 1 then
+            m:Message(MT.Yellow, string.format(
+                "You enter with %d others. The delve has been strengthened to match.", #party - 1))
+        end
     end
 
     -- ⚠️⚠️ MovePCInstance, NOT MovePCDynamicZone -- AND THAT IS NOT A STYLE CHOICE. Using the DZ
@@ -757,8 +979,15 @@ function M.enter(c, level, mode_id)
     -- ⚠️ Deferring the DZ call behind a timer instead would also "work" and is the wrong fix: it
     -- races the world round-trip, and there is no upper bound on that reply.
     -- ⚠️ MUST be set before the move: the move is what raises event_disconnect in this zone.
-    set_transit(c)
-    c:MovePCInstance(L.zoneid, inst, L.x, L.y, L.z, L.h or 0)
+    -- ⚠️⚠️ MOVE LAST AND MOVE EVERYONE, and set each member's transit flag immediately before their
+    -- own move. The flag is what stops event_disconnect -- which fires on every zone transfer, not
+    -- just a camp -- from tearing that member's run down while they are still on the loading screen.
+    -- One flag for the leader is not enough: each member raises their own disconnect.
+    -- ⚠️ The leader is moved with everyone else, so nothing after this loop may touch `c`.
+    for _, m in ipairs(party_c) do
+        set_transit(m)
+        m:MovePCInstance(L.zoneid, inst, L.x, L.y, L.z, L.h or 0)
+    end
 end
 
 -- ---------------------------------------------------------------- scaling
@@ -784,6 +1013,33 @@ function M.on_npc_spawn(e)
     local npcid = npc:GetNPCTypeID()
     if npcid == M.CHEST_NPC or npcid == M.BOSS_NPC then return end
 
+    -- ⚠️⚠️ PETS ARE NPCs, AND THIS HANDLER RUNS FOR EVERY NPC THAT SPAWNS. Without this guard the
+    -- delve treats a player's own pet as dungeon furniture and does all of the following to it:
+    --   * SCALES IT DOWN to the delve's effective level -- ScaleNPC rewrites hp, damage, AC, resists
+    --     AND `hp_regen_per_second` wholesale from npc_scale_global_base. That last one is why pets
+    --     "stopped regening": their regen was being overwritten with a level 1 mob's.
+    --   * NERFS ITS SPELLS -- the spellscale/healscale proportioning added for mob casters applies to
+    --     a magician's pet just as happily.
+    --   * DEPOPS IT AT RANDOM in any mode with `thin > 0`. The pet simply vanishes mid fight.
+    --   * RE-APPLIES all of it every 10 seconds via M.rescale_zone.
+    --   * strips its loot and cash, which is harmless but equally wrong.
+    -- ⚠️ GetOwnerID rather than IsPet: it also covers charmed mobs, swarm/temporary pets and
+    -- mercenaries -- anything with an owner belongs to a player and is not part of the dungeon.
+    if (npc:GetOwnerID() or 0) ~= 0 then return end
+
+    -- ⚠️ INVISIBLE DoN EVENT ACTORS ARE REMOVED. race 127 is EQ's invisible-man model and every one of
+    -- these in the six delve zones is an untargetable level 1 controller left over from the native
+    -- Dragons of Norrath missions -- `#Event_Controller`, `#Canceller`, `#Simple_Task_Invis`,
+    -- `#a_cursed_chest`, and a dozen nameless `_`. We do not run those missions, so they drive nothing
+    -- here; they just sit in the instance being unkillable and unexplainable.
+    -- 📌 They carry NO spell list and are level 1, so they are NOT the source of any large hit -- see
+    -- the spellscale note in aotv4_dungeon_scale.M.scale_npc for what actually was. Removing them is
+    -- tidying, not a damage fix.
+    if npc:GetRace() == 127 then
+        npc:Depop()
+        return
+    end
+
     -- ⚠️⚠️ STRIP THE STOCK LOOT. These are Dragons of Norrath zones, so the mobs carry DoN drops --
     -- an expansion the server does not even have unlocked (era caps at OoW, section 12). A level 3
     -- delve was handing out gear from six expansions past anything else in the game, which made the
@@ -797,6 +1053,15 @@ function M.on_npc_spawn(e)
     -- spawns while the instance is momentarily empty must still lose its loot.
     npc:ClearItemList()
     npc:RemoveCash()
+    -- ⚠️⚠️ THE STRIP ALONE STOPPED WORKING WHEN INDIVIDUAL LOOT LANDED, AND THIS IS WHY.
+    -- Clearing the item list here empties the mob at SPAWN, but individual loot re-rolls the whole
+    -- loottable at DEATH (NPC::Death), so delve mobs started dropping again -- the exact thing the
+    -- lines above exist to prevent, and the reason gear from six expansions ahead was showing up in
+    -- the Advanced Loot window mid-delve.
+    -- The flag is read by the individual-loot block in NPC::Death, which skips the roll entirely.
+    -- ⚠️ An entity variable rather than zeroing the loottable id: there is no SetLoottableID binding
+    -- on Lua_NPC (only a getter), and this also survives anything that re-reads the npc_types row.
+    npc:SetEntityVariable("delve_noloot", "1")
 
     -- Scaled to the PLAYER, not just to the layer. The layer level is the floor; how far above the
     -- naked expectation for their level the player is decides the rest (aotv4_dungeon_scale.lua).
@@ -846,8 +1111,24 @@ function M.on_npc_spawn(e)
     -- ⚠️⚠️ MODE MULTIPLIERS GO LAST, AFTER scale.apply -- which calls ScaleNPC, and ScaleNPC rewrites
     -- stats wholesale from npc_scale_global_base. Anything applied before it is silently discarded.
     -- This is the same ordering rule already recorded for ModifyNPCStat in §24.
+    M.apply_run_multipliers(npc, mode, inst)
+end
+
+-- ⚠️⚠️ THE MODE AND GROUP MULTIPLIERS LIVE IN ONE FUNCTION BECAUSE THEY MUST BE RE-APPLIED AFTER
+-- *EVERY* ScaleNPC, NOT JUST THE ONE AT SPAWN.
+-- `scale.apply` calls ScaleNPC, which rewrites hp/damage/ac wholesale from npc_scale_global_base --
+-- so the 10 second out-of-combat sweep in M.rescale_zone was silently STRIPPING both multipliers off
+-- every mob it touched, resetting a Hard six-man delve to Standard solo tuning mid run. Registering
+-- this as `scale.post_scale_hook` (bottom of this file) means anything that re-scales a mob puts them
+-- back, and there is one definition to keep correct.
+-- ⚠️ Ordering inside is load bearing: mode first, then group, so a group on Hard is a hard delve made
+-- HARDER rather than one multiplier replacing the other.
+function M.apply_run_multipliers(npc, mode, inst)
+    if not npc or not npc.valid then return end
+    local n = npc:CastToNPC()
+    if not n or not n.valid then return end
+
     if mode then
-        local n = npc:CastToNPC()
         if (mode.hp or 1) ~= 1 then
             local hp = n:GetMaxHP() * mode.hp
             if hp < 1 then hp = 1 end
@@ -858,6 +1139,24 @@ function M.on_npc_spawn(e)
             n:ModifyNPCStat("min_hit", tostring(math.floor(n:GetMinDMG() * mode.dmg)))
             n:ModifyNPCStat("max_hit", tostring(math.floor(n:GetMaxDMG() * mode.dmg)))
         end
+    end
+
+    -- ⚠️ The size comes from the MANIFEST, not from counting who is standing here. Counting live would
+    -- soften every mob the moment somebody went link-dead or stepped out, and re-harden them when they
+    -- came back -- the roster was fixed at entry and the difficulty follows the roster.
+    -- 📌 HP scales far harder than damage on purpose: N players bring ~N times the damage output, so
+    -- health has to keep pace or a group melts the dungeon; incoming damage per player should rise
+    -- only a little, because a one-shot is not difficulty. Both are tunable at the top of the module.
+    local psize = party_size(inst)
+    if psize > 1 then
+        local extra = psize - 1
+        local hp    = n:GetMaxHP() * (1.0 + M.GROUP_HP_PER_EXTRA * extra)
+        if hp < 1 then hp = 1 end
+        n:ModifyNPCStat("max_hp", tostring(math.floor(hp)))
+        n:SetHP(math.floor(hp))        -- or it spawns at the old hp and reads as already damaged
+        local dm = 1.0 + M.GROUP_DMG_PER_EXTRA * extra
+        n:ModifyNPCStat("min_hit", tostring(math.floor(n:GetMinDMG() * dm)))
+        n:ModifyNPCStat("max_hit", tostring(math.floor(n:GetMaxDMG() * dm)))
     end
 end
 
@@ -974,7 +1273,11 @@ function M.spawn_boss(c, L, run, ordinal)
     -- guarding; the power adjustment can only ever make it harder, never softer.
     local blvl = math.max(eff, L.level) + M.BOSS_LVL_BONUS
     if blvl < 1 then blvl = 1 end
-    boss:CastToNPC():ScaleNPC(blvl)
+    -- ⚠️⚠️ scale.scale_npc, NEVER a bare ScaleNPC. ScaleNPC RESETS spellscale to npc_scale_global_base's
+    -- value, which is 100 at every level -- so calling it directly here handed the boss FULL authored
+    -- spell damage no matter what rung it was on. The wrapper reads the natives first and puts spell
+    -- and heal output back in proportion afterwards.
+    scale.scale_npc(boss:CastToNPC(), blvl)
 
     -- Then the boss multipliers, then the MODE multipliers on top of those, so Hard's boss is twice
     -- the boss rather than twice the trash.
@@ -997,6 +1300,22 @@ function M.spawn_boss(c, L, run, ordinal)
     if hp < hp_floor then hp = hp_floor end
     if hi < hi_floor then hi = hi_floor end
     if lo < hi * 0.4 then lo = hi * 0.4 end   -- keep the spread sane rather than 1-to-N
+
+    -- ⚠️⚠️ THE GROUP MULTIPLIER HAS TO BE APPLIED HERE TOO -- the boss is EXCLUDED from
+    -- M.on_npc_spawn (see the CHEST_NPC/BOSS_NPC guard at the top of it, which exists so the boss is
+    -- not thinned or re-scaled), and that is the only other place the party size is read. So the
+    -- trash in a six-man delve had 5.25x health while the warden guarding it was still tuned for one
+    -- player -- making the boss the EASIEST part of a group run, which is exactly backwards.
+    -- ⚠️ Applied AFTER the floors, not alongside the mode multipliers, so it always multiplies the
+    -- final figure. Folding it in above would let the low-rung floors swallow it whole, and the
+    -- bottom of the ladder is precisely where a group is most likely to be forming.
+    local psize = party_size(run.instance)
+    if psize > 1 then
+        local extra = psize - 1
+        hp = hp * (1.0 + M.GROUP_HP_PER_EXTRA  * extra)
+        lo = lo * (1.0 + M.GROUP_DMG_PER_EXTRA * extra)
+        hi = hi * (1.0 + M.GROUP_DMG_PER_EXTRA * extra)
+    end
 
     npc:ModifyNPCStat("max_hp",  tostring(math.floor(hp)))
     npc:ModifyNPCStat("min_hit", tostring(math.floor(lo)))
@@ -1153,9 +1472,17 @@ function M.on_task_complete(e)
     -- shared place, because the outcome letter differs and it is the outcome that makes the row
     -- meaningful. M.record_history no-ops on a run with no kills.
     M.record_history(c, run.layer, "C")
-    if run.layer < #M.LAYERS then
+    -- ⚠️ Announce what is ACTUALLY open to THIS character, read back from their own progress after the
+    -- clamp in set_cleared -- not `run.layer + 1`. For a member carried above their own rung those two
+    -- are different, and naming the run's rung would promise a delve they still cannot enter. Reading
+    -- it back also means this line can never drift from whatever set_cleared decided.
+    local nxt = M.unlocked_count(c)
+    if nxt <= #M.LAYERS and nxt > run.layer then
         c:Message(MT.Yellow, string.format("The delve at level %d is now open to you.",
-            M.LAYERS[run.layer + 1].level))
+            M.LAYERS[nxt].level))
+    elseif nxt <= #M.LAYERS then
+        c:Message(MT.Yellow, string.format(
+            "You advance one step: the delve at level %d is now open to you.", M.LAYERS[nxt].level))
     end
     M.send_list(c)
 
@@ -1164,6 +1491,17 @@ function M.on_task_complete(e)
     -- ⚠️ No AddLooter call: that binding is on Lua_CORPSE, not Lua_NPC, so it cannot be applied to a
     -- living chest -- the reward is placed on the chest NPC by M.stock_chest below, so it arrives
     -- through the ordinary loot path once the chest is opened.
+    -- ⚠️⚠️ ONE CHEST PER DUNGEON, NOT ONE PER PLAYER. Every member holds their OWN copy of the task,
+    -- so in a group this handler fires once for each of them, within moments of each other -- and
+    -- without this guard each firing spawns another gilded chest with another augment and another pile
+    -- of platinum in it. The score, the charm and the history above are deliberately still per member
+    -- (everyone earns the run); it is only the physical reward that is shared.
+    -- ⚠️ Keyed by INSTANCE, and set BEFORE the spawn so two completions landing in the same tick
+    -- cannot both pass the test.
+    local chest_key = "delve_chest_" .. tostring(run.instance)
+    if (eq.get_data(chest_key) or "") ~= "" then return end
+    eq.set_data(chest_key, "1")
+
     local chest = eq.spawn2(M.CHEST_NPC, 0, 0, c:GetX(), c:GetY(), c:GetZ(), c:GetHeading())
 
     -- ⚠️ MAKE IT OBVIOUS. It lands wherever the last blow happened -- a corridor, a corner, on top of
@@ -1232,7 +1570,19 @@ function M.leave(c, reason)
 
     -- ⚠️ Destroy LAST, after the player is out. Destroying an instance somebody is standing in is
     -- how you get a client stuck in a zone that no longer exists.
-    if run.instance and run.instance > 0 then
+    --
+    -- ⚠️⚠️ AND ONLY IF NOBODY ELSE IS STILL IN IT. One member pressing Exit -- or looting the chest,
+    -- which routes through here too -- used to destroy the dungeon for the whole group, stranding
+    -- everyone else mid fight. The person leaving is out either way; the instance is only torn down
+    -- by the LAST one out. Same rule as M.on_disconnect.
+    -- ⚠️ Checked AFTER this member has been moved out, so they can no longer count themselves. The
+    -- explicit id test is kept anyway because the move may not have taken effect within this tick.
+    -- ⚠️ Tested AFTER clear_run above, so this member's own bucket is already gone and cannot count
+    -- them as still present.
+    if run.instance and run.instance > 0 and not party_still_running(run.instance, c:CharacterID()) then
+        clear_party(run.instance)
+        eq.delete_data("delve_boss_" .. tostring(run.instance))
+        eq.delete_data("delve_chest_" .. tostring(run.instance))
         eq.destroy_instance(run.instance)
     end
 end
@@ -1273,6 +1623,39 @@ end
 -- From global_player.event_timer, name "delvescale". Re-measures the player and re-scales anything in
 -- the instance that is not already fighting. No-op unless they are actually inside a delve, so the
 -- timer is harmless to leave running for everybody.
+-- ---------------------------------------------------------------- Onslaught countdown
+-- Onslaught is "the same delve against a clock" and the clock was completely invisible: the task
+-- carries a 1800 second duration and the engine fails the run when it lapses, but nothing ever told
+-- the player how long was left, so the mode ended without warning.
+--
+-- ⚠️ Announced on the EXISTING run tick (every RESCALE_SECS) rather than a timer of its own -- a
+-- second repeating client timer per player, just to print a line every five minutes, is the kind of
+-- per-client work section 18 warns about.
+-- ⚠️ The mark is `ceil(seconds_left / 300) * 5`, NOT floor. Floor rolls over one second past each
+-- boundary -- at 1499 seconds it would announce "20 minutes" when 25 remain. Ceil holds the label
+-- until the boundary is genuinely crossed.
+-- ⚠️ Warnings are per CHARACTER (their own bucket), so in a group everyone is told, and a member who
+-- joined late or rejoined is not silently left without a clock.
+function M.onslaught_tick(c, run)
+    if not run or run.mode ~= "onslaught" then return end
+
+    local started = tonumber(eq.get_data(bkey(c, "start")))
+    if not started then return end
+
+    local left = M.ONSLAUGHT_SECS - (os.time() - started)
+    if left <= 0 then return end          -- the task system owns the actual failure, not this
+
+    local step = M.ONSLAUGHT_WARN_EVERY
+    local mark = math.ceil(left / (step * 60)) * step
+    local last = tonumber(eq.get_data(bkey(c, "warn"))) or 9999
+
+    if mark < last then
+        eq.set_data(bkey(c, "warn"), tostring(mark))
+        c:Message(MT.Yellow, string.format(
+            "Onslaught: %d minute%s remain.", mark, mark == 1 and "" or "s"))
+    end
+end
+
 function M.on_tick(c)
     if not c or not c.valid then return end
     local run = M.current_run(c)
@@ -1285,6 +1668,7 @@ function M.on_tick(c)
     if eq.get_zone_short_name() ~= L.zone then return end
     if (eq.get_zone_instance_id() or 0) == 0 then return end
 
+    M.onslaught_tick(c, run)
     scale.rescale_zone(c, L.level)
 end
 
@@ -1294,10 +1678,28 @@ end
 -- either, so resolve through the entity list by id, which is the approach aotv4_sinewtap.lua already
 -- uses for exactly this reason.
 function M.as_client(mob)
-    if not mob or not mob.valid or not mob:IsClient() then return nil end
-    local c = eq.get_entity_list():GetClientByID(mob:GetID())
-    if not c or not c.valid then return nil end
-    return c
+    if not mob or not mob.valid then return nil end
+
+    if mob:IsClient() then
+        local c = eq.get_entity_list():GetClientByID(mob:GetID())
+        if c and c.valid then return c end
+        return nil
+    end
+
+    -- ⚠️⚠️ A KILL BY YOUR PET IS YOUR KILL. `e.other` is whoever landed the killing blow, so for a
+    -- magician, necromancer, beastlord or anyone using a swarm pet or mercenary it is the PET -- not a
+    -- client at all. This used to return nil there, and every caller bails on nil, so a pet kill
+    -- scored NOTHING in the ledger and never split a mob in Swarm. For a pet class the whole mode and
+    -- the whole score sheet were silently inert.
+    -- ⚠️ Resolved through GetOwnerID rather than IsPet, matching the guard in M.on_npc_spawn: it also
+    -- covers charmed mobs, swarm/temporary pets and mercenaries.
+    local owner_id = mob:GetOwnerID() or 0
+    if owner_id ~= 0 then
+        local o = eq.get_entity_list():GetClientByID(owner_id)
+        if o and o.valid then return o end
+    end
+
+    return nil
 end
 
 -- A creature died in a delve: bank what it was worth. Called from global_npc.event_death_complete.
@@ -1308,7 +1710,21 @@ function M.on_npc_death(e)
     if not run then return end
     -- ⚠️ The rung is passed so an UNSCALED mob scores as the dungeon rather than as its own native
     -- Dragons of Norrath level (60-70). See the fallback in record_kill for what that cost.
-    scale.record_kill(c, e.self, run.layer)
+    --
+    -- ⚠️⚠️ EVERY PARTY MEMBER IN THE INSTANCE BANKS THE FULL KILL, not a share and not just the killer.
+    -- The delve is scaled UP for the group (M.GROUP_*), so the fight really is harder for everyone;
+    -- paying only whoever landed the killing blow would make the healer and the tank score nothing,
+    -- and splitting it would make grouping strictly worse than soloing at the same rung.
+    -- ⚠️ Falls back to the killer alone if the manifest lookup finds nobody -- an old run started
+    -- before group delves existed has no manifest, and must still score.
+    local scored = party_clients_here(run.instance)
+    if #scored == 0 then
+        scale.record_kill(c, e.self, run.layer)
+    else
+        for _, m in ipairs(scored) do
+            scale.record_kill(m, e.self, run.layer)
+        end
+    end
 
     local mode = run.modedef or M.mode_by_id(M.MODE_DEFAULT)
     local L    = M.LAYERS[run.layer]
@@ -1323,7 +1739,11 @@ function M.on_npc_death(e)
     -- count is not readable from Lua here, and re-deriving it wrongly would either stall the run one
     -- boss short or spawn an endless chain.
     if was_boss then
-        local key = bkey(c, "boss")
+        -- ⚠️⚠️ KEYED TO THE INSTANCE, NOT THE CHARACTER. Per character this breaks outright in a group:
+        -- member A kills boss 1 and their counter goes to 2, then member B kills boss 2 with a counter
+        -- still at 1 -- so B re-spawns boss 2 and the chain never terminates. There is one boss chain
+        -- per dungeon, so the dungeon is what has to own the count.
+        local key = "delve_boss_" .. tostring(run.instance)
         local n   = (tonumber(eq.get_data(key)) or 1)
         local want = mode.bosses or 1
         if n < want then
@@ -1343,17 +1763,52 @@ function M.on_npc_death(e)
     if (mode.swarm or 0) > 0 and e.self and e.self.valid then
         local id = e.self:GetNPCTypeID()
         if id ~= M.CHEST_NPC and id ~= M.BOSS_NPC then
-            local alive = 0
+            -- ⚠️⚠️ COUNT ONLY THE BODIES SWARM ITSELF ADDED, NOT EVERY NPC IN THE ZONE. This counted
+            -- the whole NPC list and compared it against SWARM_CAP (40) -- but a delve instance
+            -- naturally holds 150 to 470 creatures, so `alive < 40` was NEVER true and Swarm has
+            -- never split a single mob since it was written. The cap's own comment says what it was
+            -- always meant to be: a limit on the ~270 EXTRA bodies ninety kills would add.
+            -- ⚠️ Each spawn is tagged so it can be counted; an untagged mob is original population and
+            -- must not consume the budget.
+            local swarmed = 0
             local list = eq.get_entity_list():GetNPCList()
-            for _ in list.entries do alive = alive + 1 end
-            if alive < M.SWARM_CAP then
-                local x, y, z, h = e.self:GetX(), e.self:GetY(), e.self:GetZ(), e.self:GetHeading()
-                local room = M.SWARM_CAP - alive
+            for npc in list.entries do
+                if npc and npc.valid and (npc:GetEntityVariable("delve_swarm") or "") ~= "" then
+                    swarmed = swarmed + 1
+                end
+            end
+            local x, y, z, h = e.self:GetX(), e.self:GetY(), e.self:GetZ(), e.self:GetHeading()
+
+            -- ⚠️ DIAGNOSTIC -- set M.SWARM_DEBUG = false once this is confirmed working in play.
+            -- Reported twice as "not splitting" after two separate real fixes, and static reading has
+            -- not found a third fault, so this reports the actual decision instead of guessing again.
+            -- ⚠️ It prints the CORPSE COORDINATES deliberately: `event_death_complete` fires after the
+            -- death is fully processed, and if the mob is already torn down here x/y/z read as 0 --
+            -- in which case the duplicates ARE spawning, just at the map origin where nobody is
+            -- standing. That would look exactly like "nothing happened".
+            if M.SWARM_DEBUG then
+                c:Message(MT.Yellow, string.format(
+                    "[swarm] npc=%d at (%.0f, %.0f, %.0f)  live_swarm=%d/%d  will_spawn=%d",
+                    id, x, y, z, swarmed, M.SWARM_CAP,
+                    (swarmed < M.SWARM_CAP) and mode.swarm or 0))
+            end
+
+            if swarmed < M.SWARM_CAP then
+                local room = M.SWARM_CAP - swarmed
                 local n = mode.swarm < room and mode.swarm or room
                 for _ = 1, n do
                     -- ⚠️ Spawned at a small offset, not exactly on the corpse: three mobs sharing one
                     -- coordinate stack into a single unclickable pile.
-                    eq.spawn2(id, 0, 0, x + math.random(-6, 6), y + math.random(-6, 6), z, h)
+                    local spawned = eq.spawn2(id, 0, 0, x + math.random(-6, 6), y + math.random(-6, 6), z, h)
+                    -- ⚠️ eq.spawn2 returns a Lua_Mob, not a Lua_NPC (section 26) -- SetEntityVariable is
+                    -- on Mob so this is safe, but do not reach for an NPC-only method here.
+                    if spawned and spawned.valid then
+                        spawned:SetEntityVariable("delve_swarm", "1")
+                    elseif M.SWARM_DEBUG then
+                        -- spawn2 returning nothing is its own distinct failure and must not look the
+                        -- same as never having tried.
+                        c:Message(MT.Red, string.format("[swarm] spawn2(%d) returned nothing", id))
+                    end
                 end
             end
         end
@@ -1411,7 +1866,14 @@ function M.on_enter_zone(e)
     if zid then
         c:MovePC(tonumber(zid), tonumber(x), tonumber(y), tonumber(z), 0)
     end
-    if inst and inst > 0 then
+    -- ⚠️ Only if this member was the last one on the run. Walking a zone line out of a group delve
+    -- fails it for the person who walked, not for the group still fighting inside.
+    -- ⚠️ This handler runs in the zone they ARRIVED in, which is precisely why the test has to be the
+    -- bucket-based one -- an entity-list count here can never see the instance.
+    if inst and inst > 0 and not party_still_running(inst, c:CharacterID()) then
+        clear_party(inst)
+        eq.delete_data("delve_boss_" .. tostring(inst))
+        eq.delete_data("delve_chest_" .. tostring(inst))
         eq.destroy_instance(inst)
     end
 end
@@ -1441,11 +1903,34 @@ function M.on_disconnect(c)
     local run = M.current_run(c)
     if not run then return end
 
+    -- ⚠️⚠️ GOING LINK-DEAD IS NOT LEAVING THE DELVE ANY MORE -- the roster is locked at entry and a
+    -- member is entitled to come back. Tearing the run down here is what would make that impossible:
+    -- the instance would be destroyed under the people still fighting in it, and the returning player
+    -- would have no run bucket to come back to.
+    --
+    -- So the ONLY thing that ends a run on disconnect is being the LAST ONE OUT. While anybody else
+    -- is still standing in the instance it stays up, their runs stay live, and the dropped member
+    -- keeps their own run bucket + membership row -- which is exactly what lets world put them back
+    -- inside on login (they were saved standing in the instance, and CheckInstanceByCharID still
+    -- finds their row).
+    -- ⚠️ Counted through the manifest, not the group object: the group is not consulted after entry,
+    -- and a link-dead player may have been dropped from it entirely by the client.
+    if party_still_running(run.instance, c:CharacterID()) then
+        -- Someone is still on this run. Leave EVERYTHING standing -- this member's run bucket, their
+        -- back point and their instance membership -- because those three are exactly what lets world
+        -- put them back inside when they log in again.
+        return
+    end
+
+    -- Last one out: this is now the same teardown it always was.
+    -- ⚠️ The instance still has its own 6 hour timer, so even this is a tidy-up rather than the only
+    -- thing standing between us and an orphan.
     M.record_history(c, run.layer, "A")
     clear_run(c)
     eq.delete_data(bkey(c, "back"))
 
     if run.instance and run.instance > 0 then
+        clear_party(run.instance)
         eq.destroy_instance(run.instance)
     end
 end
@@ -1509,10 +1994,27 @@ function M.on_death(e)
     clear_run(c)
     eq.delete_data(bkey(c, "back"))
 
+    -- ⚠️⚠️ ONE DEATH DOES NOT END THE GROUP'S RUN. Dying still ends it for the person who died -- the
+    -- roguelite reset puts them at level 1, so they cannot continue -- but the survivors are still
+    -- fighting, and destroying the instance here used to take the dungeon down around them.
+    -- ⚠️ The dead player is NOT moved (the engine is already sending them to their bind point as part
+    -- of the death flow) and their party membership is deliberately left alone, so a rezzed or
+    -- returning member is not locked out of a run their group is still in.
+    -- ⚠️ party_still_running, not an entity-list count: this fires while the engine is already moving
+    -- the corpse's owner to their bind point, so the calling zone may not be the instance at all.
+    if party_still_running(run.instance, c:CharacterID()) then
+        c:Message(MT.Red, string.format("You have died. %s continues without you.",
+            L and L.name or "The delve"))
+        return
+    end
+
     c:Message(MT.Red, string.format("You have died. %s is lost, and the way in has closed.",
         L and L.name or "The delve"))
 
     if run.instance and run.instance > 0 then
+        clear_party(run.instance)
+        eq.delete_data("delve_boss_" .. tostring(run.instance))
+        eq.delete_data("delve_chest_" .. tostring(run.instance))
         eq.destroy_instance(run.instance)
     end
 end
@@ -1616,6 +2118,30 @@ function M.handle_say(e)
     end
 
     return false
+end
+
+-- ---------------------------------------------------------------- re-scaling hook
+-- ⚠️⚠️ Registered so that ANY re-scale puts the run's multipliers back. scale.apply calls ScaleNPC,
+-- which rewrites stats wholesale, so without this the out-of-combat sweep in scale.rescale_zone
+-- resets every mob it touches to Standard, solo tuning -- silently, mid run, on a 10 second timer.
+-- ⚠️ The hook is set HERE rather than the scale module requiring this one: aotv4_dungeon already
+-- requires aotv4_dungeon_scale, and having them require each other is a circular load.
+-- ⚠️ It re-derives the mode from the reference client's run rather than taking it as an argument,
+-- because rescale_zone has no idea what mode is running -- and one zone process can host several
+-- instances on different modes at once.
+scale.post_scale_hook = function(npc)
+    local inst = eq.get_zone_instance_id()
+    if not inst or inst == 0 then return end
+    local mode
+    local clients = eq.get_entity_list():GetClientList()
+    for cl in clients.entries do
+        if cl and cl.valid then
+            local run = M.current_run(cl)
+            if run and run.instance == inst then mode = run.modedef end
+            break
+        end
+    end
+    M.apply_run_multipliers(npc, mode, inst)
 end
 
 return M

@@ -45,10 +45,22 @@ local function get_found(client)
 	return out
 end
 
+-- ⚠️⚠️ ZONES THAT MUST NEVER BECOME A PORTAL DESTINATION, whatever the portal table says.
+-- Resplendent is the hub temple: you are BOUND there and you return by DYING, which is the whole
+-- roguelite loop (die at cap -> earn a region credit -> respawn at Alessa -> spend it). A book to it
+-- would let a player skip the death and turn the hub into a free bind-anywhere.
+-- ⚠️ Today this is also true by accident -- resplendent has no `doors` row to poknowledge and is not
+-- in pok_portals, so nothing can attune it. That is exactly why the rule is written down HERE as
+-- well: the accident quietly disappears the moment somebody regenerates the portal table or adds a
+-- book to the zone, and the failure would be silent (a new travel destination nobody intended).
+local never_attune = {
+	resplendent = true,
+}
+
 -- Add one portal short to the player's discovered set. Returns true only if it was newly added
 -- (so re-clicking a known book doesn't spam or re-push the list).
 local function attune(client, short)
-	if not short or not portals[short] then return false end
+	if not short or never_attune[short] or not portals[short] then return false end
 	local key  = found_key(client)
 	local data = eq.get_data(key) or ""
 	for s in data:gmatch("([^,]+)") do if s == short then return false end end   -- already known

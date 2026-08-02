@@ -66,7 +66,16 @@ M.WEIGHTS = { hp = 0.30, mana = 0.15, ac = 0.20, stats = 0.20, resists = 0.15 }
 -- How many effective levels a doubling of power is worth, and how far it may move the layer level.
 M.BUMP_PER_POWER = 12
 M.MAX_BUMP       = 20   -- a fully decked character can push the level 50 layer to 70
-M.MAX_DROP       = 5    -- ...and stripping down cannot drop it more than this below the layer
+M.MAX_DROP       = 5    -- ...and stripping down cannot drop it more than this many levels, OR
+M.MAX_DROP_FRAC  = 0.20 -- ...this fraction of the rung, whichever is SMALLER.
+-- ⚠️⚠️ THE FRACTION IS WHAT MAKES THE CLAMP MEAN THE SAME THING AT EVERY RUNG. A flat 5 levels is a
+-- 10 percent softening at rung 50 and a total collapse at rung 2, where it hits the `eff < 1` floor
+-- and spawns a LEVEL 1 dungeon that is both trivial and worth almost nothing. At 0.20 the drop is
+-- proportional: 0.4 levels at rung 2, 2 at rung 10, and the flat 5 only takes over from rung 25 up.
+-- 📌 There is deliberately no matching fraction on MAX_BUMP: pushing a low rung UP is a choice the
+-- player made by gearing, and it makes the dungeon harder and worth more -- it cannot produce the
+-- degenerate "nothing to fight, nothing to earn" state that the downward clamp could.
+
 
 -- Power has to move by this much before living mobs are re-scaled. Without a deadband a single buff
 -- landing or fading would re-scale the whole zone.
@@ -134,12 +143,49 @@ function M.effective_level(layer_level, c)
     local power = M.power(c)
     local delta = M.BUMP_PER_POWER * (power - 1.0)
 
-    if delta >  M.MAX_BUMP then delta =  M.MAX_BUMP end
-    if delta < -M.MAX_DROP then delta = -M.MAX_DROP end
+    if delta > M.MAX_BUMP then delta = M.MAX_BUMP end
 
+    -- ⚠️⚠️ THE DOWNWARD CLAMP IS A FRACTION OF THE RUNG, NOT A FLAT NUMBER OF LEVELS -- and getting
+    -- this wrong is what made an entire rung spawn at level 1.
+    --
+    -- MAX_DROP was a flat 5. Across a ladder that spans rungs 1 to 70 that is not one rule, it is two
+    -- completely different ones: minus 5 at rung 50 is a 10 percent softening, while minus 5 at rung 2
+    -- lands on the `eff < 1` clamp and produces a LEVEL 1 DUNGEON. Measured in play, a rung 2 run
+    -- returned ~36 points -- 30 kills and a boss, every one of them level 1 -- because the mobs really
+    -- were all level 1, not because the scoring was wrong.
+    --
+    -- ⚠️ The score is NOT floored to compensate for this, and must not be: kill_value reads the level
+    -- the mob ACTUALLY spawned at, so a genuinely level 1 mob is genuinely worth 1. That honesty is
+    -- what makes the ledger un-exploitable (section 26), and papering over it here would have paid out
+    -- rung-level points for level 1 kills. Fix the level, never the accounting.
+    local max_drop = layer_level * M.MAX_DROP_FRAC
+    if max_drop > M.MAX_DROP then max_drop = M.MAX_DROP end
+    if delta < -max_drop then delta = -max_drop end
+
+    -- ⚠️⚠️ THE RUNG IS AN ABSOLUTE LEVEL AND MOBS SPAWN AT IT. Rung 5 is content for a LEVEL 5
+    -- character, rung 30 for a level 30 one -- the ladder IS the levelling path, not a difficulty
+    -- multiplier layered over whatever level you happen to be.
+    --
+    -- ⚠️ DO NOT FLOOR THIS AT THE PLAYER'S LEVEL. That was tried (2026-08-01) to make out-levelled
+    -- rungs pay experience, and it is wrong twice over: it makes rung 5 spawn level 30 mobs for a
+    -- level 30 character -- content explicitly designed to be cleared at level 5 -- and it flattens
+    -- the whole ladder, because every rung below your level then spawns at exactly your level. A high
+    -- level player finding a low rung trivial is CORRECT; they have outgrown it and belong deeper.
+    -- The real problem that change was aimed at is the ENTRY GATE, not the scaling -- see
+    -- M.unlocked_count in aotv4_dungeon.lua, which now lets a character start at their own level
+    -- instead of grinding up from rung 1 through content far below them.
     local eff = math.floor(layer_level + delta + 0.5)
     if eff < 1  then eff = 1  end
     if eff > 90 then eff = 90 end   -- npc_scale_global_base only covers 1..90
+
+    -- ⚠️⚠️ WHAT A KILL IS WORTH IS THE LEVEL IT ACTUALLY SPAWNED AT -- ONE NUMBER, NOT TWO.
+    -- Difficulty and value are deliberately the same thing: under-gear yourself into an easier
+    -- dungeon and you earn less, gear up into a harder one and you earn more, and neither can be
+    -- gamed after the fact because the level is stamped on the mob when it spawns (section 26).
+    -- ⚠️ A separate `worth` was briefly carried alongside `eff` so that score could ignore the gear
+    -- term. It is gone: it existed to prop up a low score that was really caused by the flat MAX_DROP
+    -- spawning level 1 mobs, and once that was fixed at source the two numbers were always equal.
+    -- Do not reintroduce it without a reason that survives "why is the mob's level not the answer?".
     return eff, power
 end
 
@@ -149,10 +195,77 @@ end
 --
 -- ⚠️ ScaleNPC must come FIRST. It rewrites the stats wholesale from the scale table, so any
 -- ModifyNPCStat applied before it is simply discarded.
+-- ⚠️⚠️ SCALENPC *RAISES* SPELL DAMAGE, IT DOES NOT LOWER IT. This is the opposite of what the name
+-- suggests and it is why a level 1 delve was throwing 100+ damage nukes.
+--   * The Lua binding passes always_scale = true (lua_npc.cpp:782), so npc_scale_manager.cpp:168
+--     runs UNCONDITIONALLY: `ModifyNPCStat("spellscale", scale_data.spell_scale)`.
+--   * `npc_scale_global_base.spell_scale` is **100 at every level**, 1 through 90.
+--   * The DoN mobs ship at spellscale **50**.
+-- So scaling a level 67 caster down to level 1 shrank its hp, melee, AC and resists -- and DOUBLED
+-- its spell damage to full authored value. Nothing in ScaleNPC touches the spells themselves: a
+-- spell's damage lives in `spells_new`, so a level 1 mob happily casts a level 67 nuke.
+-- The same applies to healscale, and there it is worse: an unscaled heal against a scaled-down max_hp
+-- is a guaranteed full heal every cast.
+--
+-- ⚠️ Read the natives ONCE and remember them on the mob. `M.rescale_zone` calls this again mid run,
+-- by which point GetLevel() is the PREVIOUS effective level and GetSpellScale() is already 100 --
+-- recomputing from those would compound the ratio a little more on every sweep.
+-- ⚠️ 0 means "unscaled" to the engine, not "no damage": GetActSpellDamage only applies the multiplier
+-- `if (GetSpellScale())`, so 0 behaves as 100 and must be read as 100 here.
+local function remember_natives(npc)
+    local lvl = tonumber(npc:GetEntityVariable("delve_nat_lvl"))
+    local ss  = tonumber(npc:GetEntityVariable("delve_nat_ss"))
+    local hs  = tonumber(npc:GetEntityVariable("delve_nat_hs"))
+    if not lvl then
+        lvl = npc:GetLevel() or 0
+        ss  = npc:GetSpellScale() or 0
+        hs  = npc:GetHealScale() or 0
+        if ss <= 0 then ss = 100 end
+        if hs <= 0 then hs = 100 end
+        npc:SetEntityVariable("delve_nat_lvl", tostring(lvl))
+        npc:SetEntityVariable("delve_nat_ss",  tostring(ss))
+        npc:SetEntityVariable("delve_nat_hs",  tostring(hs))
+    end
+    return lvl, ss, hs
+end
+
+-- Put spell and heal output back in proportion to how far the mob was scaled DOWN, and keep the
+-- mob's own authored tuning as the ceiling: at eff == native this returns exactly what it shipped
+-- with, so a mob that was not scaled down is not quietly nerfed.
+-- 📌 Linear in the level ratio. Spell damage does not track level linearly in EQ, but the ratio is
+-- the honest first approximation and it is trivially re-tunable here in ONE place.
+local function scale_spell_output(npc, eff_level)
+    local nat_lvl, nat_ss, nat_hs = remember_natives(npc)
+    if not nat_lvl then return end
+    if not nat_lvl or nat_lvl <= 0 then return end
+
+    local ratio = eff_level / nat_lvl
+    if ratio > 1.0 then ratio = 1.0 end            -- never make a mob cast HARDER than it was built to
+    if ratio < 0.0 then ratio = 0.0 end
+
+    -- Floor of 1, not 0: 0 reads as "unscaled" to GetActSpellDamage and would restore FULL damage.
+    local ss = math.floor(nat_ss * ratio); if ss < 1 then ss = 1 end
+    local hs = math.floor(nat_hs * ratio); if hs < 1 then hs = 1 end
+
+    npc:ModifyNPCStat("spellscale", tostring(ss))
+    npc:ModifyNPCStat("healscale",  tostring(hs))
+end
+
+-- ⚠️⚠️ THE ONLY PLACE THIS PROJECT SHOULD CALL npc:ScaleNPC(). The three steps have to happen in this
+-- exact order -- read the natives before ScaleNPC clobbers them, scale, then put spell output back --
+-- and the boss path used to call ScaleNPC bare, which is precisely how it kept full spell damage.
+-- Wrapping it means a caller cannot get the order wrong, and there is one place to retune.
+function M.scale_npc(npc, level)
+    if not npc or not npc.valid then return end
+    remember_natives(npc)                 -- BEFORE: ScaleNPC overwrites level AND spellscale
+    npc:ScaleNPC(level)
+    scale_spell_output(npc, level)        -- AFTER: ScaleNPC would discard it otherwise
+end
+
 function M.apply(npc, eff_level, power)
     if not npc or not npc.valid then return end
 
-    npc:ScaleNPC(eff_level)
+    M.scale_npc(npc, eff_level)
 
     -- Fine trim: the part of the power ratio the rounded level did not capture. Kept small on purpose
     -- -- the level is doing the heavy lifting and this only smooths the steps between levels.
@@ -165,7 +278,17 @@ function M.apply(npc, eff_level, power)
         end
     end
 
+    -- ⚠️⚠️ RE-APPLY WHATEVER THE RUN LAYERS ON TOP OF THE RAW SCALING. ScaleNPC rewrites hp, damage and
+    -- ac wholesale, so the difficulty MODE and the GROUP SIZE multiplier are wiped by every call --
+    -- including the 10 second sweep in M.rescale_zone, which was quietly resetting a Hard six-man
+    -- delve to Standard solo tuning mid run. aotv4_dungeon registers the hook (it owns modes and the
+    -- party manifest; this module must not require it, or the two modules require each other).
+    if M.post_scale_hook then M.post_scale_hook(npc) end
+
     -- Remember what this mob was worth, so the ledger can be honest about it when it dies.
+    -- ⚠️ ONE stamp: the level it spawned at, which is both the difficulty readout and what the ledger
+    -- pays on. Stamped at scale time so no amount of levelling or re-gearing afterwards can change
+    -- what an already-killed mob was worth (section 26).
     npc:SetEntityVariable("delve_eff", tostring(eff_level))
 end
 
@@ -199,7 +322,13 @@ function M.rescale_zone(c, layer_level)
     local n = 0
     local list = eq.get_entity_list():GetNPCList()
     for npc in list.entries do
-        if npc and npc.valid and not npc:IsEngaged() and not npc:IsPet() then
+        -- ⚠️ GetOwnerID, not just IsPet: it also catches charmed mobs, swarm/temporary pets and
+        -- mercenaries. This sweep already excluded pets while `M.on_npc_spawn` did NOT, and that
+        -- asymmetry is what let every pet get scaled down and lose its regen the moment it was
+        -- summoned -- the sweep was never going to repair something it deliberately skips. Keep the
+        -- two tests identical.
+        if npc and npc.valid and not npc:IsEngaged()
+           and not npc:IsPet() and (npc:GetOwnerID() or 0) == 0 then
             -- never stamped => never scaled => still a native DoN mob, repair it regardless
             local stamped = tonumber(npc:GetEntityVariable("delve_eff"))
             if moved or not stamped then

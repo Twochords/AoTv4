@@ -43,17 +43,40 @@ M.REGIONS = {
     [6] = "Cabilis",
 }
 
--- ⚠️ The SINGLE "starting zone" PoK book each region connects to. A region can span several
--- book-zones (Freeport also has ecommons/misty, Qeynos also qeytoqrg/rathemtn), but unlocking a
--- region only attunes THIS one -- the city book -- so the travel window opened by the Resplendent
--- book shows exactly one destination per region held. Short names must match pok_portals.lua.
-M.REGION_BOOK = {
-    [1] = "gfaydark",     -- Kelethin
-    [2] = "freportw",     -- Freeport
-    [3] = "greatdivide",  -- Thurgadin
+-- ⚠️ The hub zone each region drops you into when you open it. Verified against `zone_regions`, which
+-- maps these exact zones to these exact region ids -- if that table is ever re-pointed, this must
+-- follow or a player is delivered to a zone their new region does not cover and is bounced straight
+-- back out by RegionManager::CanEnterZone.
+-- 📌 Short names, not ids, because MoveZone takes the short name and resolves the zone's own safe
+-- point for us. Hardcoding coordinates here would be a second copy of something the DB already
+-- knows, and safe points do get retuned.
+M.HOME = {
+    [1] = "gfaydark",     -- Kelethin, in the trees
+    [2] = "freportw",     -- West Freeport
+    [3] = "thurgadina",   -- The City of Thurgadin
     [4] = "firiona",      -- Firiona Vie
-    [5] = "qeynos2",      -- Qeynos
-    [6] = "fieldofbone",  -- Cabilis
+    [5] = "qeynos",       -- South Qeynos
+    [6] = "cabeast",      -- Cabilis East
+}
+
+-- ⚠️⚠️ THE REGION'S PoK BOOK IS NOT ALWAYS IN THE REGION'S HOME ZONE, and three of the six are not.
+-- Opening a region is supposed to hand you that region's book, so this is a SEPARATE map from HOME --
+-- deriving the book from the home zone gives nothing at all for half the regions:
+--     region 3 Thurgadin -> the book is out in THE GREAT DIVIDE, not in the city
+--     region 5 Qeynos    -> the book is in NORTH Qeynos (qeynos2); the home is South Qeynos
+--     region 6 Cabilis   -> the book is in THE FIELD OF BONE, not in Cabilis East
+-- Verified against `doors` (every one is doorid 77, dest_zone poknowledge) and every short below is a
+-- real key in pok_portals, which is what pok_travel.attune validates against -- a short that is not in
+-- that table is silently ignored and the player gets no book.
+-- 📌 gfaydark holds TWO books (Kelethin doorid 109, Felwithe 108). discover() with no doorid falls
+-- through to the zone short, which is the Kelethin one -- correct for this region.
+M.BOOK = {
+    [1] = "gfaydark",     -- Kelethin book (doorid 109)
+    [2] = "freportw",     -- West Freeport
+    [3] = "greatdivide",  -- ⚠️ NOT thurgadina -- Thurgadin itself has no book
+    [4] = "firiona",      -- Firiona Vie
+    [5] = "qeynos2",      -- ⚠️ NORTH Qeynos -- South Qeynos has no book
+    [6] = "fieldofbone",  -- ⚠️ NOT cabeast -- Cabilis has no book
 }
 
 local function ckey(c) return "region_credits_" .. c:CharacterID() end
@@ -113,17 +136,31 @@ function M.open(c, region_id)
         name, n - 1, (n - 1) == 1 and "" or "s"))
     eq.world_emote(15, string.format("%s has opened the way to %s.", c:GetCleanName(), name))
 
-    -- AoTv4: connect this region's starting-zone PoK book so it appears in the travel window opened
-    -- by the Resplendent book. discover() attunes exactly this one zone (none are grant_sets keys).
-    local book = M.REGION_BOOK[region_id]
-    if book then require("pok_travel").discover(c, book) end
+    -- ⚠️⚠️ TRAVEL IS PART OF OPENING, NOT A SEPARATE STEP. Resplendent has no zone line to anywhere,
+    -- so a player who opened a region and was left standing here had a region they could not reach --
+    -- which is exactly how it read in testing. Deliver them to the region's hub.
+    -- ⚠️ MOVE LAST, after the unlock and the credit are both committed. MoveZone tears this client
+    -- down to hand it to another zone, so anything after it may not run; the bucket write and the
+    -- messages have to be already done. Same "destroy the thing you are standing in last" rule the
+    -- delve teardown follows.
+    -- ⚠️ MoveZone(short) with no coordinates lands on the zone's own safe point, which is what makes
+    -- this safe in six different zones without six sets of hand-picked coordinates.
+    -- ⚠️⚠️ ATTUNE THE BOOK BEFORE THE MOVE, NOT AFTER. MoveZone tears this client down to hand it to
+    -- another zone, so anything after it may not run -- the attune writes a data bucket and prints a
+    -- message, and both have to be committed while the client still exists. Same rule the credit
+    -- spend above follows, and the same reason the move is last.
+    -- ⚠️ Without this the book had to be found on foot: pok_travel.discover is otherwise only ever
+    -- called from event_click_door, so opening a region granted the REGION but not the way back into
+    -- it -- and for Thurgadin, Qeynos and Cabilis the book is not even in the zone you are dropped in.
+    local book = M.BOOK[region_id]
+    if book then
+        require("pok_travel").discover(c, book)
+    end
 
-    -- Wayfinder Alessa points the player at the book behind her (they are standing at her in Resplendent).
-    local alessa = eq.get_entity_list():GetMobByNpcTypeID(2000400)
-    if alessa and alessa.valid then
-        alessa:Say(string.format("The way to %s is open. Step to the book behind me and it will carry you there.", name))
-    else
-        c:Message(15, "Click the book to travel to your opened region.")
+    local home = M.HOME[region_id]
+    if home then
+        c:Message(15, "The way opens. Step through.")
+        c:MoveZone(home)
     end
 end
 

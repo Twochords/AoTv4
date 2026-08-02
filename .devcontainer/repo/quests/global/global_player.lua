@@ -740,7 +740,7 @@ function event_death(e)
     eq.set_data(bkey, string.format("%d,%.2f,%.2f,%.2f,%.2f",
       client:GetBindZoneID(), client:GetBindX(), client:GetBindY(), client:GetBindZ(), client:GetBindHeading()))
   end
-  client:SetBindPoint(189, 0, 2.0, -146.0, 19.6, 303.75)   -- tutorialb start (EVENT_ENTERZONE re-positions)
+  client:SetBindPoint(729, 0, -22.0, 535.0, 0.0, 0.0)      -- AoTv4: death respawns at Resplendent Temple (the hub), not the Tutorial
 
   -- Personal death recap: the dying player's own client can swallow the world_emote during its death
   -- sequence, so guarantee they see their own line here (after the reset settles).
