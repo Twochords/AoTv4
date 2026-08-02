@@ -1053,6 +1053,15 @@ function M.on_npc_spawn(e)
     -- spawns while the instance is momentarily empty must still lose its loot.
     npc:ClearItemList()
     npc:RemoveCash()
+    -- ⚠️⚠️ THE STRIP ALONE STOPPED WORKING WHEN INDIVIDUAL LOOT LANDED, AND THIS IS WHY.
+    -- Clearing the item list here empties the mob at SPAWN, but individual loot re-rolls the whole
+    -- loottable at DEATH (NPC::Death), so delve mobs started dropping again -- the exact thing the
+    -- lines above exist to prevent, and the reason gear from six expansions ahead was showing up in
+    -- the Advanced Loot window mid-delve.
+    -- The flag is read by the individual-loot block in NPC::Death, which skips the roll entirely.
+    -- ⚠️ An entity variable rather than zeroing the loottable id: there is no SetLoottableID binding
+    -- on Lua_NPC (only a getter), and this also survives anything that re-reads the npc_types row.
+    npc:SetEntityVariable("delve_noloot", "1")
 
     -- Scaled to the PLAYER, not just to the layer. The layer level is the floor; how far above the
     -- naked expectation for their level the player is decides the rest (aotv4_dungeon_scale.lua).

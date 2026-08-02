@@ -15038,6 +15038,31 @@ void Client::Handle_OP_Shielding(const EQApplicationPacket *app)
 		return;
 	}
 
+	auto shield_in = (Shielding_Struct*) app->pBuffer;
+	AoTv4Shield(shield_in->target_id);
+}
+
+// =================================================================================================
+// AoTv4: the whole of /shield, split out of Handle_OP_Shielding so the SAY command can reach it.
+//
+// ⚠️⚠️ THE SERVER WAS ALREADY OPEN TO EVERY CLASS AND EVERY LEVEL -- THE CLIENT IS THE GATE.
+// `AoT:ShieldAnyClass` is true, `AoT:ShieldMinLevel` is 1 and Mob::ShieldAbility has no class or
+// level test at all, yet a non-Warrior typing /shield gets nothing: the RoF2 client refuses the
+// command itself and never sends OP_Shielding, so none of the server-side opening up is ever
+// reached. That is the same three-layer trap section 4 records for the combat specials -- client
+// display, client SEND, server execute -- and here layer two was the one nobody had checked.
+//
+// Rather than patch the client (the dll has no raw-packet send at all, section 20), the ability is
+// reachable by chat: `/say shieldwall` shields your current target. That is the pattern every other
+// AoTv4 feature already uses -- AdvLoot's `/say als*`, autoskill's `/say askset`, spell ranks'
+// `/say spellkeep` -- and it works for every class at every level with no client file at all.
+//
+// ⚠️ ONE body, two callers. Duplicating it would let the packet path and the say path drift on the
+// toggle, the recast or the duration -- the same reasoning that put the ScaleNPC ordering in one
+// wrapper and the tier-id maths in one header.
+// =================================================================================================
+void Client::AoTv4Shield(uint32 target_id)
+{
 	// AoTv4: /shield is a TOGGLE. Stock relies on the 12 second duration to end the pairing, but
 	// ours is permanent, so without this the only ways to stop shielding someone are to walk out of
 	// range or die. Re-issuing the command drops the current pairing (and costs no recast, so you
@@ -15071,12 +15096,11 @@ void Client::Handle_OP_Shielding(const EQApplicationPacket *app)
 	// checks the distance on every hit) or either one dies (ShieldAbilityClearVariables).
 	const int duration = RuleB(AoT, ShieldPermanent) ? 86400000 : 12000;
 
-	auto shield = (Shielding_Struct*) app->pBuffer;
 	// The two mitigation arguments are stock plumbing that the Shield Wall does not use -- it does
 	// its own split in Mob::ApplyShieldWall -- so they are left at the native defaults rather than
 	// exposed as rules that would look meaningful but change nothing.
 	if (ShieldAbility(
-			shield->target_id,
+			target_id,
 			RuleI(AoT, ShieldDistance),
 			duration,
 			50,

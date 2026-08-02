@@ -3128,7 +3128,13 @@ bool NPC::Death(Mob* killer_mob, int64 damage, uint16 spell, EQ::skills::SkillTy
 		// inventory constraints, and routing it through the corpse is what made money vanish entirely
 		// when the stock loot window stopped opening -- Corpse::MakeLootRequestPackets was the only
 		// thing that ever called AddMoneyToPP, and AdvLoot mode skips it.
-		if (RuleB(AoT, IndividualLoot) && IsNPC() && GetLoottableID()) {
+		// ⚠️⚠️ `delve_noloot` IS SET BY THE DELVE AND MUST BE HONOURED HERE. Delve creatures are
+		// stripped at spawn (aotv4_dungeon.M.on_npc_spawn) because they are instances of REAL Dragons
+		// of Norrath zones whose drops are six expansions ahead of anything else on this server -- and
+		// the reward is meant to be the chest, not the trash. That strip empties the mob at SPAWN;
+		// individual loot re-rolls the loottable at DEATH, which put all of it straight back.
+		if (RuleB(AoT, IndividualLoot) && IsNPC() && GetLoottableID() &&
+			GetEntityVariable("delve_noloot").empty()) {
 			NPC *npc_self   = CastToNPC();
 			int  rolled_for = 0;
 			for (int i = 0; i < MAX_LOOTERS; i++) {
@@ -3213,6 +3219,26 @@ bool NPC::Death(Mob* killer_mob, int64 damage, uint16 spell, EQ::skills::SkillTy
 				npc_self->SetGold(0);
 				npc_self->SetPlatinum(0);
 			}
+
+			// ⚠️⚠️ RESET THE DECAY TIMER -- THE CORPSE WAS BUILT EMPTY AND HAS JUST BEEN FILLED.
+			// This is not a tidy-up, it is the fix for "I can see the loot, I cannot take it, and it
+			// is gone when I reopen the window".
+			//
+			// Individual loot rolls at DEATH, but the Corpse is constructed a few lines earlier from
+			// the NPC's item list -- which is empty now that the spawn-time AddLootTable is
+			// suppressed (spawn2.cpp). So `Corpse::Corpse` hits:
+			//     if (IsEmpty()) m_corpse_decay_timer.SetTimer(RuleI(NPC, EmptyNPCCorpseDecayTime) + 1000);
+			// and with EmptyNPCCorpseDecayTime at 0 that is a ONE SECOND corpse. The loot we add
+			// immediately afterwards is real and is pushed to the Advanced Loot window, so it is
+			// visible -- and then the corpse decays out from under it before anyone can click.
+			//
+			// ⚠️ This affected EVERY corpse in the game, not just delves: the spawn roll is suppressed
+			// server-wide whenever AoT:IndividualLoot is on, so every NPC corpse was being created
+			// empty and every one of them got the one second timer.
+			// ⚠️ ResetDecayTimer re-reads IsEmpty(), so it must be called AFTER the loot is on the
+			// corpse. Called unconditionally: a genuinely empty corpse simply gets the empty timer
+			// again, which is correct.
+			corpse->ResetDecayTimer();
 		}
 
 		// AoTv4 Advanced Loot: live's rule is that loot enters your personal list when you get KILL

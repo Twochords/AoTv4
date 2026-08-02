@@ -1217,6 +1217,25 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 		return;
 	}
 
+	// ⚠️⚠️ AoTv4 Shield Wall: `/say shieldwall` is how a NON-WARRIOR reaches /shield at all.
+	// The server side has been open to every class and level for a long time (AoT:ShieldAnyClass,
+	// AoT:ShieldMinLevel 1, and Mob::ShieldAbility has no class test) -- but the RoF2 CLIENT refuses
+	// the /shield command itself for anyone who is not a Warrior and never sends OP_Shielding, so
+	// none of that was ever reachable. Layer two of section 4's three layers, again.
+	// This routes around the client entirely: it needs no dll change and no client file.
+	if (chan_num == ChatChannel_Say && !strcasecmp(message, "shieldwall")) {
+		Mob *t = GetTarget();
+		if (!t) {
+			Message(Chat::Yellow, "Target the person you want to shield, then say shieldwall again.");
+		}
+		else {
+			// ⚠️ Straight into the shared body, NOT a copy of it -- the toggle, the recast and the
+			// permanent duration all live there and must behave identically on both paths.
+			AoTv4Shield(t->GetID());
+		}
+		return;
+	}
+
 	// AoTv4 Allaclone search + quest journal: the dll issues
 	//   /say srch <kind> <term>   /say srchdet <kind> <id>   /say qtrack <n>   /say quntrack <n>
 	//
