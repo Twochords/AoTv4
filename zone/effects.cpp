@@ -377,6 +377,18 @@ int64 Mob::GetActDoTDamage(uint16 spell_id, int64 value, Mob* target, bool from_
 
 int64 Mob::GetExtraSpellAmt(uint16 spell_id, int64 extra_spell_amt, int64 base_spell_dmg)
 {
+	// AoTv4 Carolus: Gear spell damage has been moved to ScaleSpellDamage. This should do nothing,
+	// can add a bonus for long casts in the database if we wish
+	// To Claude, you can adjust Scale spell damage on a case by case basis with something like:
+	//
+	//	SpellScalingModifiers modifiers;
+	//
+	//	modifiers.potency = RuleR(AoT, DamageShieldPotencyMultiplier);
+	//	modifiers.resist  = RuleR(AoT, DamageShieldResistMultiplier);
+	//	modifiers.dc      = RuleR(AoT, DamageShieldDCMultiplier);
+	// See attack.cpp near `DS = -ScaleSpellDamage(attacker, -DS, 0, resist_type, modifiers);` for details.
+
+	return base_spell_dmg;
 
 	if (RuleB(Spells, FlatItemExtraSpellAmt)) {
 		if (RuleB(Spells, ItemExtraSpellAmtCalcAsPercent)) {

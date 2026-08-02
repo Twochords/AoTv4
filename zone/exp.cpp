@@ -105,6 +105,15 @@ static uint32 MaxBankedRaidLeadershipPoints(int Level)
 
 uint64 Client::CalcEXP(uint8 consider_level, bool ignore_modifiers) {
 	uint64 in_add_exp = EXP_FORMULA;
+	// AoTv4 Carolus: Scale xp gain by AAs here
+	int aas = GetSpentAA() + GetAAPoints();
+	int aa_xp_penalty = 100; // percent
+	int aa_xp_penalty_cap = 10;
+
+	aa_xp_penalty = (aa_xp_penalty + aas) / (aa_xp_penalty + aas * aa_xp_penalty_cap);
+
+	in_add_exp = in_add_exp * aa_xp_penalty / 100;
+
 
 	if (XPRate != 0) {
 		in_add_exp = static_cast<uint64>(in_add_exp * (static_cast<float>(XPRate) / 100.0f));
@@ -208,10 +217,7 @@ uint64 Client::GetExperienceForKill(Mob *against)
 			ret /= 100;
 		}
 
-		// AoTv4: +50% experience from mobs over level 30 -- the above-30 leveling pace was too slow.
-		if (level > 30) {
-			ret = ret * 3 / 2;
-		}
+
 
 		return ret;
 	}
@@ -505,6 +511,9 @@ void Client::AddEXP(ExpSource exp_source, uint64 in_add_exp, uint8 conlevel, boo
 
 	uint64 exp = 0;
 	uint64 aaexp = 0;
+
+	// Carolus: AoT disable AA standard exp gain
+	m_epp.perAA = 0;
 
 	if (m_epp.perAA < 0 || m_epp.perAA > 100) {
 		m_epp.perAA = 0;    // stop exploit with sanity check
@@ -1008,6 +1017,14 @@ void Client::SetLevel(uint8 set_level, bool command)
 // Add: You can set the values you want now, client will be always sync :) - Merkur
 uint32 Client::GetEXPForLevel(uint16 check_level)
 {
+	// AoTv4 Carolus: exp formula
+	// minor bug fix, there is probably a better way
+	check_level--;
+	// This is the sumation of x+1
+	int base = (1+check_level) * check_level / 2 + check_level;
+	int mult = 1000;
+	return base * mult;
+
 #ifdef LUA_EQEMU
 	uint32 lua_ret = 0;
 	bool ignoreDefault = false;
@@ -1018,6 +1035,9 @@ uint32 Client::GetEXPForLevel(uint16 check_level)
 	}
 #endif
 
+
+
+#if 0
 	uint16 check_levelm1 = check_level-1;
 	// AoTv4: no hell levels + a relaxed above-30 curve. Stock applied a STEPWISE multiplier
 	// (1.0 -> 1.1 -> 1.2 ... -> 3.0) whose jumps, on top of the (level-1)^3 growth, spiked specific
@@ -1067,6 +1087,7 @@ uint32 Client::GetEXPForLevel(uint16 check_level)
 	}
 
 	return finalxp;
+#endif
 }
 
 void Client::AddLevelBasedExp(ExpSource exp_source, uint8 exp_percentage, uint8 max_level, bool ignore_mods)

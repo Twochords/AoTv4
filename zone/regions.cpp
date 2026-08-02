@@ -101,7 +101,8 @@ bool RegionManager::CanEnterZone(Client *c, uint32_t zone_id, std::string &reaso
 	}
 
 	const uint32_t region_id = GetZoneRegion(zone_id);
-	if (!region_id) {
+	// Carolus: Was !region_id which is 100% correct but lets make it explicit.
+	if (region_id == 0) {
 		return true;   // unmapped zone: unrestricted by design (see regions.h)
 	}
 	if (HasRegion(c->CharacterID(), region_id)) {
