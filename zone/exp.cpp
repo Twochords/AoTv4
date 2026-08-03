@@ -933,6 +933,29 @@ void Client::SetEXP(ExpSource exp_source, uint64 set_exp, uint64 set_aaxp, bool 
 
 void Client::SetLevel(uint8 set_level, bool command)
 {
+	// ================================================================================================
+	// ⚠️⚠️ AoTv4 HARD LEVEL CAP -- IT HAS TO BE HERE, NOT IN LUA
+	// ================================================================================================
+	// era_system.clamp_level runs from event_level_up and CANNOT hold the cap, for two independent
+	// reasons -- players reached 31 with the cap set to 30:
+	//   1. OFF BY ONE. The event fires further down this function while `m_pp.level` still holds the
+	//      OLD level (it is assigned afterwards, `m_pp.level = set_level`), so Lua's GetLevel() is
+	//      stale. Going 30 -> 31 the clamp tests `30 > 30` and declines to act.
+	//   2. OVERWRITTEN ANYWAY. Even when it does fire, the SetLevel(cap) it performs is undone the
+	//      moment this outer call resumes and assigns m_pp.level = set_level.
+	// Clamping the ARGUMENT is the only point in the flow that neither problem can reach.
+	//
+	// ⚠️ `command` is exempt on purpose: that flag marks a GM #level, and a GM must be able to go
+	// above the cap to reach and test content. Organic experience gain always arrives with it false.
+	// 📌 The Lua clamp is deliberately LEFT IN PLACE. It no longer decides the cap, but it still pins
+	// experience at the threshold, which is what stops a capped character re-crossing on every kill.
+	if (!command) {
+		const int hard_cap = RuleI(AoT, HardLevelCap);
+		if (hard_cap > 0 && set_level > static_cast<uint8>(hard_cap)) {
+			set_level = static_cast<uint8>(hard_cap);
+		}
+	}
+
 	if (GetEXPForLevel(set_level) == 0xFFFFFFFF) {
 		LogError("GetEXPForLevel([{}]) = 0xFFFFFFFF", set_level);
 		return;

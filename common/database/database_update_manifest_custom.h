@@ -2345,6 +2345,130 @@ ON DUPLICATE KEY UPDATE
 )",
 		.content_schema_update = false,
 	},
+
+	// ============================================================================================
+	// AoTv4 CONTENT MIGRATIONS -- baseline starts at version 5 (2026-08-03)
+	// ============================================================================================
+	// ⚠️⚠️ EVERYTHING BEFORE v5 IS ASSUMED ALREADY PRESENT. ~123 loose scripts in
+	// .devcontainer/custom/sql/ were applied to live BY HAND over months and nothing recorded which,
+	// so they cannot be replayed safely -- several carry `DELETE FROM ... BETWEEN <range>` cleanups,
+	// and section 5 records a real incident where one script's range silently swallowed six spells
+	// belonging to another. Re-running the directory would destroy content a later script created.
+	// v5 is therefore a LINE IN THE SAND, not a from-scratch history: it is the first change tracked
+	// here, and every AoTv4 content change from now on should be added as a new entry rather than
+	// left as a loose file.
+	//
+	// ⚠️ Each entry is SELF-GUARDING via its own `.check` -- the version number decides what is
+	// considered, but the check decides what actually runs. That is what makes these safe on a
+	// database that already has some of them applied by hand, which live does.
+	// ⚠️ These are content edits, not schema, so `.content_schema_update = false` like the rest.
+	//
+	// ⚠️⚠️ v5, v8 and v9 all touch `spells_new`, which is SHARED MEMORY. World applies them at boot,
+	// but they stay INERT in game until:
+	//     world + zones down  ->  cd build/bin && ./shared_memory  ->  world up
+	// The loose .sql files remain in .devcontainer/custom/sql/ as the readable record of WHY each of
+	// these exists; the reasoning is not duplicated here.
+
+	ManifestEntry{
+		.version     = 5,
+		.description = "2026_08_03_aotv4_aura_inherited_slots",
+		// The 16 class auras + 6 aura procs inherited slots 11/12 (+2% proc chance, +300 AC) from
+		// their clone source, stock 8469 Champion's Aura Effect -- a level 68 raid ability.
+		.check       = "SELECT id FROM spells_new WHERE (id BETWEEN 43550 AND 43565 OR id BETWEEN 43570 AND 43575) AND (effectid11 <> 254 OR effectid12 <> 254)",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE spells_new
+   SET effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 0, max11 = 0,
+       effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 0, max12 = 0
+ WHERE id BETWEEN 43550 AND 43565
+    OR id BETWEEN 43570 AND 43575;
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 6,
+		.description = "2026_08_03_aotv4_open_caster_and_craft_skill_caps",
+		// A missing skill_caps row reads as cap 0, which is indistinguishable from "this class cannot
+		// have this skill" -- so the four pure-melee classes had NO casting skills at all, instruments
+		// started at level 10, and Make Poison/Alchemy were absent for 15 of 16 classes.
+		// Warrior + Channeling at level 1 is the canary: absent means unapplied.
+		.check       = "SELECT class_id FROM skill_caps WHERE class_id = 1 AND skill_id = 13 AND level = 1",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+INSERT INTO skill_caps (skill_id, class_id, level, cap, class_)
+SELECT best.skill_id, c.class_id, best.level, best.cap, 0
+FROM (SELECT DISTINCT class_id FROM skill_caps) c
+CROSS JOIN (
+    SELECT skill_id, level, MAX(cap) AS cap
+    FROM skill_caps
+    WHERE skill_id IN (4, 5, 13, 14, 18, 24, 43, 44, 45, 46, 47, 12, 41, 49, 54, 70, 56, 59)
+    GROUP BY skill_id, level
+) best
+LEFT JOIN skill_caps sc
+       ON sc.class_id = c.class_id AND sc.skill_id = best.skill_id AND sc.level = best.level
+WHERE sc.id IS NULL;
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 7,
+		.description = "2026_08_03_aotv4_region_unlock_chance",
+		// `chance` is rolled out of TEN THOUSAND (achievement_manager.cpp), and the five "Ending"
+		// rewards were created with 100 -- so dying at the level cap opened a region roughly one time
+		// in a hundred. Every other reward type on the server uses 10000.
+		.check       = "SELECT id FROM custom_achievement_rewards WHERE reward_type = 'region_choice' AND chance < 10000",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE custom_achievement_rewards
+   SET chance = 10000
+ WHERE reward_type = 'region_choice' AND chance < 10000;
+
+DELETE FROM custom_achievement_rewards
+ WHERE achievement_id = 1003 AND reward_type = 'region_choice';
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 8,
+		.description = "2026_08_03_aotv4_reptile_trigger_slot8",
+		// Cloned from stock 8009, which carries 393 in BOTH slot 1 and slot 8. The clone overrode
+		// slot 1 with the tier ladder and left slot 8, so every tier healed a flat 393 -- including
+		// the level 8 one, nominally a 20 point heal.
+		.check       = "SELECT id FROM spells_new WHERE id BETWEEN 43350 AND 43355 AND effectid8 <> 254",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE spells_new
+   SET effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 0, max8 = 0
+ WHERE id BETWEEN 43350 AND 43355;
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 9,
+		.description = "2026_08_03_aotv4_reptile_trigger_instant",
+		// The payload landed as a 1 tick BUFF (inherited buffdurationformula 3), and our own
+		// anti-exploit guard suppresses SE_CurrentHPOnce whenever it takes a buff slot -- so the slot 1
+		// heal had never fired. Only the slot 8 HoT removed in v8 was ever healing. A proc payload has
+		// no reason to persist.
+		// ⚠️ MUST come after v8: alone it would make the 393 fire per proc instead of over time.
+		.check       = "SELECT id FROM spells_new WHERE id BETWEEN 43350 AND 43355 AND buffdurationformula <> 0",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE spells_new
+   SET buffdurationformula = 0, buffduration = 0
+ WHERE id BETWEEN 43350 AND 43355;
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

@@ -2317,8 +2317,22 @@ void Client::UpdateAdmin(bool from_database) {
 // already does both -- because the live character keeps its old derived values until rebuilt.
 bool Client::AoTv4ApplyCreationStats()
 {
+	// ⚠️⚠️ base_* + alloc_*, NEVER base_* ALONE. char_create_point_allocations carries TWO sets of
+	// columns and both are part of a character's starting stats: `base_*` is the race/class floor and
+	// `alloc_*` is the creation point distribution that goes on top. An Ogre Berserker is
+	// base 140 str + alloc 10 = 150, and base 127 sta + alloc 15 = 142 -- which is what the class
+	// actually starts with.
+	// Reading only the base handed every reforged character the floor, so a swap out to another
+	// class and back left them permanently 10 str / 15 sta short of an identical character who had
+	// never reforged. Reported as "bonus starting stats don't reallocate properly on race/combo
+	// swaps ... you end up with less stats".
+	// 📌 It is not cumulative -- each reforge writes an absolute value -- so the loss is a one-time
+	// step down to the floor rather than something that compounds with repeated swapping. Reforging
+	// once more after this fix restores the correct numbers.
 	const auto query = fmt::format(
-		"SELECT a.base_str, a.base_sta, a.base_dex, a.base_agi, a.base_int, a.base_wis, a.base_cha "
+		"SELECT a.base_str + a.alloc_str, a.base_sta + a.alloc_sta, a.base_dex + a.alloc_dex, "
+		"a.base_agi + a.alloc_agi, a.base_int + a.alloc_int, a.base_wis + a.alloc_wis, "
+		"a.base_cha + a.alloc_cha "
 		"FROM char_create_combinations c "
 		"JOIN char_create_point_allocations a ON a.id = c.allocation_id "
 		"WHERE c.race = {} AND c.class = {} LIMIT 1",

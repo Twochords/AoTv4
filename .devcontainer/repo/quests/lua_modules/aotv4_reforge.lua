@@ -147,11 +147,32 @@ end
 -- makes them permanent.
 local skills = require("skill_pool")
 
+-- ⚠️⚠️ THE SAVE AND THE KICK MUST HAPPEN NO MATTER WHAT ELSE FAILS. A reforge that does not log you
+-- out does NOTHING visible: SetBaseRace/SetBaseClass write the profile only, and the live character
+-- keeps its old class for skills, spell gems and art until it is rebuilt from that profile on login.
+-- So if anything above the kick throws, the player is left looking unchanged and reports the whole
+-- feature as broken -- the race/class change is actually sitting in memory, unsaved and unapplied.
+--
+-- ⚠️ The two tidy-up steps are therefore wrapped in pcall. They matter, but neither is worth losing
+-- the reforge over: the stat rebase can be re-run by reforging again, and stale combat abilities are
+-- cosmetic next to a change that silently did not happen. A failure is logged rather than swallowed.
+-- 📌 Ordered rebase -> skills -> save -> kick. Both writes must land BEFORE Save(1) or they are not
+-- persisted, and the kick makes whatever was saved permanent.
 function M.finish(c, message)
-    c:AoTv4ApplyCreationStats()          -- rebase STR/STA/DEX/AGI/INT/WIS/CHA on the NEW race+class
+    -- rebase STR/STA/DEX/AGI/INT/WIS/CHA on the NEW race+class
+    local ok_stats, err_stats = pcall(function() c:AoTv4ApplyCreationStats() end)
+    if not ok_stats then
+        eq.debug("aotv4_reforge: stat rebase failed: " .. tostring(err_stats))
+    end
 
-    for id in pairs(skills.SKILLS) do    -- drop the old class's natives; the new class re-grants on relog
-        if (c:GetRawSkill(id) or 0) > 0 then c:SetSkill(id, 0) end
+    -- drop the old class's natives; the new class re-grants its own on the forced relog
+    local ok_skills, err_skills = pcall(function()
+        for id in pairs(skills.SKILLS) do
+            if (c:GetRawSkill(id) or 0) > 0 then c:SetSkill(id, 0) end
+        end
+    end)
+    if not ok_skills then
+        eq.debug("aotv4_reforge: combat skill clear failed: " .. tostring(err_skills))
     end
 
     c:Message(15, message)
