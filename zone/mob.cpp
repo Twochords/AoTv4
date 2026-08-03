@@ -8957,6 +8957,6 @@ uint64 Mob::ScaleSpellDamage(Mob* defender, uint64 base_damage, int resist_adjus
 	float mult = 100.0f + DC * GetOverpowerMult();
 
 	return static_cast<uint64>(
-		base_damage * mult / 100.0f
+		base_damage * mult / 100.0f + 0.5f
 	);
 }
