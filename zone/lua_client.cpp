@@ -171,6 +171,12 @@ void Lua_Client::SetBaseRace(int v) {
 	self->SetBaseRace(v);
 }
 
+// AoTv4: re-derive the base stats from the current race/class (Reforger Vael).
+bool Lua_Client::AoTv4ApplyCreationStats() {
+	Lua_Safe_Call_Bool();
+	return self->AoTv4ApplyCreationStats();
+}
+
 void Lua_Client::SetBaseGender(int v) {
 	Lua_Safe_Call_Void();
 	self->SetBaseGender(v);
@@ -4540,6 +4546,7 @@ luabind::scope lua_register_client() {
 	.def("SetBaseClass", (void(Lua_Client::*)(int))&Lua_Client::SetBaseClass)
 	.def("SetBaseGender", (void(Lua_Client::*)(int))&Lua_Client::SetBaseGender)
 	.def("SetBaseRace", (void(Lua_Client::*)(int))&Lua_Client::SetBaseRace)
+	.def("AoTv4ApplyCreationStats", (bool(Lua_Client::*)(void))&Lua_Client::AoTv4ApplyCreationStats)
 	.def("SetBindPoint", (void(Lua_Client::*)(int))&Lua_Client::SetBindPoint)
 	.def("SetBindPoint", (void(Lua_Client::*)(int,int))&Lua_Client::SetBindPoint)
 	.def("SetBindPoint", (void(Lua_Client::*)(int,int,float))&Lua_Client::SetBindPoint)

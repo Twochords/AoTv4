@@ -255,11 +255,79 @@ end
 -- exact order -- read the natives before ScaleNPC clobbers them, scale, then put spell output back --
 -- and the boss path used to call ScaleNPC bare, which is precisely how it kept full spell damage.
 -- Wrapping it means a caller cannot get the order wrong, and there is one place to retune.
+-- ---------------------------------------------------------------- elite ratio
+-- ⚠️⚠️ ScaleNPC FLATTENS EVERY MOB ONTO ONE CURVE, WHICH ERASES NAMED AND ELITE MOBS ENTIRELY.
+-- It rewrites hp, damage and ac wholesale out of `npc_scale_global_base` for the level it is given,
+-- and it does not care what the mob was authored as. In stillmoona `an_iron_warder` ships at level 67
+-- with 40,364 hp while the trash around it ships at 21,000 -- put both through ScaleNPC(5) and they
+-- come out byte-identical. Reported from play as "warders are just as weak as the trash mobs", and
+-- that is exactly what it was: not a warder bug, a bug affecting every tougher-than-trash mob in
+-- every delve.
+--
+-- The fix is to measure how far above the curve a mob was AUTHORED, and re-apply that multiple after
+-- scaling. `elite` is that multiple: 1.0 for ordinary trash, higher for anything hand-tuned.
+--
+-- ⚠️ Measured by scaling the mob to its OWN native level and reading what the engine gives it there.
+-- That is the honest baseline and it needs no copy of `npc_scale_global_base` in Lua (there is no
+-- binding to read that table, and embedding a copy would silently rot the moment it is retuned).
+-- The double ScaleNPC costs one extra call per mob, once, at spawn.
+-- ⚠️ Mobs authored with `hp = 0` -- which is most of them, including many of the warders -- are
+-- auto-scaled by the engine already, so they measure as exactly 1.0 and are left alone. That is the
+-- correct answer, not a failure to detect them.
+--
+-- ⚠️ Cached in an entity variable like the other natives: the 10 second rescale sweep calls this
+-- repeatedly, and re-measuring after the mob has already been scaled would read the SCALED hp as if
+-- it were native and collapse the ratio to 1.0 -- the elite would decay to trash over a few sweeps.
+-- ⚠️ Floored at 1.0. A mob authored WEAKER than its curve is left where the curve puts it; making it
+-- weaker still would just recreate the problem from the other side.
+local ELITE_CAP     = 4.0    -- a raid-tier mob in a delve should be a fight, not a wall
+local ELITE_DMG_POW = 0.5    -- damage scales as the square root of the hp multiple: a 4x tougher
+                             -- mob hits 2x harder, not 4x. Elites should last longer first.
+
+local function elite_ratio(npc, nat_lvl)
+    local cached = tonumber(npc:GetEntityVariable("delve_elite"))
+    if cached then return cached end
+
+    local r = 1.0
+    local nat_hp = npc:GetMaxHP() or 0
+    if nat_lvl and nat_lvl > 0 and nat_hp > 0 then
+        npc:ScaleNPC(nat_lvl)                     -- what the curve gives THIS mob at its own level
+        local base_hp = npc:GetMaxHP() or 0
+        if base_hp > 0 then r = nat_hp / base_hp end
+    end
+
+    if r < 1.0        then r = 1.0        end
+    if r > ELITE_CAP  then r = ELITE_CAP  end
+    npc:SetEntityVariable("delve_elite", string.format("%.4f", r))
+    return r
+end
+
+local function apply_elite(npc, r)
+    if not r or r <= 1.0 then return end
+
+    local hp = npc:GetMaxHP()
+    if hp and hp > 0 then
+        npc:ModifyNPCStat("max_hp", tostring(math.floor(hp * r)))
+    end
+
+    -- ⚠️ There is no GetMinDamage binding (only GetMaxDamage, zone/lua_npc.cpp), so min_hit is derived
+    -- from max_hit rather than read. Half is the shape ScaleNPC itself produces, so this keeps the
+    -- spread the mob would have had.
+    local dmg = npc:GetMaxDamage()
+    if dmg and dmg > 0 then
+        local d = math.floor(dmg * (r ^ ELITE_DMG_POW))
+        npc:ModifyNPCStat("max_hit", tostring(d))
+        npc:ModifyNPCStat("min_hit", tostring(math.max(1, math.floor(d / 2))))
+    end
+end
+
 function M.scale_npc(npc, level)
     if not npc or not npc.valid then return end
-    remember_natives(npc)                 -- BEFORE: ScaleNPC overwrites level AND spellscale
+    local nat_lvl = remember_natives(npc)  -- BEFORE: ScaleNPC overwrites level AND spellscale
+    local elite   = elite_ratio(npc, nat_lvl)  -- BEFORE too: it reads the mob's authored hp
     npc:ScaleNPC(level)
     scale_spell_output(npc, level)        -- AFTER: ScaleNPC would discard it otherwise
+    apply_elite(npc, elite)               -- AFTER: ScaleNPC would discard this too
 end
 
 function M.apply(npc, eff_level, power)

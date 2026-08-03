@@ -8948,7 +8948,18 @@ uint64 Mob::ScaleSpellDamage(Mob* defender, uint64 base_damage, int resist_adjus
 		if (resist > hardcap) resist = hardcap;
 		eHP += resist * RuleR(AoT, eHPPerResist);
 
-		return base_damage * 100 / eHP;
+		// ⚠️⚠️ ROUND, AND NEVER TRUNCATE A REAL HIT TO NOTHING. This is integer division, and the
+		// numerator is the RAW effect value -- which for a damage shield is tiny. Thistlecoat is
+		// SPA 59 = -1, so `1 * 100 / eHP` is 0 for ANY eHP above 100, i.e. against any creature with
+		// a single point of resist. Reported as "damage shields like Thistlecoat aren't working when
+		// being hit": they were firing, computing 0, and dealing nothing.
+		// A nuke has enough magnitude to survive the truncation, which is why only shields showed it.
+		//
+		// 📌 The floor of 1 is not a fudge -- it is what stops "scaled down" from silently becoming
+		// "removed". A FULL resist is decided before this function is ever called; everything that
+		// reaches here has already been judged to land, so it must land for something.
+		const uint64 scaled = (base_damage * 100 + (eHP / 2)) / eHP;   // round half up
+		return (scaled == 0 && base_damage > 0) ? 1 : scaled;
 	}
 
 	DC -= resist;
@@ -8956,7 +8967,12 @@ uint64 Mob::ScaleSpellDamage(Mob* defender, uint64 base_damage, int resist_adjus
 	if(DC > hardcap) DC = hardcap;
 	float mult = 100.0f + DC * GetOverpowerMult();
 
+	// ⚠️ `static_cast<uint64>` TRUNCATES, so round here too -- same reasoning as the resisted branch
+	// above, just in float rather than integer arithmetic. This path cannot round a hit away to
+	// nothing (mult is always >= 100, so the result is never below base_damage), but without the
+	// +0.5f every partial point of overpower bonus was thrown away: at mult 150 a 1 point effect
+	// computed 1.5 and dealt 1. The two exits now round the same way.
 	return static_cast<uint64>(
-		base_damage * mult / 100.0f
+		base_damage * mult / 100.0f + 0.5f
 	);
 }

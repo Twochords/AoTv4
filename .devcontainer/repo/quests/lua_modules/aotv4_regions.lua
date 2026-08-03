@@ -83,6 +83,35 @@ local function ckey(c) return "region_credits_" .. c:CharacterID() end
 
 function M.credits(c) return tonumber(eq.get_data(ckey(c))) or 0 end
 
+-- ---------------------------------------------------------------- the free starting region
+-- ⚠️⚠️ NOTHING GRANTED A STARTING REGION, SO EVERY CHARACTER WAS SEALED IN RESPLENDENT.
+-- `character_regions_unlocked` was EMPTY server wide and Alessa only ever SPENDS credits -- she has
+-- no free-pick branch -- so with no credit her hail was the refusal line and there was no way out of
+-- the hub until a death at the cap. This grants the one credit the design always assumed: at level 1
+-- you walk up to her and choose one of the six.
+--
+-- ⚠️⚠️ ONCE PER CHARACTER, AND IT CANNOT KEY OFF LEVEL 1. The roguelite death RESETS the character to
+-- level 1, so "grant when level == 1" would hand out a free region on every single death -- six
+-- deaths and the whole map is open. The marker bucket is what makes it once, and it is deliberately
+-- NOT cleared by death_loss: this is meta progression like the spell ranks and the class aura.
+--
+-- ⚠️ Grants a CREDIT, not a region. Which of the six they get stays the player's choice at Alessa,
+-- which is the entire point of the credit indirection (see the note at the top of this file).
+-- ⚠️ Idempotent: the marker is written BEFORE the credit is added, so a failure mid-way cannot pay
+-- twice on the next connect.
+local function skey(c) return "region_start_" .. c:CharacterID() end
+
+function M.grant_start(c)
+	if not c or not c.valid then return end
+	if (eq.get_data(skey(c)) or "") ~= "" then return end
+
+	eq.set_data(skey(c), "1")
+	eq.set_data(ckey(c), tostring(M.credits(c) + 1))
+
+	c:Message(MT.NPCQuestSay,
+		"Wayfinder Alessa can open one of the six ways for you. Seek her in the Resplendent Temple.")
+end
+
 -- ---------------------------------------------------------------- the capped-death trigger
 -- ⚠️⚠️ "AT MAX" IS ERA_SYSTEM'S ANSWER, NOT A CONSTANT. The cap is the lowest of the era cap, the
 -- hard cap and this character's region ceiling, and the region ceiling moves as regions are

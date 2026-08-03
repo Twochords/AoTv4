@@ -1191,6 +1191,10 @@ public:
 	void SummonItemIntoInventory(uint32 item_id, int16 charges = -1, uint32 aug1 = 0, uint32 aug2 = 0, uint32 aug3 = 0, uint32 aug4 = 0, uint32 aug5 = 0, uint32 aug6 = 0, bool is_attuned = false);
 	void SummonBaggedItems(uint32 bag_item_id, const std::vector<LootItem>& bag_items);
 	void SetStats(uint8 type,int16 set_val);
+	// AoTv4: re-derive the seven base stats from the CURRENT race/class, for Reforger Vael.
+	// SetBaseRace/SetBaseClass do not touch them, so without this a reforge keeps the old body's
+	// numbers. Caller must Save() and force a relog.
+	bool AoTv4ApplyCreationStats();
 	void IncStats(uint8 type,int16 increase_val);
 	void DropItem(int16 slot_id, bool recurse = true);
 	bool HasItemOnCorpse(uint32 item_id);

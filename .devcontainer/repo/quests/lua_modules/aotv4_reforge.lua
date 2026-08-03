@@ -123,7 +123,37 @@ end
 -- the player looks changed, is not, and the mismatch persists until they happen to relog -- at which
 -- point their skills silently change under them. Forcing it makes the change atomic from the
 -- player's point of view.
+-- ⚠️⚠️ TWO THINGS DO NOT FOLLOW A RACE/CLASS CHANGE ON THEIR OWN, AND BOTH WERE REPORTED IN PLAY:
+-- "ogre zerker stats as an iksar monk ... also has taunt bash and kick out of the pool at level 1".
+--
+-- 1. BASE STATS. SetBaseRace/SetBaseClass write m_pp.race / m_pp.class_ and nothing else. The seven
+--    base stats are written ONCE at creation, by WORLD, out of char_create_combinations ->
+--    char_create_point_allocations -- so a reforge kept the old body's numbers. An Ogre Berserker
+--    starts STR 140 / STA 127 and an Iksar Monk STR 75 / STA 75.
+--    ⚠️ Racial PASSIVES *do* follow the change (Iksar AC and regen key off GetRace() when they are
+--    calculated), which is exactly why this looked so odd: the new race's innates on the old race's
+--    stats. Nothing was wrong with the passives.
+--
+-- 2. THE PREVIOUS CLASS'S COMBAT ABILITIES. global_player.grant_native_combat_skills GRANTS a class
+--    its natives and never revokes anything -- by design, since it also runs on every connect and
+--    must not undo a picker reward. So an ex-Warrior kept Taunt, Bash and Kick after becoming a Monk,
+--    which reads as free rewards out of the level-up pool at level 1.
+--    ⚠️⚠️ SAFE ONLY BECAUSE REFORGING IS LEVEL 1 ONLY (M.can_reforge). At level 1 nothing in
+--    skill_pool has been EARNED yet, so clearing all twelve cannot destroy a picker reward -- the new
+--    class's natives are re-granted on the forced relog. Do NOT reuse this if the level gate moves.
+--
+-- ⚠️ Both run in finish() rather than in set_race/set_class, so neither path can forget one -- and
+-- both must happen BEFORE Save(1), or the profile is written with the stale values and the kick
+-- makes them permanent.
+local skills = require("skill_pool")
+
 function M.finish(c, message)
+    c:AoTv4ApplyCreationStats()          -- rebase STR/STA/DEX/AGI/INT/WIS/CHA on the NEW race+class
+
+    for id in pairs(skills.SKILLS) do    -- drop the old class's natives; the new class re-grants on relog
+        if (c:GetRawSkill(id) or 0) > 0 then c:SetSkill(id, 0) end
+    end
+
     c:Message(15, message)
     c:Message(15, "The world reshapes around you. Return in a moment.")
     c:Save(1)

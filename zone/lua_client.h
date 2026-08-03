@@ -74,6 +74,7 @@ public:
 	bool GetGM();
 	void SetBaseClass(int v);
 	void SetBaseRace(int v);
+	bool AoTv4ApplyCreationStats();
 	void SetBaseGender(int v);
 	uint16 GetClassBitmask();
 	uint32 GetDeityBitmask();

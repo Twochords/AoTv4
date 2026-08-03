@@ -18,6 +18,7 @@
 #ifdef LUA_EQEMU
 
 #include "lua_general.h"
+#include "regions.h"   // AoTv4: eq.get_zone_region
 
 #include "common/classes.h"
 #include "common/content/world_content_service.h"
@@ -1233,6 +1234,16 @@ int lua_get_zone_id() {
 
 int lua_get_zone_id_by_name(const char* zone_name) {
 	return ZoneID(zone_name);
+}
+
+// AoTv4: which region a zone belongs to, straight out of the `zone_regions` table.
+// Returns 0 for "Always Available" and for any zone not in the table -- both mean "no unlock needed",
+// which is the same answer RegionManager::CanEnterZone gives them. 99 is the "Unused" bucket (412
+// zones that are not part of the region system at all).
+// 📌 Exists so Lua stops hardcoding zone->region maps: `zone_regions` has 482 rows and a hand-copied
+// subset in a quest module is a silent drift waiting to happen.
+uint32 lua_get_zone_region(uint32 zone_id) {
+	return region_manager.GetZoneRegion(zone_id);
 }
 
 const char *lua_get_zone_long_name() {
@@ -6147,6 +6158,7 @@ luabind::scope lua_register_general() {
 		luabind::def("zone_raid", &lua_zone_raid),
 		luabind::def("get_zone_id", &lua_get_zone_id),
 		luabind::def("get_zone_id_by_name", &lua_get_zone_id_by_name),
+		luabind::def("get_zone_region", &lua_get_zone_region),
 		luabind::def("get_zone_long_name", &lua_get_zone_long_name),
 		luabind::def("get_zone_long_name_by_name", &lua_get_zone_long_name_by_name),
 		luabind::def("get_zone_long_name_by_id", &lua_get_zone_long_name_by_id),

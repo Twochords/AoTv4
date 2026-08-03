@@ -2297,6 +2297,58 @@ void Client::UpdateAdmin(bool from_database) {
 	UpdateWho();
 }
 
+// ================================================================================================
+// AoTv4: re-derive the character's BASE stats from its current race/class
+// ================================================================================================
+// ⚠️⚠️ SetBaseRace/SetBaseClass CHANGE ALMOST NOTHING. They write m_pp.race / m_pp.class_ and stop.
+// The seven base stats were written ONCE at character creation, in world (world/client.cpp, from
+// char_create_combinations -> char_create_point_allocations), and nothing recomputes them
+// afterwards -- so a race/class change through Reforger Vael left the OLD body's numbers behind.
+// Reported from play as "ogre zerker stats as an iksar monk": an Ogre Berserker starts at STR 140 /
+// STA 127 and an Iksar Monk at STR 75 / STA 75, and the reforged character kept the 140.
+//
+// ⚠️ Racial PASSIVES do follow the change (Iksar AC and regen key off GetRace() at calc time), which
+// is what made this look so strange in play -- the new race's innates plus the old race's stats.
+// Nothing is wrong with the passives; only the stored numbers were stale.
+//
+// 📌 Reads the same two tables world does, so there is one source of truth and no generated copy to
+// drift. race+class resolves to exactly one allocation (verified: no pair maps to more than one).
+// ⚠️ Sets the PROFILE only. The caller is expected to Save() and force a relog -- Reforger Vael
+// already does both -- because the live character keeps its old derived values until rebuilt.
+bool Client::AoTv4ApplyCreationStats()
+{
+	const auto query = fmt::format(
+		"SELECT a.base_str, a.base_sta, a.base_dex, a.base_agi, a.base_int, a.base_wis, a.base_cha "
+		"FROM char_create_combinations c "
+		"JOIN char_create_point_allocations a ON a.id = c.allocation_id "
+		"WHERE c.race = {} AND c.class = {} LIMIT 1",
+		GetBaseRace(),
+		GetBaseClass()
+	);
+
+	auto results = content_db.QueryDatabase(query);
+	if (!results.Success() || !results.RowCount()) {
+		LogInfo("AoTv4ApplyCreationStats: no allocation for race [{}] class [{}] on [{}]",
+			GetBaseRace(), GetBaseClass(), GetCleanName());
+		return false;
+	}
+
+	auto row = results.begin();
+	m_pp.STR = static_cast<uint32>(Strings::ToInt(row[0]));
+	m_pp.STA = static_cast<uint32>(Strings::ToInt(row[1]));
+	m_pp.DEX = static_cast<uint32>(Strings::ToInt(row[2]));
+	m_pp.AGI = static_cast<uint32>(Strings::ToInt(row[3]));
+	m_pp.INT = static_cast<uint32>(Strings::ToInt(row[4]));
+	m_pp.WIS = static_cast<uint32>(Strings::ToInt(row[5]));
+	m_pp.CHA = static_cast<uint32>(Strings::ToInt(row[6]));
+
+	LogInfo("AoTv4ApplyCreationStats: [{}] rebased to race [{}] class [{}] STR [{}] STA [{}]",
+		GetCleanName(), GetBaseRace(), GetBaseClass(), m_pp.STR, m_pp.STA);
+
+	CalcBonuses();
+	return true;
+}
+
 void Client::SetStats(uint8 type,int16 set_val){
 	if(type>STAT_DISEASE){
 		printf("Error in Client::IncStats, received invalid type of: %i\n",type);
@@ -3327,7 +3379,19 @@ uint8 Client::AoTv4SkillCapLevel(EQ::skills::SkillType skill_id) const
 		return GetLevel();
 	}
 
-	return std::max(static_cast<uint8>(GetLevel()), m_pp.level2);
+	// ⚠️⚠️ BOUND IT. m_pp.level2 is "highest level ever SET", which a GM `#level` inflates and legacy
+	// data can leave nonsense in -- the test character carries 253. skill_caps runs to level 105 and
+	// GetSkillCap clamps to that, so an unbounded high-water hands out caps from far above anything
+	// the server's own progression allows (1H Blunt caps 170 at level 30 but 310 at 70). Clamping to
+	// the engine's own ceiling keeps this a "cap you actually earned" rule rather than a way for one
+	// bad number to unlock the top of every skill.
+	const uint8 ceiling = static_cast<uint8>(RuleI(Character, MaxLevel));
+	uint8       high    = std::max(static_cast<uint8>(GetLevel()), m_pp.level2);
+	if (high > ceiling) {
+		high = ceiling;
+	}
+
+	return high;
 }
 
 uint8 Client::GetSkillTrainLevel(EQ::skills::SkillType skill_id, uint8 class_id)

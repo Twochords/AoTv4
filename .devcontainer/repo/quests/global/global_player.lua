@@ -408,6 +408,52 @@ local function floor_tradeskills(c)
 	end
 end
 
+-- ================================================================================================
+-- AoTv4: every skill sits at its cap for your CURRENT level -- and nothing survives a class change
+-- ================================================================================================
+-- ⚠️⚠️ THIS REPLACES SKILL PROGRESSION AS A THING PLAYERS MANAGE. Skills are not trained, ground or
+-- carried between runs: they are simply whatever your level allows, recomputed on connect and on
+-- every ding. Two problems disappear at once:
+--   * the roguelite death no longer costs skill progress, because there is no progress to lose --
+--     a re-climb to level 20 restores exactly what level 20 allows;
+--   * a race/class change cannot leave stale values behind, because anything the NEW class cannot
+--     have is ZEROED here rather than lingering (an ex-Wizard's Evocation on a Warrior).
+--
+-- ⚠️⚠️ TRADESKILLS ARE EXCLUDED, deliberately. They ARE the one thing meant to be earned over time
+-- (floor_tradeskills only sets a floor of 20), and maxing them would hand every character 300
+-- Blacksmithing at level 1 and delete crafting as an activity.
+--
+-- ⚠️⚠️ THE TWELVE REWARD-GATED COMBAT ABILITIES ARE ONLY MAXED ONCE EARNED. skill_pool.SKILLS
+-- (Backstab, Bash, Kick, the monk strikes...) are what the level-up picker hands out, and a skill at
+-- 0 is exactly how "not earned yet" is represented -- to the server AND to the client, which hides
+-- them via SKILLUNLOCKDATA. Maxing them blindly would grant all twelve to everybody at level 1 and
+-- retire the picker. So: raise them if they are already above 0, never lift one off 0.
+--
+-- ⚠️ `MaxSkill(v) == 0` means "this class cannot have this skill at this level", which is why it is
+-- safe to use as the zeroing test -- but it is checked with CanHaveSkill too, because a class that
+-- gets a skill only at a higher level would otherwise be zeroed while merely being too low for it.
+local function max_skills_for_level(c)
+	local is_tradeskill = {}
+	for _, v in ipairs(TRADESKILLS) do is_tradeskill[v] = true end
+
+	for id = 0, 77 do                              -- 0..HIGHEST_SKILL (Skill2HPiercing)
+		if not is_tradeskill[id] then
+			local cap  = c:MaxSkill(id) or 0
+			local have = c:GetRawSkill(id) or 0
+
+			if cap <= 0 or not c:CanHaveSkill(id) then
+				-- the new class cannot have it: drop whatever the old one left behind
+				if have > 0 then c:SetSkill(id, 0) end
+			elseif skill_pool.SKILLS[id] then
+				-- reward-gated: max it only if the picker has already granted it
+				if have > 0 and have < cap then c:SetSkill(id, cap) end
+			elseif have < cap then
+				c:SetSkill(id, cap)
+			end
+		end
+	end
+end
+
 function event_connect(e)
 	-- Delve: drop a journal entry left over from a camp or a client crash. No-op if the run is still
 	-- live (camped and came back while the instance is still up).
@@ -445,6 +491,11 @@ function event_connect(e)
 	grant_free_skills(e.self)            -- level-1 chars get Dual Wield etc. now, not only after first ding
 	grant_native_combat_skills(e.self)  -- a Rogue has Backstab, a Monk its strikes; the rest are picker rewards
 	floor_tradeskills(e.self)           -- every tradeskill floored to 20 (new chars start there; existing raised on login)
+	max_skills_for_level(e.self)        -- ⚠️ AFTER the grants above: they lift a skill off 0 (which is what
+	                                    -- makes it "earned"), and this then takes it to the cap. Reversed,
+	                                    -- a freshly granted native would sit at 1 until the next ding.
+	aotv4_regions.grant_start(e.self)   -- the ONE free region credit, spent at Alessa. Once per character:
+	                                    -- it cannot key off level 1, because death resets you to level 1.
 
 	-- daily Hot Zone welcome. Computed live from the date (hotzones.lua) so it always matches the actual
 	-- 1.5x apply (event_enter_zone -> eq.set_hotzone) and the #hotzone popup -- no bucket/cron to drift.
@@ -590,6 +641,7 @@ function event_level_up(e)
   -- skills stay reward-gated (skill_pool.lua). Same grant used on connect. See grant_free_skills above.
   grant_free_skills(e.self)
   grant_native_combat_skills(e.self)   -- cap curves for some specials only open above level 1
+  max_skills_for_level(e.self)         -- every skill to its new cap for this level (tradeskills excluded)
 
   if e.self:GetLevel() == 5 then
     eq.popup("", "<c \"#F0F000\">Welcome to level 5.</c><br><br>You have just been granted a new ability called '<c \"#F0F000\">Origin</c>' which allows you to teleport back to your starting city.<br><br>Open the Alternate Advancement window by pressing the '<c \"#F0F000\">V</c>' key, look in the '<c \"#F0F000\">General' tab</c>, and find the '<c \"#F0F000\">Origin</c>' ability and select it.<br><br>Now press the '<c \"#F0F000\">Hotkey</c>' button to create a hotkey you can place on your hot bar.");

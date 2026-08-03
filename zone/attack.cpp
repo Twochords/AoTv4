@@ -3142,6 +3142,15 @@ bool NPC::Death(Mob* killer_mob, int64 damage, uint16 spell, EQ::skills::SkillTy
 				if (!cid) { continue; }
 				rolled_for++;
 
+				// AoTv4 diagnostic: "some mobs drop x4 the items they should" -- this says outright
+				// how many looter slots the corpse holds and which character each maps to, which is
+				// the one thing that cannot be read off the loot tables. A duplicated character id
+				// here means one player is being rolled for more than once.
+				LogLoot(
+					"AoTv4 individual loot: corpse [{}] slot [{}] char_id [{}] (roll {} so far)",
+					corpse->GetID(), i, cid, rolled_for
+				);
+
 				// Roll this player's own copy of the table onto the corpse.
 				// ⚠️ Restore the owner to 0 immediately after -- anything that rolls outside this
 				// loop (quest AddItem, forage) must stay shared.
