@@ -933,6 +933,13 @@ function M.enter(c, level, mode_id)
     -- the leader's spot on exit would teleport people across the zone they were standing in.
     -- ⚠️ The leader is in this list too, so their bucket is simply written twice -- harmless, and much
     -- safer than a special case that has to stay in step with the loop.
+    -- ⚠️⚠️ RECORD THE RUNG AGAINST THE INSTANCE, not just against each character. on_npc_spawn fires
+    -- for a COLD instance before anybody finishes zoning in, so there is no client to read a run from
+    -- at the moment most of the population appears -- and without this M.layer_for_zone falls back to
+    -- "first layer matching this zone", which is the lowest rung that dungeon appears at. See the
+    -- note on M.layer_for_zone: it is why thundercrest always scaled to rung 5.
+    M.set_instance_layer(inst, idx)
+
     for _, m in ipairs(party_c) do
         eq.set_data(bkey(m, "back"), string.format("%d|%d|%d|%d",
             eq.get_zone_id(), math.floor(m:GetX()), math.floor(m:GetY()), math.floor(m:GetZ())))
@@ -1203,8 +1210,42 @@ end
 -- the mapping survives a zone restart without needing a bucket to remember it.
 -- ⚠️ Callers must already have established that this is an instance -- on its own this would also
 -- match the ordinary open-world copy of the zone.
+-- ⚠️⚠️ THE ZONE ALONE CANNOT IDENTIFY THE RUNG -- 70 RUNGS CYCLE OVER 6 ZONES.
+-- `delvea` is rungs 1, 7, 13, 19, 25 ... 67; `delveb` is 2, 8, 14 and so on. This used to scan
+-- M.LAYERS and return the FIRST entry whose zone matched, which is always the LOWEST rung for that
+-- dungeon -- so every delve scaled to rung 1-6 no matter which one you actually entered.
+--
+-- ⚠️ That is why it read as "npcs are not scaling correctly on uncleared levels": the six rungs a
+-- player clears first are exactly the ones where the first-match answer happens to be right, so the
+-- early game looked fine and everything above it silently spawned rung 1-6 creatures.
+--
+-- The rung is recorded per INSTANCE at entry (M.enter), not per character, because on_npc_spawn runs
+-- for a cold instance BEFORE any player finishes zoning in -- there is no client to read a run from
+-- at the moment most of the population appears (see the empty-instance note in on_npc_spawn).
+--
+-- ⚠️ The zone scan is kept as a LAST RESORT, and only so a delve zone entered without a recorded
+-- rung still scales to something sane instead of not scaling at all. It is wrong for any repeat of a
+-- zone, which is the whole bug above -- so it must never be the primary answer.
+local function lkey(inst) return "delve_layer_" .. tostring(inst) end
+
+function M.set_instance_layer(inst, layer)
+    if inst and inst ~= 0 and layer then eq.set_data(lkey(inst), tostring(layer)) end
+end
+
 function M.layer_for_zone()
     local zone = eq.get_zone_short_name()
+
+    local inst = eq.get_zone_instance_id()
+    if inst and inst ~= 0 then
+        local n = tonumber(eq.get_data(lkey(inst)))
+        -- ⚠️ Confirm the recorded rung really is this zone. A stale bucket from a recycled instance
+        -- id would otherwise scale a dungeon to another dungeon's rung, which is worse than the bug
+        -- this replaces because it would be intermittent.
+        if n and M.LAYERS[n] and M.LAYERS[n].zone == zone then
+            return M.LAYERS[n]
+        end
+    end
+
     for _, L in ipairs(M.LAYERS) do
         if L.zone == zone then return L end
     end

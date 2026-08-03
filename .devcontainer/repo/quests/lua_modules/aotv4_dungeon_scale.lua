@@ -288,6 +288,20 @@ local function elite_ratio(npc, nat_lvl)
     local cached = tonumber(npc:GetEntityVariable("delve_elite"))
     if cached then return cached end
 
+    -- ⚠️⚠️ OUR OWN NPCs ARE TEMPLATES, AND MEASURING THEM HERE IS NONSENSE. The delve warden
+    -- (2000301) is authored at LEVEL 1 with 1000 hp -- a stub that exists to be scaled, not a real
+    -- level 1 creature. The curve at level 1 is ELEVEN, so this measured 1000/11 = 90 and clamped to
+    -- ELITE_CAP, handing the boss a spurious flat 4x. Its own chain then multiplied again
+    -- (M.BOSS_HP_MULT 5.0), so the end-of-delve warden arrived at 20x the curve instead of 5x.
+    -- ⚠️ The id band is the same divider on_npc_spawn uses for the race 127 sweep: everything AoTv4
+    -- adds lives at 2000000+, while the DoN zones' own npcs are 338xxx-343xxx. Anything of ours that
+    -- needs to be tougher says so through its OWN explicit multipliers, which is the readable place
+    -- for it -- never by being re-measured against a curve it was never authored against.
+    if (npc:GetNPCTypeID() or 0) >= 2000000 then
+        npc:SetEntityVariable("delve_elite", "1.0")
+        return 1.0
+    end
+
     local r = 1.0
     local nat_hp = npc:GetMaxHP() or 0
     if nat_lvl and nat_lvl > 0 and nat_hp > 0 then
@@ -300,6 +314,24 @@ local function elite_ratio(npc, nat_lvl)
     if r > ELITE_CAP  then r = ELITE_CAP  end
     npc:SetEntityVariable("delve_elite", string.format("%.4f", r))
     return r
+end
+
+-- ⚠️⚠️ RAISING max_hp DOES NOT HEAL THE MOB, SO IT MUST BE REFILLED BY HAND.
+-- NPC::ModifyNPCStat's max_hp branch (zone/npc.cpp) is:
+--     base_hp = value; CalcMaxHP(); if (current_hp > max_hp) current_hp = max_hp;
+-- -- it only ever clamps DOWN. Raise the maximum and current_hp stays exactly where it was, so the
+-- creature is left at old/new of its new pool. With ELITE_CAP at 4.0 that is precisely the reported
+-- "bosses are spawning at 25% hp", and it was consistent across gauntlet, fragile and standard
+-- because it is the CAP being hit, not anything mode specific.
+--
+-- ⚠️ Safe to refill unconditionally here: everything that scales runs either at spawn (nothing has
+-- damaged it yet) or from the out-of-combat rescale sweep, which already refuses to touch a mob that
+-- is being fought -- see the note on M.rescale_zone. A mid-fight refill is the thing that guard
+-- exists to prevent, and this does not change it.
+local function refill(npc)
+    if not npc or not npc.valid then return end
+    local mx = npc:GetMaxHP()
+    if mx and mx > 0 then npc:SetHP(mx) end
 end
 
 local function apply_elite(npc, r)
@@ -328,6 +360,7 @@ function M.scale_npc(npc, level)
     npc:ScaleNPC(level)
     scale_spell_output(npc, level)        -- AFTER: ScaleNPC would discard it otherwise
     apply_elite(npc, elite)               -- AFTER: ScaleNPC would discard this too
+    refill(npc)                           -- LAST: apply_elite raised max_hp without healing
 end
 
 function M.apply(npc, eff_level, power)
@@ -352,6 +385,12 @@ function M.apply(npc, eff_level, power)
     -- delve to Standard solo tuning mid run. aotv4_dungeon registers the hook (it owns modes and the
     -- party manifest; this module must not require it, or the two modules require each other).
     if M.post_scale_hook then M.post_scale_hook(npc) end
+
+    -- ⚠️ AFTER the fine trim AND the mode/group hook, both of which raise max_hp the same way
+    -- apply_elite does and are equally incapable of healing. scale_npc already refilled once, but
+    -- everything above has moved the ceiling again since -- so this is the one that actually decides
+    -- what the player walks up to. Without it a Hard six-man mob arrives part-full.
+    refill(npc)
 
     -- Remember what this mob was worth, so the ledger can be honest about it when it dies.
     -- ⚠️ ONE stamp: the level it spawned at, which is both the difficulty readout and what the ledger
