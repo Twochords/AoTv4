@@ -211,15 +211,65 @@ function M.origin_of(c, spell_id)
     return nil
 end
 
+-- ---------------------------------------------------------------- ink -> currency
+-- ⚠️⚠️ THIS CANNOT BE DONE FROM EVENT_LOOT, AND DOING IT THERE DOUBLED THE DROP.
+-- `Corpse::LootItem` fires EVENT_LOOT at corpse.cpp:1740 but does not put the item in the player's
+-- bags until AutoPutLootInInventory at :1843 -- about a hundred lines later. So the old hook added
+-- the currency and then called RemoveItem against bags that did not contain the ink yet: the removal
+-- silently did nothing and the engine handed over the item straight afterwards. The player ended up
+-- with BOTH, which is exactly how it was reported ("had 7 before i looted that one").
+--
+-- ⚠️⚠️ RETURNING NON-ZERO FROM EVENT_LOOT IS NOT THE FIX -- IT IS AN INFINITE CURRENCY BUG.
+-- A non-zero return sets `prevent_loot`, whose branch (corpse.cpp:1803) queues the ack, deletes the
+-- instance and RETURNS -- **before** the `RemoveItem(item_data->lootslot)` at :1865 that takes the
+-- item off the corpse. The ink would stay on the corpse and pay out again on every click.
+--
+-- So the conversion is deferred: event_loot arms a one second timer, and this runs afterwards, once
+-- the item really is in the inventory. Sweeping the bags (rather than trusting what was looted) also
+-- means ink arriving by ANY route -- trade, quest, GM -- is absorbed the same way.
+-- ⚠️ Also called from event_connect as a backstop, so ink held across a logout is not stranded as an
+-- item that the next death would destroy.
+function M.absorb_ink(c)
+    if not c or not c.valid then return 0 end
+    local n = c:CountItem(M.INK_ITEM) or 0
+    if n < 1 then return 0 end
+    c:RemoveItem(M.INK_ITEM, n)
+    c:AddAlternateCurrencyValue(M.INK_CURRENCY, n)
+    c:Message(15, string.format("You gather %d Ink of the Lost.", n))
+    return n
+end
+
 -- ---------------------------------------------------------------- death
 -- Called BEFORE the wipe. Returns how many spells are about to be destroyed, one Parchment Fragment
 -- each. ⚠️ Kept spells still count: they are re-scribed rather than spared, and excluding them would
 -- make keeping the best way to farm currency as well as the best way to keep a spell.
+-- ⚠️⚠️ IT COUNTS THE SPELLBOOK, NOT `ranks.chain` -- AND THAT WAS THE BUG (fixed 2026-08-04).
+-- It used to walk `ranks.chain` and test HasSpellScribed on each base and rank id. But that map only
+-- covers the **188 base spells that have rank rows**, while the offerable pool is ~1,996 spells -- so
+-- every scribed spell WITHOUT a rank chain paid nothing at all. A character who died holding 28
+-- spells was paid only for however many happened to be ranked, which is a small minority.
+-- Reported from play as "not getting scrolls correctly".
+-- ⚠️ Walking the book is also the only count that stays right as the pool changes: anything scribed
+-- is destroyed by the wipe below, whether or not the rank system has ever heard of it.
+-- ⚠️ Empty slots are UINT32_MAX (zone/spells.cpp:6120), NOT 0 -- testing `> 0` alone counts all 720.
+-- ⚠️ GetSpellIDByBookSlot is already Lua-bound (lua_client.cpp:4333); no C++ change was needed.
+local SPELLBOOK_SLOTS      = 720          -- RoF2 (common/patches/rof2_limits.h:347)
+local SPELLBOOK_EMPTY      = 4294967295   -- UINT32_MAX
+local AURA_FIRST, AURA_LAST = 43500, 43515
+
 function M.on_death_before_wipe(c)
     local n = 0
-    for base, chain in pairs(ranks.chain) do
-        if c:HasSpellScribed(base) then n = n + 1 end
-        for _, rid in ipairs(chain) do if c:HasSpellScribed(rid) then n = n + 1 end end
+    for slot = 0, SPELLBOOK_SLOTS - 1 do
+        local id = c:GetSpellIDByBookSlot(slot)
+        if id and id > 0 and id ~= SPELLBOOK_EMPTY then
+            -- ⚠️ The class auras are re-scribed by death_loss immediately after the wipe, so they are
+            -- NOT destroyed and must not be paid for. Kept spells DO still count: they are re-scribed
+            -- rather than spared, and excluding them would make keeping the best way to farm currency
+            -- as well as the best way to keep a spell.
+            if id < AURA_FIRST or id > AURA_LAST then
+                n = n + 1
+            end
+        end
     end
     return n
 end

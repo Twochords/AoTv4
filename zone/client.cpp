@@ -2113,6 +2113,10 @@ void Client::SetLDoNPoints(uint32 theme_id, uint32 points)
 void Client::SetSkill(EQ::skills::SkillType skillid, uint16 value) {
 	if (skillid > EQ::skills::HIGHEST_SKILL)
 		return;
+
+	// AoTv4: captured BEFORE the assignment below -- the autoskill reset keys off the 0 boundary.
+	const uint16 aotv4_old_skill_value = m_pp.skills[skillid];
+
 	m_pp.skills[skillid] = value; // We need to be able to #setskill 254 and 255 to reset skills
 
 	database.SaveCharacterSkill(CharacterID(), skillid, value);
@@ -2124,6 +2128,13 @@ void Client::SetSkill(EQ::skills::SkillType skillid, uint16 value) {
 	safe_delete(outapp);
 
 	achievement_manager.ProcessSkill(this, skillid, value);
+
+	// AoTv4: gaining or losing a skill clears its autoskill setting -- see the function's own note.
+	// The boundary test is cheap and almost never true, so the list scan behind it stays off the hot
+	// path of the connect/ding skill recompute (which calls SetSkill for every skill, every time).
+	if ((aotv4_old_skill_value == 0) != (value == 0)) {
+		AoTv4ClearAutoSkillOnSkillBoundary(skillid);
+	}
 }
 
 void Client::IncreaseLanguageSkill(uint8 language_id, uint8 increase)
@@ -5046,14 +5057,78 @@ const bool Client::GetAutoSkillStatus(EQ::skills::SkillType skill_id)
 	return status;
 }
 
-void Client::SetAutoSkillStatus(EQ::skills::SkillType skill_id, bool enabled)
+// ⚠️⚠️ THE AUTOSKILL CAP IS ENFORCED HERE, NOT IN THE CALLERS. It used to live in
+// Client::HandleAutoSkillSay on the stated grounds that it was "the only path that turns one on" --
+// which was false: `#autoskill <skill> enable` (gm_commands/autoskill.cpp, access 0, so ANY player)
+// called this setter directly and skipped the check completely. One choke point, same reasoning as
+// Mob::DoSpecialAttackDamage owning the endurance cost -- per-caller copies are copies that drift.
+//
+// ⚠️ Turning one OFF is always allowed and is never capped; only the enable side is gated.
+// ⚠️ Returns false when refused, so a caller can avoid reporting a change that did not happen.
+bool Client::SetAutoSkillStatus(EQ::skills::SkillType skill_id, bool enabled)
 {
+	// Only a transition INTO the enabled state can push us over -- re-enabling something already on
+	// must stay a no-op rather than a refusal, or a redundant click would report a false failure.
+	if (enabled && !GetAutoSkillStatus(skill_id)) {
+		int already = 0;
+		for (const auto s : GetAutoSkillsList()) {
+			if (s != skill_id && GetAutoSkillStatus(s)) {
+				++already;
+			}
+		}
+		if (already >= AOTV4_AUTOSKILL_MAX) {
+			Message(
+				Chat::Red,
+				"You can have at most %d abilities on autoskill. Turn one off first.",
+				AOTV4_AUTOSKILL_MAX
+			);
+			return false;
+		}
+	}
+
 	m_autoskill[skill_id] = enabled;
 
 	auto k = GetScopedBucketKeys();
 	k.key   = fmt::format("autoskill.{}", static_cast<int>(skill_id));
 	k.value = enabled ? "1" : "0";
 	DataBucket::SetData(&database, k);
+	return true;
+}
+
+// AoTv4: a skill crossing the 0 boundary (either way) forces its autoskill setting OFF.
+//
+// ⚠️⚠️ THIS IS WHAT STOPPED THE CAP BEING BYPASSED ACROSS A DEATH. The enabled flag lives in a
+// PERSISTENT per-character bucket, but the skill it refers to does not: death_loss.lua zeroes every
+// reward-gated combat skill on death and the picker hands them back over the next run. The bucket
+// was never touched by any of that, so a re-earned ability came back ALREADY ENABLED without ever
+// passing through the setter above -- stack up enough runs and you could auto-fire every special at
+// once. Persistent state that outlives the thing it describes has to be invalidated when that thing
+// changes; the cap on the write path alone could never have caught this, because on this path there
+// was no write.
+//
+// ⚠️ Cleared in BOTH directions on purpose. Clearing on loss is what actually fixes the death case;
+// clearing on gain is the belt-and-braces for any future path that grants a skill without zeroing it
+// first. Either way the rule a player sees is simple: a newly acquired ability starts OFF.
+// ⚠️ A Monk's native strikes are zeroed by death_loss too, so they also come back off. That is
+// deliberate -- a fresh run starts with an empty autoskill bar for everyone.
+void Client::AoTv4ClearAutoSkillOnSkillBoundary(EQ::skills::SkillType skill_id)
+{
+	bool is_autoskill = false;
+	for (const auto s : GetAvailableAutoSkills()) {
+		if (s == skill_id) {
+			is_autoskill = true;
+			break;
+		}
+	}
+	if (!is_autoskill) {
+		return;
+	}
+
+	// Only write when it is actually on -- SetSkill runs for every skill on connect and on every
+	// ding, and an unconditional bucket write there would be a DB round trip per skill per level.
+	if (GetAutoSkillStatus(skill_id)) {
+		SetAutoSkillStatus(skill_id, false);
+	}
 }
 
 const std::vector<EQ::skills::SkillType> Client::GetAvailableAutoSkills() const

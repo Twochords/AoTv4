@@ -806,6 +806,22 @@ function M.enter(c, level, mode_id)
         return
     end
 
+    -- ⚠️⚠️ NOT WHILE SOMETHING IS FIGHTING YOU. The delve window opens anywhere, so without this
+    -- "Enter Delve" is a free escape from any losing fight -- and a better one than Gate, because it
+    -- removes you from the zone entirely, breaks every hate list at once, costs no reagent and has no
+    -- cast time to interrupt. Reported from play as exactly that.
+    -- ⚠️ GetAggroCount, not IsEngaged or "am I swinging": it counts the NPCs holding you on their hate
+    -- list, so it stays true while something is chasing you after you stop attacking -- which is
+    -- precisely the moment the escape is worth the most. Same test the stock #zoneshard and merc code
+    -- use for their own in-combat refusals.
+    -- ⚠️⚠️ IT MUST SIT HERE, WITH THE OTHER REFUSALS AND BEFORE create_instance. The gate order in this
+    -- function is load bearing (section 24): anything that returns after the instance is made leaks
+    -- one, every time it fires.
+    if (c:GetAggroCount() or 0) > 0 then
+        c:Message(MT.Red, "You cannot enter a delve while something is fighting you.")
+        return
+    end
+
     local L = M.LAYERS[idx]
 
     -- Remember where they came from BEFORE anything else, so both Exit and the DZ's own safe return
@@ -1280,6 +1296,41 @@ local BOSS_TITLES = {
     "Ashjaw", "the Patient", "Gravewind", "the Devourer", "Nightscale", "the Unfed",
 }
 
+-- ---------------------------------------------------------------- the warden's class
+-- ⚠️⚠️ EVERY WARDEN ROLLS A CLASS, AND THE CLASS IS WHAT DECIDES HOW IT FIGHTS. `list` is the stock
+-- `npc_spells` row for that class -- ids 1-12 are EQEmu's own "Default <Class> List", already
+-- level-banded per entry, so the engine picks level-appropriate spells for us and there is no custom
+-- spell table to maintain. The four pure melee classes get list 0 and simply do not cast.
+--
+-- ⚠️⚠️ `class` IS LOAD BEARING, NOT FLAVOUR -- see the note on ModifyNPCStat("class") in zone/npc.cpp.
+-- NPC::CalcMaxMana hands a non-caster class ZERO mana, and the AI's cast gate treats a 0-mana mob as
+-- always able to cast (0 == 0). Leave the warden at the template's Warrior class and hand it a Wizard
+-- list and it nukes forever, free. The class is what makes mana finite.
+--
+-- ⚠️ Pure melee wardens ARE weaker than caster wardens at the same HP, and that is accepted variety
+-- rather than an oversight -- the hp multiplier is identical either way, so the difference is what the
+-- warden can do, not how long it lasts.
+-- 📌 Titles are per class so the fight is readable BEFORE it starts: a player who sees "the Emberwrit"
+-- knows to expect nukes. The name is still random, so wardens stay individually distinct.
+M.BOSS_CLASSES = {
+    { id = 1,  name = "Warrior",     list = 0,  titles = { "the Unbroken", "Bloodmaw", "the Bulwark" } },
+    { id = 2,  name = "Cleric",      list = 1,  titles = { "the Anointed", "the Undying", "Gravemender" } },
+    { id = 3,  name = "Paladin",     list = 8,  titles = { "the Radiant", "Oathkeeper", "the Sanctified" } },
+    { id = 4,  name = "Ranger",      list = 10, titles = { "Thornstalker", "the Far-Shot", "Briarwarden" } },
+    { id = 5,  name = "Shadowknight",list = 9,  titles = { "the Blighted", "Gravewind", "the Sunless" } },
+    { id = 6,  name = "Druid",       list = 7,  titles = { "the Verdant", "Rootbinder", "the Untamed" } },
+    { id = 7,  name = "Monk",        list = 0,  titles = { "the Patient", "Ironpalm", "the Stillness" } },
+    { id = 8,  name = "Bard",        list = 11, titles = { "the Discordant", "Dirgewright", "the Unfed" } },
+    { id = 9,  name = "Rogue",       list = 0,  titles = { "the Quiet", "Backfang", "the Unseen" } },
+    { id = 10, name = "Shaman",      list = 6,  titles = { "the Rotcaller", "Spiritgnaw", "the Hollow" } },
+    { id = 11, name = "Necromancer", list = 3,  titles = { "the Devourer", "Boneharrow", "the Marrowlit" } },
+    { id = 12, name = "Wizard",      list = 2,  titles = { "the Emberwrit", "Stormrend", "the Cinderborn" } },
+    { id = 13, name = "Magician",    list = 4,  titles = { "the Summoner", "Emberkin", "the Conjured" } },
+    { id = 14, name = "Enchanter",   list = 5,  titles = { "the Beguiler", "Mindrot", "the Whispering" } },
+    { id = 15, name = "Beastlord",   list = 12, titles = { "the Feral", "Fangbound", "the Packlord" } },
+    { id = 16, name = "Berserker",   list = 0,  titles = { "the Gorged", "Rendfang", "Ashjaw" } },
+}
+
 -- ⚠️ Scaled to the SAME effective level as the trash, then made a real fight on top. That split is
 -- deliberate: matching the trash level keeps the score sheet honest (the ledger banks effective level
 -- per kill, and the '#' name already pays the 3x named multiplier), while the HP and damage
@@ -1329,7 +1380,16 @@ M.BOSS_RACES = {
 M.BOSS_HP_FLOOR_PER_LEVEL  = 60   -- level 3 warden floors at 180 hp instead of 13
 M.BOSS_DMG_FLOOR_PER_LEVEL = 3    -- and hits for up to 9 instead of 1
 
-M.BOSS_HP_MULT  = 5.0
+-- ⚠️⚠️ BOSS_HP_MULT IS A MULTIPLE OF A REGULAR MOB'S HP IN THIS DELVE -- NOT OF THE BOSS'S OWN CURVE.
+-- It used to be the latter, and that is why "bosses are not 10x a regular mob" survived several
+-- retunes: the boss was scaled to eff + BOSS_LVL_BONUS and THEN multiplied, so the ratio a player
+-- actually sees was (curve(eff+2) / curve(eff)) * mult -- a number that drifts with how steep the
+-- curve happens to be at that point, and which fell as the rung rose:
+--     rung  1 -> ~19x     rung 10 -> ~6.5x     rung 30 -> ~5.6x
+-- Raising the constant alone could never fix that; it would just slide the whole crooked curve up.
+-- Now the boss MEASURES a regular mob (scale.regular_hp) and multiplies THAT, so the ratio is this
+-- number at every rung, and the level bonus is left to do what it should -- damage, accuracy and AC.
+M.BOSS_HP_MULT  = 10.0
 M.BOSS_DMG_MULT = 1.6
 M.BOSS_LVL_BONUS = 2
 
@@ -1340,7 +1400,9 @@ function M.spawn_boss(c, L, run, ordinal)
     if not boss or not boss.valid then return end
 
     local mode = run.modedef or M.mode_by_id(M.MODE_DEFAULT)
-    local eff  = scale.effective_level(L.level, c)
+    -- ⚠️ `power` is captured too now: it is half of what decides a regular mob's hp (scale.apply
+    -- applies the same fine trim), and the boss is sized against that mob.
+    local eff, power = scale.effective_level(L.level, c)
 
     -- ⚠️ ScaleNPC FIRST, always. It rewrites stats wholesale from npc_scale_global_base and would
     -- discard anything applied before it (§24).
@@ -1356,6 +1418,12 @@ function M.spawn_boss(c, L, run, ordinal)
     -- value, which is 100 at every level -- so calling it directly here handed the boss FULL authored
     -- spell damage no matter what rung it was on. The wrapper reads the natives first and puts spell
     -- and heal output back in proportion afterwards.
+    -- ⚠️⚠️ MEASURE A REGULAR MOB FIRST, THEN scale the boss for real. scale.regular_hp scales the npc
+    -- to `eff` purely to read what the curve gives ordinary trash there, which is the number
+    -- BOSS_HP_MULT is a multiple of. It leaves the boss sitting at the wrong level on purpose -- the
+    -- scale_npc call immediately below is what fixes that, so the two must stay adjacent.
+    local trash_hp = scale.regular_hp(boss:CastToNPC(), eff, power)
+
     scale.scale_npc(boss:CastToNPC(), blvl)
 
     -- Then the boss multipliers, then the MODE multipliers on top of those, so Hard's boss is twice
@@ -1364,7 +1432,13 @@ function M.spawn_boss(c, L, run, ordinal)
     -- but takes an int and is a DIFFERENT function, and there is no `GetMinDamage` binding at all --
     -- calling the wrong one is a runtime nil, not a compile error.
     local npc = boss:CastToNPC()
-    local hp  = npc:GetMaxHP()  * M.BOSS_HP_MULT  * (mode.hp  or 1)
+    -- ⚠️ hp comes from the MEASURED regular mob, not from npc:GetMaxHP() -- which at this point is the
+    -- boss's own curve value at blvl and is exactly the thing that made the ratio drift. Damage still
+    -- reads the boss's own scaled figures, so BOSS_LVL_BONUS keeps its effect there.
+    -- ⚠️ Falls back to the boss's own curve hp if the measurement failed, so a bad read cannot spawn a
+    -- warden with zero health.
+    local base_hp = (trash_hp and trash_hp > 0) and trash_hp or npc:GetMaxHP()
+    local hp  = base_hp          * M.BOSS_HP_MULT  * (mode.hp  or 1)
     local lo  = npc:GetMinDMG() * M.BOSS_DMG_MULT * (mode.dmg or 1)
     local hi  = npc:GetMaxDMG() * M.BOSS_DMG_MULT * (mode.dmg or 1)
 
@@ -1401,6 +1475,24 @@ function M.spawn_boss(c, L, run, ordinal)
     npc:ModifyNPCStat("max_hit", tostring(math.floor(hi)))
     npc:SetHP(math.floor(hp))
 
+    -- ⚠️⚠️ CLASS, MANA AND SPELLS GO HERE -- AFTER the scale and after the hp/damage work, and in
+    -- THIS ORDER. All three depend on something the lines above have only just finished setting:
+    --   * ModifyNPCStat("class") recalculates the mana pool from the CURRENT int/wis and level, so
+    --     scaling has to have happened first or the warden gets a level 1 mana pool.
+    --   * SetMana refills it -- max_mana clamps DOWN only, exactly like max_hp, so raising the
+    --     ceiling leaves the mob sitting at its old value (see the refill note in the scale module).
+    --     A warden that spawned with 14 mana against a 1600 pool would cast twice and stop.
+    --   * npc_spells_id is level filtered AT LOAD TIME by AI_AddNPCSpells (mob_ai.cpp: it keeps only
+    --     entries whose minlevel/maxlevel bracket GetLevel()), so attaching the list before the
+    --     scale would load the TEMPLATE's level 1 spells and freeze them there.
+    -- ⚠️ AI_AddNPCSpells clears AIspells first, so re-attaching is idempotent -- the rescale sweep
+    -- cannot stack duplicate spell lists onto a warden.
+    local bclass = M.BOSS_CLASSES[math.random(#M.BOSS_CLASSES)]
+    npc:ModifyNPCStat("class", tostring(bclass.id))
+    local mmana = npc:GetMaxMana() or 0
+    if mmana > 0 then npc:SetMana(mmana) end
+    npc:ModifyNPCStat("npc_spells_id", tostring(bclass.list or 0))
+
     -- ⚠️ The '#' prefix is load-bearing and must survive the rename: the ledger's named test is the
     -- same lowercase-is-trash heuristic used in §17c and quest_difficulty.pl, and a named kill is
     -- worth 3x in M.kill_value. A lowercase boss name silently scores as a rat.
@@ -1408,7 +1500,11 @@ function M.spawn_boss(c, L, run, ordinal)
     -- the lowercase-is-trash heuristic from §17c, and a named kill is worth 3x in M.kill_value.
     -- ⚠️ Underscores become spaces client side, which is why the title's spaces are converted rather
     -- than left as-is.
-    local title = BOSS_TITLES[math.random(#BOSS_TITLES)]
+    -- ⚠️ The title comes from the CLASS's own pool so the warden reads as what it is before it opens
+    -- up -- "the Emberwrit" is a wizard and will nuke you. BOSS_TITLES is kept as the fallback for a
+    -- class row that has no titles of its own, so adding a class cannot produce a nameless warden.
+    local tpool = (bclass.titles and #bclass.titles > 0) and bclass.titles or BOSS_TITLES
+    local title = tpool[math.random(#tpool)]
     local given = BOSS_NAMES[math.random(#BOSS_NAMES)]
     boss:TempName("#" .. given .. "_" .. title:gsub("%s", "_"))
 

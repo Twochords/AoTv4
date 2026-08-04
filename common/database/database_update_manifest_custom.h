@@ -2469,6 +2469,341 @@ UPDATE spells_new
 )",
 		.content_schema_update = false,
 	},
+
+	ManifestEntry{
+		.version     = 10,
+		.description = "2026_08_03_aotv4_marker_slot_separation",
+		// v-earlier gave four custom lines an ascending SPA 44 marker so a higher tier replaces a
+		// lower -- but put reptile, sloth AND thirst in the SAME slot with the SAME values.
+		// CheckStackConflict only compares effects at the same INDEX, so three unrelated lines began
+		// evicting one another ("Thirst and Skin lines are overwriting each other"). The slot index is
+		// what isolates lines; the value only orders tiers within one.
+		//   reptile slot 1 | sloth slot 2 | kindred slot 3 | thirst slot 4
+		// ⚠️ Any future line needing a marker takes slot 5 -- reusing 1-4 silently recreates this, and
+		// it presents as two unrelated spells cancelling each other.
+		.check       = "SELECT id FROM spells_new WHERE (id BETWEEN 43306 AND 43311 AND effectid1 = 44) OR (id BETWEEN 43330 AND 43335 AND effectid2 = 44) OR (id BETWEEN 43342 AND 43347 AND effectid1 = 44)",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE spells_new
+   SET effectid2 = 44, effect_base_value2 = effect_base_value1, effect_limit_value2 = 0,
+       formula2 = 100, max2 = 0,
+       effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 0, max1 = 0
+ WHERE id BETWEEN 43306 AND 43311 AND effectid1 = 44;
+
+UPDATE spells_new
+   SET effectid3 = 44, effect_base_value3 = effect_base_value2, effect_limit_value3 = 0,
+       formula3 = 100, max3 = 0,
+       effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 0, max2 = 0
+ WHERE id BETWEEN 43330 AND 43335 AND effectid2 = 44;
+
+UPDATE spells_new
+   SET effectid4 = 44, effect_base_value4 = effect_base_value1, effect_limit_value4 = 0,
+       formula4 = 100, max4 = 0,
+       effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 0, max1 = 0
+ WHERE id BETWEEN 43342 AND 43347 AND effectid1 = 44;
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 11,
+		.description = "2026_08_04_aotv4_bard_mend_feign_death",
+		// Reported as "everyone is getting mend and feign death". There were TWO independent causes and
+		// this migration is the SERVER half; the client half is a dinput8.dll change (the GetSkillCap
+		// reveal hook advertised both to every class, so they showed in the Skills window and could be
+		// hotbarred even though the server refused them).
+		//
+		// The server half is Bard only, and it is a leftover of the Bard-only era: while every character
+		// was forced to Bard, class 8's skill_caps were opened across the board so a Bard could use
+		// everything. Bard still carries caps for ALL 77 skills where every other class has 62-68 --
+		// so grant_free_skills (which gates on CanHaveSkill -> skill_caps) really did hand Bards Mend
+		// and Feign Death. Monk keeps both; nothing else is touched.
+		//
+		// ⚠️ Existing Bards need no data fixup: max_skills_for_level zeroes any skill the class can no
+		// longer have on the next connect, so the value clears itself.
+		// ⚠️ skill_caps is NOT shared memory -- SkillCaps::LoadSkillCaps reads the content DB directly
+		// (common/skill_caps.cpp:91), so this needs a zone/world restart and NOT a ./shared_memory run.
+		// ⚠️⚠️ SCOPED DELIBERATELY TO SKILLS 25 AND 32. The wider "Bard has all 77" legacy is a separate
+		// decision and is NOT swept up here -- stripping it wholesale would silently strip real Bard
+		// abilities too.
+		.check       = "SELECT class_id FROM skill_caps WHERE class_id = 8 AND skill_id IN (25, 32) AND cap > 0",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM skill_caps WHERE class_id = 8 AND skill_id IN (25, 32);
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 12,
+		.description = "2026_08_04_aotv4_tradeskill_aa_ladders",
+		// Tradeskill achievements now auto-grant the mastery AAs, via the new `grant_aa` reward type.
+		// Full commentary in custom/sql/aotv4_tradeskill_aa_ladders.sql -- the short version:
+		//   * the per-skill achievements ALREADY EXIST (72 of them, keyed 4<skill><level>); this only
+		//     attaches a grant_aa reward to the 50/100/150 rows of the ten skills that have a mastery.
+		//   * Fishing (55) and Research (58) are excluded from BOTH ladders -- neither has a mastery AA.
+		//   * skill 68 is Jewelcrafting and 69 is Pottery, verified against the achievement rows.
+		// ⚠️ enabled=1 is mandatory: zone/aa.cpp loads only enabled AAs, so grant_aa fails without it.
+		// ⚠️ AAs load at zone boot and are NOT shared memory -- a zone restart is enough.
+		.check       = "SELECT id FROM aa_ability WHERE id IN (324,325,326,327,328,329,330) AND enabled = 0",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE aa_ability SET enabled = 1, grant_only = 1, classes = 65535
+ WHERE id IN (49, 103, 324, 325, 326, 327, 328, 329, 330, 575, 576);
+
+DELETE FROM custom_achievement_rewards WHERE id BETWEEN 1000 AND 1199;
+
+INSERT INTO custom_achievement_rewards
+  (id, achievement_id, reward_type, reward_id, amount, chance, tier, claim_once, auto_claim,
+   preview_text, data_text, enabled, sort_order, created_at)
+SELECT 1000 + (m.seq * 3) + t.rank_no - 1,
+       400000 + (m.skill_id * 1000) + (t.rank_no * 50),
+       'grant_aa', m.aa_id, t.rank_no, 100, '', 1, 1,
+       CONCAT(m.aa_name, ' rank ', t.rank_no), '', 1, 20, UNIX_TIMESTAMP()
+FROM (
+  SELECT 0 seq, 56 skill_id, 103 aa_id, 'Poison Mastery'        aa_name UNION ALL
+  SELECT 1, 57, 575, 'Tinkering Mastery'     UNION ALL
+  SELECT 2, 59,  49, 'Alchemy Mastery'       UNION ALL
+  SELECT 3, 60, 325, 'Baking Mastery'        UNION ALL
+  SELECT 4, 61, 329, 'Tailoring Mastery'     UNION ALL
+  SELECT 5, 63, 324, 'Blacksmithing Mastery' UNION ALL
+  SELECT 6, 64, 327, 'Fletching Mastery'     UNION ALL
+  SELECT 7, 65, 326, 'Brewing Mastery'       UNION ALL
+  SELECT 8, 68, 576, 'Jewel Craft Mastery'   UNION ALL
+  SELECT 9, 69, 328, 'Pottery Mastery'
+) m
+CROSS JOIN (SELECT 1 rank_no UNION ALL SELECT 2 UNION ALL SELECT 3) t
+WHERE EXISTS (SELECT 1 FROM custom_achievements a
+               WHERE a.id = 400000 + (m.skill_id * 1000) + (t.rank_no * 50));
+
+DELETE FROM custom_achievement_objectives WHERE id BETWEEN 47000000 AND 47099999;
+DELETE FROM custom_achievements           WHERE id BETWEEN 470000 AND 470999;
+
+INSERT INTO custom_achievements
+  (id, category_id, slug, name, description, points, hidden, repeatable, reward_title_set,
+   reward_item_id, reward_currency_id, reward_currency_amount, enabled, sort_order, created_at)
+SELECT 470000 + t.v, 600, CONCAT('master_artisan_', t.v), CONCAT('Master Artisan ', t.v),
+       CONCAT('Reach ', t.v, ' in every tradeskill that has a mastery. Grants a rank of Salvage.'),
+       25, 0, 0, 0, 0, 0, 0, 1, 900 + t.v, UNIX_TIMESTAMP()
+FROM (SELECT 50 v UNION ALL SELECT 100 UNION ALL SELECT 150 UNION ALL
+      SELECT 200 UNION ALL SELECT 250 UNION ALL SELECT 300) t;
+
+INSERT INTO custom_achievement_objectives
+  (id, achievement_id, objective_index, objective_type, target_type, target_id, target_name,
+   required_count, zone_id, class_mask, optional)
+SELECT 47000000 + (t.v * 100) + m.seq, 470000 + t.v, m.seq, 'skill', '', m.skill_id, m.skill_name,
+       t.v, 0, 0, 0
+FROM (
+  SELECT 0 seq, 56 skill_id, 'Make Poison' skill_name UNION ALL
+  SELECT 1, 57, 'Tinkering'     UNION ALL SELECT 2, 59, 'Alchemy'   UNION ALL
+  SELECT 3, 60, 'Baking'        UNION ALL SELECT 4, 61, 'Tailoring' UNION ALL
+  SELECT 5, 63, 'Blacksmithing' UNION ALL SELECT 6, 64, 'Fletching' UNION ALL
+  SELECT 7, 65, 'Brewing'       UNION ALL SELECT 8, 68, 'Jewelcrafting' UNION ALL
+  SELECT 9, 69, 'Pottery'
+) m
+CROSS JOIN (SELECT 50 v UNION ALL SELECT 100 UNION ALL SELECT 150 UNION ALL
+            SELECT 200 UNION ALL SELECT 250 UNION ALL SELECT 300) t;
+
+INSERT INTO custom_achievement_rewards
+  (id, achievement_id, reward_type, reward_id, amount, chance, tier, claim_once, auto_claim,
+   preview_text, data_text, enabled, sort_order, created_at)
+SELECT 1100 + (t.v DIV 50), 470000 + t.v, 'grant_aa', 330, t.v DIV 50, 100, '', 1, 1,
+       CONCAT('Salvage rank ', t.v DIV 50), '', 1, 10, UNIX_TIMESTAMP()
+FROM (SELECT 50 v UNION ALL SELECT 100 UNION ALL SELECT 150 UNION ALL
+      SELECT 200 UNION ALL SELECT 250 UNION ALL SELECT 300) t;
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 13,
+		.description = "2026_08_04_aotv4_craft_sockets",
+		// Every craftable wearable gets sockets by TIER: native 1, Hallowed 2, Mythic 3, all type 1 so
+		// every delve augment (AugType 255 = slot types 1-8) fits every slot. Ornamentation slots share
+		// the same six columns and mostly sit in position 2, so they are relocated to positions 4/5
+		// rather than overwritten. Full commentary in custom/sql/aotv4_craft_sockets.sql.
+		// ⚠️⚠️ `items` IS SHARED MEMORY. World applies this at boot, but the change is NOT visible until
+		// the stack is taken down and ./shared_memory is re-run. Migrating alone is not enough.
+		// ⚠️ A temp table cannot be reopened inside one statement, so the base set is joined at the
+		// three tier offsets rather than grown by selecting from itself.
+		.check       = "SELECT i.id FROM tradeskill_recipe_entries e JOIN items i ON i.id = e.item_id JOIN tradeskill_recipe r ON r.id = e.recipe_id WHERE e.successcount > 0 AND i.slots > 0 AND r.enabled = 1 AND i.augslot1type <> 1 LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+DROP TEMPORARY TABLE IF EXISTS aotv4_craft_base;
+CREATE TEMPORARY TABLE aotv4_craft_base (item_id INT NOT NULL PRIMARY KEY) ENGINE=MEMORY;
+INSERT INTO aotv4_craft_base (item_id)
+SELECT DISTINCT i.id FROM tradeskill_recipe_entries e
+JOIN items i ON i.id = e.item_id JOIN tradeskill_recipe r ON r.id = e.recipe_id
+WHERE e.successcount > 0 AND i.slots > 0 AND r.enabled = 1;
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_craft_orn;
+CREATE TEMPORARY TABLE aotv4_craft_orn (
+  item_id INT NOT NULL PRIMARY KEY, orn_type INT NOT NULL, orn_type2 INT NOT NULL DEFAULT 0
+) ENGINE=MEMORY;
+
+INSERT INTO aotv4_craft_orn (item_id, orn_type, orn_type2)
+SELECT i.id,
+  CASE WHEN i.augslot1type IN (20,21) THEN i.augslot1type WHEN i.augslot2type IN (20,21) THEN i.augslot2type ELSE i.augslot3type END,
+  CASE WHEN i.augslot1type IN (20,21) AND i.augslot2type IN (20,21) THEN i.augslot2type
+       WHEN i.augslot1type IN (20,21) AND i.augslot3type IN (20,21) THEN i.augslot3type
+       WHEN i.augslot2type IN (20,21) AND i.augslot3type IN (20,21) THEN i.augslot3type ELSE 0 END
+FROM items i JOIN aotv4_craft_base b ON i.id = b.item_id
+WHERE i.augslot1type IN (20,21) OR i.augslot2type IN (20,21) OR i.augslot3type IN (20,21)
+ON DUPLICATE KEY UPDATE orn_type = VALUES(orn_type), orn_type2 = VALUES(orn_type2);
+
+INSERT INTO aotv4_craft_orn (item_id, orn_type, orn_type2)
+SELECT i.id,
+  CASE WHEN i.augslot1type IN (20,21) THEN i.augslot1type WHEN i.augslot2type IN (20,21) THEN i.augslot2type ELSE i.augslot3type END,
+  CASE WHEN i.augslot1type IN (20,21) AND i.augslot2type IN (20,21) THEN i.augslot2type
+       WHEN i.augslot1type IN (20,21) AND i.augslot3type IN (20,21) THEN i.augslot3type
+       WHEN i.augslot2type IN (20,21) AND i.augslot3type IN (20,21) THEN i.augslot3type ELSE 0 END
+FROM items i JOIN aotv4_craft_base b ON i.id = b.item_id + 300000
+WHERE i.augslot1type IN (20,21) OR i.augslot2type IN (20,21) OR i.augslot3type IN (20,21)
+ON DUPLICATE KEY UPDATE orn_type = VALUES(orn_type), orn_type2 = VALUES(orn_type2);
+
+INSERT INTO aotv4_craft_orn (item_id, orn_type, orn_type2)
+SELECT i.id,
+  CASE WHEN i.augslot1type IN (20,21) THEN i.augslot1type WHEN i.augslot2type IN (20,21) THEN i.augslot2type ELSE i.augslot3type END,
+  CASE WHEN i.augslot1type IN (20,21) AND i.augslot2type IN (20,21) THEN i.augslot2type
+       WHEN i.augslot1type IN (20,21) AND i.augslot3type IN (20,21) THEN i.augslot3type
+       WHEN i.augslot2type IN (20,21) AND i.augslot3type IN (20,21) THEN i.augslot3type ELSE 0 END
+FROM items i JOIN aotv4_craft_base b ON i.id = b.item_id + 600000
+WHERE i.augslot1type IN (20,21) OR i.augslot2type IN (20,21) OR i.augslot3type IN (20,21)
+ON DUPLICATE KEY UPDATE orn_type = VALUES(orn_type), orn_type2 = VALUES(orn_type2);
+
+UPDATE items i JOIN aotv4_craft_base b ON i.id = b.item_id
+   SET i.augslot1type=1, i.augslot1visible=1, i.augslot2type=0, i.augslot2visible=0,
+       i.augslot3type=0, i.augslot3visible=0;
+UPDATE items i JOIN aotv4_craft_base b ON i.id = b.item_id + 300000
+   SET i.augslot1type=1, i.augslot1visible=1, i.augslot2type=1, i.augslot2visible=1,
+       i.augslot3type=0, i.augslot3visible=0;
+UPDATE items i JOIN aotv4_craft_base b ON i.id = b.item_id + 600000
+   SET i.augslot1type=1, i.augslot1visible=1, i.augslot2type=1, i.augslot2visible=1,
+       i.augslot3type=1, i.augslot3visible=1;
+
+UPDATE items i JOIN aotv4_craft_orn o ON o.item_id = i.id
+   SET i.augslot4type = o.orn_type, i.augslot4visible = 1,
+       i.augslot5type    = CASE WHEN o.orn_type2 > 0 THEN o.orn_type2 ELSE i.augslot5type END,
+       i.augslot5visible = CASE WHEN o.orn_type2 > 0 THEN 1 ELSE i.augslot5visible END;
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_craft_base;
+DROP TEMPORARY TABLE IF EXISTS aotv4_craft_orn;
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 14,
+		.description = "2026_08_04_aotv4_tradeskill_tools",
+		// Twelve worn tools (+20), twelve mask clickies casting twelve illusions (+30), and a recipe
+		// per tool so each is crafted in its own tradeskill. Full commentary in
+		// custom/sql/aotv4_tradeskill_tools.sql.
+		// ⚠️⚠️ THE BONUSES ARE PAID IN C++ BY ID (AoTv4TradeskillSkill, zone/tradeskills.cpp). These
+		// rows are INERT markers -- neither a flat item skill bonus nor any spell skill bonus is
+		// expressible natively. The ID ORDER IS LOAD BEARING and must match AOTV4_TS_SKILLS.
+		// ⚠️⚠️ 44400, NOT 436xx -- 43576-44327 is the spell-rank band and would have been overwritten.
+		// ⚠️ items AND spells_new are shared memory: ./shared_memory after this applies.
+		.check       = "SELECT id FROM items WHERE id = 147930",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM items      WHERE id BETWEEN 147930 AND 147953;
+DELETE FROM spells_new WHERE id BETWEEN 44400 AND 44411;
+
+DROP TEMPORARY TABLE IF EXISTS sp;
+CREATE TEMPORARY TABLE sp AS SELECT * FROM spells_new WHERE id = 582;
+UPDATE sp SET id=44400, name='Guise of the Brineface',     effect_base_value1=9;  INSERT INTO spells_new SELECT * FROM sp;
+UPDATE sp SET id=44401, name='Guise of the Weeping Fang',  effect_base_value1=6;  INSERT INTO spells_new SELECT * FROM sp;
+UPDATE sp SET id=44402, name='Guise of the Cogwright',     effect_base_value1=12; INSERT INTO spells_new SELECT * FROM sp;
+UPDATE sp SET id=44403, name='Guise of the Inkbound',      effect_base_value1=3;  INSERT INTO spells_new SELECT * FROM sp;
+UPDATE sp SET id=44404, name='Guise of the Quicksilver',   effect_base_value1=3;  INSERT INTO spells_new SELECT * FROM sp;
+UPDATE sp SET id=44405, name='Guise of the Hearthfed',     effect_base_value1=11; INSERT INTO spells_new SELECT * FROM sp;
+UPDATE sp SET id=44406, name='Guise of the Threadbare',    effect_base_value1=4;  INSERT INTO spells_new SELECT * FROM sp;
+UPDATE sp SET id=44407, name='Guise of the Forge-Wight',   effect_base_value1=8;  INSERT INTO spells_new SELECT * FROM sp;
+UPDATE sp SET id=44408, name='Guise of the Straightgrain', effect_base_value1=4;  INSERT INTO spells_new SELECT * FROM sp;
+UPDATE sp SET id=44409, name='Guise of the Sourmash',      effect_base_value1=8;  INSERT INTO spells_new SELECT * FROM sp;
+UPDATE sp SET id=44410, name='Guise of the Facetwright',   effect_base_value1=5;  INSERT INTO spells_new SELECT * FROM sp;
+UPDATE sp SET id=44411, name='Guise of the Kilnborn',      effect_base_value1=10; INSERT INTO spells_new SELECT * FROM sp;
+DROP TEMPORARY TABLE sp;
+
+UPDATE spells_new
+   SET classes1=1,classes2=1,classes3=1,classes4=1,classes5=1,classes6=1,classes7=1,classes8=1,
+       classes9=1,classes10=1,classes11=1,classes12=1,classes13=1,classes14=1,classes15=1,classes16=1,
+       targettype=6, goodEffect=1
+ WHERE id BETWEEN 44400 AND 44411;
+
+DROP TEMPORARY TABLE IF EXISTS it;
+CREATE TEMPORARY TABLE it AS SELECT * FROM items WHERE id = 1001;
+UPDATE it SET nodrop=1, norent=1, races=65535, classes=65535, reclevel=0, reqlevel=0;
+UPDATE it SET id=147930, Name="Angler's Brim";           INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147931, Name="Venomer's Wrap";          INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147932, Name="Tinker's Goggles";        INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147933, Name="Scrivener's Circlet";     INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147934, Name="Alchemist's Hood";        INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147935, Name="Baker's Toque";           INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147936, Name="Tailor's Pinned Cap";     INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147937, Name="Smith's Soot Hood";       INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147938, Name="Fletcher's Band";         INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147939, Name="Brewer's Cowl";           INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147940, Name="Jeweler's Loupe Harness"; INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147941, Name="Potter's Clay-Caked Cap"; INSERT INTO items SELECT * FROM it;
+UPDATE it SET slots=0, clicktype=1, clicklevel=1, clicklevel2=1, casttime=0, casttime_=0;
+UPDATE it SET id=147942, Name="Mask of the Brineface",     clickeffect=44400; INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147943, Name="Mask of the Weeping Fang",  clickeffect=44401; INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147944, Name="Mask of the Cogwright",     clickeffect=44402; INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147945, Name="Mask of the Inkbound",      clickeffect=44403; INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147946, Name="Mask of the Quicksilver",   clickeffect=44404; INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147947, Name="Mask of the Hearthfed",     clickeffect=44405; INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147948, Name="Mask of the Threadbare",    clickeffect=44406; INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147949, Name="Mask of the Forge-Wight",   clickeffect=44407; INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147950, Name="Mask of the Straightgrain", clickeffect=44408; INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147951, Name="Mask of the Sourmash",      clickeffect=44409; INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147952, Name="Mask of the Facetwright",   clickeffect=44410; INSERT INTO items SELECT * FROM it;
+UPDATE it SET id=147953, Name="Mask of the Kilnborn",      clickeffect=44411; INSERT INTO items SELECT * FROM it;
+DROP TEMPORARY TABLE it;
+
+DELETE FROM tradeskill_recipe_entries WHERE recipe_id BETWEEN 470100 AND 470111;
+DELETE FROM tradeskill_recipe         WHERE id        BETWEEN 470100 AND 470111;
+DELETE FROM custom_achievement_rewards WHERE id BETWEEN 1200 AND 1299;
+
+INSERT INTO custom_achievement_rewards
+  (id, achievement_id, reward_type, reward_id, amount, chance, tier, claim_once, auto_claim,
+   preview_text, data_text, enabled, sort_order, created_at)
+SELECT 1200 + x.idx, 400000 + x.skill*1000 + 100, 'item', 147930 + x.idx, 1, 100, '', 1, 1,
+       CONCAT(x.tool, ' (+20 ', x.sname, ')'), '', 1, 30, UNIX_TIMESTAMP()
+FROM (
+  SELECT 0 idx,55 skill,'Fishing' sname,"Angler's Brim" tool UNION ALL
+  SELECT 1,56,'Make Poison',"Venomer's Wrap"      UNION ALL SELECT 2,57,'Tinkering',"Tinker's Goggles"    UNION ALL
+  SELECT 3,58,'Research',"Scrivener's Circlet"    UNION ALL SELECT 4,59,'Alchemy',"Alchemist's Hood"      UNION ALL
+  SELECT 5,60,'Baking',"Baker's Toque"            UNION ALL SELECT 6,61,'Tailoring',"Tailor's Pinned Cap" UNION ALL
+  SELECT 7,63,'Blacksmithing',"Smith's Soot Hood" UNION ALL SELECT 8,64,'Fletching',"Fletcher's Band"     UNION ALL
+  SELECT 9,65,'Brewing',"Brewer's Cowl"           UNION ALL SELECT 10,68,'Jewelcrafting',"Jeweler's Loupe Harness" UNION ALL
+  SELECT 11,69,'Pottery',"Potter's Clay-Caked Cap"
+) x
+WHERE EXISTS (SELECT 1 FROM custom_achievements a WHERE a.id = 400000 + x.skill*1000 + 100);
+
+INSERT INTO custom_achievement_rewards
+  (id, achievement_id, reward_type, reward_id, amount, chance, tier, claim_once, auto_claim,
+   preview_text, data_text, enabled, sort_order, created_at)
+SELECT 1250 + x.idx, 400000 + x.skill*1000 + 200, 'item', 147942 + x.idx, 1, 100, '', 1, 1,
+       CONCAT(x.mask, ' (+30 ', x.sname, ')'), '', 1, 30, UNIX_TIMESTAMP()
+FROM (
+  SELECT 0 idx,55 skill,'Fishing' sname,"Mask of the Brineface" mask UNION ALL
+  SELECT 1,56,'Make Poison',"Mask of the Weeping Fang"  UNION ALL SELECT 2,57,'Tinkering',"Mask of the Cogwright" UNION ALL
+  SELECT 3,58,'Research',"Mask of the Inkbound"         UNION ALL SELECT 4,59,'Alchemy',"Mask of the Quicksilver" UNION ALL
+  SELECT 5,60,'Baking',"Mask of the Hearthfed"          UNION ALL SELECT 6,61,'Tailoring',"Mask of the Threadbare" UNION ALL
+  SELECT 7,63,'Blacksmithing',"Mask of the Forge-Wight" UNION ALL SELECT 8,64,'Fletching',"Mask of the Straightgrain" UNION ALL
+  SELECT 9,65,'Brewing',"Mask of the Sourmash"          UNION ALL SELECT 10,68,'Jewelcrafting',"Mask of the Facetwright" UNION ALL
+  SELECT 11,69,'Pottery',"Mask of the Kilnborn"
+) x
+WHERE EXISTS (SELECT 1 FROM custom_achievements a WHERE a.id = 400000 + x.skill*1000 + 200);
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

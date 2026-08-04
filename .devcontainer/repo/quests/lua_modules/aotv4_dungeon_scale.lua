@@ -363,6 +363,36 @@ function M.scale_npc(npc, level)
     refill(npc)                           -- LAST: apply_elite raised max_hp without healing
 end
 
+-- The fine trim factor for a power ratio. ⚠️ SHARED by M.apply and M.regular_hp on purpose: the boss
+-- sizes itself against what a regular mob has, so if these two ever disagreed the boss would be a
+-- multiple of a mob that does not exist. One definition, per the rule that keeps the mode and group
+-- multipliers in a single function.
+local function fine_factor(power)
+    if not power or power <= 1.0 then return 1.0 end
+    local fine = 1.0 + 0.10 * (power - 1.0)
+    if fine > 1.35 then fine = 1.35 end
+    return fine
+end
+
+-- What an ORDINARY (non elite) mob in this delve ends up with for max_hp, before the difficulty mode
+-- and group multipliers -- i.e. the number the boss is a multiple OF.
+--
+-- ⚠️⚠️ IT SCALES THE NPC AS A SIDE EFFECT and leaves it sitting at `level`. That is the same
+-- measure-by-scaling trick elite_ratio already uses, and it is only safe because every caller
+-- re-scales properly straight afterwards. Do not call it on a mob you are not about to re-scale.
+-- ⚠️ Bare ScaleNPC is correct here: only max_hp is read, and the spell/heal proportioning that
+-- M.scale_npc adds would be thrown away by the caller's own scale anyway.
+-- ⚠️ Deliberately EXCLUDES the elite ratio. "Regular mob" means trash -- an authored elite is up to
+-- ELITE_CAP times tougher, and sizing the boss off one of those would make it a multiple of whatever
+-- happened to be standing nearby.
+function M.regular_hp(npc, level, power)
+    if not npc or not npc.valid then return 0 end
+    npc:ScaleNPC(level)
+    local hp = npc:GetMaxHP() or 0
+    if hp <= 0 then return 0 end
+    return math.floor(hp * fine_factor(power))
+end
+
 function M.apply(npc, eff_level, power)
     if not npc or not npc.valid then return end
 
@@ -370,9 +400,8 @@ function M.apply(npc, eff_level, power)
 
     -- Fine trim: the part of the power ratio the rounded level did not capture. Kept small on purpose
     -- -- the level is doing the heavy lifting and this only smooths the steps between levels.
-    if power and power > 1.0 then
-        local fine = 1.0 + 0.10 * (power - 1.0)
-        if fine > 1.35 then fine = 1.35 end
+    local fine = fine_factor(power)
+    if fine > 1.0 then
         local hp = npc:GetMaxHP()
         if hp and hp > 0 then
             npc:ModifyNPCStat("max_hp", tostring(math.floor(hp * fine)))
@@ -434,7 +463,19 @@ function M.rescale_zone(c, layer_level)
         -- asymmetry is what let every pet get scaled down and lose its regen the moment it was
         -- summoned -- the sweep was never going to repair something it deliberately skips. Keep the
         -- two tests identical.
+        -- ⚠️⚠️ NEVER SWEEP OUR OWN NPCs. This is the same 2000000+ divider elite_ratio uses, and it
+        -- has to be here for the same reason: everything AoTv4 adds is scaled by whatever spawned it,
+        -- against rules this sweep knows nothing about.
+        -- The warden (2000301) was the casualty. M.on_npc_spawn already excluded it, but this sweep
+        -- did not -- so ten seconds after a warden spawned, M.apply rescaled it to the TRASH level
+        -- `eff` and rewrote hp, damage and level wholesale, throwing away the boss hp multiple, the
+        -- boss damage multiplier and the +BOSS_LVL_BONUS. Any warden not engaged within ten seconds
+        -- became a trash mob wearing a boss name, and it looked exactly like the hp multiplier "not
+        -- working" -- which is how it survived several retunes of that multiplier.
+        -- ⚠️ It also caught the chest (2000300) and the class aura npcs (2000100-2000115), neither of
+        -- which has any business being scaled.
         if npc and npc.valid and not npc:IsEngaged()
+           and (npc:GetNPCTypeID() or 0) < 2000000
            and not npc:IsPet() and (npc:GetOwnerID() or 0) == 0 then
             -- never stamped => never scaled => still a native DoN mob, repair it regardless
             local stamped = tonumber(npc:GetEntityVariable("delve_eff"))

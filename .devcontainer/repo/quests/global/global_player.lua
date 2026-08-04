@@ -488,6 +488,12 @@ function event_connect(e)
 	bazaar_broker.pay_escrow(e.self)
 	aotv4_worldbuff.on_player(e)                    -- and on login
 
+	-- ⚠️ Backstop for the deferred ink conversion: if a player logged out inside the one second
+	-- window (or acquired ink by trade/quest/GM, none of which fire event_loot), it would otherwise
+	-- sit in the bags as an ITEM and be destroyed by the next death while the currency would not --
+	-- which reads as the drop having been stolen. Sweeping on connect closes every one of those.
+	require("aotv4_spell_ranks_sys").absorb_ink(e.self)
+
 	grant_free_skills(e.self)            -- level-1 chars get Dual Wield etc. now, not only after first ding
 	grant_native_combat_skills(e.self)  -- a Rogue has Backstab, a Monk its strikes; the rest are picker rewards
 	floor_tradeskills(e.self)           -- every tradeskill floored to 20 (new chars start there; existing raised on login)
@@ -512,7 +518,13 @@ function event_connect(e)
 end
 
 function event_timer(e)
-	if e.timer == "skillsync" then
+	if e.timer == "inkconv" then
+		-- one-shot: the ink looted a second ago is now really in the bags, so bank it as currency.
+		-- ⚠️ StopTimer FIRST -- a client timer REPEATS, and without this it would sweep every second
+		-- forever. Same trap already recorded for "delveclose".
+		e.self:StopTimer("inkconv")
+		require("aotv4_spell_ranks_sys").absorb_ink(e.self)
+	elseif e.timer == "skillsync" then
 		-- one-shot: fire ~2s after zone-in, once the client has finished building its Combat Abilities
 		-- list, then (re)send the earned-skill set + nudge a rebuild so abilities show without jumping.
 		e.self:StopTimer("skillsync")
@@ -812,10 +824,13 @@ function event_death_complete(e)
   -- GetItemIDAt returns INVALID_ID (-1), NOT 0, for an empty slot -- test `<= 0`, not `== 0`.
   local primary = client:GetItemIDAt(13)       -- slot 13 = Primary
   if not primary or primary <= 0 then
-    client:SummonItem(9998)                    -- Short Sword* (dmg 4 / dly 29, no req) -- the exact sword Absor's
-                                               -- tutorial quest accepts (check_handin 9998 -> Sharpened Short Sword).
-                                               -- Stays BASE (9998 is excluded from gear tiers) so the hand-in matches;
-                                               -- Absor then hands back the Mythic Sharpened Short Sword.
+    -- ⚠️⚠️ CLASS APPROPRIATE, not a hardcoded short sword. It handed 9998 to everybody, so a Monk or
+    -- a Berserker respawned holding a 1H Slashing weapon neither class has any skill cap for. The
+    -- map lives in aotv4_reforge because that module owns class identity and needs the same answer
+    -- when somebody reforges -- two copies would drift.
+    -- ⚠️ Every id it can return is one Absor accepts (9997/9998/9999/55623) and none has gear-tier
+    -- rows, so it stays BASE and the tutorial hand-in still matches.
+    client:SummonItem(aotv4_reforge.starter_weapon(client:GetClass()))
   end
 
   -- REFRESH THE TUTORIAL for a DIED-IN-THE-TUTORIAL player. event_death already cancelled all tasks and
@@ -1007,13 +1022,11 @@ end
 function event_loot(e)
   local ranksys = require("aotv4_spell_ranks_sys")
   if e.item and e.item.valid and e.item:GetID() == ranksys.INK_ITEM then
-    local n = e.item:GetCharges()
-    if not n or n < 1 then n = 1 end
-    e.self:AddAlternateCurrencyValue(ranksys.INK_CURRENCY, n)
-    -- ⚠️ Taken back out of the bags, or the player holds both the currency AND the item, and the
-    -- item is destroyed on the next death while the currency is not -- which reads as the drop
-    -- having been stolen.
-    e.self:RemoveItem(ranksys.INK_ITEM, n)
-    e.self:Message(MT.Yellow, string.format("You gather %d Ink of the Lost.", n))
+    -- ⚠️⚠️ ARM A TIMER; DO NOT CONVERT HERE. EVENT_LOOT fires at corpse.cpp:1740 but the item is not
+    -- placed in the bags until :1843, so converting here added the currency and then removed nothing
+    -- -- the player kept the item AND the currency. See M.absorb_ink for the full account, including
+    -- why returning non-zero to cancel the loot is an infinite-currency bug rather than a fix.
+    -- ⚠️ One second is comfortably past the placement and is invisible in play.
+    e.self:SetTimer("inkconv", 1000)
   end
 end
