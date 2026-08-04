@@ -121,6 +121,10 @@ namespace {
 			return fmt::format("Aura spell {}", reward_id);
 		}
 
+		if (Strings::EqualFold(type, "grant_aa")) {
+			return fmt::format("AA {} rank {}", reward_id, amount);
+		}
+
 		if (Strings::EqualFold(type, "live_item_request")) {
 			return "Leveled item request";
 		}
@@ -1723,6 +1727,60 @@ bool AchievementManager::AwardQueuedReward(Client *client, const RewardSummary &
 		const int have = Strings::ToInt(DataBucket::GetData(&database, key));
 		DataBucket::SetData(&database, key, std::to_string(have + static_cast<int>(amount)));
 		result = fmt::format("Region unlock available ({} unspent).", have + static_cast<int>(amount));
+		return true;
+	}
+
+	// AoTv4: grant a rank of an Alternate Advancement ability, FREE.
+	//   reward.reward_id = aa_ability.id
+	//   reward.amount    = the rank to top the player up TO -- an ABSOLUTE rank, not a delta.
+	//
+	// ⚠️⚠️ ABSOLUTE, AND THAT IS WHAT MAKES IT IDEMPOTENT. An achievement can re-fire (RecheckAutomatic
+	// re-credits already-met conditions on level/zone/#ach, exactly as it does for epics), and a
+	// "+1 rank" reward would climb every time it did. "Be at rank 2" cannot. It also means the ladders
+	// are declarative: the skill-100 achievement says rank 2 outright, so a player who somehow skips
+	// the skill-50 one still lands in the right place rather than one rank short forever.
+	//
+	// ⚠️ ignore_cost = true: these are earned by the achievement, not bought. GrantAlternateAdvancement
+	// Ability then passes check_grant=false to CanPurchase, which is what lets a `grant_only` AA
+	// through -- and every AA on these ladders IS grant_only, so it cannot also be bought in the
+	// native window (see the AA notes). Without ignore_cost it would silently fail on cost alone.
+	// ⚠️ It tops up rank by rank from 1, skipping any it cannot buy, so granting rank 3 to a player
+	// with rank 1 correctly fills in rank 2 as well.
+	if (Strings::EqualFold(reward.type, "grant_aa")) {
+		if (!reward.reward_id) {
+			result = "Missing AA id.";
+			return false;
+		}
+
+		const int aa_id       = static_cast<int>(reward.reward_id);
+		const int target_rank = reward.amount > 0 ? static_cast<int>(reward.amount) : 1;
+
+		AA::Ability *ability = zone->GetAlternateAdvancementAbility(aa_id);
+		if (!ability) {
+			// Almost always a DISABLED ability rather than a bad id: zone/aa.cpp loads only
+			// `enabled = 1`, so an AA that exists in the table is still absent here.
+			result = fmt::format("AA {} not loaded (disabled, or unknown id).", aa_id);
+			return false;
+		}
+
+		const int have = static_cast<int>(client->GetAA(ability->first_rank_id));
+		if (have >= target_rank) {
+			result = fmt::format("AA {} already at rank {}.", aa_id, have);
+			return true;
+		}
+
+		if (!client->GrantAlternateAdvancementAbility(aa_id, target_rank, true)) {
+			result = fmt::format("AA {} rank {} could not be granted.", aa_id, target_rank);
+			return false;
+		}
+
+		const int now = static_cast<int>(client->GetAA(ability->first_rank_id));
+		const std::string aa_name = !reward.preview_text.empty() ? reward.preview_text : ability->name;
+		client->Message(Chat::Yellow, "----------------------------------------------------------");
+		client->Message(Chat::Yellow, fmt::format("  You have earned an ABILITY:  {} (rank {}) !", aa_name, now).c_str());
+		client->Message(Chat::Yellow, "  It has been trained for free -- see your Alternate Advancement window.");
+		client->Message(Chat::Yellow, "----------------------------------------------------------");
+		result = fmt::format("Granted {} rank {} (aa {})", aa_name, now, aa_id);
 		return true;
 	}
 

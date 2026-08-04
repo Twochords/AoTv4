@@ -37,10 +37,9 @@ extern double frame_time;
 // peqzone 900). Used by both Client::OPCombatAbility (manual) and Client::DoClassAttacks (#autoskill/AI).
 static const uint16 AOTV4_SKILL_TIMER_BASE = 300;
 
-// ⚠️ Balance lever: how many abilities autoskill may run at once. Without a cap the right play is
-// to enable everything, and choosing which specials to run stops being a choice. Enforced in
-// Client::HandleAutoSkillSay, which is the only path that turns one on.
-static const int AOTV4_AUTOSKILL_MAX = 4;
+// ⚠️ AOTV4_AUTOSKILL_MAX moved to client.h -- the cap is now enforced inside Client::SetAutoSkillStatus
+// (the single write choke point), because HandleAutoSkillSay was NOT the only path that turns one on:
+// `#autoskill <skill> enable` is access 0 and wrote the status directly, bypassing it entirely.
 
 int Mob::GetBaseSkillDamage(EQ::skills::SkillType skill, Mob *target)
 {
@@ -331,7 +330,10 @@ void Mob::DoSpecialAttackDamage(Mob *who, EQ::skills::SkillType skill, int32 bas
 	who->Damage(this, my_hit.damage_done, SPELL_UNKNOWN, skill, false);
 
 	// AoTv4: a damaging combat special COSTS ENDURANCE in proportion to what it actually hit for
-	// (AoT:SpecialEndurancePct, default 50 -- a 200 damage Backstab costs 100 endurance).
+	// (AoT:SpecialEndurancePct, default 33 -- a 200 damage Backstab costs 66 endurance).
+	// ⚠️ 33 is not arbitrary: the Sinew line (custom/sql/aotv4_sinew_line.sql) returns damage/3, so the
+	// cost and the refill are ONE calibration. Move both together, and note a rule_values row overrides
+	// this default -- changing the number here alone does nothing to a live server.
 	//
 	// ⚠️ CHARGED AFTER THE HIT, and it has to be: the cost is a share of the damage, and the damage is
 	// not known until DoAttack has rolled it. That means the gate on USING a special is a separate,
@@ -346,7 +348,7 @@ void Mob::DoSpecialAttackDamage(Mob *who, EQ::skills::SkillType skill, int32 bas
 	// ⚠️ CLIENTS ONLY. Mob::GetEndurance is a virtual returning 0 for NPCs and SetEndurance a no-op,
 	// so an NPC would silently "pay" nothing -- but calling it is still wrong and would mislead anyone
 	// reading this later into thinking NPCs are costed.
-	// ⚠️ A miss costs nothing, by construction: 50% of zero damage is zero.
+	// ⚠️ A miss costs nothing, by construction: 33% of zero damage is zero.
 	if (IsClient() && my_hit.damage_done > 0) {
 		const int pct = RuleI(AoT, SpecialEndurancePct);
 		if (pct > 0) {
@@ -2788,26 +2790,15 @@ bool Client::HandleAutoSkillSay(const char *msg)
 		for (const auto s : GetAutoSkillsList()) {
 			if (s == skill) { ok = true; break; }
 		}
-		// ⚠️ AT MOST AOTV4_AUTOSKILL_MAX ABILITIES MAY BE ENABLED AT ONCE. This is a balance lever,
+		// ⚠️ AT MOST Client::AOTV4_AUTOSKILL_MAX ABILITIES MAY BE ENABLED AT ONCE -- a balance lever,
 		// not a UI limit: autoskill fires everything you have turned on, so without a cap the correct
 		// play is simply to enable all of them and the choice of which specials to run stops being a
-		// choice. Enforced HERE because the server is what actually fires them -- a client-side cap
-		// alone would be bypassed by the /say the window sends, or by typing #autoskill.
+		// choice. Enforced SERVER side because the server is what actually fires them; a client-side
+		// cap alone would be bypassed by the /say this handler reads, or by typing #autoskill.
 		//
-		// Turning one OFF is always allowed; only the enable side is capped.
-		if (ok && on != 0) {
-			int enabled = 0;
-			for (const auto s : GetAutoSkillsList()) {
-				if (s != skill && GetAutoSkillStatus(s)) { ++enabled; }
-			}
-			if (enabled >= AOTV4_AUTOSKILL_MAX) {
-				Message(Chat::Red,
-				        "You can have at most %d abilities on autoskill. Turn one off first.",
-				        AOTV4_AUTOSKILL_MAX);
-				ok = false;
-			}
-		}
-
+		// ⚠️ The check itself now lives in SetAutoSkillStatus, which is the single write choke point
+		// and therefore covers #autoskill too -- this handler used to own it while claiming to be the
+		// only way in, and it was not. The setter emits the refusal message and returns false.
 		if (ok) {
 			SetAutoSkillStatus(skill, on != 0);
 		}

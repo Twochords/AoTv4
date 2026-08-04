@@ -248,9 +248,13 @@ void process_command(Client *c, CommandMode cmd_mode, int skill_id, const std::m
 	const std::string &skill_name = it->second;
 
 	switch (cmd_mode) {
+	// ⚠️ Report only what actually happened. SetAutoSkillStatus enforces AOTV4_AUTOSKILL_MAX and
+	// returns false (having already explained why) when the enable is refused -- this command is
+	// access 0, so it is a player-facing path and used to sail straight past the cap.
 	case Enable:
-		c->SetAutoSkillStatus(static_cast<EQ::skills::SkillType>(skill_id), true);
-		c->Message(Chat::Skills, "Auto-skill %s (%d) enabled.", skill_name.c_str(), skill_id);
+		if (c->SetAutoSkillStatus(static_cast<EQ::skills::SkillType>(skill_id), true)) {
+			c->Message(Chat::Skills, "Auto-skill %s (%d) enabled.", skill_name.c_str(), skill_id);
+		}
 		break;
 
 	case Disable:

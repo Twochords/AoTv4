@@ -407,6 +407,8 @@ zone rebuild** (§8).
 >     8/18/28/38/48/58, damage 27/90/120/225/360/525, return = **damage / 3**). The structural
 >     mirror of the Moonfire line, which splits the same way but returns health. **It exists because
 >     of §22**: specials now cost endurance in proportion to their damage, and this refills the bar.
+>     ⚠️ **`AoT:SpecialEndurancePct` was retuned to 33 to match this return** — the two are one
+>     calibration, so changing either damage value here means revisiting that rule.
 >     Damage sits just under the average native single-target nuke for the level (averages read out
 >     of the DB, not from memory) because the cast also returns a resource; every damage value is
 >     divisible by 3 so the return is a clean integer.
@@ -433,6 +435,34 @@ zone rebuild** (§8).
 >     because it collides with nothing; deliberately **not** "Marrow" (stock 8608 Marrow Drain / 8803
 >     Marrow Bend would sit beside it in the picker).
 >     📌 Damage/mana is untuned until it is played (dpm 1.13 → 1.59 across the tiers).
+>   - ⚠️⚠️ **A STACKING MARKER'S *SLOT INDEX* ISOLATES ONE LINE FROM ANOTHER; ITS *VALUE* ONLY ORDERS
+>     TIERS WITHIN ONE LINE.** `custom/sql/aotv4_marker_slot_separation.sql` (migration **v10**,
+>     2026-08-03). The tier ladders needed a higher tier to replace a lower, which is the SPA 44 +
+>     `StackingCommand_Block` pair the Promised line already used — but the first pass put **reptile,
+>     sloth AND thirst all in slot 1 with the same 100..600 values**. `Mob::CheckStackConflict` walks
+>     two spells slot by slot and only compares when the effect ids at the **same index** match, so
+>     three unrelated lines started comparing against *each other*: Skin of the Serpent (300) blocked
+>     Rising Thirst (200), and Rising Thirst was overwritten the other way round. Reported as *"Thirst
+>     and Skin lines are overwriting each other"* — **worse than the bug it replaced**, which was
+>     merely tiers failing to replace their own.
+>     One slot per line, never shared, and never a slot holding one of that line's own real effects:
+>     **reptile 1 · sloth 2 · kindred 3 · thirst 4**.
+>     ⚠️⚠️ **Any future line needing a marker takes slot 5.** Reusing 1-4 silently recreates this, and
+>     it presents as **two unrelated spells cancelling each other** — not something anyone would think
+>     to trace back to a stacking marker.
+>     ⚠️ Values are deliberately left identical (100..600) across all four. Once the slots are
+>     separated they need not differ, and making them differ would be *worse* if a slot ever did
+>     collide again: one line would quietly outrank another instead of the collision being obvious.
+>     ⚠️⚠️ **SPA 44 works as a marker because it is MECHANICALLY INERT HERE — do not assume any
+>     spare-looking SPA is.** 44 is `SpellEffect::Lycanthropy`, and in this codebase it falls into the
+>     big no-direct-action fall-through in `SpellEffect()` (`zone/spell_effects.cpp:3207`) **and has
+>     no handler in `bonuses.cpp` at all**, so a base of 100..600 grants nothing — it exists purely to
+>     be arbitrated on. Pick a different SPA and the marker starts handing out a real bonus scaled by
+>     tier, silently. Check **both** places before substituting one.
+>     ⚠️ The filler slots do NOT collide, and that is `IsBlankSpellEffect` (`common/spdat.cpp:950`)
+>     doing the work: the comparison loop `continue`s on any slot that is **254**, a **10 spacer**
+>     (base 0 **and** formula 100 — the formula matters), or SPA **148/149**. That is why three of
+>     these lines can sit on 254 at the same index without arbitrating.
 >   - ⚠️⚠️ **A re-runnable script's cleanup `DELETE` must only name the ids that script itself
 >     creates.** `aotv4_moonfire_line.sql` opened with `DELETE … WHERE id BETWEEN 43312 AND 43323`
 >     to sweep up leftovers from an earlier pass — which silently covers **43318-43323, the whole
@@ -1938,7 +1968,22 @@ no C++ server change at all**, because all four primitives are already native an
 - ⚠️ **Layers unlock in order and only unlocked ones are ever SENT.** With loot out of scope the
   reward is XP, so a freely pickable level would be a power-level machine. The window cannot show or
   ask for a layer it was never told about, and `M.enter` re-checks anyway.
+- ⚠️⚠️ **ENTERING IS REFUSED IN COMBAT (`GetAggroCount() > 0`), fixed 2026-08-04.** The delve window
+  opens anywhere, so "Enter Delve" was a **free escape from any losing fight** — and a better one than
+  Gate: it removes you from the zone entirely, breaks every hate list at once, costs no reagent and
+  has no cast time to interrupt. Reported from play.
+  ⚠️ `GetAggroCount`, not `IsEngaged` or "am I swinging" — it counts the NPCs holding you on their
+  hate list, so it stays true while something chases you *after* you stop fighting, which is exactly
+  when the escape is worth most. Same test stock `#zoneshard` and the merc code use.
+  📌 Both entry paths funnel through `M.enter` (the window's `/say delveenter <level> <mode>` and the
+  bare `delveenter <level>`), so one server-side gate covers both — a client-side check would be
+  bypassed by simply typing the say.
+  📌 **Exiting mid-fight is still allowed.** It is a smaller version of the same escape, but it
+  forfeits the run (recorded as `A` in the history), so it already carries a cost. Revisit only if it
+  turns out to be abused.
 - ⚠️ **Gate order in `M.enter` is load-bearing**: validate → create instance → assign → task → move.
+  The combat check above belongs in the **validate** stage for that reason — a refusal after
+  `create_instance` leaks an instance every time it fires.
   Creating first leaks an instance on every refusal; moving before `AssignTask` puts the player in the
   dungeon with no journal entry, which reads as the quest having failed.
 - ⚠️⚠️ **THE VERSION IS NEVER 0 (fixed 2026-07-29).** Version 0 is the **open world** spawn set, so
@@ -2095,6 +2140,61 @@ the whole calculation axis by axis.
   ⚠️ The tick guards on **zone and instance id**, not just the run bucket — that bucket survives a
   crash or GM port, and without the guard the sweep would rescale mobs in an ordinary zone.
 
+#### The warden — random class, class/level appropriate spells — 2026-08-04
+Every delve boss rolls one of the 16 classes and fights like it. `M.BOSS_CLASSES` maps each class to
+a stock `npc_spells` list (**ids 1-12 are EQEmu's own "Default \<Class\> List"**) and its own title
+pool; the four pure-melee classes take list **0** and simply do not cast.
+- ⚠️⚠️ **LEVEL-APPROPRIATENESS IS FREE, BUT ONLY IF THE LIST IS ATTACHED AFTER SCALING.**
+  `NPC::AI_AddNPCSpells` (`zone/mob_ai.cpp:2475`) keeps only entries whose `minlevel`/`maxlevel`
+  bracket **`GetLevel()` at the moment it is called** — so attaching the list before `ScaleNPC` loads
+  the *template's* level 1 spells and freezes them there. Order is scale → class → mana → spells.
+  ⚠️ Re-attaching is safe: the function does `AIspells.clear()` first, so nothing stacks.
+- ⚠️⚠️ **SETTING THE CLASS IS WHAT CREATES THE MANA POOL — IT IS NOT COSMETIC.**
+  `NPC::CalcMaxMana` (`zone/npc.cpp:2705`) returns **0 for any non-caster class**, and it does so
+  *whether or not* the `npc_types.mana` column is set — the column is only read after the class test
+  passes. The warden template is **class 1 (Warrior)**, so it had zero mana. The AI's cast gate is
+  `mana_cost <= GetMana() || GetMana() == GetMaxMana()` (`mob_ai.cpp`), and for a 0-mana NPC the
+  second half is `0 == 0` — **always true**. A Warrior-class warden holding a Wizard list would nuke
+  forever, free. The class is the brake.
+- ⚠️ **There was no way to set an NPC's class at all.** `class_` is protected on `Mob` with only
+  `GetClass()`, no setter, no Lua binding, and `ModifyNPCStat` had no `"class"` key. Added one
+  (`zone/npc.cpp`); it calls `CalcBonuses()` because the pool derives from class **and** the current
+  INT/WIS and level, so it must run *after* scaling. ⚠️ It does **not** update the client — the spawn
+  packet has already gone — so it is server-side behaviour only, unlike `SetRace`.
+- ⚠️ `max_mana` clamps **down** only, exactly like `max_hp`, so raising it needs an explicit
+  `SetMana`. Without it a warden keeps the template's 14 mana against a ~1600 pool.
+
+#### ⚠️⚠️ THE 10-SECOND RESCALE SWEEP WAS FLATTENING THE WARDEN INTO A TRASH MOB (fixed 2026-08-04)
+`M.rescale_zone` walks every unengaged NPC and calls `M.apply(npc, eff, power)` — and it had **no
+guard for our own NPCs**, while `M.on_npc_spawn` did. So ten seconds after a warden spawned it was
+rescaled to the **trash** level `eff`, rewriting hp, damage and level wholesale and discarding the
+boss hp multiple, the boss damage multiplier and `BOSS_LVL_BONUS`. Any warden not engaged within ten
+seconds became a trash mob wearing a boss name.
+- ⚠️⚠️ **It presents as "the boss hp multiplier does not work", which is why it survived several
+  retunes of that multiplier.** The multiplier was applied correctly at spawn and then thrown away.
+- Guarded with the same **2000000+** divider `elite_ratio` already uses. It was also catching the
+  chest (2000300) and the class aura npcs (2000100-2000115), neither of which should ever be scaled.
+- 📌 The rule: **anything AoTv4 spawns is scaled by whatever spawned it**, against rules this sweep
+  knows nothing about. Keep the sweep's exclusions and `on_npc_spawn`'s in step — the pet asymmetry
+  recorded above is the same mistake in the other direction.
+
+#### ⚠️⚠️ `BOSS_HP_MULT` IS A MULTIPLE OF A REGULAR MOB, NOT OF THE BOSS'S OWN CURVE (2026-08-04)
+It used to multiply the boss's own curve hp at `eff + BOSS_LVL_BONUS`, so the ratio a player actually
+saw was `curve(eff+2)/curve(eff) × mult` — a number that drifts with the curve's local steepness and
+**falls as the rung rises**: ~19x at rung 1, ~6.5x at rung 10, ~5.6x at rung 30. Raising the constant
+could never fix that; it just slides the crooked curve up. The warden now **measures** an ordinary mob
+(`scale.regular_hp`) and multiplies that, so the ratio is `BOSS_HP_MULT` (**10.0**) at every rung and
+`BOSS_LVL_BONUS` is left to do what it should — damage, accuracy and AC.
+- ⚠️ `scale.regular_hp` **scales the npc as a side effect** and leaves it at the measured level; the
+  caller must re-scale immediately after. Same measure-by-scaling trick as `elite_ratio`.
+- ⚠️ It deliberately **excludes the elite ratio**: "regular mob" means trash. An authored elite is up
+  to `ELITE_CAP` (4x) tougher, so the warden is only ~2.5x one of *those* — sizing the boss off
+  whatever happened to be standing nearby is exactly what makes the number meaningless.
+- ⚠️ The fine-trim factor is **shared** between `M.apply` and `regular_hp` (`fine_factor`) — if those
+  two disagreed the boss would be a multiple of a mob that does not exist.
+- ⚠️ Rungs 1-2 remain **floor-governed** (`blvl × BOSS_HP_FLOOR_PER_LEVEL`), so the ratio there is
+  higher than 10x. That is the floor doing its job: 10x of an 11 hp mob is not a boss.
+
 #### ⚠️⚠️ Rewards must never be computed from gear at the END of a run
 The ledger records **the effective level of every mob actually killed, at the moment it died**
 (stamped on the NPC via `SetEntityVariable("delve_eff")` when it was scaled). Clearing the dungeon
@@ -2196,8 +2296,16 @@ change. **Needs a zone rebuild** (and `ruletypes.h` is in `common/`, so expect a
 
 - **Files**: `common/ruletypes.h` (two rules) + `zone/special_attacks.cpp`
   (`Mob::DoSpecialAttackDamage`, the gate at ~:235 and the charge at ~:333).
-- **Rules**: `AoT:SpecialEndurancePct` (**50** — a 200-damage Backstab costs 100 endurance; `0`
+- **Rules**: `AoT:SpecialEndurancePct` (**33** — a 200-damage Backstab costs 66 endurance; `0`
   disables the whole mechanic, gate included) and `AoT:SpecialEnduranceMinToUse` (**1**).
+  ⚠️⚠️ **Retuned 50 → 33 (2026-08-04) to match the Sinew line, and the two are ONE calibration.**
+  `custom/sql/aotv4_sinew_line.sql` returns **damage / 3**, so at 33 percent a Sinew cast funds
+  roughly its own damage worth of specials — an endurance economy that closes. At 50 it funded two
+  thirds of one, so the bar drained no matter what the player did and the tap read as broken rather
+  than as a cost. **Move both together or neither.**
+  ⚠️ There is a `rule_values` row for this, so the header default is NOT what the server uses —
+  changing the default alone does nothing to a live DB. Check
+  `SELECT rule_value FROM rule_values WHERE rule_name='AoT:SpecialEndurancePct'`.
 - ⚠️⚠️ **`DoSpecialAttackDamage` IS THE ONLY PLACE THIS GOES.** Bash, Kick, Frenzy, Backstab and
   every monk strike (via `MonkSpecialAttack`) funnel through it, so one edit covers the
   player-pressed path **and** the autoskill auto-fire loop (§19). Per-ability copies would be five
@@ -2216,17 +2324,41 @@ change. **Needs a zone rebuild** (and `ruletypes.h` is in `common/`, so expect a
   `Mob::SetEndurance` a **no-op** (`:677`); only `Client` overrides them (`zone/client.h:751/756`).
   An NPC would silently "pay" nothing, so the `IsClient()` guard is there to stop a later reader
   believing NPCs are costed.
-- ⚠️ **A miss costs nothing by construction** — 50 percent of zero damage is zero. No special case.
+- ⚠️ **A miss costs nothing by construction** — 33 percent of zero damage is zero. No special case.
 - ⚠️ Multiply before dividing (`damage * pct / 100`) or a small hit truncates to a free swing. Same
   trap as the Shield Wall split (§17b).
-- 📌 Untuned: 50 percent is a guess until it is played. It interacts with the §19 autoskill cap —
-  the cap limits how many specials may fire, this limits how long they keep firing.
+- 📌 33 percent is derived from the Sinew return rather than observed, so it is a *consistent* guess,
+  not a tested one. It interacts with the §19 autoskill cap — the cap limits how many specials may
+  fire, this limits how long they keep firing.
 - **The refill is the Sinew line** (§5, `custom/sql/aotv4_sinew_line.sql`, ids 43318-43323): a damage
   tap returning endurance equal to a third of its damage. This cost is what gave endurance a sink
   worth spending on in the first place, so tune the two together — at the default 50 percent, the
   top tier's 175 endurance buys roughly 350 damage worth of specials.
 
 ## 25. ⚠️⚠️ THE STALE-DATABASE TRAP — "a session's work vanished" — 2026-07-24, 2026-07-30
+
+> ⚠️⚠️ **READ THIS FIRST: `/src` IS THE TEST ENVIRONMENT. THERE IS A SEPARATE LIVE SERVER, AND ITS
+> DATABASE IS NOT THIS ONE.** (Established 2026-08-04.) Players, bug reports and screenshots come
+> from **live**; this container is where the work is built. So the two databases holding different
+> characters is **correct and expected**, not the trap below.
+> - ⚠️⚠️ **`db_sanity.sh` FALSE-POSITIVES HERE AND WILL KEEP DOING SO.** It compares the datadir's
+>   mtime against `/src` artifacts, and in a test environment nobody plays in, the database is
+>   legitimately older than the logs and shared-memory blobs — it reported "138 hours older,
+>   SUSPECT" on a perfectly good DB. **Do not act on that verdict alone.** Confirm with content
+>   markers (`db_version`, and whatever the newest feature wrote) before concluding anything, and
+>   never import a snapshot on the strength of the mtime check.
+> - ⚠️ **A character being absent here proves nothing.** On 2026-08-04 a live character not existing
+>   in this DB read as a smoking gun for the trap below; it is simply a live character. Measure data
+>   claims about **live** against live — anything derived from this DB (skill_caps breadth, who has
+>   what) describes the test environment only.
+> - 📌 **Shipping to live is therefore a real step**: the rebuilt `zone`/`world`, any changed Lua,
+>   and `dinput8.dll` to clients. **Prefer a condition-gated migration in
+>   `database_update_manifest_custom.h` over a hand-run `custom/sql/*.sql`** — a migration applies
+>   itself when world boots on live and no-ops when the condition does not hold, so it cannot be
+>   forgotten and cannot fire against data it was not written for.
+>
+> The rest of this section is about the genuine trap — **two Docker engines, one volume name** —
+> which is still real and still costs a session when it bites.
 
 **The single most expensive recurring failure in this project.** It has struck at least twice and
 cost most of a session both times. Nothing errors, nothing logs, and the server runs perfectly —
@@ -2749,6 +2881,44 @@ Three things are deliberately separate, and conflating them is the main way to m
   rank 2 = 30/10, 3 = 60/20, 4 = 120/30, 5 = 240/40.
   ⚠️ The two scale differently **on purpose**: fragments come from *dying* so they track how hard you
   have been pushing, ink comes from *killing* so it tracks time played. A rank costs both.
+  ⚠️⚠️ **BOTH ARE ALTERNATE CURRENCIES (57 = fragment, 58 = ink) AND EQEmu DOES NOT AUTO-CONVERT THE
+  ITEM ON PICKUP** — nothing in the loot path consults `alternate_currency`. The item row still has to
+  exist: a currency is defined as a currency/item **pair** and the client reads its name and icon from
+  the item.
+  ⚠️⚠️ **THE INK CONVERSION CANNOT HAPPEN IN `EVENT_LOOT`, AND DOING IT THERE DOUBLED THE DROP (fixed
+  2026-08-04).** `Corpse::LootItem` fires EVENT_LOOT at **corpse.cpp:1740** but does not place the item
+  in the bags until `AutoPutLootInInventory` at **:1843**. The old hook added the currency and then
+  called `RemoveItem` against bags that did not contain the ink yet — the removal silently did nothing
+  and the engine handed the item over immediately afterwards, so the player kept **both**. Reported as
+  *"you double loot ink of the lost … had 7 before i looted that one"*.
+  ⚠️⚠️ **RETURNING NON-ZERO FROM EVENT_LOOT IS NOT THE FIX — IT IS AN INFINITE-CURRENCY BUG.** A
+  non-zero return sets `prevent_loot`, and that branch (**corpse.cpp:1803**) queues the ack, deletes
+  the instance and **returns before** the `RemoveItem(item_data->lootslot)` at **:1865** that takes the
+  item off the corpse. The ink would stay on the corpse and pay out again on every click.
+  ✅ The conversion is therefore **deferred**: `event_loot` arms a one-second `inkconv` client timer and
+  `M.absorb_ink` runs afterwards, once the item really is in the inventory. It **sweeps the bags**
+  rather than trusting what was looted, so ink arriving by trade, quest or GM is absorbed identically,
+  and it is called from `event_connect` as a backstop so ink held across a logout is never stranded as
+  an item the next death would destroy.
+  ⚠️ `StopTimer` first in the handler — a client timer **repeats**, the same trap recorded for
+  `delveclose`.
+  ⚠️⚠️ **THE PAYOUT COUNTS THE SPELLBOOK, NOT `ranks.chain` — and counting the chain was a real bug
+  (fixed 2026-08-04).** `M.on_death_before_wipe` used to walk `ranks.chain` and test each base and
+  rank id, but that map only covers the **188 base spells that have rank rows** while the offerable
+  pool is ~1,996 — so **every scribed spell without a rank chain paid nothing**. A character dying
+  with 28 spells was paid only for the few that happened to be ranked. Reported from play as *"not
+  getting scrolls correctly"*. It now walks the 720 book slots via `GetSpellIDByBookSlot`, which is
+  the only count that stays correct as the pool changes: anything scribed is destroyed by the wipe
+  whether or not the rank system has heard of it.
+  ⚠️ **Empty book slots are `UINT32_MAX`, not 0** (`zone/spells.cpp:6120`) — testing `> 0` alone
+  counts all 720 as spells.
+  ⚠️ **`Client::GetSpellIDByBookSlot` bounds-checks with `<=`, not `<`** (`spells.cpp:6024`), so slot
+  **720 reads past the array**. Iterate `0 .. SPELLBOOK_SIZE - 1` and do not "fix" the loop to be
+  inclusive.
+  ⚠️ The **class auras (43500-43515) are excluded** — death_loss re-scribes them immediately after the
+  wipe, so they are not destroyed and must not be paid for. **Kept spells still count**, deliberately:
+  they are re-scribed rather than spared, and excluding them would make keeping the best way to farm
+  currency as well as the best way to keep a spell.
   ⚠️ **Tune `M.COST` ONLY** — it is sent to the client as `SPELLRANKCOST` and the window renders
   whatever it says. There is no second copy in the dll, deliberately (the `kIcons[]` drift trap, §3).
 - ⚠️⚠️ **FEEDBACK GOES TO THE WINDOW, NOT TO CHAT** (`SPELLRANKMSG`, written into the requirement panel
@@ -2902,3 +3072,181 @@ were reachable; the shared helper is **`AdvLootOwnedByOther`** (`client_packet.c
   stall a player's own drop behind a vote nobody can cast; **and `AdvLootManager` keys its share map
   on `(corpse_id, lootslot)`**, which now aliases between players, so any roll it did start would
   resolve against the wrong item.
+
+## 32. Tradeskills are worth doing — sockets, skill-scaled tiers, tools, AA ladders — 2026-08-04
+
+A single pass to make crafting matter. Five parts, all interlocking; the through-line is that
+**tradeskill SKILL now decides what you get**, where before it decided nothing.
+
+- **Files**: `zone/achievement_manager.cpp` (`grant_aa`), `zone/tradeskills.cpp`
+  (`AoTv4TradeskillSkill`, `AoTv4RollCraftTier`), migrations **v12/v13/v14**, and the readable
+  copies `custom/sql/aotv4_tradeskill_aa_ladders.sql`, `aotv4_craft_sockets.sql`,
+  `aotv4_tradeskill_tools.sql`.
+
+### Crafted wearables are socketed by TIER — native 1 / Hallowed 2 / Mythic 3
+8,889 wearables produced by an enabled recipe, plus their two tier clones.
+- ⚠️⚠️ **"Crafted gear has sockets" is NOT expressible as written.** A crafted Mythic and a *dropped*
+  Mythic are **the same item row** — tiers are separate ids, not instance state — so the only
+  coherent statement is "this item has sockets". Dropped copies of craftable items are socketed too,
+  and that is correct rather than a leak.
+- ⚠️⚠️ **All three sockets are type 1, and that is what makes every delve augment fit every slot.**
+  The engine tests `(1 << (augslotNtype - 1)) & aug->AugType` (`zone/inventory.cpp:356`) and the
+  delve augs carry `AugType 255` = slot types 1-8. Do **not** tier-lock the sockets by giving them
+  different types: augments must fit in all three.
+- ⚠️⚠️ **ORNAMENTATION SLOTS ARE THE SAME SIX COLUMNS.** There is no separate ornament field — an
+  ornament slot IS an augment slot of type **20** (Ornamentation) or **21** (Special Ornamentation).
+  On these items they sit almost entirely in **position 2** (3,396) and 3 (658), exactly where the
+  Hallowed/Mythic stat sockets go, so a blind overwrite silently deletes the ability to ornament
+  crafted gear. Positions **4-6 are completely unused**, so they are relocated there and nothing is
+  lost. 358 items carry **two** ornaments; both are kept (positions 4 and 5).
+- ⚠️ Only **4** of the 8,889 have more than 3 sockets (they have 5, of exotic types in the upper
+  positions) — left alone rather than guessed at.
+- ⚠️ Must run **after** `aotv4_gear_tiers.sql`: that clones with `INSERT ... SELECT *`, so tier rows
+  otherwise just inherit the base's single socket.
+
+### Crafting no longer always yields Mythic — the tier is ROLLED from skill
+`AoTv4RollCraftTier`, at the `GetTradeRecipe` choke point that already served both overloads.
+| effective skill | Mythic | Hallowed |
+|---|---|---|
+| 100 | 0% | 33% |
+| 200 | 25% | 75% |
+| 300 | 75% | 25% |
+| 350 | 100% | — |
+- ⚠️ **Mythic is rolled FIRST and returns immediately** — these are bands of one decision. Testing
+  Hallowed first swallows the Mythic band entirely (the same trap already recorded for loot tiers).
+- ⚠️ **Only a recipe whose output is a BASE id is rolled.** The old code normalised through
+  `AoTv4TierBaseId` first, which was safe when the result could only go up; with a roll it could
+  **downgrade** an author's deliberate tier output. No stock recipe does this (0 of 19,464), so it is
+  a guard, not a live path — but "never downgrade the recipe's own output" is the property to keep.
+- 📌 This is a deliberate **nerf** to the previous unconditional Mythic. It is also what makes the
+  §26 quest-turn-in normalisation less load-bearing, since base items are craftable again.
+
+### ⚠️⚠️ A FLAT TRADESKILL BONUS CANNOT BE EXPRESSED NATIVELY — hence one choke point
+`Client::GetSkill` (`client.cpp:13090`) applies an item's `skillmod` as a **PERCENTAGE**
+(`skill * (100 + mod) / 100`) and reads **item bonuses only** — `spellbonuses.skillmod` is never
+consulted, and `bonuses.cpp:451` only ever populates `skillmod` from items. There is **no flat skill
+increase SPA**: the near misses are `RaiseSkillCap` (247, raises the CAP), `ReduceSkill` (122, a
+percentage reduction) and `TradeSkillMastery` (263). **So a spell or illusion cannot raise a
+tradeskill at all through any stock path.**
+- Both bonuses are therefore paid by **`AoTv4TradeskillSkill`** (`zone/tradeskills.cpp`), which is
+  the single place tradeskill skill is read — by the success roll *and* the tier roll, so the
+  bonuses help you succeed as well as tier up.
+- ⚠️ Deliberately **not** folded into `Client::GetSkill`: that is read for every combat skill in the
+  game and a flat adder there would leak into melee, defense and casting.
+- ⚠️ **The bonuses cannot shortcut the achievement ladders.** `Client::SetSkill` feeds
+  `ProcessSkill` the **stored** value, so the ladders measure raw skill. Earned, not buffed.
+- ⚠️ `Skills:TradeSkillClamp` is **0** here, which disables the clamp at `tradeskills.cpp:1197`. Set
+  it non-zero and the bonuses are silently truncated away.
+- **The tool** (worn, `147930+idx`) is +20; **the mask** (clicky, `147942+idx`) casts an illusion
+  (`44400+idx`) worth +30. They **stack** — separate sources — so 300 base skill reaches ~350, which
+  is the "put in the work and everything you make is Mythic" end state.
+- ⚠️⚠️ **THE ID ORDER IS LOAD BEARING.** Both bands are indexed off `AOTV4_TS_SKILLS`
+  (55,56,57,58,59,60,61,63,64,65,68,69), so 147930 and 44400 must both be Fishing. Reordering the
+  SQL silently gives blacksmiths the fishing bonus and nothing reports an error.
+- ⚠️⚠️ **THE MASK'S `clicktype` MUST BE 1 (`ItemEffectClick`), NOT 4.** Type 4 is
+  `ItemEffectEquipClick`, and `zone/spells.cpp:7529` refuses it unless the item is in an **equipment**
+  slot — but the masks are `slots = 0` and can never be equipped, so a type-4 mask is **silently
+  unusable by everyone**. It shipped as 4 for a day.
+- ⚠️⚠️ **AND THE MASK MUST NOT BE HEAD SLOT.** Making it wearable would put it in the *same slot as
+  the tool*, so +20 and +30 could never be worn together — which destroys the entire reason they
+  stack to +50 and reach the ~350 Mythic threshold. The inventory clicky is not a shortcut; it is
+  what makes the design work.
+- ⚠️ All 24 items are `classes=65535 races=65535 reqlevel=0 reclevel=0 deity=0` — every class, every
+  race, no level gate. The gate is the achievement, nothing on the item.
+- ⚠️⚠️ **THE ILLUSIONS ARE AT 44400, NOT 436xx.** The obvious-looking 43600 sits **inside the
+  spell-rank band 43576-44327** and would have overwritten twelve rank rows. Check the §20 band map
+  before reserving anything in 43xxx/44xxx; 44400 is clear and still under RoF2's 45000 ceiling.
+
+### Achievements can grant AA — the `grant_aa` reward type
+The one architectural addition, mirroring the custom `scribe_spell`. `reward_id` = `aa_ability.id`,
+`amount` = the rank to top up **to**.
+- ⚠️⚠️ **ABSOLUTE RANK, NOT A DELTA — that is what makes it idempotent.** Achievements re-fire
+  (`RecheckAutomatic` re-credits already-met conditions), and a "+1 rank" reward would climb every
+  time. "Be at rank 2" cannot. It also makes the ladders declarative.
+- ⚠️ `ignore_cost = true` → `CanPurchase(check_grant=false)`, which is what lets a **`grant_only`**
+  AA through; every AA on these ladders is grant_only so it can never also be bought.
+- ⚠️⚠️ **`aa_ability.enabled = 0` MEANS THE AA DOES NOT EXIST AT RUNTIME** — `zone/aa.cpp:1823` loads
+  only enabled rows, so `grant_aa` fails with "not loaded". Most tradeskill masteries ship disabled
+  and v12 switches them on.
+
+### ⚠️ THE TOOLS AND MASKS ARE ACHIEVEMENT REWARDS, NOT CRAFTED — and the recipes were REMOVED
+They were briefly craftable (recipes 470100-470111, trivial 200). That was dropped on 2026-08-04 for
+one reason: **a recipe nobody is told about is not a reward.** A player has no way to know a new
+recipe exists, and neither `skillneeded` nor the in-game recipe search fixes "I did not know to
+look". The achievement window does — it **lists a reward before you earn it**, so a crafter at skill
+40 can already see what waits at 100 and 200.
+- **Tool (+20)** → the existing skill **100** achievement. **Mask (+30)** → the existing skill **200**
+  achievement. Both as `item` rewards (`SummonItem`), on the per-skill rows that already existed.
+- ⚠️ **All twelve tradeskills get both items**, Fishing and Research included. They are excluded from
+  the AA ladders only because neither has a Mastery AA to grant; the skill bonus is paid by
+  `AoTv4TradeskillSkill` for all twelve, so there is no reason to exclude them here.
+- ⚠️⚠️ **SELECTING AN ACHIEVEMENT BY (skill, required_count) MATCHES THE AGGREGATE TOO.** The Master
+  Artisan rows (470050-470300) carry objectives for the same skills at the same values, so a query
+  keyed on skill+threshold returns **470100** alongside **463100** — and `MAX()` picks the aggregate.
+  Anything wiring per-skill rewards must exclude `470000-470999`, or the rewards land on Master
+  Artisan and every tradeskill hands out the same item. Caught during wiring; it is silent.
+- 📌 Rejected on the way here: a **recipe scroll** (`must_learn` + `learned_by_item_id`, both fully
+  implemented — `Client::ScribeRecipes`) was the obvious fix but *hides* the recipe until earned, so
+  you cannot see what you are working toward; and a **hub vendor** cannot gate stock per character
+  because `merchantlist` has no per-character column.
+
+### The two ladders
+- **Per skill**: 50/100/150 → mastery rank 1/2/3, for the **ten** tradeskills that have a mastery AA.
+- **Aggregate** ("Master Artisan", 470050-470300): **all ten** at 50/100/…/300 → Salvage rank 1-6.
+  Salvage has exactly six ranks, which is why the aggregate runs to 300 while the per-skill ladders
+  stop at 150.
+- ⚠️⚠️ **THE PER-SKILL ACHIEVEMENTS ALREADY EXISTED — DO NOT CREATE THEM.** All twelve tradeskills
+  already ship six achievements each in category **600**, keyed **`4<skill_id><level>`** (455050 =
+  "Fishing 50", 469300 = "Pottery 300"). That is the "Tradeskill 72" figure in §15. v12 only attaches
+  a `grant_aa` reward alongside the existing title reward.
+- ⚠️⚠️ **SKILL 68 IS JEWELCRAFTING AND 69 IS POTTERY**, not the reverse — verified against the
+  achievement rows. Getting it backwards pairs each with the other's mastery, silently.
+- ⚠️ **Fishing (55) and Research (58) are excluded from BOTH ladders** — neither has a mastery AA in
+  the game, and including them in the aggregate would gate all of Salvage behind two skills with no
+  reward of their own. Their own six achievements still award their titles.
+- ⚠️ An achievement completes only when **every** non-optional objective does
+  (`TryCompleteAchievement`), which is what makes the 10-objective aggregate an AND.
+
+### Deploying
+⚠️ `items` and `spells_new` are **shared memory**: a migration applying at world boot is **not
+enough** — stop the stack, run `./shared_memory`, restart. The AA and achievement halves need only a
+zone restart.
+📌 Both items are obtainable: tool at skill 100, mask at skill 200, from the per-skill achievements.
+Nothing in this section is placed by drop, vendor or quest — the achievement ladder is the only
+acquisition path, deliberately, because it is the only one that advertises itself.
+
+## 33. The starter weapon follows the CLASS — 2026-08-04
+
+`global_player.event_death_complete` grants a weapon whenever the Primary slot ends up empty (the
+roguelite wipe strips equipped weapons, so a fresh run would otherwise be fists-only). It used to
+hand out **9998 Short Sword to everybody**, which is wrong for half the roster.
+
+- **Reported from play**: a Ranger reforged to Monk, then to Berserker, and kept the short sword
+  throughout — *"those classes have 0 skills in 1hs"*. Confirmed against `skill_caps`, not assumed:
+  **Monk (7) has no 1H Slashing**, and **Berserker (16) has neither 1H Slashing nor 1H Blunt** — only
+  1H Pierce, 2H Slash and Hand to Hand. The "starter" weapon was one they could never train.
+- The map is `aotv4_reforge.M.STARTER_WEAPON` / `M.starter_weapon(class)`. It lives in the **reforge**
+  module because that module owns class identity and needs the same answer on a class change; two
+  copies would drift.
+- ⚠️⚠️ **EVERY ID MUST BE ONE ABSOR ACCEPTS.** He takes exactly four (`tutorialb/Absor.pl`): **9997**
+  Dagger (1HP), **9998** Short Sword (1HS), **9999** Club (1HB), **55623** Dull Axe (**2HS**), handing
+  each back sharpened. A weapon outside that set leaves the class better armed and the **tutorial
+  uncompletable** — and the tutorial is the roguelite's way out, so that is not a small break.
+- ⚠️ None of the four has gear-tier rows, so they stay **BASE** and the hand-in matches. Never
+  substitute a weapon the crafting or loot paths would upgrade to Hallowed/Mythic.
+- ⚠️⚠️ **ROGUE GETS THE DAGGER, AND THAT IS MECHANICAL.** `Client::OPCombatAbility` refuses Backstab
+  on anything that is not `ItemType1HPiercing` (`zone/special_attacks.cpp:793`), so a Rogue holding
+  the short sword could not use their signature ability at all.
+- 📌 Rule for the rest: prefer 1H Slashing, else 1H Blunt, else 2H Slashing — the best of the four the
+  class actually has a skill cap for. Berserker is the only 55623.
+
+### A reforge swaps the weapon too — `M.fix_starter_weapon`, called from `M.finish`
+Changing class only re-armed you if you happened to die afterwards with an empty Primary, which is
+why the short sword survived two class changes.
+- ⚠️⚠️ **IT ONLY TOUCHES A STARTER WEAPON.** `M.IS_STARTER` is derived from the map, and anything else
+  in Primary is left completely alone — a reforge must never destroy gear somebody earned, and a
+  level-1 character may be carrying a quest reward.
+- ⚠️ Runs **before** `M.finish`'s `Save`/`Kick`, so the swap is part of the same atomic change the
+  player sees. `M.finish` is also where the stat rebase and the old class's combat-skill clear live —
+  all three are "things that do not follow a class change on their own".
+- ⚠️ Primary is slot **13**, and `GetItemIDAt` returns **INVALID_ID (-1)** for an empty slot, not 0.

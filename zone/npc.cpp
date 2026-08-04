@@ -2305,6 +2305,29 @@ void NPC::ModifyNPCStat(const std::string& stat, const std::string& value)
 		if (current_mana > max_mana) {
 			current_mana = max_mana;
 		}
+
+	// AoTv4: set an NPC's CLASS at runtime. There was previously no way to do this at all -- class_ is
+	// a protected member of Mob with only GetClass(), no setter anywhere, and no Lua binding.
+	//
+	// ⚠️⚠️ THIS IS NOT COSMETIC: IT IS THE ONLY THING THAT GIVES AN NPC A MANA POOL.
+	// NPC::CalcMaxMana (npc.cpp) returns max_mana = 0 for ANY non-caster class, and it does so
+	// whether or not the npc_types `mana` column is set -- the column is only consulted after the
+	// class test passes. So a Warrior-class NPC has zero mana no matter what the row says.
+	// That matters because the AI's cast gate is
+	//     mana_cost <= GetMana() || GetMana() == GetMaxMana()      (mob_ai.cpp)
+	// and for a 0-mana NPC the second half is 0 == 0, which is ALWAYS TRUE -- such an NPC casts its
+	// whole spell list forever with no mana brake at all. Giving it the right caster class is what
+	// turns that back into a finite resource.
+	//
+	// ⚠️ CalcBonuses() rather than CalcMaxMana() alone: the pool derives from class AND the current
+	// INT/WIS and level, so anything that rescales the mob must have run FIRST. Set the class after
+	// scaling, not before.
+	// ⚠️ The client is NOT updated -- the spawn packet has already gone out, so this is server-side
+	// only. Fine for behaviour (casting, mana, anything class-keyed); do not expect the class shown
+	// by a client-side inspect to follow it.
+	} else if (stat_lower == "class") {
+		class_ = static_cast<uint8>(Strings::ToInt(value));
+		CalcBonuses();
 	} else if (stat_lower == "mr") {
 		MR = Strings::ToInt(value);
 	} else if (stat_lower == "fr") {

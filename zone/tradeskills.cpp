@@ -278,6 +278,111 @@ static const uint32 AOTV4_REFINE_BAG_ID = 2000060;
 
 static bool AoTv4IsEpicItem(uint32 id);   // defined below; used to keep epics out of the crucible
 
+// ============================================================================================
+// AoTv4 tradeskill skill, and the skill-scaled tier roll
+// ============================================================================================
+// ⚠️⚠️ THE FLAT TRADESKILL BONUSES CANNOT BE EXPRESSED NATIVELY, WHICH IS WHY THEY ARE PAID HERE.
+// Client::GetSkill applies an item's skillmod as a PERCENTAGE (skill * (100 + mod) / 100) and reads
+// itembonuses ONLY -- spellbonuses.skillmod is never consulted, and bonuses.cpp only ever populates
+// skillmod from items. There is also no flat "skill increase" SPA: the near misses are RaiseSkillCap
+// (247, raises the CAP), ReduceSkill (122, a percentage reduction) and TradeSkillMastery (263).
+// So a spell/illusion cannot raise a tradeskill at all through any stock path.
+//
+// ⚠️ Deliberately NOT folded into Client::GetSkill: that is read for every combat skill in the game,
+// and a flat adder there would leak into melee, defense and casting. This is the tradeskill choke
+// point instead -- every read of "how good am I at this tradeskill" goes through here.
+// ⚠️ It is NOT what the achievement ladders measure. Client::SetSkill feeds ProcessSkill the STORED
+// value, so the tool and the illusion cannot shortcut the mastery/Salvage achievements. Earned, not
+// buffed -- and that separation is intentional.
+// 📌 The two reserved bands below are indexed by the same order as AOTV4_TS_SKILLS.
+static const uint16 AOTV4_TS_SKILLS[] = { 55, 56, 57, 58, 59, 60, 61, 63, 64, 65, 68, 69 };
+static const uint32 AOTV4_TS_TOOL_BASE     = 147930;   // 12 wearable tools, +20 to their own skill
+// ⚠️⚠️ 44400, NOT 43600. The obvious-looking 436xx is INSIDE the spell-rank band 43576-44327 (752
+// rows), and reserving it there would have silently overwritten twelve of them. 44400-44411 is clear
+// of every band in use and still under RoF2's 45000 spell-id ceiling, past which links and the
+// spellbook packet break. Check the band map before reserving anything in 43xxx/44xxx.
+static const uint16 AOTV4_TS_ILLUSION_BASE = 44400;    // 12 illusion buffs, +30 to their own skill
+static const int    AOTV4_TS_TOOL_BONUS     = 20;
+static const int    AOTV4_TS_ILLUSION_BONUS = 30;
+
+static int AoTv4TradeskillIndex(uint16 tradeskill)
+{
+	for (int i = 0; i < (int)(sizeof(AOTV4_TS_SKILLS) / sizeof(AOTV4_TS_SKILLS[0])); ++i) {
+		if (AOTV4_TS_SKILLS[i] == tradeskill) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+// The effective tradeskill skill: the native value (raw + any item percentage mod) plus our flat
+// tool and illusion bonuses, which STACK because they come from two different sources.
+static int AoTv4TradeskillSkill(Client *c, uint16 tradeskill)
+{
+	if (!c) {
+		return 0;
+	}
+
+	int value = c->GetSkill(static_cast<EQ::skills::SkillType>(tradeskill));
+
+	const int idx = AoTv4TradeskillIndex(tradeskill);
+	if (idx < 0) {
+		return value;   // not one of ours (skill 75 and friends) -- native value only
+	}
+
+	// worn tool: +20. HasItem with invWhereWorn only matches an EQUIPPED copy, so carrying twelve
+	// of them in a bag does nothing -- you have to actually be wearing the right one.
+	if (c->GetInv().HasItem(AOTV4_TS_TOOL_BASE + idx, 1, invWhereWorn) != INVALID_INDEX) {
+		value += AOTV4_TS_TOOL_BONUS;
+	}
+
+	// illusion buff: +30, and it stacks with the tool by construction -- separate sources, added.
+	if (c->FindBuff(AOTV4_TS_ILLUSION_BASE + idx)) {
+		value += AOTV4_TS_ILLUSION_BONUS;
+	}
+
+	return value;
+}
+
+// Which tier a successful combine produces: 0 = base, 1 = Hallowed, 2 = Mythic.
+//
+// ⚠️⚠️ THIS REPLACES "EVERY COMBINE IS MYTHIC". Crafting used to hand out a Mythic unconditionally,
+// which made tradeskill output entirely independent of tradeskill SKILL -- the thing the system is
+// supposed to be about. Now the tier is earned:
+//     effective skill  100 -> 0% Mythic / 33% Hallowed      200 -> 25% / 75%
+//                      300 -> 75% / 25%                     350 -> 100% Mythic
+// 350 is reachable at 300 skill with the +20 tool and the +30 illusion, which is the intended
+// "put in the work and everything you make is Mythic" end state.
+//
+// ⚠️ Mythic is rolled FIRST and returns immediately -- these are bands of one decision, not two
+// independent rolls. Testing Hallowed first would swallow the Mythic band entirely, the same trap
+// already recorded for the loot tier roll.
+// ⚠️ Integer maths: multiply before dividing, or every percentage under 100 truncates to 0.
+static int AoTv4RollCraftTier(Client *c, uint16 tradeskill)
+{
+	if (!c || !zone) {
+		return 0;
+	}
+
+	const int skill = AoTv4TradeskillSkill(c, tradeskill);
+
+	int mythic_pct   = ((skill - 150) * 100) / 200;   // 0 at 150, 100 at 350
+	int hallowed_pct = ((skill - 50) * 100) / 150;    // 0 at  50, 100 at 200
+
+	if (mythic_pct   < 0)   { mythic_pct   = 0;   }
+	if (mythic_pct   > 100) { mythic_pct   = 100; }
+	if (hallowed_pct < 0)   { hallowed_pct = 0;   }
+	if (hallowed_pct > 100) { hallowed_pct = 100; }
+
+	if (mythic_pct > 0 && zone->random.Int(1, 100) <= mythic_pct) {
+		return 2;
+	}
+	if (hallowed_pct > 0 && zone->random.Int(1, 100) <= hallowed_pct) {
+		return 1;
+	}
+	return 0;
+}
+
 static void AoTv4RefineCombine(Client* user, EQ::ItemInstance* container, int container_slot)
 {
 	const EQ::ItemData *bag = container ? container->GetItem() : nullptr;
@@ -1091,7 +1196,12 @@ bool Client::TradeskillExecute(DBTradeskillRecipe_Struct *spec) {
 		return false;
 	}
 
-	uint16 user_skill = GetSkill(spec->tradeskill);
+	// AoTv4: through the tradeskill choke point, so the +20 worn tool and the +30 illusion raise your
+	// chance of SUCCEEDING as well as your chance of a higher tier. Reading GetSkill directly here
+	// would make the bonuses affect the tier roll only, which is not what a skill bonus means.
+	// ⚠️ Skills:TradeSkillClamp is 0 on this server, so the clamp below is inert and the bonuses are
+	// not quietly truncated away. Setting that rule non-zero would cap them.
+	uint16 user_skill = (uint16) AoTv4TradeskillSkill(this, spec->tradeskill);
 
 	if (RuleI(Skills, TradeSkillClamp) != 0 && user_skill > RuleI(Skills, TradeSkillClamp)) {
 		user_skill = RuleI(Skills, TradeSkillClamp);
@@ -1743,9 +1853,10 @@ bool ZoneDatabase::GetTradeRecipe(
 	for(auto row : results) {
 		uint32       item_id       = Strings::ToUnsignedInt(row[0]);
 		const uint8  success_count = Strings::ToUnsignedInt(row[1]);
-		// AoTv4: EVERY combine output comes out MYTHIC when a Mythic tier exists, so crafted gear is
-		// always top-tier and stays relevant as later expansions unlock better base items. Epics are
-		// always tiered, so this covers them too.
+		// AoTv4: the combine's output tier is ROLLED FROM TRADESKILL SKILL -- see AoTv4RollCraftTier.
+		// This used to be an unconditional upgrade to Mythic; making it a skill-scaled chance is what
+		// gives tradeskills a progression worth grinding, and at ~350 effective skill it converges back
+		// on "everything you make is Mythic".
 		//
 		// ⚠️⚠️ THIS IS THE SINGLE CHOKE POINT FOR BOTH OVERLOADS. GetTradeRecipe(container, ...)
 		// resolves the recipe id from the container's contents and then delegates to this one (:1600,
@@ -1766,10 +1877,20 @@ bool ZoneDatabase::GetTradeRecipe(
 		// outputs (5,112 plain components, 728 food/drink, 71 containers), which have no tier rows
 		// because a component has no stats to scale: a "Mythic" one would be byte-identical to its base
 		// and would only split 2,556 component stacks across two ids.
-		{
-			const uint32 mythic_id = AoTv4TierBaseId(item_id) + 2 * AOTV4_TIER_STEP;
-			if (GetItem(mythic_id)) {
-				item_id = mythic_id;
+		//
+		// ⚠️⚠️ ONLY A RECIPE WHOSE OUTPUT IS A BASE ID IS ROLLED. Previously this normalised through
+		// AoTv4TierBaseId first, which was safe when the result could only ever go UP. It is not safe
+		// now: normalising a hypothetical Mythic-output recipe and then rolling could DOWNGRADE it,
+		// silently overriding whatever the recipe author intended. No stock recipe outputs a tier id
+		// (0 of 19,464), so this is a guard rather than a live path -- but "never downgrade the
+		// author's own output" is the property worth keeping.
+		if (item_id < AOTV4_TIER_STEP) {
+			const int tier = AoTv4RollCraftTier(c, spec->tradeskill);
+			if (tier > 0) {
+				const uint32 tier_id = item_id + (uint32) tier * AOTV4_TIER_STEP;
+				if (GetItem(tier_id)) {
+					item_id = tier_id;
+				}
 			}
 		}
 		spec->onsuccess.emplace_back(std::pair<uint32, uint8>(item_id, success_count));

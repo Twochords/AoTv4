@@ -1261,8 +1261,19 @@ public:
 	void DoClassAttacks(Mob *ca_target, uint16 skill = -1, bool IsRiposte=false);
 
 	// AoTv4: #autoskill -- auto-fire enabled combat skills while auto-attacking (see gm_commands/autoskill.cpp)
+	//
+	// ⚠️ Balance lever: how many abilities autoskill may run at once. Without a cap the right play is to
+	// enable everything, and choosing which specials to run stops being a choice.
+	// ⚠️⚠️ IT LIVES IN THE HEADER because TWO translation units enforce it (client.cpp's setter and
+	// special_attacks.cpp's say handler). It used to be a file-scope constant in special_attacks.cpp --
+	// the same drift trap already recorded for AOTV4_SKILL_TIMER_BASE.
+	static constexpr int AOTV4_AUTOSKILL_MAX = 4;
 	const bool GetAutoSkillStatus(EQ::skills::SkillType skill_id);
-	void SetAutoSkillStatus(EQ::skills::SkillType skill_id, bool enabled);
+	// Returns FALSE when the enable was refused by the cap. Turning one OFF always succeeds.
+	bool SetAutoSkillStatus(EQ::skills::SkillType skill_id, bool enabled);
+	// Forces a skill's autoskill setting off. Called when a skill crosses the 0 boundary in either
+	// direction, so an ability can never come back from a previous run already enabled.
+	void AoTv4ClearAutoSkillOnSkillBoundary(EQ::skills::SkillType skill_id);
 	const std::vector<EQ::skills::SkillType> GetAutoSkillsList() const;
 	const std::vector<EQ::skills::SkillType> GetAvailableAutoSkills() const;
 	// AoTv4 autoskill WINDOW transport (the system itself is the three above + Client::Process).
