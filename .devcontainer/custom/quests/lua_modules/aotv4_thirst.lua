@@ -38,6 +38,53 @@ local HEAL = {
 -- first hit is the answer and we stop looking.
 local ORDER = { 43347, 43346, 43345, 43344, 43343, 43342 }
 
+-- ================================================================================================
+-- Telling the player it is working
+-- ================================================================================================
+-- The heal is paid silently by Lua, so unlike a real proc there is no engine message and no combat
+-- log line -- the only evidence is the health bar moving a few points during a fight that is also
+-- taking chunks out of it. In practice that is invisible, which is what prompted this.
+--
+-- ⚠️⚠️ IT CANNOT BE ONE LINE PER HIT, EVEN THOUGH THAT IS WHAT A PROC LOOKS LIKE. A proc fires
+-- once in a while; THIS FIRES ON EVERY SUCCESSFUL SWING. With dual wield and double attack that is
+-- roughly 3-4 events a second, so a per-hit message is not a proc message, it is a wall of text that
+-- buries everything else in the chat window. The heal is accumulated instead and reported once per
+-- MSG_THROTTLE seconds with the running total, which reads as a proc and stays legible.
+--
+-- ⚠️ Chat::Spells is the channel real proc and spell messages use, so it inherits the player's
+-- existing filter -- anyone who does not want it can already turn it off without a server change.
+local MSG_ENABLED  = true
+local MSG_THROTTLE = 3        -- seconds between lines. 0 = one line per hit (expect spam).
+
+-- charid -> { amount = healed since the last line, last = os.time() of that line }.
+-- ⚠️ Keyed by CharacterID, and only ever touched AFTER the buff lookup has succeeded -- that is the
+-- rare path, so the cost never lands on the ordinary swings this file is warned about.
+local acc = {}
+
+local function report(client, amount)
+	if not MSG_ENABLED then return end
+
+	local id  = client:CharacterID()
+	local now = os.time()
+	local a   = acc[id]
+
+	if not a then
+		a = { amount = 0, last = 0 }
+		acc[id] = a
+	end
+
+	a.amount = a.amount + amount
+
+	if now - a.last < MSG_THROTTLE then return end
+
+	client:Message(MT.Spells, string.format(
+		"Your thirst is slaked, drawing %d hit points from your foe%s.",
+		a.amount, a.amount == amount and "" or "s"))
+
+	a.amount = 0
+	a.last   = now
+end
+
 function M.on_damage_given(e, client)
 	-- Cheapest rejections first, before any buff lookup.
 	if not e or not e.damage or e.damage <= 0 then return end
@@ -50,6 +97,7 @@ function M.on_damage_given(e, client)
 		local id = ORDER[i]
 		if client:FindBuff(id) then
 			client:HealDamage(HEAL[id])
+			report(client, HEAL[id])
 			return
 		end
 	end

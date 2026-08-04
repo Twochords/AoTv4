@@ -408,6 +408,52 @@ local function floor_tradeskills(c)
 	end
 end
 
+-- ================================================================================================
+-- AoTv4: every skill sits at its cap for your CURRENT level -- and nothing survives a class change
+-- ================================================================================================
+-- ⚠️⚠️ THIS REPLACES SKILL PROGRESSION AS A THING PLAYERS MANAGE. Skills are not trained, ground or
+-- carried between runs: they are simply whatever your level allows, recomputed on connect and on
+-- every ding. Two problems disappear at once:
+--   * the roguelite death no longer costs skill progress, because there is no progress to lose --
+--     a re-climb to level 20 restores exactly what level 20 allows;
+--   * a race/class change cannot leave stale values behind, because anything the NEW class cannot
+--     have is ZEROED here rather than lingering (an ex-Wizard's Evocation on a Warrior).
+--
+-- ⚠️⚠️ TRADESKILLS ARE EXCLUDED, deliberately. They ARE the one thing meant to be earned over time
+-- (floor_tradeskills only sets a floor of 20), and maxing them would hand every character 300
+-- Blacksmithing at level 1 and delete crafting as an activity.
+--
+-- ⚠️⚠️ THE TWELVE REWARD-GATED COMBAT ABILITIES ARE ONLY MAXED ONCE EARNED. skill_pool.SKILLS
+-- (Backstab, Bash, Kick, the monk strikes...) are what the level-up picker hands out, and a skill at
+-- 0 is exactly how "not earned yet" is represented -- to the server AND to the client, which hides
+-- them via SKILLUNLOCKDATA. Maxing them blindly would grant all twelve to everybody at level 1 and
+-- retire the picker. So: raise them if they are already above 0, never lift one off 0.
+--
+-- ⚠️ `MaxSkill(v) == 0` means "this class cannot have this skill at this level", which is why it is
+-- safe to use as the zeroing test -- but it is checked with CanHaveSkill too, because a class that
+-- gets a skill only at a higher level would otherwise be zeroed while merely being too low for it.
+local function max_skills_for_level(c)
+	local is_tradeskill = {}
+	for _, v in ipairs(TRADESKILLS) do is_tradeskill[v] = true end
+
+	for id = 0, 77 do                              -- 0..HIGHEST_SKILL (Skill2HPiercing)
+		if not is_tradeskill[id] then
+			local cap  = c:MaxSkill(id) or 0
+			local have = c:GetRawSkill(id) or 0
+
+			if cap <= 0 or not c:CanHaveSkill(id) then
+				-- the new class cannot have it: drop whatever the old one left behind
+				if have > 0 then c:SetSkill(id, 0) end
+			elseif skill_pool.SKILLS[id] then
+				-- reward-gated: max it only if the picker has already granted it
+				if have > 0 and have < cap then c:SetSkill(id, cap) end
+			elseif have < cap then
+				c:SetSkill(id, cap)
+			end
+		end
+	end
+end
+
 function event_connect(e)
 	-- Delve: drop a journal entry left over from a camp or a client crash. No-op if the run is still
 	-- live (camped and came back while the instance is still up).
@@ -442,9 +488,20 @@ function event_connect(e)
 	bazaar_broker.pay_escrow(e.self)
 	aotv4_worldbuff.on_player(e)                    -- and on login
 
+	-- ⚠️ Backstop for the deferred ink conversion: if a player logged out inside the one second
+	-- window (or acquired ink by trade/quest/GM, none of which fire event_loot), it would otherwise
+	-- sit in the bags as an ITEM and be destroyed by the next death while the currency would not --
+	-- which reads as the drop having been stolen. Sweeping on connect closes every one of those.
+	require("aotv4_spell_ranks_sys").absorb_ink(e.self)
+
 	grant_free_skills(e.self)            -- level-1 chars get Dual Wield etc. now, not only after first ding
 	grant_native_combat_skills(e.self)  -- a Rogue has Backstab, a Monk its strikes; the rest are picker rewards
 	floor_tradeskills(e.self)           -- every tradeskill floored to 20 (new chars start there; existing raised on login)
+	max_skills_for_level(e.self)        -- ⚠️ AFTER the grants above: they lift a skill off 0 (which is what
+	                                    -- makes it "earned"), and this then takes it to the cap. Reversed,
+	                                    -- a freshly granted native would sit at 1 until the next ding.
+	aotv4_regions.grant_start(e.self)   -- the ONE free region credit, spent at Alessa. Once per character:
+	                                    -- it cannot key off level 1, because death resets you to level 1.
 
 	-- daily Hot Zone welcome. Computed live from the date (hotzones.lua) so it always matches the actual
 	-- 1.5x apply (event_enter_zone -> eq.set_hotzone) and the #hotzone popup -- no bucket/cron to drift.
@@ -461,7 +518,13 @@ function event_connect(e)
 end
 
 function event_timer(e)
-	if e.timer == "skillsync" then
+	if e.timer == "inkconv" then
+		-- one-shot: the ink looted a second ago is now really in the bags, so bank it as currency.
+		-- ⚠️ StopTimer FIRST -- a client timer REPEATS, and without this it would sweep every second
+		-- forever. Same trap already recorded for "delveclose".
+		e.self:StopTimer("inkconv")
+		require("aotv4_spell_ranks_sys").absorb_ink(e.self)
+	elseif e.timer == "skillsync" then
 		-- one-shot: fire ~2s after zone-in, once the client has finished building its Combat Abilities
 		-- list, then (re)send the earned-skill set + nudge a rebuild so abilities show without jumping.
 		e.self:StopTimer("skillsync")
@@ -590,6 +653,7 @@ function event_level_up(e)
   -- skills stay reward-gated (skill_pool.lua). Same grant used on connect. See grant_free_skills above.
   grant_free_skills(e.self)
   grant_native_combat_skills(e.self)   -- cap curves for some specials only open above level 1
+  max_skills_for_level(e.self)         -- every skill to its new cap for this level (tradeskills excluded)
 
   if e.self:GetLevel() == 5 then
     eq.popup("", "<c \"#F0F000\">Welcome to level 5.</c><br><br>You have just been granted a new ability called '<c \"#F0F000\">Origin</c>' which allows you to teleport back to your starting city.<br><br>Open the Alternate Advancement window by pressing the '<c \"#F0F000\">V</c>' key, look in the '<c \"#F0F000\">General' tab</c>, and find the '<c \"#F0F000\">Origin</c>' ability and select it.<br><br>Now press the '<c \"#F0F000\">Hotkey</c>' button to create a hotkey you can place on your hot bar.");
@@ -760,10 +824,13 @@ function event_death_complete(e)
   -- GetItemIDAt returns INVALID_ID (-1), NOT 0, for an empty slot -- test `<= 0`, not `== 0`.
   local primary = client:GetItemIDAt(13)       -- slot 13 = Primary
   if not primary or primary <= 0 then
-    client:SummonItem(9998)                    -- Short Sword* (dmg 4 / dly 29, no req) -- the exact sword Absor's
-                                               -- tutorial quest accepts (check_handin 9998 -> Sharpened Short Sword).
-                                               -- Stays BASE (9998 is excluded from gear tiers) so the hand-in matches;
-                                               -- Absor then hands back the Mythic Sharpened Short Sword.
+    -- ⚠️⚠️ CLASS APPROPRIATE, not a hardcoded short sword. It handed 9998 to everybody, so a Monk or
+    -- a Berserker respawned holding a 1H Slashing weapon neither class has any skill cap for. The
+    -- map lives in aotv4_reforge because that module owns class identity and needs the same answer
+    -- when somebody reforges -- two copies would drift.
+    -- ⚠️ Every id it can return is one Absor accepts (9997/9998/9999/55623) and none has gear-tier
+    -- rows, so it stays BASE and the tutorial hand-in still matches.
+    client:SummonItem(aotv4_reforge.starter_weapon(client:GetClass()))
   end
 
   -- REFRESH THE TUTORIAL for a DIED-IN-THE-TUTORIAL player. event_death already cancelled all tasks and
@@ -940,4 +1007,26 @@ end
 -- run bucket keeps claiming they are in a dungeon they have left. See aotv4_dungeon.M.on_disconnect.
 function event_disconnect(e)
   aotv4_dungeon.on_disconnect(e.self)
+end
+
+-- ⚠️⚠️ INK OF THE LOST IS A CURRENCY THAT ARRIVES AS AN ITEM. It drops from global loot, so it is
+-- looted like anything else -- but as a carried item the roguelite death destroyed it along with the
+-- rest of the bags, which is exactly what the move to alternate currency was meant to stop.
+-- EQEmu does NOT auto-convert an alternate-currency item on pickup (nothing in the loot path looks
+-- at the `alternate_currency` table), so the conversion has to happen here: bank the value, then
+-- remove the physical copy.
+--
+-- ⚠️ The item row is still needed and is NOT being retired: alternate currency is defined as a
+-- currency/item PAIR and the client reads the currency's name and icon from the item.
+-- ⚠️ Fragments need no equivalent hook -- they are paid straight into the currency by death_loss.
+function event_loot(e)
+  local ranksys = require("aotv4_spell_ranks_sys")
+  if e.item and e.item.valid and e.item:GetID() == ranksys.INK_ITEM then
+    -- ⚠️⚠️ ARM A TIMER; DO NOT CONVERT HERE. EVENT_LOOT fires at corpse.cpp:1740 but the item is not
+    -- placed in the bags until :1843, so converting here added the currency and then removed nothing
+    -- -- the player kept the item AND the currency. See M.absorb_ink for the full account, including
+    -- why returning non-zero to cancel the loot is an infinite-currency bug rather than a fix.
+    -- ⚠️ One second is comfortably past the placement and is invisible in play.
+    e.self:SetTimer("inkconv", 1000)
+  end
 end

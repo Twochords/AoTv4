@@ -255,11 +255,142 @@ end
 -- exact order -- read the natives before ScaleNPC clobbers them, scale, then put spell output back --
 -- and the boss path used to call ScaleNPC bare, which is precisely how it kept full spell damage.
 -- Wrapping it means a caller cannot get the order wrong, and there is one place to retune.
+-- ---------------------------------------------------------------- elite ratio
+-- ⚠️⚠️ ScaleNPC FLATTENS EVERY MOB ONTO ONE CURVE, WHICH ERASES NAMED AND ELITE MOBS ENTIRELY.
+-- It rewrites hp, damage and ac wholesale out of `npc_scale_global_base` for the level it is given,
+-- and it does not care what the mob was authored as. In stillmoona `an_iron_warder` ships at level 67
+-- with 40,364 hp while the trash around it ships at 21,000 -- put both through ScaleNPC(5) and they
+-- come out byte-identical. Reported from play as "warders are just as weak as the trash mobs", and
+-- that is exactly what it was: not a warder bug, a bug affecting every tougher-than-trash mob in
+-- every delve.
+--
+-- The fix is to measure how far above the curve a mob was AUTHORED, and re-apply that multiple after
+-- scaling. `elite` is that multiple: 1.0 for ordinary trash, higher for anything hand-tuned.
+--
+-- ⚠️ Measured by scaling the mob to its OWN native level and reading what the engine gives it there.
+-- That is the honest baseline and it needs no copy of `npc_scale_global_base` in Lua (there is no
+-- binding to read that table, and embedding a copy would silently rot the moment it is retuned).
+-- The double ScaleNPC costs one extra call per mob, once, at spawn.
+-- ⚠️ Mobs authored with `hp = 0` -- which is most of them, including many of the warders -- are
+-- auto-scaled by the engine already, so they measure as exactly 1.0 and are left alone. That is the
+-- correct answer, not a failure to detect them.
+--
+-- ⚠️ Cached in an entity variable like the other natives: the 10 second rescale sweep calls this
+-- repeatedly, and re-measuring after the mob has already been scaled would read the SCALED hp as if
+-- it were native and collapse the ratio to 1.0 -- the elite would decay to trash over a few sweeps.
+-- ⚠️ Floored at 1.0. A mob authored WEAKER than its curve is left where the curve puts it; making it
+-- weaker still would just recreate the problem from the other side.
+local ELITE_CAP     = 4.0    -- a raid-tier mob in a delve should be a fight, not a wall
+local ELITE_DMG_POW = 0.5    -- damage scales as the square root of the hp multiple: a 4x tougher
+                             -- mob hits 2x harder, not 4x. Elites should last longer first.
+
+local function elite_ratio(npc, nat_lvl)
+    local cached = tonumber(npc:GetEntityVariable("delve_elite"))
+    if cached then return cached end
+
+    -- ⚠️⚠️ OUR OWN NPCs ARE TEMPLATES, AND MEASURING THEM HERE IS NONSENSE. The delve warden
+    -- (2000301) is authored at LEVEL 1 with 1000 hp -- a stub that exists to be scaled, not a real
+    -- level 1 creature. The curve at level 1 is ELEVEN, so this measured 1000/11 = 90 and clamped to
+    -- ELITE_CAP, handing the boss a spurious flat 4x. Its own chain then multiplied again
+    -- (M.BOSS_HP_MULT 5.0), so the end-of-delve warden arrived at 20x the curve instead of 5x.
+    -- ⚠️ The id band is the same divider on_npc_spawn uses for the race 127 sweep: everything AoTv4
+    -- adds lives at 2000000+, while the DoN zones' own npcs are 338xxx-343xxx. Anything of ours that
+    -- needs to be tougher says so through its OWN explicit multipliers, which is the readable place
+    -- for it -- never by being re-measured against a curve it was never authored against.
+    if (npc:GetNPCTypeID() or 0) >= 2000000 then
+        npc:SetEntityVariable("delve_elite", "1.0")
+        return 1.0
+    end
+
+    local r = 1.0
+    local nat_hp = npc:GetMaxHP() or 0
+    if nat_lvl and nat_lvl > 0 and nat_hp > 0 then
+        npc:ScaleNPC(nat_lvl)                     -- what the curve gives THIS mob at its own level
+        local base_hp = npc:GetMaxHP() or 0
+        if base_hp > 0 then r = nat_hp / base_hp end
+    end
+
+    if r < 1.0        then r = 1.0        end
+    if r > ELITE_CAP  then r = ELITE_CAP  end
+    npc:SetEntityVariable("delve_elite", string.format("%.4f", r))
+    return r
+end
+
+-- ⚠️⚠️ RAISING max_hp DOES NOT HEAL THE MOB, SO IT MUST BE REFILLED BY HAND.
+-- NPC::ModifyNPCStat's max_hp branch (zone/npc.cpp) is:
+--     base_hp = value; CalcMaxHP(); if (current_hp > max_hp) current_hp = max_hp;
+-- -- it only ever clamps DOWN. Raise the maximum and current_hp stays exactly where it was, so the
+-- creature is left at old/new of its new pool. With ELITE_CAP at 4.0 that is precisely the reported
+-- "bosses are spawning at 25% hp", and it was consistent across gauntlet, fragile and standard
+-- because it is the CAP being hit, not anything mode specific.
+--
+-- ⚠️ Safe to refill unconditionally here: everything that scales runs either at spawn (nothing has
+-- damaged it yet) or from the out-of-combat rescale sweep, which already refuses to touch a mob that
+-- is being fought -- see the note on M.rescale_zone. A mid-fight refill is the thing that guard
+-- exists to prevent, and this does not change it.
+local function refill(npc)
+    if not npc or not npc.valid then return end
+    local mx = npc:GetMaxHP()
+    if mx and mx > 0 then npc:SetHP(mx) end
+end
+
+local function apply_elite(npc, r)
+    if not r or r <= 1.0 then return end
+
+    local hp = npc:GetMaxHP()
+    if hp and hp > 0 then
+        npc:ModifyNPCStat("max_hp", tostring(math.floor(hp * r)))
+    end
+
+    -- ⚠️ There is no GetMinDamage binding (only GetMaxDamage, zone/lua_npc.cpp), so min_hit is derived
+    -- from max_hit rather than read. Half is the shape ScaleNPC itself produces, so this keeps the
+    -- spread the mob would have had.
+    local dmg = npc:GetMaxDamage()
+    if dmg and dmg > 0 then
+        local d = math.floor(dmg * (r ^ ELITE_DMG_POW))
+        npc:ModifyNPCStat("max_hit", tostring(d))
+        npc:ModifyNPCStat("min_hit", tostring(math.max(1, math.floor(d / 2))))
+    end
+end
+
 function M.scale_npc(npc, level)
     if not npc or not npc.valid then return end
-    remember_natives(npc)                 -- BEFORE: ScaleNPC overwrites level AND spellscale
+    local nat_lvl = remember_natives(npc)  -- BEFORE: ScaleNPC overwrites level AND spellscale
+    local elite   = elite_ratio(npc, nat_lvl)  -- BEFORE too: it reads the mob's authored hp
     npc:ScaleNPC(level)
     scale_spell_output(npc, level)        -- AFTER: ScaleNPC would discard it otherwise
+    apply_elite(npc, elite)               -- AFTER: ScaleNPC would discard this too
+    refill(npc)                           -- LAST: apply_elite raised max_hp without healing
+end
+
+-- The fine trim factor for a power ratio. ⚠️ SHARED by M.apply and M.regular_hp on purpose: the boss
+-- sizes itself against what a regular mob has, so if these two ever disagreed the boss would be a
+-- multiple of a mob that does not exist. One definition, per the rule that keeps the mode and group
+-- multipliers in a single function.
+local function fine_factor(power)
+    if not power or power <= 1.0 then return 1.0 end
+    local fine = 1.0 + 0.10 * (power - 1.0)
+    if fine > 1.35 then fine = 1.35 end
+    return fine
+end
+
+-- What an ORDINARY (non elite) mob in this delve ends up with for max_hp, before the difficulty mode
+-- and group multipliers -- i.e. the number the boss is a multiple OF.
+--
+-- ⚠️⚠️ IT SCALES THE NPC AS A SIDE EFFECT and leaves it sitting at `level`. That is the same
+-- measure-by-scaling trick elite_ratio already uses, and it is only safe because every caller
+-- re-scales properly straight afterwards. Do not call it on a mob you are not about to re-scale.
+-- ⚠️ Bare ScaleNPC is correct here: only max_hp is read, and the spell/heal proportioning that
+-- M.scale_npc adds would be thrown away by the caller's own scale anyway.
+-- ⚠️ Deliberately EXCLUDES the elite ratio. "Regular mob" means trash -- an authored elite is up to
+-- ELITE_CAP times tougher, and sizing the boss off one of those would make it a multiple of whatever
+-- happened to be standing nearby.
+function M.regular_hp(npc, level, power)
+    if not npc or not npc.valid then return 0 end
+    npc:ScaleNPC(level)
+    local hp = npc:GetMaxHP() or 0
+    if hp <= 0 then return 0 end
+    return math.floor(hp * fine_factor(power))
 end
 
 function M.apply(npc, eff_level, power)
@@ -269,9 +400,8 @@ function M.apply(npc, eff_level, power)
 
     -- Fine trim: the part of the power ratio the rounded level did not capture. Kept small on purpose
     -- -- the level is doing the heavy lifting and this only smooths the steps between levels.
-    if power and power > 1.0 then
-        local fine = 1.0 + 0.10 * (power - 1.0)
-        if fine > 1.35 then fine = 1.35 end
+    local fine = fine_factor(power)
+    if fine > 1.0 then
         local hp = npc:GetMaxHP()
         if hp and hp > 0 then
             npc:ModifyNPCStat("max_hp", tostring(math.floor(hp * fine)))
@@ -284,6 +414,12 @@ function M.apply(npc, eff_level, power)
     -- delve to Standard solo tuning mid run. aotv4_dungeon registers the hook (it owns modes and the
     -- party manifest; this module must not require it, or the two modules require each other).
     if M.post_scale_hook then M.post_scale_hook(npc) end
+
+    -- ⚠️ AFTER the fine trim AND the mode/group hook, both of which raise max_hp the same way
+    -- apply_elite does and are equally incapable of healing. scale_npc already refilled once, but
+    -- everything above has moved the ceiling again since -- so this is the one that actually decides
+    -- what the player walks up to. Without it a Hard six-man mob arrives part-full.
+    refill(npc)
 
     -- Remember what this mob was worth, so the ledger can be honest about it when it dies.
     -- ⚠️ ONE stamp: the level it spawned at, which is both the difficulty readout and what the ledger
@@ -327,7 +463,19 @@ function M.rescale_zone(c, layer_level)
         -- asymmetry is what let every pet get scaled down and lose its regen the moment it was
         -- summoned -- the sweep was never going to repair something it deliberately skips. Keep the
         -- two tests identical.
+        -- ⚠️⚠️ NEVER SWEEP OUR OWN NPCs. This is the same 2000000+ divider elite_ratio uses, and it
+        -- has to be here for the same reason: everything AoTv4 adds is scaled by whatever spawned it,
+        -- against rules this sweep knows nothing about.
+        -- The warden (2000301) was the casualty. M.on_npc_spawn already excluded it, but this sweep
+        -- did not -- so ten seconds after a warden spawned, M.apply rescaled it to the TRASH level
+        -- `eff` and rewrote hp, damage and level wholesale, throwing away the boss hp multiple, the
+        -- boss damage multiplier and the +BOSS_LVL_BONUS. Any warden not engaged within ten seconds
+        -- became a trash mob wearing a boss name, and it looked exactly like the hp multiplier "not
+        -- working" -- which is how it survived several retunes of that multiplier.
+        -- ⚠️ It also caught the chest (2000300) and the class aura npcs (2000100-2000115), neither of
+        -- which has any business being scaled.
         if npc and npc.valid and not npc:IsEngaged()
+           and (npc:GetNPCTypeID() or 0) < 2000000
            and not npc:IsPet() and (npc:GetOwnerID() or 0) == 0 then
             -- never stamped => never scaled => still a native DoN mob, repair it regardless
             local stamped = tonumber(npc:GetEntityVariable("delve_eff"))

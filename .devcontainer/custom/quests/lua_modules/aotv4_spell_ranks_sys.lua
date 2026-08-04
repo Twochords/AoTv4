@@ -30,6 +30,24 @@ M.MAX_KEPT      = 2
 M.FRAGMENT_ITEM = 147920
 M.INK_ITEM      = 147921
 
+-- ⚠️⚠️ BOTH ARE ALTERNATE CURRENCY, NOT INVENTORY. They used to be carried items, and the roguelite
+-- death destroys carried inventory -- so a death ate the fragments the PREVIOUS death had paid out,
+-- and any ink gathered during the run. Rank 5 costs 240 fragments; saving that up was impossible.
+-- `character_alt_currency` is untouched by the death path, cannot be dropped, traded or vendored,
+-- and the client shows a running balance in its own window.
+-- ⚠️ Must match custom/sql/aotv4_spell_rank_currency.sql. The ITEM ids above are still needed: the
+-- currency's name and icon are resolved from the paired item, and the ink item is what actually
+-- drops (global_player.event_loot converts it on pickup).
+M.FRAGMENT_CURRENCY = 57
+M.INK_CURRENCY      = 58
+
+-- One place that answers "how much has this character got", so the display, the affordability test
+-- and the charge can never disagree about where the balance lives.
+function M.balance(c)
+    return c:GetAlternateCurrencyValue(M.FRAGMENT_CURRENCY),
+           c:GetAlternateCurrencyValue(M.INK_CURRENCY)
+end
+
 -- ⚠️ Fragments DOUBLE per rank (against ~31 from a deep death); ink is a flat 10 per rank. The two
 -- scale differently on purpose: fragments come from dying, so they track how hard you have been
 -- pushing, while ink comes from killing, so it tracks time played. A rank costs both.
@@ -193,15 +211,65 @@ function M.origin_of(c, spell_id)
     return nil
 end
 
+-- ---------------------------------------------------------------- ink -> currency
+-- ⚠️⚠️ THIS CANNOT BE DONE FROM EVENT_LOOT, AND DOING IT THERE DOUBLED THE DROP.
+-- `Corpse::LootItem` fires EVENT_LOOT at corpse.cpp:1740 but does not put the item in the player's
+-- bags until AutoPutLootInInventory at :1843 -- about a hundred lines later. So the old hook added
+-- the currency and then called RemoveItem against bags that did not contain the ink yet: the removal
+-- silently did nothing and the engine handed over the item straight afterwards. The player ended up
+-- with BOTH, which is exactly how it was reported ("had 7 before i looted that one").
+--
+-- ⚠️⚠️ RETURNING NON-ZERO FROM EVENT_LOOT IS NOT THE FIX -- IT IS AN INFINITE CURRENCY BUG.
+-- A non-zero return sets `prevent_loot`, whose branch (corpse.cpp:1803) queues the ack, deletes the
+-- instance and RETURNS -- **before** the `RemoveItem(item_data->lootslot)` at :1865 that takes the
+-- item off the corpse. The ink would stay on the corpse and pay out again on every click.
+--
+-- So the conversion is deferred: event_loot arms a one second timer, and this runs afterwards, once
+-- the item really is in the inventory. Sweeping the bags (rather than trusting what was looted) also
+-- means ink arriving by ANY route -- trade, quest, GM -- is absorbed the same way.
+-- ⚠️ Also called from event_connect as a backstop, so ink held across a logout is not stranded as an
+-- item that the next death would destroy.
+function M.absorb_ink(c)
+    if not c or not c.valid then return 0 end
+    local n = c:CountItem(M.INK_ITEM) or 0
+    if n < 1 then return 0 end
+    c:RemoveItem(M.INK_ITEM, n)
+    c:AddAlternateCurrencyValue(M.INK_CURRENCY, n)
+    c:Message(15, string.format("You gather %d Ink of the Lost.", n))
+    return n
+end
+
 -- ---------------------------------------------------------------- death
 -- Called BEFORE the wipe. Returns how many spells are about to be destroyed, one Parchment Fragment
 -- each. ⚠️ Kept spells still count: they are re-scribed rather than spared, and excluding them would
 -- make keeping the best way to farm currency as well as the best way to keep a spell.
+-- ⚠️⚠️ IT COUNTS THE SPELLBOOK, NOT `ranks.chain` -- AND THAT WAS THE BUG (fixed 2026-08-04).
+-- It used to walk `ranks.chain` and test HasSpellScribed on each base and rank id. But that map only
+-- covers the **188 base spells that have rank rows**, while the offerable pool is ~1,996 spells -- so
+-- every scribed spell WITHOUT a rank chain paid nothing at all. A character who died holding 28
+-- spells was paid only for however many happened to be ranked, which is a small minority.
+-- Reported from play as "not getting scrolls correctly".
+-- ⚠️ Walking the book is also the only count that stays right as the pool changes: anything scribed
+-- is destroyed by the wipe below, whether or not the rank system has ever heard of it.
+-- ⚠️ Empty slots are UINT32_MAX (zone/spells.cpp:6120), NOT 0 -- testing `> 0` alone counts all 720.
+-- ⚠️ GetSpellIDByBookSlot is already Lua-bound (lua_client.cpp:4333); no C++ change was needed.
+local SPELLBOOK_SLOTS      = 720          -- RoF2 (common/patches/rof2_limits.h:347)
+local SPELLBOOK_EMPTY      = 4294967295   -- UINT32_MAX
+local AURA_FIRST, AURA_LAST = 43500, 43515
+
 function M.on_death_before_wipe(c)
     local n = 0
-    for base, chain in pairs(ranks.chain) do
-        if c:HasSpellScribed(base) then n = n + 1 end
-        for _, rid in ipairs(chain) do if c:HasSpellScribed(rid) then n = n + 1 end end
+    for slot = 0, SPELLBOOK_SLOTS - 1 do
+        local id = c:GetSpellIDByBookSlot(slot)
+        if id and id > 0 and id ~= SPELLBOOK_EMPTY then
+            -- ⚠️ The class auras are re-scribed by death_loss immediately after the wipe, so they are
+            -- NOT destroyed and must not be paid for. Kept spells DO still count: they are re-scribed
+            -- rather than spared, and excluding them would make keeping the best way to farm currency
+            -- as well as the best way to keep a spell.
+            if id < AURA_FIRST or id > AURA_LAST then
+                n = n + 1
+            end
+        end
     end
     return n
 end
@@ -245,8 +313,8 @@ function M.upgrade_info(c, spell_id)
         next    = cost and nxt or nil,
         frag    = cost and cost.frag or 0,
         ink     = cost and cost.ink  or 0,
-        have_f  = c:CountItem(M.FRAGMENT_ITEM),
-        have_i  = c:CountItem(M.INK_ITEM),
+        have_f  = c:GetAlternateCurrencyValue(M.FRAGMENT_CURRENCY),
+        have_i  = c:GetAlternateCurrencyValue(M.INK_CURRENCY),
         rankable = (ranks.chain[base] ~= nil),
     }
 end
@@ -268,8 +336,10 @@ function M.upgrade(c, spell_id)
     -- ⚠️⚠️ ORDER IS LOAD-BEARING: take the materials, THEN record the rank. There is no refund path,
     -- but recording first and failing to charge would hand out free ranks. Same reasoning as the
     -- reroll gate order in spell_choice.
-    c:RemoveItem(M.FRAGMENT_ITEM, i.frag)
-    c:RemoveItem(M.INK_ITEM, i.ink)
+    -- ⚠️ Charged against ALTERNATE CURRENCY, not inventory. RemoveItem would find nothing now that
+    -- both are currencies, and would silently succeed -- handing out free ranks.
+    c:RemoveAlternateCurrencyValue(M.FRAGMENT_CURRENCY, i.frag)
+    c:RemoveAlternateCurrencyValue(M.INK_CURRENCY, i.ink)
     set_rank(c, i.base, i.next)
 
     -- If it happens to be scribed right now, swap the copy in hand to the new rank too.
@@ -318,7 +388,7 @@ function M.send_state(c)
             base, M.rank_of(c, base), kept[base] and 1 or 0, M.origin_of(c, base) or 0)
     end
 
-    local frag, ink = c:CountItem(M.FRAGMENT_ITEM), c:CountItem(M.INK_ITEM)
+    local frag, ink = M.balance(c)
     local chunks = math.max(1, math.ceil(#rows / M.CHUNK))
     for ci = 1, chunks do
         local part = {}
@@ -343,7 +413,7 @@ function M.handle_say(e)
     if e.message == "spellrankreq" then M.send_state(c) return true end
     if e.message == "spellkept" then
         local kept = M.kept(c)
-        c:Message(15, string.format("Fragments %d, Ink %d.", c:CountItem(M.FRAGMENT_ITEM), c:CountItem(M.INK_ITEM)))
+        local bf, bi = M.balance(c); c:Message(15, string.format("Fragments %d, Ink %d.", bf, bi))
         if #kept == 0 then c:Message(15, "You are keeping no spells.") end
         for _, base in ipairs(kept) do
             local lv = M.origin_of(c, base)

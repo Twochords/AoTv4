@@ -123,7 +123,133 @@ end
 -- the player looks changed, is not, and the mismatch persists until they happen to relog -- at which
 -- point their skills silently change under them. Forcing it makes the change atomic from the
 -- player's point of view.
+-- ⚠️⚠️ TWO THINGS DO NOT FOLLOW A RACE/CLASS CHANGE ON THEIR OWN, AND BOTH WERE REPORTED IN PLAY:
+-- "ogre zerker stats as an iksar monk ... also has taunt bash and kick out of the pool at level 1".
+--
+-- 1. BASE STATS. SetBaseRace/SetBaseClass write m_pp.race / m_pp.class_ and nothing else. The seven
+--    base stats are written ONCE at creation, by WORLD, out of char_create_combinations ->
+--    char_create_point_allocations -- so a reforge kept the old body's numbers. An Ogre Berserker
+--    starts STR 140 / STA 127 and an Iksar Monk STR 75 / STA 75.
+--    ⚠️ Racial PASSIVES *do* follow the change (Iksar AC and regen key off GetRace() when they are
+--    calculated), which is exactly why this looked so odd: the new race's innates on the old race's
+--    stats. Nothing was wrong with the passives.
+--
+-- 2. THE PREVIOUS CLASS'S COMBAT ABILITIES. global_player.grant_native_combat_skills GRANTS a class
+--    its natives and never revokes anything -- by design, since it also runs on every connect and
+--    must not undo a picker reward. So an ex-Warrior kept Taunt, Bash and Kick after becoming a Monk,
+--    which reads as free rewards out of the level-up pool at level 1.
+--    ⚠️⚠️ SAFE ONLY BECAUSE REFORGING IS LEVEL 1 ONLY (M.can_reforge). At level 1 nothing in
+--    skill_pool has been EARNED yet, so clearing all twelve cannot destroy a picker reward -- the new
+--    class's natives are re-granted on the forced relog. Do NOT reuse this if the level gate moves.
+--
+-- ⚠️ Both run in finish() rather than in set_race/set_class, so neither path can forget one -- and
+-- both must happen BEFORE Save(1), or the profile is written with the stale values and the kick
+-- makes them permanent.
+local skills = require("skill_pool")
+
+-- ⚠️⚠️ THE SAVE AND THE KICK MUST HAPPEN NO MATTER WHAT ELSE FAILS. A reforge that does not log you
+-- out does NOTHING visible: SetBaseRace/SetBaseClass write the profile only, and the live character
+-- keeps its old class for skills, spell gems and art until it is rebuilt from that profile on login.
+-- So if anything above the kick throws, the player is left looking unchanged and reports the whole
+-- feature as broken -- the race/class change is actually sitting in memory, unsaved and unapplied.
+--
+-- ⚠️ The two tidy-up steps are therefore wrapped in pcall. They matter, but neither is worth losing
+-- the reforge over: the stat rebase can be re-run by reforging again, and stale combat abilities are
+-- cosmetic next to a change that silently did not happen. A failure is logged rather than swallowed.
+-- 📌 Ordered rebase -> skills -> save -> kick. Both writes must land BEFORE Save(1) or they are not
+-- persisted, and the kick makes whatever was saved permanent.
+-- ---------------------------------------------------------------- the starter weapon
+-- ⚠️⚠️ THE STARTER WEAPON MUST MATCH THE CLASS, AND IT USED TO BE A HARDCODED SHORT SWORD.
+-- global_player.event_death_complete handed out 9998 to everybody. Reported from play: a Ranger who
+-- reforged to Monk and then to Berserker kept the short sword the whole way, and neither class has
+-- any 1H Slashing skill at all -- so the "starter" weapon was one they could never train.
+-- Confirmed against skill_caps rather than assumed:
+--     Monk (7)       no 1H Slashing
+--     Berserker (16) no 1H Slashing AND no 1H Blunt -- only 1H Pierce, 2H Slash, Hand to Hand
+--
+-- ⚠️⚠️ EVERY ID HERE MUST BE ONE ABSOR ACCEPTS, or the change quietly breaks the tutorial. He takes
+-- exactly four (tutorialb/Absor.pl): 9997 Dagger (1HP), 9998 Short Sword (1HS), 9999 Club (1HB) and
+-- 55623 Dull Axe (2HS), handing each back sharpened. Picking a weapon outside that set would leave
+-- the class better armed and the tutorial uncompletable.
+-- ⚠️ None of the four has gear-tier rows, so they stay BASE and the hand-in matches. Do not add a
+-- weapon that would be upgraded to Hallowed/Mythic by the crafting or loot paths.
+--
+-- ⚠️ ROGUE GETS THE DAGGER SPECIFICALLY: Backstab refuses to fire on anything that is not
+-- ItemType1HPiercing (zone/special_attacks.cpp:793), so a Rogue holding the short sword cannot use
+-- their signature ability at all. That is a mechanical requirement, not flavour.
+-- 📌 Rule used for the rest: prefer 1H Slashing, else 1H Blunt, else 2H Slashing -- the best weapon
+-- the class actually has a skill cap for.
+M.STARTER_WEAPON = {
+    [1]  = 9998,   -- Warrior       1HS
+    [2]  = 9999,   -- Cleric        1HB (no 1HS)
+    [3]  = 9998,   -- Paladin       1HS
+    [4]  = 9998,   -- Ranger        1HS
+    [5]  = 9998,   -- Shadowknight  1HS
+    [6]  = 9998,   -- Druid         1HS
+    [7]  = 9999,   -- Monk          1HB (no 1HS)
+    [8]  = 9998,   -- Bard          1HS
+    [9]  = 9997,   -- Rogue         1HP -- required by Backstab
+    [10] = 9999,   -- Shaman        1HB (no 1HS)
+    [11] = 9999,   -- Necromancer   1HB (no 1HS)
+    [12] = 9999,   -- Wizard        1HB (no 1HS)
+    [13] = 9999,   -- Magician      1HB (no 1HS)
+    [14] = 9999,   -- Enchanter     1HB (no 1HS)
+    [15] = 9999,   -- Beastlord     1HB (no 1HS)
+    [16] = 55623,  -- Berserker     2HS -- the only one of the four it can train
+}
+
+-- The set of ids that ARE starter weapons, so a reforge can tell "the thing we gave you" apart from
+-- a weapon the player actually earned. ⚠️ Derived from the table above rather than written twice.
+M.IS_STARTER = {}
+for _, id in pairs(M.STARTER_WEAPON) do M.IS_STARTER[id] = true end
+
+function M.starter_weapon(class)
+    return M.STARTER_WEAPON[class or 0] or 9998
+end
+
+-- Swap the starter weapon to match the new class. Called from M.finish, i.e. on any reforge.
+-- ⚠️⚠️ ONLY TOUCHES A STARTER WEAPON. If the player is holding anything else in Primary it is left
+-- completely alone -- a reforge must never destroy gear somebody earned, and at level 1 they may
+-- still be carrying something handed to them by a quest.
+-- ⚠️ Primary is slot 13. GetItemIDAt returns INVALID_ID (-1) for an empty slot, NOT 0 -- test `> 0`.
+function M.fix_starter_weapon(c)
+    if not c or not c.valid then return end
+
+    local want = M.starter_weapon(c:GetClass())
+    local held = c:GetItemIDAt(13) or -1
+
+    if held > 0 and not M.IS_STARTER[held] then return end   -- earned weapon: never touch it
+    if held == want then return end                          -- already correct
+
+    if held > 0 then
+        c:DeleteItemInInventory(13, 0, true)
+    end
+    c:SummonItem(want)
+end
+
 function M.finish(c, message)
+    -- ⚠️ BEFORE the Save/Kick below, so the swap is part of the same atomic change the player sees.
+    local ok_wpn, err_wpn = pcall(function() M.fix_starter_weapon(c) end)
+    if not ok_wpn then
+        eq.debug("aotv4_reforge: starter weapon swap failed: " .. tostring(err_wpn))
+    end
+
+    -- rebase STR/STA/DEX/AGI/INT/WIS/CHA on the NEW race+class
+    local ok_stats, err_stats = pcall(function() c:AoTv4ApplyCreationStats() end)
+    if not ok_stats then
+        eq.debug("aotv4_reforge: stat rebase failed: " .. tostring(err_stats))
+    end
+
+    -- drop the old class's natives; the new class re-grants its own on the forced relog
+    local ok_skills, err_skills = pcall(function()
+        for id in pairs(skills.SKILLS) do
+            if (c:GetRawSkill(id) or 0) > 0 then c:SetSkill(id, 0) end
+        end
+    end)
+    if not ok_skills then
+        eq.debug("aotv4_reforge: combat skill clear failed: " .. tostring(err_skills))
+    end
+
     c:Message(15, message)
     c:Message(15, "The world reshapes around you. Return in a moment.")
     c:Save(1)

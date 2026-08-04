@@ -253,7 +253,7 @@ M.SWARM_CAP = 40
 
 -- ⚠️ TEMPORARY. Prints the swarm decision to the killer on every trash death in Swarm mode. Turn OFF
 -- once splitting is confirmed working in play -- it is one chat line per kill, per player.
-M.SWARM_DEBUG = true
+M.SWARM_DEBUG = false
 
 -- ---------------------------------------------------------------- Onslaught clock
 -- ⚠️ MUST MATCH `tasks.duration` on the Onslaught task rows (2000340-2000345), which is 1800. The
@@ -427,6 +427,15 @@ local function as_npc(mob)
     return nil
 end
 
+-- ⚠️⚠️ FORWARD DECLARATION, and it is load bearing. `party_clients_here` is a `local function`
+-- defined much further down with the other party helpers, but M.stock_chest below calls it -- and in
+-- Lua a reference to a local made BEFORE its declaration compiles to a GLOBAL lookup, which is nil at
+-- call time. That is not a syntax error, so luacheck passes it happily; it fails only when the chest
+-- is actually stocked, i.e. at the end of a run, with "attempt to call a nil value".
+-- The same trap is recorded for `get_cleared` in aotv4_regions.lua. Declaring the name here and
+-- ASSIGNING to it below (no second `local`) keeps one upvalue that both sides share.
+local party_clients_here
+
 function M.stock_chest(c, chest, run, L)
     if not c or not c.valid then return end
 
@@ -451,13 +460,33 @@ function M.stock_chest(c, chest, run, L)
 
     local affix = run and run.modedef and run.modedef.id ~= M.MODE_DEFAULT
     local plat  = layer_level * M.CHEST_PLAT_PER_LEVEL * (affix and M.CHEST_AFFIX_MULT or 1)
-    -- ⚠️ AddCash takes copper, silver, gold, platinum IN THAT ORDER -- passing the amount first
-    -- would pay out in copper and look like the reward silently failed.
-    chest:AddCash(0, 0, 0, plat)
 
-    c:Message(MT.Yellow, string.format(
-        "The chest holds a tier %d augment and %d platinum%s.",
-        tier, plat, affix and string.format(" (doubled for %s)", run.modedef.name) or ""))
+    -- ⚠️⚠️ PAID DIRECTLY, NOT PUT ON THE CHEST. `chest:AddCash(0,0,0,plat)` was how this worked, and
+    -- the coin then lived on the chest's CORPSE -- where the only thing that ever hands it over is
+    -- Corpse::MakeLootRequestPackets, i.e. the STOCK loot window. A player who takes the augment
+    -- through the Advanced Loot window never calls that function (AdvLootSlot synthesizes the loot
+    -- session rather than going through it), so the platinum stayed on the corpse and decayed with
+    -- it. Reported as the run reward losing its platinum.
+    -- This is the same reasoning that made mob coin pay at death under individual loot (section 31):
+    -- coin has no inventory constraint, so there is nothing to gain by routing it through a window
+    -- that may never open.
+    -- ⚠️ Paid to EVERY member standing in the instance, matching how the score and the charm already
+    -- work for a group -- the chest is one physical reward, but the coin is not a physical object.
+    local paid = party_clients_here(run.instance)
+    if #paid == 0 then paid = { c } end
+    for _, m in ipairs(paid) do
+        m:AddMoneyToPP(0, 0, 0, plat, true)
+    end
+
+    -- ⚠️ Says the coin is ALREADY yours, because it is -- it was paid above, not placed in the chest.
+    -- The old wording ("the chest holds ... platinum") described coin sitting on the corpse, which is
+    -- exactly the thing that was going missing; telling a player to look for it there would send them
+    -- hunting for something that is already in their pocket.
+    for _, m in ipairs(paid) do
+        m:Message(MT.Yellow, string.format(
+            "The chest holds a tier %d augment. You receive %d platinum%s.",
+            tier, plat, affix and string.format(" (doubled for %s)", run.modedef.name) or ""))
+    end
     if tier < 3 then
         c:Message(MT.Yellow, string.format(
             "Four tier %d augments combine in a Refining Crucible into one tier %d.", tier, tier + 1))
@@ -573,7 +602,7 @@ end
 -- iterator is `.entries` -- ipairs over it yields NOTHING and the function silently returns empty,
 -- which here would read as "the party is gone" and tear the instance down under everyone. This is the
 -- idiom M.on_npc_spawn already uses; match it.
-local function party_clients_here(inst)
+function party_clients_here(inst)   -- assigns the forward-declared local above; do NOT re-add `local`
     local out = {}
     if not inst or eq.get_zone_instance_id() ~= inst then return out end
     local clients = eq.get_entity_list():GetClientList()
@@ -777,6 +806,22 @@ function M.enter(c, level, mode_id)
         return
     end
 
+    -- ⚠️⚠️ NOT WHILE SOMETHING IS FIGHTING YOU. The delve window opens anywhere, so without this
+    -- "Enter Delve" is a free escape from any losing fight -- and a better one than Gate, because it
+    -- removes you from the zone entirely, breaks every hate list at once, costs no reagent and has no
+    -- cast time to interrupt. Reported from play as exactly that.
+    -- ⚠️ GetAggroCount, not IsEngaged or "am I swinging": it counts the NPCs holding you on their hate
+    -- list, so it stays true while something is chasing you after you stop attacking -- which is
+    -- precisely the moment the escape is worth the most. Same test the stock #zoneshard and merc code
+    -- use for their own in-combat refusals.
+    -- ⚠️⚠️ IT MUST SIT HERE, WITH THE OTHER REFUSALS AND BEFORE create_instance. The gate order in this
+    -- function is load bearing (section 24): anything that returns after the instance is made leaks
+    -- one, every time it fires.
+    if (c:GetAggroCount() or 0) > 0 then
+        c:Message(MT.Red, "You cannot enter a delve while something is fighting you.")
+        return
+    end
+
     local L = M.LAYERS[idx]
 
     -- Remember where they came from BEFORE anything else, so both Exit and the DZ's own safe return
@@ -904,6 +949,13 @@ function M.enter(c, level, mode_id)
     -- the leader's spot on exit would teleport people across the zone they were standing in.
     -- ⚠️ The leader is in this list too, so their bucket is simply written twice -- harmless, and much
     -- safer than a special case that has to stay in step with the loop.
+    -- ⚠️⚠️ RECORD THE RUNG AGAINST THE INSTANCE, not just against each character. on_npc_spawn fires
+    -- for a COLD instance before anybody finishes zoning in, so there is no client to read a run from
+    -- at the moment most of the population appears -- and without this M.layer_for_zone falls back to
+    -- "first layer matching this zone", which is the lowest rung that dungeon appears at. See the
+    -- note on M.layer_for_zone: it is why thundercrest always scaled to rung 5.
+    M.set_instance_layer(inst, idx)
+
     for _, m in ipairs(party_c) do
         eq.set_data(bkey(m, "back"), string.format("%d|%d|%d|%d",
             eq.get_zone_id(), math.floor(m:GetX()), math.floor(m:GetY()), math.floor(m:GetZ())))
@@ -1035,7 +1087,16 @@ function M.on_npc_spawn(e)
     -- 📌 They carry NO spell list and are level 1, so they are NOT the source of any large hit -- see
     -- the spellscale note in aotv4_dungeon_scale.M.scale_npc for what actually was. Removing them is
     -- tidying, not a damage fix.
-    if npc:GetRace() == 127 then
+    -- ⚠️⚠️ RACE 127 ALONE IS NOT ENOUGH -- IT KILLED THE CLASS AURAS. Every aura npc (2000100-2000115)
+    -- is also race 127 bodytype 11, because an aura is an invisible marker exactly like a DoN event
+    -- actor. So casting an aura inside a delve spawned it, this handler depopped it on the spot, and
+    -- recasting did the same thing again: "auras turn off in delves and cannot be re-applied".
+    -- ⚠️ The pet guard above does NOT catch them: `Aura` keeps its owner in its own `m_owner` member
+    -- (zone/aura.cpp:31), not in NPC::ownerid, so Mob::GetOwnerID() returns 0 for an aura. There is
+    -- no IsAura binding either.
+    -- The id band is the reliable divider: everything AoTv4 adds lives at 2000000+, while the DoN
+    -- zones' own npcs are 338xxx-343xxx. Only stock content is swept.
+    if npc:GetRace() == 127 and npcid < 2000000 then
         npc:Depop()
         return
     end
@@ -1165,8 +1226,42 @@ end
 -- the mapping survives a zone restart without needing a bucket to remember it.
 -- ⚠️ Callers must already have established that this is an instance -- on its own this would also
 -- match the ordinary open-world copy of the zone.
+-- ⚠️⚠️ THE ZONE ALONE CANNOT IDENTIFY THE RUNG -- 70 RUNGS CYCLE OVER 6 ZONES.
+-- `delvea` is rungs 1, 7, 13, 19, 25 ... 67; `delveb` is 2, 8, 14 and so on. This used to scan
+-- M.LAYERS and return the FIRST entry whose zone matched, which is always the LOWEST rung for that
+-- dungeon -- so every delve scaled to rung 1-6 no matter which one you actually entered.
+--
+-- ⚠️ That is why it read as "npcs are not scaling correctly on uncleared levels": the six rungs a
+-- player clears first are exactly the ones where the first-match answer happens to be right, so the
+-- early game looked fine and everything above it silently spawned rung 1-6 creatures.
+--
+-- The rung is recorded per INSTANCE at entry (M.enter), not per character, because on_npc_spawn runs
+-- for a cold instance BEFORE any player finishes zoning in -- there is no client to read a run from
+-- at the moment most of the population appears (see the empty-instance note in on_npc_spawn).
+--
+-- ⚠️ The zone scan is kept as a LAST RESORT, and only so a delve zone entered without a recorded
+-- rung still scales to something sane instead of not scaling at all. It is wrong for any repeat of a
+-- zone, which is the whole bug above -- so it must never be the primary answer.
+local function lkey(inst) return "delve_layer_" .. tostring(inst) end
+
+function M.set_instance_layer(inst, layer)
+    if inst and inst ~= 0 and layer then eq.set_data(lkey(inst), tostring(layer)) end
+end
+
 function M.layer_for_zone()
     local zone = eq.get_zone_short_name()
+
+    local inst = eq.get_zone_instance_id()
+    if inst and inst ~= 0 then
+        local n = tonumber(eq.get_data(lkey(inst)))
+        -- ⚠️ Confirm the recorded rung really is this zone. A stale bucket from a recycled instance
+        -- id would otherwise scale a dungeon to another dungeon's rung, which is worse than the bug
+        -- this replaces because it would be intermittent.
+        if n and M.LAYERS[n] and M.LAYERS[n].zone == zone then
+            return M.LAYERS[n]
+        end
+    end
+
     for _, L in ipairs(M.LAYERS) do
         if L.zone == zone then return L end
     end
@@ -1199,6 +1294,41 @@ local BOSS_NAMES = {
 local BOSS_TITLES = {
     "the Gorged", "the Unbroken", "Bloodmaw", "the Hollow", "Rendfang", "the Sunless",
     "Ashjaw", "the Patient", "Gravewind", "the Devourer", "Nightscale", "the Unfed",
+}
+
+-- ---------------------------------------------------------------- the warden's class
+-- ⚠️⚠️ EVERY WARDEN ROLLS A CLASS, AND THE CLASS IS WHAT DECIDES HOW IT FIGHTS. `list` is the stock
+-- `npc_spells` row for that class -- ids 1-12 are EQEmu's own "Default <Class> List", already
+-- level-banded per entry, so the engine picks level-appropriate spells for us and there is no custom
+-- spell table to maintain. The four pure melee classes get list 0 and simply do not cast.
+--
+-- ⚠️⚠️ `class` IS LOAD BEARING, NOT FLAVOUR -- see the note on ModifyNPCStat("class") in zone/npc.cpp.
+-- NPC::CalcMaxMana hands a non-caster class ZERO mana, and the AI's cast gate treats a 0-mana mob as
+-- always able to cast (0 == 0). Leave the warden at the template's Warrior class and hand it a Wizard
+-- list and it nukes forever, free. The class is what makes mana finite.
+--
+-- ⚠️ Pure melee wardens ARE weaker than caster wardens at the same HP, and that is accepted variety
+-- rather than an oversight -- the hp multiplier is identical either way, so the difference is what the
+-- warden can do, not how long it lasts.
+-- 📌 Titles are per class so the fight is readable BEFORE it starts: a player who sees "the Emberwrit"
+-- knows to expect nukes. The name is still random, so wardens stay individually distinct.
+M.BOSS_CLASSES = {
+    { id = 1,  name = "Warrior",     list = 0,  titles = { "the Unbroken", "Bloodmaw", "the Bulwark" } },
+    { id = 2,  name = "Cleric",      list = 1,  titles = { "the Anointed", "the Undying", "Gravemender" } },
+    { id = 3,  name = "Paladin",     list = 8,  titles = { "the Radiant", "Oathkeeper", "the Sanctified" } },
+    { id = 4,  name = "Ranger",      list = 10, titles = { "Thornstalker", "the Far-Shot", "Briarwarden" } },
+    { id = 5,  name = "Shadowknight",list = 9,  titles = { "the Blighted", "Gravewind", "the Sunless" } },
+    { id = 6,  name = "Druid",       list = 7,  titles = { "the Verdant", "Rootbinder", "the Untamed" } },
+    { id = 7,  name = "Monk",        list = 0,  titles = { "the Patient", "Ironpalm", "the Stillness" } },
+    { id = 8,  name = "Bard",        list = 11, titles = { "the Discordant", "Dirgewright", "the Unfed" } },
+    { id = 9,  name = "Rogue",       list = 0,  titles = { "the Quiet", "Backfang", "the Unseen" } },
+    { id = 10, name = "Shaman",      list = 6,  titles = { "the Rotcaller", "Spiritgnaw", "the Hollow" } },
+    { id = 11, name = "Necromancer", list = 3,  titles = { "the Devourer", "Boneharrow", "the Marrowlit" } },
+    { id = 12, name = "Wizard",      list = 2,  titles = { "the Emberwrit", "Stormrend", "the Cinderborn" } },
+    { id = 13, name = "Magician",    list = 4,  titles = { "the Summoner", "Emberkin", "the Conjured" } },
+    { id = 14, name = "Enchanter",   list = 5,  titles = { "the Beguiler", "Mindrot", "the Whispering" } },
+    { id = 15, name = "Beastlord",   list = 12, titles = { "the Feral", "Fangbound", "the Packlord" } },
+    { id = 16, name = "Berserker",   list = 0,  titles = { "the Gorged", "Rendfang", "Ashjaw" } },
 }
 
 -- ⚠️ Scaled to the SAME effective level as the trash, then made a real fight on top. That split is
@@ -1250,7 +1380,16 @@ M.BOSS_RACES = {
 M.BOSS_HP_FLOOR_PER_LEVEL  = 60   -- level 3 warden floors at 180 hp instead of 13
 M.BOSS_DMG_FLOOR_PER_LEVEL = 3    -- and hits for up to 9 instead of 1
 
-M.BOSS_HP_MULT  = 5.0
+-- ⚠️⚠️ BOSS_HP_MULT IS A MULTIPLE OF A REGULAR MOB'S HP IN THIS DELVE -- NOT OF THE BOSS'S OWN CURVE.
+-- It used to be the latter, and that is why "bosses are not 10x a regular mob" survived several
+-- retunes: the boss was scaled to eff + BOSS_LVL_BONUS and THEN multiplied, so the ratio a player
+-- actually sees was (curve(eff+2) / curve(eff)) * mult -- a number that drifts with how steep the
+-- curve happens to be at that point, and which fell as the rung rose:
+--     rung  1 -> ~19x     rung 10 -> ~6.5x     rung 30 -> ~5.6x
+-- Raising the constant alone could never fix that; it would just slide the whole crooked curve up.
+-- Now the boss MEASURES a regular mob (scale.regular_hp) and multiplies THAT, so the ratio is this
+-- number at every rung, and the level bonus is left to do what it should -- damage, accuracy and AC.
+M.BOSS_HP_MULT  = 10.0
 M.BOSS_DMG_MULT = 1.6
 M.BOSS_LVL_BONUS = 2
 
@@ -1261,7 +1400,9 @@ function M.spawn_boss(c, L, run, ordinal)
     if not boss or not boss.valid then return end
 
     local mode = run.modedef or M.mode_by_id(M.MODE_DEFAULT)
-    local eff  = scale.effective_level(L.level, c)
+    -- ⚠️ `power` is captured too now: it is half of what decides a regular mob's hp (scale.apply
+    -- applies the same fine trim), and the boss is sized against that mob.
+    local eff, power = scale.effective_level(L.level, c)
 
     -- ⚠️ ScaleNPC FIRST, always. It rewrites stats wholesale from npc_scale_global_base and would
     -- discard anything applied before it (§24).
@@ -1277,6 +1418,12 @@ function M.spawn_boss(c, L, run, ordinal)
     -- value, which is 100 at every level -- so calling it directly here handed the boss FULL authored
     -- spell damage no matter what rung it was on. The wrapper reads the natives first and puts spell
     -- and heal output back in proportion afterwards.
+    -- ⚠️⚠️ MEASURE A REGULAR MOB FIRST, THEN scale the boss for real. scale.regular_hp scales the npc
+    -- to `eff` purely to read what the curve gives ordinary trash there, which is the number
+    -- BOSS_HP_MULT is a multiple of. It leaves the boss sitting at the wrong level on purpose -- the
+    -- scale_npc call immediately below is what fixes that, so the two must stay adjacent.
+    local trash_hp = scale.regular_hp(boss:CastToNPC(), eff, power)
+
     scale.scale_npc(boss:CastToNPC(), blvl)
 
     -- Then the boss multipliers, then the MODE multipliers on top of those, so Hard's boss is twice
@@ -1285,7 +1432,13 @@ function M.spawn_boss(c, L, run, ordinal)
     -- but takes an int and is a DIFFERENT function, and there is no `GetMinDamage` binding at all --
     -- calling the wrong one is a runtime nil, not a compile error.
     local npc = boss:CastToNPC()
-    local hp  = npc:GetMaxHP()  * M.BOSS_HP_MULT  * (mode.hp  or 1)
+    -- ⚠️ hp comes from the MEASURED regular mob, not from npc:GetMaxHP() -- which at this point is the
+    -- boss's own curve value at blvl and is exactly the thing that made the ratio drift. Damage still
+    -- reads the boss's own scaled figures, so BOSS_LVL_BONUS keeps its effect there.
+    -- ⚠️ Falls back to the boss's own curve hp if the measurement failed, so a bad read cannot spawn a
+    -- warden with zero health.
+    local base_hp = (trash_hp and trash_hp > 0) and trash_hp or npc:GetMaxHP()
+    local hp  = base_hp          * M.BOSS_HP_MULT  * (mode.hp  or 1)
     local lo  = npc:GetMinDMG() * M.BOSS_DMG_MULT * (mode.dmg or 1)
     local hi  = npc:GetMaxDMG() * M.BOSS_DMG_MULT * (mode.dmg or 1)
 
@@ -1322,6 +1475,24 @@ function M.spawn_boss(c, L, run, ordinal)
     npc:ModifyNPCStat("max_hit", tostring(math.floor(hi)))
     npc:SetHP(math.floor(hp))
 
+    -- ⚠️⚠️ CLASS, MANA AND SPELLS GO HERE -- AFTER the scale and after the hp/damage work, and in
+    -- THIS ORDER. All three depend on something the lines above have only just finished setting:
+    --   * ModifyNPCStat("class") recalculates the mana pool from the CURRENT int/wis and level, so
+    --     scaling has to have happened first or the warden gets a level 1 mana pool.
+    --   * SetMana refills it -- max_mana clamps DOWN only, exactly like max_hp, so raising the
+    --     ceiling leaves the mob sitting at its old value (see the refill note in the scale module).
+    --     A warden that spawned with 14 mana against a 1600 pool would cast twice and stop.
+    --   * npc_spells_id is level filtered AT LOAD TIME by AI_AddNPCSpells (mob_ai.cpp: it keeps only
+    --     entries whose minlevel/maxlevel bracket GetLevel()), so attaching the list before the
+    --     scale would load the TEMPLATE's level 1 spells and freeze them there.
+    -- ⚠️ AI_AddNPCSpells clears AIspells first, so re-attaching is idempotent -- the rescale sweep
+    -- cannot stack duplicate spell lists onto a warden.
+    local bclass = M.BOSS_CLASSES[math.random(#M.BOSS_CLASSES)]
+    npc:ModifyNPCStat("class", tostring(bclass.id))
+    local mmana = npc:GetMaxMana() or 0
+    if mmana > 0 then npc:SetMana(mmana) end
+    npc:ModifyNPCStat("npc_spells_id", tostring(bclass.list or 0))
+
     -- ⚠️ The '#' prefix is load-bearing and must survive the rename: the ledger's named test is the
     -- same lowercase-is-trash heuristic used in §17c and quest_difficulty.pl, and a named kill is
     -- worth 3x in M.kill_value. A lowercase boss name silently scores as a rat.
@@ -1329,7 +1500,11 @@ function M.spawn_boss(c, L, run, ordinal)
     -- the lowercase-is-trash heuristic from §17c, and a named kill is worth 3x in M.kill_value.
     -- ⚠️ Underscores become spaces client side, which is why the title's spaces are converted rather
     -- than left as-is.
-    local title = BOSS_TITLES[math.random(#BOSS_TITLES)]
+    -- ⚠️ The title comes from the CLASS's own pool so the warden reads as what it is before it opens
+    -- up -- "the Emberwrit" is a wizard and will nuke you. BOSS_TITLES is kept as the fallback for a
+    -- class row that has no titles of its own, so adding a class cannot produce a nameless warden.
+    local tpool = (bclass.titles and #bclass.titles > 0) and bclass.titles or BOSS_TITLES
+    local title = tpool[math.random(#tpool)]
     local given = BOSS_NAMES[math.random(#BOSS_NAMES)]
     boss:TempName("#" .. given .. "_" .. title:gsub("%s", "_"))
 
@@ -1562,10 +1737,29 @@ function M.leave(c, reason)
     -- left standing in a destroyed instance is stuck in a zone that no longer exists. The bind point
     -- is the fallback (there is no MoveToSafeCoords binding on Lua_Client -- only MovePC and the
     -- MoveZone family).
-    if zid then
-        c:MovePC(tonumber(zid), tonumber(x), tonumber(y), tonumber(z), 0)
+    -- ⚠️⚠️ REPORTED AS "it says I leave the delve but does not port me out". The message above had
+    -- already printed, so M.leave was definitely running -- the move itself was the part that did
+    -- nothing, and nothing here said why. These lines name the destination that was attempted so the
+    -- next failure identifies itself instead of needing another round trip.
+    -- ⚠️ The bind fallback is the suspect worth watching: a bind zone id of 0 makes MovePC a silent
+    -- no-op, and the back bucket is missing whenever M.leave has already run once for this run (the
+    -- chest's close timer and the Exit button BOTH route through here).
+    local dest_zone = zid and tonumber(zid) or c:GetBindZoneID()
+    local dest_x    = zid and tonumber(x) or c:GetBindX()
+    local dest_y    = zid and tonumber(y) or c:GetBindY()
+    local dest_z    = zid and tonumber(z) or c:GetBindZ()
+    local dest_h    = zid and 0 or c:GetBindHeading()
+
+    if not dest_zone or dest_zone == 0 then
+        -- Nowhere valid to send them. Say so rather than appearing to work: a silent MovePC(0,...)
+        -- leaves the player standing in a dungeon they have just been told they left.
+        c:Message(MT.Red, string.format(
+            "Could not find your way out (back='%s', bind zone=%s). You are still inside; use Exit again or camp.",
+            back, tostring(c:GetBindZoneID())))
     else
-        c:MovePC(c:GetBindZoneID(), c:GetBindX(), c:GetBindY(), c:GetBindZ(), c:GetBindHeading())
+        c:Message(MT.Yellow, string.format("[delve] returning you to zone %d (%d, %d, %d)",
+            dest_zone, math.floor(dest_x or 0), math.floor(dest_y or 0), math.floor(dest_z or 0)))
+        c:MovePC(dest_zone, dest_x, dest_y, dest_z, dest_h)
     end
 
     -- ⚠️ Destroy LAST, after the player is out. Destroying an instance somebody is standing in is
@@ -1762,7 +1956,17 @@ function M.on_npc_death(e)
     -- by id so a cleared dungeon does not erupt.
     if (mode.swarm or 0) > 0 and e.self and e.self.valid then
         local id = e.self:GetNPCTypeID()
-        if id ~= M.CHEST_NPC and id ~= M.BOSS_NPC then
+        -- ⚠️⚠️ A SWARM-SPAWNED MOB DOES NOT SPLIT AGAIN, OR THE MODE CANNOT BE FINISHED.
+        -- If the copies split too, every kill is net +2 forever: kill one of the three and it puts
+        -- three more back. Once the live cap is reached that settles into a treadmill where killing
+        -- one spawns exactly one, so the population NEVER falls and the dungeon cannot be cleared --
+        -- reported from play as "it summons 3 every time I kill 1, so it is impossible".
+        -- With this, each ORIGINAL creature splits once into three and those three are final, so the
+        -- population rises to about four times the trash and then drains as you fight through it.
+        -- ⚠️ The tag is the same one the live cap counts (set on spawn below), so there is one marker
+        -- for both jobs and they cannot disagree about what a swarm mob is.
+        local is_swarm_child = (e.self:GetEntityVariable("delve_swarm") or "") ~= ""
+        if id ~= M.CHEST_NPC and id ~= M.BOSS_NPC and not is_swarm_child then
             -- ⚠️⚠️ COUNT ONLY THE BODIES SWARM ITSELF ADDED, NOT EVERY NPC IN THE ZONE. This counted
             -- the whole NPC list and compared it against SWARM_CAP (40) -- but a delve instance
             -- naturally holds 150 to 470 creatures, so `alive < 40` was NEVER true and Swarm has

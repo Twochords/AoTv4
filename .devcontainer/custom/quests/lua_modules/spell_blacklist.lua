@@ -13,6 +13,7 @@
 -- corpse         3  summon corpse
 -- summonitem   183  conjures an item -- mage summons, enchant-metal, focus essences
 -- illusion      23  illusions with no other effect -- pure costume
+-- rootform       2  costume forms whose only extra effect roots or immobilises the caster
 -- vision        19  sight only -- see invis, infra, ultra, telescope, with nothing else attached
 return {
 	[3]=true,  -- corpse
@@ -48,6 +49,7 @@ return {
 	[257]=true,  -- summonitem
 	[272]=true,  -- summonitem
 	[276]=true,  -- vision
+	[287]=true,  -- rootform
 	[311]=true,  -- summonitem
 	[318]=true,  -- summonitem
 	[319]=true,  -- summonitem
@@ -113,6 +115,7 @@ return {
 	[593]=true,  -- illusion
 	[594]=true,  -- illusion
 	[595]=true,  -- illusion
+	[601]=true,  -- rootform
 	[602]=true,  -- travel
 	[603]=true,  -- travel
 	[604]=true,  -- travel
