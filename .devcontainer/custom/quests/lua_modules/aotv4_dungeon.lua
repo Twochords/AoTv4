@@ -1389,7 +1389,11 @@ M.BOSS_DMG_FLOOR_PER_LEVEL = 3    -- and hits for up to 9 instead of 1
 -- Raising the constant alone could never fix that; it would just slide the whole crooked curve up.
 -- Now the boss MEASURES a regular mob (scale.regular_hp) and multiplies THAT, so the ratio is this
 -- number at every rung, and the level bonus is left to do what it should -- damage, accuracy and AC.
-M.BOSS_HP_MULT  = 10.0
+-- 📌 10.0 -> 7.5 (2026-08-05): 10x played too long once the ratio was actually being delivered at
+-- every rung. Retuning is now just this number -- because it is a multiple of a MEASURED regular mob
+-- rather than of the boss's own curve, the ratio a player sees is exactly this value everywhere, so
+-- there is no per-rung drift to re-check afterwards.
+M.BOSS_HP_MULT  = 7.5
 M.BOSS_DMG_MULT = 1.6
 M.BOSS_LVL_BONUS = 2
 

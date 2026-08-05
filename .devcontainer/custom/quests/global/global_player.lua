@@ -484,6 +484,28 @@ function event_connect(e)
 	-- strictly more reliable. Same pattern as every other window in the dll.
 	e.self:Message(MT.NPCQuestSay, "AOTMENUSHOW")
 
+	-- ⚠️⚠️ CLAMP HP/MANA/ENDURANCE TO THE MAXIMUM FOR THE CLASS YOU ACTUALLY ARE NOW.
+	-- A reforge saves a profile whose cur_hp belongs to the OLD class. aotv4_reforge.M.finish calls
+	-- AoTv4ApplyCreationStats -> CalcBonuses -> CalcMaxHP, but SetBaseClass has only written
+	-- m_pp.class_ at that point -- GetClass() still returns the OLD class, so CalcMaxHP computes and
+	-- clamps against the OLD maximum. A Bard at 36 who becomes a Magician is saved at 36 against a
+	-- new maximum of 30, and comes back with cur > max.
+	-- The client then tracks HP down from an impossible value and reports "knocked unconscious" /
+	-- "bleeding to death" while the server believes everything is fine -- which is why a server-side
+	-- guard on negative HP never fired. Observed as "-22/30" on a freshly reforged Magician.
+	-- ⚠️ It MUST be here rather than in M.finish: only after the relog is the new class live, so this
+	-- is the first moment GetMaxHP() means the right thing.
+	-- ⚠️ Only ever lowers. A character legitimately below maximum is left alone to regen normally.
+	do
+		local c = e.self
+		local mx = c:GetMaxHP() or 0
+		if mx > 0 and (c:GetHP() or 0) > mx then c:SetHP(mx) end
+		local mm = c:GetMaxMana() or 0
+		if mm > 0 and (c:GetMana() or 0) > mm then c:SetMana(mm) end
+		local me = c:GetMaxEndurance() or 0
+		if me > 0 and (c:GetEndurance() or 0) > me then c:SetEndurance(me) end
+	end
+
 	-- hand over coin earned while the player's (permanent) shop sold items offline
 	bazaar_broker.pay_escrow(e.self)
 	aotv4_worldbuff.on_player(e)                    -- and on login

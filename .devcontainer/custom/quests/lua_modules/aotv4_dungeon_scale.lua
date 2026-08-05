@@ -342,10 +342,12 @@ local function apply_elite(npc, r)
         npc:ModifyNPCStat("max_hp", tostring(math.floor(hp * r)))
     end
 
-    -- ⚠️ There is no GetMinDamage binding (only GetMaxDamage, zone/lua_npc.cpp), so min_hit is derived
-    -- from max_hit rather than read. Half is the shape ScaleNPC itself produces, so this keeps the
-    -- spread the mob would have had.
-    local dmg = npc:GetMaxDamage()
+    -- ⚠️⚠️ USE GetMaxDMG() (no-arg, reads the mob's CURRENT max damage), NOT GetMaxDamage() -- the
+    -- GetMaxDamage binding now takes an int level (zone/lua_npc.cpp: `GetMaxDamage(int)`), so calling
+    -- it with no argument THROWS "GetMaxDamage(NPC&,int)" on every mob spawn and aborts the whole
+    -- scale (delves stopped scaling, 2026-08-05). GetMinDMG exists too but we derive min_hit as half
+    -- (the spread ScaleNPC itself produces), so only the max is read.
+    local dmg = npc:GetMaxDMG()
     if dmg and dmg > 0 then
         local d = math.floor(dmg * (r ^ ELITE_DMG_POW))
         npc:ModifyNPCStat("max_hit", tostring(d))
