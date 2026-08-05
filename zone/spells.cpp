@@ -3044,6 +3044,38 @@ int Mob::CalcBuffDuration(Mob *caster, Mob *target, uint16 spell_id, int32 caste
 		res = 1;
 	}
 
+	// ⚠️⚠️ AoTv4: A PERMANENT BUFF CAST ON SOMEONE ELSE IS NOT PERMANENT.
+	// Migration v20 made the player-castable beneficial buff space permanent (formula 50), and
+	// AoT:PermanentBuffNeedsMemmed leashes that to your spell gems -- you keep as many permanent buffs
+	// as you have gems. That leash binds only a SOLO player: without this, a group would simply cast
+	// their permanent buffs on each other and every member would hold far more than their own gem
+	// count, filling all ~25 buff slots permanently. The gem limit has to survive other people.
+	//
+	// ⚠️ So permanence is a SELF-buff mechanic, and buffing someone else still works -- it just gives
+	// the long-but-finite duration v19 used (formula 11 = 30 * (level + 3) ticks; 12 minutes at level
+	// 1, 99 at the level cap). Group buffing is not broken, it is simply not eternal.
+	//
+	// ⚠️⚠️ `res == -1` IS THE PERMANENCE TEST, NOT `formula == 50`. CalcBuffDuration_formula returns
+	// -1 for DF_Permanent and **-4 for DF_Aura** (zone/spells.cpp, the formula switch), so testing the
+	// returned value both catches permanence and leaves AURAS alone -- an aura is already scoped by
+	// range and membership and must not be converted into a timed buff.
+	//
+	// ⚠️ Gated on `caster->IsClient()` and `IsBeneficialSpell`, so this only ever fires on a player
+	// buffing another target. Item clicks and self-buffs are caster == target and never reach it;
+	// NPC-applied and proc buffs are not client-cast. Stock permanent spells a player casts on someone
+	// ELSE (perm invis and the like) do become finite, which is the same trade and is intended.
+	// 📌 It deliberately does NOT re-derive the duration from the spell's ORIGINAL pre-v19 formula --
+	// that value is gone from the row. Formula 11 is the documented "long buff" for this server.
+	if (
+		RuleB(AoT, PermanentBuffSelfOnly) &&
+		res == -1 &&
+		caster != target &&
+		caster->IsClient() &&
+		IsBeneficialSpell(spell_id)
+	) {
+		res = CalcBuffDuration_formula(castlevel, 11, 0);
+	}
+
 	LogSpells("Spell [{}]: Casting level [{}], formula [{}], base_duration [{}]: result [{}]",
 		spell_id, castlevel, formula, duration, res);
 

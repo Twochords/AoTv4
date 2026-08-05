@@ -388,7 +388,26 @@ int64 Mob::GetExtraSpellAmt(uint16 spell_id, int64 extra_spell_amt, int64 base_s
 	//	modifiers.dc      = RuleR(AoT, DamageShieldDCMultiplier);
 	// See attack.cpp near `DS = -ScaleSpellDamage(attacker, -DS, 0, resist_type, modifiers);` for details.
 
-	return base_spell_dmg;
+	// ⚠️⚠️ "THIS SHOULD DO NOTHING" MEANS `return 0`, NOT `return base_spell_dmg` (fixed 2026-08-05).
+	// It returned base_spell_dmg, and EVERY caller ACCUMULATES the result -- there is not one
+	// assignment among the 13 call sites in this file:
+	//     heals  (:520, :527, :577, :584)  value += GetExtraSpellAmt(...)  -> value = base + base
+	//     damage (:136, :187, :245, :300…) value -= GetExtraSpellAmt(...)  -> damage is NEGATIVE, so
+	//                                      subtracting the negative base doubles it too
+	// So the "no-op" silently DOUBLED every item-modified heal and every item-modified nuke. Reported
+	// from play as the Skin of the Reptile line healing twice its listed amount: base 20 -> 40.
+	//
+	// ⚠️⚠️ IT ONLY FIRES FOR SOMEONE CARRYING THE ITEM STAT, WHICH IS WHY IT LOOKED LIKE A SPELL BUG
+	// RATHER THAN A GLOBAL ONE. Both heal branches are gated on `GetHealAmt()` and the damage ones on
+	// GetSpellDmg()/itembonuses.SpellDmg, so a character with none sees the correct number and a
+	// geared one sees double. Our gear tiers (section 10) convert int -> spelldmg and wis -> healamt on
+	// every Hallowed and Mythic piece, so in practice almost every geared character was affected.
+	//
+	// 📌 The intent above is untouched and still correct: gear spell damage lives in ScaleSpellDamage
+	// now, so this function's job really is to contribute nothing. `return 0` is what expresses that.
+	// The stock implementation below is deliberately left in place, unreachable, as the reference for
+	// the cast-time curve if per-spell tuning is ever wanted here again.
+	return 0;
 
 	if (RuleB(Spells, FlatItemExtraSpellAmt)) {
 		if (RuleB(Spells, ItemExtraSpellAmtCalcAsPercent)) {

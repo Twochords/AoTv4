@@ -2993,6 +2993,80 @@ WHERE s.goodEffect <> 0 AND s.buffdurationformula NOT IN (0,11,50,51) AND s.id <
 )",
 		.content_schema_update = false,
 	},
+
+	ManifestEntry{
+		.version     = 20,
+		.description = "2026_08_05_aotv4_permanent_buffs",
+		// Beneficial buffs are PERMANENT, superseding v17/v19's long-but-finite durations.
+		// v17 (songs) and v19 (everything else) moved the buff space to formula 11 = 30 * (level + 3)
+		// ticks, i.e. 12 min at level 1 and 99 at the level cap. The intent was that a buff should not
+		// need re-applying at all, and 99 minutes is not that -- it is just a longer timer.
+		//
+		// ⚠️⚠️ PERMANENT IS A FORMULA, NOT A BIG NUMBER. CalcBuffDuration_formula returns **-1** for
+		// formula 50 (zone/spells.cpp:3105) and -4 for 51 (permanent until you leave an aura). Do NOT
+		// express this as a huge tick count: the buff would still tick down, and every duration display
+		// would show a countdown measured in days. 1,103 stock spells already ship formula 50, so this
+		// is the game's own mechanism, not a hack.
+		//
+		// ⚠️⚠️ FORMULA 50 RETURNS BEFORE THE `buffduration` CAP, so unlike v17/v19 this migration does
+		// NOT need to touch that column -- `if (duration && duration < temp)` (spells.cpp:3116) is
+		// never reached. It is deliberately left alone to keep the change surface minimal; a row
+		// reading formula 50 with a stale buffduration of 720 is correct and simply ignored.
+		//
+		// ⚠️ Targeted on `buffdurationformula = 11` rather than re-deriving v19's net: that sweeps in
+		// the **302 spells that were ALREADY formula 11** before either migration, so near-identical
+		// buffs cannot end up with one permanent and one on a 99 minute timer. ~2,040 spells total.
+		//
+		// EVERY v19 EXCLUSION IS CARRIED OVER VERBATIM, and they matter MORE here, not less --
+		// "long" becoming "forever" raises the cost of getting any of them wrong:
+		// ⚠️⚠️ INVULNERABILITY (SPA 40), TRUE HoTs (100/101/319) AND DEATH SAVES (150/232). A permanent
+		//   invulnerability is not a buff, it is an unkillable character; a permanent true HoT is
+		//   infinite healing. This is the single most important line in the migration.
+		// ⚠️⚠️ SPA 0 ABOVE BASE 30 -- the heal engines. SPA 0 on a duration spell repeats every tick,
+		//   so magnitude is what separates a regen from a heal. Hymn of Restoration (base 1) and
+		//   Cantata of Soothing (base 4) are regens and belong in; 500 a tick, forever, does not.
+		// ⚠️ NOT PLAYER-CASTABLE -- the LEAST(classes1..16) BETWEEN 1 AND 100 test. Without it every
+		//   NPC self-buff, proc and item click becomes permanent and monsters keep their buffs forever.
+		// ⚠️ DISCIPLINES (mana = 0 AND an endurance cost, mirroring IsDiscipline in common/spdat.cpp).
+		// ⚠️ AA-GRANTED (anything in aa_ranks.spell).
+		// ⚠️ THE AoTv4 BAND 43000-44999 -- Shield Wall buffs, the Thirst line and the class auras have
+		//   code-driven lifecycles (explicit fade calls, numhits charges, aura membership).
+		//
+		// ⚠️⚠️ CHARGED BUFFS ARE EXCLUDED -- `numhits > 0`. A charge buff is spent by USE, not by time
+		// (numhits + numhitstype, decremented in CheckNumHitsRemaining), so making its duration
+		// permanent means an unspent one never leaves: you would hold a charged proc or absorb buff
+		// forever and it would stop being a consumable at all. 208 formula-11 buffs carry charges,
+		// spread across 9 different numhitstype values. They keep formula 11, so they still expire on
+		// time OR on charges, whichever comes first.
+		// ⚠️ This is NOT the same test as the SPA exclusions above: a charged buff can be entirely
+		// benign in its effects and still must not be permanent, because the CHARGE is the cost.
+		//
+		// ⚠️ BARD SONGS ARE INCLUDED and pulsing still works: IsPulsingBardSong (common/spdat.cpp:2404)
+		// never reads the formula -- it returns false only on buff_duration == 0xFFFF, a recast time,
+		// a mana cost, or a pet/familiar effect. Zero spells in this DB use the 0xFFFF marker.
+		// ⚠️ spells_new is SHARED MEMORY: world down -> ./shared_memory -> restart.
+		.check       = "SELECT id FROM spells_new s WHERE s.buffdurationformula = 11 AND s.goodEffect <> 0 AND s.id < 45000 AND s.numhits = 0 AND s.id NOT BETWEEN 43000 AND 44999 AND LEAST(s.classes1,s.classes2,s.classes3,s.classes4,s.classes5,s.classes6,s.classes7,s.classes8,s.classes9,s.classes10,s.classes11,s.classes12,s.classes13,s.classes14,s.classes15,s.classes16) BETWEEN 1 AND 100 AND NOT (s.mana = 0 AND (s.EndurCost > 0 OR s.EndurUpkeep > 0)) LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE spells_new s SET s.buffdurationformula = 50
+WHERE s.buffdurationformula = 11 AND s.goodEffect <> 0 AND s.id < 45000
+  AND s.numhits = 0
+  AND s.id NOT BETWEEN 43000 AND 44999
+  AND LEAST(s.classes1,s.classes2,s.classes3,s.classes4,s.classes5,s.classes6,s.classes7,s.classes8,
+            s.classes9,s.classes10,s.classes11,s.classes12,s.classes13,s.classes14,s.classes15,s.classes16) BETWEEN 1 AND 100
+  AND NOT (s.mana = 0 AND (s.EndurCost > 0 OR s.EndurUpkeep > 0))
+  AND NOT EXISTS (SELECT 1 FROM aa_ranks r WHERE r.spell = s.id)
+  AND NOT (s.effectid1 IN (40,100,101,319,150,232) OR s.effectid2 IN (40,100,101,319,150,232)
+        OR s.effectid3 IN (40,100,101,319,150,232) OR s.effectid4 IN (40,100,101,319,150,232)
+        OR s.effectid5 IN (40,100,101,319,150,232) OR s.effectid6 IN (40,100,101,319,150,232)
+        OR s.effectid7 IN (40,100,101,319,150,232) OR s.effectid8 IN (40,100,101,319,150,232))
+  AND NOT ((s.effectid1=0 AND s.effect_base_value1>30) OR (s.effectid2=0 AND s.effect_base_value2>30)
+        OR (s.effectid3=0 AND s.effect_base_value3>30) OR (s.effectid4=0 AND s.effect_base_value4>30)
+        OR (s.effectid5=0 AND s.effect_base_value5>30) OR (s.effectid6=0 AND s.effect_base_value6>30));
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

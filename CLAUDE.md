@@ -3406,12 +3406,35 @@ upgrade at all. It shows only on weapons, which is why it survived so long -- ev
 step up between tiers.
 ⚠️ Keep Hallowed at `FLOOR(damage * 1.5)` and Mythic at `damage*2`. "Making them consistent" is the bug.
 
-## 36. Buffs last a real length of time — migrations v17 + v19 — 2026-08-05
+## 36. Buffs are PERMANENT — migrations v17 + v19, superseded by v20 — 2026-08-05
 
-Beneficial spells now run **formula 11** (`30 * (level + 3)` ticks): **12 min at level 1, 39 at 10, 99
-at the level cap**. Live EQ's short durations assume you re-cast constantly; this is a roguelite where
-everybody is sent back to level 1 over and over, so re-buffing was most of what a run consisted of.
-v17 did the **bard songs** (205 converted), v19 the **rest of the player-castable buff space**.
+Beneficial player-castable spells run **formula 50 = permanent**. Live EQ's short durations assume you
+re-cast constantly; this is a roguelite where everybody is sent back to level 1 over and over, so
+re-buffing was most of what a run consisted of.
+
+⚠️⚠️ **v17 AND v19 ARE HISTORY — THEY MOVED THE BUFF SPACE TO FORMULA 11 (12 min at level 1, 99 at the
+cap) AND v20 THEN MADE IT PERMANENT.** Both are still in the manifest and both still run in order on a
+fresh database, so the **11 → 50 chain is load bearing**: v20 targets `buffdurationformula = 11`, which
+is precisely what v17/v19 produce. Do not "tidy up" by deleting v17/v19 or by retargeting v20 at the
+original formulas — v20 would then convert nothing on a fresh DB and buffs would silently come out at
+99 minutes instead of permanent.
+- 📌 Targeting formula 11 also deliberately sweeps in the **302 spells that were ALREADY formula 11**
+  before either migration, so near-identical buffs cannot end up one permanent and one on a timer.
+  **1,859 spells end up permanent**; 205 songs are in scope and 181 convert (the other 24 are
+  non-player-castable or the one discipline).
+
+### ⚠️⚠️ PERMANENT IS A FORMULA, NOT A BIG NUMBER
+`CalcBuffDuration_formula` **returns early** for `50` (**-1**, permanent) and `51` (**-4**, permanent
+until you leave an aura) — `zone/spells.cpp:3105`. **1,103 stock spells already ship formula 50**, so
+this is the game's own mechanism. Never express permanence as a huge tick count: the buff would still
+tick down and every duration display would show a countdown in days.
+- ⚠️ Because 50 returns **before** the `buffduration` cap line, v20 does **not** touch that column —
+  a row reading formula 50 with a stale `buffduration` of 720 is correct and simply ignored. That is
+  the opposite of v17/v19, where the cap was the whole trap (below).
+
+### The v17/v19 trap, still true for any FORMULA-BASED duration change
+- ⚠️⚠️ **BOTH COLUMNS MUST MOVE.** `CalcBuffDuration_formula` ends with
+  `if (duration && duration < temp) temp = duration;` (`zone/spells.cpp:3116`), so **`buffduration`
 
 - ⚠️⚠️ **BOTH COLUMNS MUST MOVE.** `CalcBuffDuration_formula` ends with
   `if (duration && duration < temp) temp = duration;` (`zone/spells.cpp:3116`), so **`buffduration`
@@ -3423,17 +3446,22 @@ v17 did the **bard songs** (205 converted), v19 the **rest of the player-castabl
 - ⚠️ **Pulsing is unaffected.** `IsPulsingBardSong` keys off `buffduration == 0xFFFF`, not off the
   formula and not off 0, so songs still re-apply to group members in range every 6 seconds (§14).
 - ⚠️ **The 16 spell-rank rows are included and MUST be** — otherwise ranking a song up (§29) would
-  *shorten* it from 99 minutes back to 12 seconds.
+  *shorten* it, from permanent back to 12 seconds.
 - ⚠️ **`spells_new` is SHARED MEMORY** — world down → `./shared_memory` → restart, not just a reboot.
 
 ### The exclusions are the whole design — every one is load bearing
+⚠️⚠️ **v20 CARRIES ALL OF THESE OVER VERBATIM, AND THEY MATTER MORE ONCE "LONG" BECOMES "FOREVER".**
+They hold back **678** of the formula-11 spells. Verified by name rather than by count: **Death Pact**
+(death save), the **Mending** line (true HoTs) and the **Cantata / Chorus** heal songs (SPA 0 > 30) are
+the ones actually being caught — precisely the set that would be catastrophic as permanent.
 - ⚠️⚠️ **NOT PLAYER-CASTABLE (~9,287 spells, the big one).** NPC self-buffs, item clicks and procs.
   Make those permanent and **every monster keeps its buffs forever** and proc buffs never fall off.
   The `LEAST(classes1..16) BETWEEN 1 AND 100` test is what confines this to spells a player can cast.
 - ⚠️ **DISCIPLINES** — `mana = 0 AND an endurance cost`, mirroring `IsDiscipline` (`common/spdat.cpp`)
   exactly as the reward pool's blacklist does (§20). A permanent Trueshot is not a buff.
-- ⚠️ **INVULNERABILITY / TRUE HoT / DEATH SAVES** — SPA 40, 100, 101, 319, 150, 232. A 99-minute
-  invulnerability is precisely the failure this exclusion exists for. Six songs are held back by it.
+- ⚠️⚠️ **INVULNERABILITY / TRUE HoT / DEATH SAVES** — SPA 40, 100, 101, 319, 150, 232. **This is the
+  single most important line in either migration**: a permanent invulnerability is not a buff, it is
+  an unkillable character, and a permanent true heal-over-time is infinite healing.
 - ⚠️ **AA-GRANTED** (anything in `aa_ranks.spell`) and **the AoTv4 band 43000-44999** — Shield Wall
   buffs, the Thirst line and the class auras have **code-driven lifecycles** (explicit fade calls,
   `numhits` charges, aura membership), so a rewritten duration fights the code that owns them.
@@ -3442,6 +3470,48 @@ v17 did the **bard songs** (205 converted), v19 the **rest of the player-castabl
   not mechanism**. Hymn of Restoration is base **1** (one hit point a tick) and Cantata of Soothing is
   4; those are regens and they belong in. Above 30 it is a heal engine and is excluded.
   📌 Filtering on SPA 100 alone misses every one of these — the classic regens do not use it.
+- ⚠️⚠️ **CHARGED BUFFS (`numhits > 0`) ARE EXCLUDED FROM PERMANENCE.** A charge buff is spent by
+  **use**, not by time (`numhits` + `numhitstype`, decremented in `CheckNumHitsRemaining`), so a
+  permanent one that is never used never leaves and stops being a consumable at all. **208** of the
+  formula-11 buffs carry charges, across 9 different `numhitstype` values. They stay at formula 11, so
+  they still expire on time **or** on charges, whichever comes first.
+  📌 This is **not** the same test as the SPA exclusions: a charged buff can be completely benign in
+  its effects and still must not be permanent, because the charge *is* the cost.
+
+### ⚠️⚠️ THE PRICE OF PERMANENCE IS A SPELL GEM — and it takes TWO rules, not one
+Permanence with no cost ends with every player wearing every good buff in the game. The leash is the
+spell gems: **you keep as many permanent buffs as you have gems.** Both rules are required — either
+one alone is trivially bypassed.
+- **`AoT:PermanentBuffNeedsMemmed`** (`Mob::BuffProcess`, `zone/spell_effects.cpp`) — a permanent buff
+  fades once its spell is no longer in a gem.
+- **`AoT:PermanentBuffSelfOnly`** (`Mob::CalcBuffDuration`, `zone/spells.cpp`) — a permanent
+  beneficial buff a player casts on **someone else** gets formula 11 instead (12 min to 99 min).
+  Without it the gem leash binds only a **solo** player: a group would buff each other and every
+  member would hold far more permanent buffs than they have gems.
+
+- ⚠️⚠️ **`HasSpellScribed` IS THE SCOPING TEST AND IT IS LOAD BEARING.** **1,103 STOCK spells already
+  ship formula 50**, reaching players by routes that have nothing to do with gems — item clicks, AA,
+  quest and NPC-applied buffs. Without that test every one would be stripped the instant it landed,
+  because it was never in a gem and never could be. Only a **scribed** spell is one the player chose
+  to carry and can choose to memorise.
+- ⚠️⚠️ **DO NOT TEST `buffs[i].casterid` — IT IS AN ENTITY ID AND DOES NOT SURVIVE ZONING.** A
+  "was this self-cast?" test would silently stop firing after a zone, un-leashing permanent buffs for
+  anyone who zoned. It is unnecessary anyway: with `PermanentBuffSelfOnly` on, a permanent beneficial
+  buff on a player is self-cast **by construction**.
+- ⚠️⚠️ **`res == -1` IS THE PERMANENCE TEST IN `CalcBuffDuration`, NOT `formula == 50`.**
+  `CalcBuffDuration_formula` returns **-1** for `DF_Permanent` and **-4** for `DF_Aura`, so testing the
+  returned value catches permanence *and* leaves **auras** alone — an aura is already scoped by range
+  and membership and must not be turned into a timed buff.
+- ⚠️ **Order in `BuffProcess` is for COST, not style.** It runs every buff tick for every player, so:
+  formula check (struct read) → `FindMemmedSpellBySpellID` (12 gems) → `HasSpellScribed` (**up to 720
+  spellbook slots**), which is reached only by a permanent buff that is already un-memmed — the rare
+  fade case. Fade-then-recalc-once, mirroring the cleanse-on-peace block above it.
+- 📌 **`CalcBuffDuration` already carried an AoTv4 note rejecting the OPPOSITE approach** — an earlier
+  rule extended beneficial buffs to 1,000,000 tics in *code* and was removed because it silently
+  overrode designed durations (Vengeful Aura trades a downside for a 4-tic window; permanent turns it
+  into a curse). Its conclusion — *"abilities meant to be always-on are modelled as permanent passives
+  in their spell data (buffdurationformula 50), not by overriding a finite duration here"* — is
+  exactly what v20 does. **Keep permanence in the DATA; this override only ever shortens.**
 
 ## 37. Combat no longer banks progress — v18 + `AoT:NPCFullHealOnReset` — 2026-08-05
 
@@ -3568,3 +3638,36 @@ type rather than a class identity, and these fights are not built around kiting.
   problem of §4 (client display, client send, server execute). Auto-fire is unaffected either way.
   **Test point blank with auto-fire first**, then the manual shot; a difference between the two is
   the client, not this rule.
+
+## 40. ⚠️⚠️ A "NO-OP" THAT DOUBLED EVERY GEARED HEAL AND NUKE — 2026-08-05
+
+`Mob::GetExtraSpellAmt` (`zone/effects.cpp`) had been short-circuited with a comment reading
+*"Gear spell damage has been moved to ScaleSpellDamage. **This should do nothing**"* — and then
+`return base_spell_dmg;`. **A no-op here is `return 0`.** Every one of the 13 call sites in that file
+**accumulates** the result; there is not one assignment among them:
+
+| call sites | shape | effect of returning `base_spell_dmg` |
+|---|---|---|
+| heals `:520 :527 :577 :584` | `value += GetExtraSpellAmt(...)` | `value = base + base` → **2x** |
+| damage `:136 :187 :245 :300 :307 :346 :353` | `value -= GetExtraSpellAmt(...)` | damage is **negative**, so subtracting the negative base **also doubles it** |
+
+- ⚠️⚠️ **IT ONLY FIRED FOR SOMEONE CARRYING THE ITEM STAT, WHICH IS WHY IT READ AS A SPELL BUG RATHER
+  THAN A GLOBAL ONE.** Both heal branches are gated on `GetHealAmt()` and the damage ones on
+  `GetSpellDmg()` / `itembonuses.SpellDmg`. A character with none saw the correct number; a geared one
+  saw double. **Our gear tiers (§10) convert int → spelldmg and wis → healamt on every Hallowed and
+  Mythic piece**, so in practice nearly every geared character was affected — and the naked test
+  character was not.
+- 📌 **Reported as "the Reptile line procs for double".** It was not the reptile line: base 20 → 40.
+  Chasing it through the spell rows, the SPA 323 registration and the proc path found nothing wrong,
+  because nothing there *was* wrong. The tell was that the multiplier was **exactly** 2 with no
+  variance — a crit, a focus or a double-registration would all vary.
+- ⚠️ **The damage half is the easy one to miss** — `value -= f(...)` looks like it *reduces* damage
+  until you remember spell damage is carried negative. Reason about sign before concluding a
+  subtraction is a nerf.
+- ⚠️ **The stated intent was never wrong and is untouched**: gear spell damage genuinely does live in
+  `ScaleSpellDamage` now, so this function's job really is to contribute nothing. Only the expression
+  of "nothing" was wrong. The stock cast-time-curve implementation is deliberately left below the
+  return, unreachable, as the reference if per-spell tuning is ever wanted here again.
+- 📌 Distinct from the **DC Overpower** inflation already recorded in §5 (`zone/mob.cpp:8860`), which
+  is a real designed bonus and varies with the caster/target gap. Two different reasons observed
+  numbers exceed the spell row; do not fix one by looking at the other.

@@ -2,16 +2,25 @@
 
 ## Buffs
 
-- **Buffs last a real length of time now.** Beneficial spells you cast run **12 minutes at level 1**,
-  rising to **99 minutes** at the level cap, instead of the short live-EQ durations that assumed you
-  would re-cast constantly.
-- **Bard songs last too.** Most beneficial songs ran **12 seconds**, because on live a Bard twists them
-  continuously. They now use the same long duration as everything else.
+- **Buffs are permanent — for as long as you keep the spell memorised.** A buff you cast on yourself
+  no longer expires. The catch is the leash: **the moment that spell leaves your spell gems, the buff
+  drops.** So you can carry as many permanent buffs as you have gems, and swapping a gem for something
+  else is what costs you the buff. Live EQ's durations assume you re-buff constantly; that is most of
+  what a run was.
+- **Buffing someone else is long, not permanent.** A buff you cast on another player runs **12 minutes
+  at level 1**, rising to **99 minutes** at the level cap. Group buffing works exactly as before — it
+  just is not eternal, so a group cannot hand each other permanent buffs and sidestep the gem limit.
+- **Buffs with charges still run out.** Anything spent by use rather than by time keeps its old
+  duration and its charges, so it goes away when used up instead of sitting on you forever.
+- **Bard songs are permanent too.** Most beneficial songs ran **12 seconds**, because on live a Bard
+  twists them continuously. They now last like any other buff.
   - Songs still **pulse** to group members in range every 6 seconds — that is unchanged.
-- Deliberately left short: **invulnerability effects, true heal-over-time spells and death saves**. A
-  99 minute invulnerability is not a buff. **Disciplines** are also unchanged — a permanent Trueshot is
-  not a buff either. NPC self-buffs, procs and item clicks are untouched, so monsters do not keep their
-  buffs forever.
+- Deliberately **not** made permanent: **invulnerability effects, true heal-over-time spells and death
+  saves** — a permanent invulnerability is not a buff, it is an unkillable character, and a permanent
+  heal-over-time is infinite healing. Bard heal songs (the Cantata and Chorus lines) are excluded for
+  the same reason, though the regen songs like Hymn of Restoration are included. **Disciplines** are
+  unchanged — a permanent Trueshot is not a buff either. NPC self-buffs, procs and item clicks are
+  untouched, so monsters do not keep their buffs forever.
 
 ## Spells
 
@@ -45,6 +54,13 @@
     back above your new maximum and bleed down from an impossible number.
   - If you reported "I took my charm off and dropped to 0" — the charm was never the cause. It just
     made an already-broken state visible.
+- **Spell damage and healing were being doubled if you had gear.** An item bonus that was meant to
+  contribute nothing was instead adding your spell's full base amount a second time — so any character
+  wearing gear with spell damage or heal amount (which is most Hallowed and Mythic pieces) dealt and
+  healed **twice** what the spell said. Spells now do what they say.
+  - ⚠️ This is a **significant reduction** to nukes and heals if you are geared. Nothing was nerfed —
+    the numbers on your spells are simply real now. It is most obvious on small procs: the Skin of the
+    Reptile line was healing 40 on a 20 point proc, which is how it was found.
 - **Mythic weapons now hit harder than Hallowed.** Both tiers were being given the same weapon damage,
   so a Mythic weapon looked like no upgrade at all. Hallowed is **1.5x** native damage and Mythic is
   **2x**. Every other stat was already correct — this only ever affected weapon damage.
