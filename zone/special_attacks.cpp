@@ -45,52 +45,29 @@ int Mob::GetBaseSkillDamage(EQ::skills::SkillType skill, Mob *target)
 {
 	int base = EQ::skills::GetBaseDamage(skill);
 	auto skill_level = GetSkill(skill);
+	float ac_bonus    = 0.0f;
+	float skill_bonus = 0.0f;
 	switch (skill) {
 		case EQ::skills::SkillDragonPunch:
 		case EQ::skills::SkillEagleStrike:
 		case EQ::skills::SkillTigerClaw:
-			if (skill_level >= 25) {
-				base++;
+			skill_bonus = skill_level / 9.0f;
+			if (IsClient()) {
+				auto inst = CastToClient()->GetInv().GetItem(EQ::invslot::slotHands);
+				if (inst) {
+					ac_bonus = inst->GetItemArmorClass(true)/ 2;
+				}
 			}
 
-			if (skill_level >= 75) {
-				base++;
-			}
-
-			if (skill_level >= 125) {
-				base++;
-			}
-
-			if (skill_level >= 175) {
-				base++;
-			}
 
 			if (RuleB(Character, ItemExtraSkillDamageCalcAsPercent) && GetSkillDmgAmt(skill) > 0) {
-				base *= std::abs(GetSkillDmgAmt(skill) / 100);
+				return (base + static_cast<int>(ac_bonus + skill_bonus)) * std::abs(GetSkillDmgAmt(skill) / 100);
 			}
 
-			return base;
+			return base + static_cast<int>(ac_bonus + skill_bonus);
 		case EQ::skills::SkillFrenzy:
 			if (IsClient() && CastToClient()->GetInv().GetItem(EQ::invslot::slotPrimary)) {
-				if (GetLevel() > 15) {
-					base += GetLevel() - 15;
-				}
-
-				if (base > 23) {
-					base = 23;
-				}
-
-				if (GetLevel() > 50) {
-					base += 2;
-				}
-
-				if (GetLevel() > 54) {
-					base++;
-				}
-
-				if (GetLevel() > 59) {
-					base++;
-				}
+				base = CastToClient()->GetInv().GetItem(EQ::invslot::slotPrimary)->GetItemWeaponDamage(true)/2;
 			}
 
 			if (RuleB(Character, ItemExtraSkillDamageCalcAsPercent) && GetSkillDmgAmt(skill) > 0) {
@@ -99,18 +76,14 @@ int Mob::GetBaseSkillDamage(EQ::skills::SkillType skill, Mob *target)
 
 			return base;
 		case EQ::skills::SkillFlyingKick: {
-			float skill_bonus = skill_level / 9.0f;
-			float ac_bonus    = 0.0f;
+			skill_bonus = skill_level / 8.0f;
 			if (IsClient()) {
 				auto inst = CastToClient()->GetInv().GetItem(EQ::invslot::slotFeet);
 				if (inst) {
-					ac_bonus = inst->GetItemArmorClass(true) / 25.0f;
+					ac_bonus = inst->GetItemArmorClass(true)/ 2;
 				}
 			}
 
-			if (ac_bonus > skill_bonus) {
-				ac_bonus = skill_bonus;
-			}
 
 			if (RuleB(Character, ItemExtraSkillDamageCalcAsPercent) && GetSkillDmgAmt(skill) > 0) {
 				return (base + static_cast<int>(ac_bonus + skill_bonus)) * std::abs(GetSkillDmgAmt(skill) / 100);
@@ -121,22 +94,14 @@ int Mob::GetBaseSkillDamage(EQ::skills::SkillType skill, Mob *target)
 		case EQ::skills::SkillKick:
 		case EQ::skills::SkillRoundKick: {
 			// there is some base *= 4 case in here?
-			float skill_bonus = skill_level / 10.0f;
-			float ac_bonus    = 0.0f;
+			skill_bonus = skill_level / 10.0f;
 			if (IsClient()) {
 				auto inst = CastToClient()->GetInv().GetItem(EQ::invslot::slotFeet);
 				if (inst) {
-					ac_bonus = inst->GetItemArmorClass(true) / 25.0f;
+					ac_bonus = inst->GetItemArmorClass(true) / 2;
 				}
 			}
 
-			if (skill_level >= 75) {
-				base++;
-			}
-
-			if (skill_level >= 175) {
-				base++;
-			}
 
 			if (RuleB(Character, ItemExtraSkillDamageCalcAsPercent) && GetSkillDmgAmt(skill) > 0) {
 				return (base + static_cast<int>(ac_bonus + skill_bonus)) * std::abs(GetSkillDmgAmt(skill) / 100);
@@ -145,8 +110,7 @@ int Mob::GetBaseSkillDamage(EQ::skills::SkillType skill, Mob *target)
 			return base + static_cast<int>(ac_bonus + skill_bonus);
 		}
 		case EQ::skills::SkillBash: {
-			float                  skill_bonus = skill_level / 10.0f;
-			float                  ac_bonus    = 0.0f;
+			skill_bonus = skill_level / 10.0f;
 			const EQ::ItemInstance *inst       = nullptr;
 			if (IsClient()) {
 				if (HasShieldEquipped()) {
@@ -177,16 +141,13 @@ int Mob::GetBaseSkillDamage(EQ::skills::SkillType skill, Mob *target)
 			return base + static_cast<int>(ac_bonus + skill_bonus);
 		}
 		case EQ::skills::SkillBackstab: {
-			float skill_bonus = static_cast<float>(skill_level) * 0.02f;
+			skill_bonus = static_cast<float>(skill_level) * 0.02f;
 			base              = 3; // There seems to be a base 3 for NPCs or some how BS w/o weapon?
 			// until we get a better inv system for NPCs they get nerfed!
 			if (IsClient()) {
 				auto *inst = CastToClient()->GetInv().GetItem(EQ::invslot::slotPrimary);
 				if (inst && inst->GetItem() && inst->GetItem()->ItemType == EQ::item::ItemType1HPiercing) {
-					base = inst->GetItemBackstabDamage(true);
-					if (!inst->GetItemBackstabDamage()) {
-						base += inst->GetItemWeaponDamage(true);
-					}
+					base = inst->GetItemBackstabDamage(true) + inst->GetItemWeaponDamage(true);
 
 					if (target) {
 						if (inst->GetItemElementalFlag(true) && inst->GetItemElementalDamage(true) &&

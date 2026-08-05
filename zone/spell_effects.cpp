@@ -123,6 +123,9 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 		}
 	}
 
+	// AoTv4 Carolus: Remove partials to prevent weird interactions
+	partial = 100;
+
 #ifdef SPELL_EFFECT_SPAM
 		Message(Chat::White, "You are affected by spell '%s' (id %d)", spell.name, spell_id);
 		if(buffslot >= 0)

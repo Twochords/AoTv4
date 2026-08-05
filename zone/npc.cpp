@@ -210,8 +210,8 @@ NPC::NPC(const NPCType *npc_type_data, Spawn2 *in_respawn, const glm::vec4 &posi
 		LevelScale();
 	}
 
-	base_damage          = round((max_dmg - min_dmg) / 1.9);
-	min_damage           = min_dmg - round(base_damage / 10.0);
+	base_damage          = max_dmg - min_dmg;
+	min_damage           = min_dmg;
 	accuracy_rating      = npc_type_data->accuracy_rating;
 	avoidance_rating     = npc_type_data->avoidance_rating;
 	ATK                  = npc_type_data->ATK;

@@ -516,7 +516,11 @@ bool Client::Process() {
 					}
 					continue;
 				}
+				if (processing_skill[skill])
+    				continue;
+				processing_skill[skill] = true;
 				DoClassAttacks(auto_attack_target, skill, false);
+				processing_skill[skill] = false;
 			}
 		}
 

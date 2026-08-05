@@ -2338,6 +2338,10 @@ public:
 	struct XTarget_Struct XTargets[XTARGET_HARDCAP];
 private:
 
+	// AoTv4 Carolus: Guard flag to prevent a race condition in
+	// autoskill processing at the `AoTv4: #autoskill` comment in client_process.cpp
+	bool processing_skill[EQ::skills::HIGHEST_SKILL + 1];
+
 	bool m_exp_enabled;
 
 	std::vector<EXPModifier> m_exp_modifiers;
