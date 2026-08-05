@@ -8973,6 +8973,6 @@ uint64 Mob::ScaleSpellDamage(Mob* defender, uint64 base_damage, int resist_adjus
 	// +0.5f every partial point of overpower bonus was thrown away: at mult 150 a 1 point effect
 	// computed 1.5 and dealt 1. The two exits now round the same way.
 	return static_cast<uint64>(
-		base_damage * mult / 100.0f + 0.5f
+		base_damage * mult / 100.0f
 	);
 }
