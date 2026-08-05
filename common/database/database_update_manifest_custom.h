@@ -2738,7 +2738,7 @@ UPDATE spells_new
 
 DROP TEMPORARY TABLE IF EXISTS it;
 CREATE TEMPORARY TABLE it AS SELECT * FROM items WHERE id = 1001;
-UPDATE it SET nodrop=1, norent=1, races=65535, classes=65535, reclevel=0, reqlevel=0;
+UPDATE it SET nodrop=0, norent=1, races=65535, classes=65535, reclevel=0, reqlevel=0;
 UPDATE it SET id=147930, Name="Angler's Brim";           INSERT INTO items SELECT * FROM it;
 UPDATE it SET id=147931, Name="Venomer's Wrap";          INSERT INTO items SELECT * FROM it;
 UPDATE it SET id=147932, Name="Tinker's Goggles";        INSERT INTO items SELECT * FROM it;
@@ -2801,6 +2801,195 @@ FROM (
   SELECT 11,69,'Pottery',"Mask of the Kilnborn"
 ) x
 WHERE EXISTS (SELECT 1 FROM custom_achievements a WHERE a.id = 400000 + x.skill*1000 + 200);
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 15,
+		.description = "2026_08_04_aotv4_aa_flat_hp",
+		// Reported as "Bulwark Within increased my mana and endurance, but didn't increase HP".
+		// It was not broken -- it is STOCK, and the level cap is what breaks it. The AA (native 477
+		// "Valor of the Keepers", renamed by aotv4_aa_rename.sql) mixes effect KINDS:
+		//     SPA 214 MaxHPChange  -> PercentMaxHPChange, and CalcMaxHP divides it by 10000
+		//     SPA  97 ManaPool     -> FLAT
+		//     SPA 190 EndurancePool-> FLAT
+		// base1 300 is therefore 3 percent. On live EQ at 10,000 hp that is ~300 and sits level with
+		// the flat +200 mana; at our level 30 cap and ~1,500 hp it is ~45, which reads as nothing.
+		//
+		// ⚠️⚠️ THIS IS A CLASS OF PROBLEM, NOT ONE AA. Any percentage-based AA effect is silently
+		// devalued by a low level cap while flat ones keep full value. Three ENABLED AAs used SPA 214
+		// (120 Hardened Frame 2 percent, 143 Planeforged 1.5, 477 Bulwark Within 3); 17 rows use it in
+		// total, so the 14 on disabled AAs will need the same treatment if they are ever switched on.
+		//
+		// SPA 69 TotalHP is the FLAT counterpart (bonuses.cpp:786 -> FlatMaxHPChange), so swapping the
+		// effect id while keeping base1 turns 2/1.5/3 percent into a flat +200/+150/+300 -- proportional
+		// to what they were, and finally consistent with the flat mana and endurance beside them.
+		// ⚠️ Scoped to those three rank ids on purpose: converting all 17 would silently rebalance AAs
+		// nobody can currently train.
+		.check       = "SELECT rank_id FROM aa_rank_effects WHERE effect_id = 214 AND rank_id IN (279, 423, 1367)",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE aa_rank_effects SET effect_id = 69 WHERE effect_id = 214 AND rank_id IN (279, 423, 1367);
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 16,
+		.description = "2026_08_04_aotv4_delve_exp_normalise",
+		// Reported from play: "blues in delves were giving 4-5% exp, while yellows in LOIO were giving
+		// 2% ... that's why I was leveling so fast in delves and kept out leveling it".
+		// Nothing in the delve did this -- it is inherited STOCK data. The six delve zones are Dragons
+		// of Norrath (expansion 9), which ships the highest zone_exp_multiplier values in the game
+		// (2.90-3.10) because on live it is endgame content; Lake of Ill Omen is Kunark at 0.80. That
+		// is a ~3.7x gap before con colour is considered.
+		// ⚠️ zone_exp_multiplier multiplies NORMAL xp (zone/exp.cpp:130), AA xp (:294) AND group xp
+		// (:443) -- it is not just a kill-xp knob.
+		//
+		// Normalised to 1.00: the delve's creatures are already scaled to the player, so a delve kill
+		// should be worth what an equivalent open-world kill is worth. Its reward comes from the score
+		// sheet, the sigil, augments and coin -- not from raw experience.
+		//
+		// ⚠️⚠️ EVERY VERSION ROW, NOT JUST VERSION 0. Zone config is loaded per (zone, version) and the
+		// delve NEVER uses version 0 (see the Delve section) -- the mission versions are what players
+		// actually stand in, and they carried the HIGHER multiplier (thenest v0 is 3.05, its other 15
+		// versions 3.10). Updating version 0 alone would have changed nothing a player ever sees.
+		// 67 rows across the six zones.
+		// ⚠️ Safe for open-world play: DoN is expansion 9 and the era system caps at OoW, so these
+		// zones are not reachable outside a delve.
+		.check       = "SELECT short_name FROM zone WHERE short_name IN ('delvea','delveb','stillmoona','stillmoonb','thundercrest','thenest') AND zone_exp_multiplier <> 1.00",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE zone SET zone_exp_multiplier = 1.00
+ WHERE short_name IN ('delvea','delveb','stillmoona','stillmoonb','thundercrest','thenest');
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 17,
+		.description = "2026_08_05_aotv4_bard_song_durations",
+		// Bard songs behave like real buffs now instead of needing constant re-singing.
+		// 168 of the 216 beneficial songs ran on duration formula 5 = TWO TICKS (12 seconds), because
+		// on live a Bard twists them continuously. Converted to formula 11 (30 * (level + 3) ticks):
+		//     level 1 -> 12 min      level 10 -> 39 min      level 30 -> 99 min
+		// Formula 11 rather than 3 (30 * level) deliberately: 3 collapses to THREE MINUTES at level 1,
+		// and the roguelite death puts everybody back there constantly.
+		//
+		// ⚠️⚠️ BOTH COLUMNS MUST MOVE. CalcBuffDuration_formula ends with
+		//     if (duration && duration < temp) temp = duration;      (zone/spells.cpp:3116)
+		// so `buffduration` CAPS whatever the formula produces. The formula-5 songs carry buffduration
+		// 0-10, so changing the formula alone would have capped most of them at ~1 minute while the
+		// handful with buffduration 0 got the full 99 -- a half-working, inconsistent result that
+		// would have looked like the change "sort of" worked. buffduration = 0 removes the cap.
+		//
+		// ⚠️ PULSING IS UNAFFECTED: IsPulsingBardSong keys off buffduration == 0xFFFF (not the
+		// formula, and not 0), so songs still re-apply to group members in range every 6 seconds.
+		//
+		// ⚠️⚠️ SIX SONGS ARE DELIBERATELY LEFT SHORT -- 4 carry SPA 40 DivineAura (Kazumi's Note of
+		// Preservation, Fermata of Preservation x2, Enervating Sustain) and 2 carry a true HoT SPA
+		// (100/101/319). A 99 minute invulnerability is exactly the failure this exclusion exists for.
+		// 📌 The bard REGEN songs are included on purpose. Hymn of Restoration is SPA 0 base **1** --
+		// one hit point per tick -- and Cantata of Soothing is 4 hp + 5 mana per tick. Those are
+		// regens, not heals, and the SPA-0-positive test alone cannot tell the two apart: it is
+		// MAGNITUDE that distinguishes them, not mechanism.
+		// ⚠️ The 16 spell-rank rows (Rk. II-V, section 29's band) are included and MUST be -- otherwise
+		// ranking a song up would SHORTEN it from 99 minutes back to 12 seconds.
+		// ⚠️ spells_new is SHARED MEMORY: ./shared_memory after this applies.
+		.check       = "SELECT id FROM spells_new WHERE skill IN (12,41,49,54,70) AND goodEffect <> 0 AND id < 45000 AND buffdurationformula = 5",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE spells_new s SET s.buffdurationformula = 11, s.buffduration = 0
+ WHERE s.skill IN (12,41,49,54,70) AND s.goodEffect <> 0 AND s.id < 45000
+   AND s.buffdurationformula NOT IN (0,50,51)
+   AND NOT (s.effectid1 IN (40,100,101,319,150,232) OR s.effectid2 IN (40,100,101,319,150,232)
+         OR s.effectid3 IN (40,100,101,319,150,232) OR s.effectid4 IN (40,100,101,319,150,232)
+         OR s.effectid5 IN (40,100,101,319,150,232) OR s.effectid6 IN (40,100,101,319,150,232));
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 18,
+		.description = "2026_08_05_aotv4_disable_npc_enrage",
+		// Turns the NPC enrage mechanic off. 404 npc_types carry the Enrage special ability; while
+		// enraged a mob ripostes every frontal melee attack (zone/attack.cpp:492), which is the
+		// "stop attacking and turn away" dance.
+		//
+		// ⚠️⚠️ THE RULE NAME READS BACKWARDS: setting NPC:LiveLikeEnrage to TRUE is what DISABLES it.
+		// Mob::StartEnrage (zone/mob_ai.cpp) returns early when the rule is set unless the mob is a
+		// PLAYER-controlled pet or swarm pet, so "live like" means "only player pets enrage, as on
+		// live". Reading it as "enable enrage" and setting it false does the exact opposite.
+		//
+		// ⚠️ Player and bot PETS still enrage, deliberately -- that is a benefit to the player, not a
+		// mechanic being fought, and it is the one case the rule preserves.
+		// ⚠️ Done as a RULE rather than by stripping the ability off 404 npc_types rows: it is one
+		// reversible row instead of a destructive edit that would lose which mobs were meant to have
+		// it, and NPC:StartEnrageValue (9 percent) stays meaningful if it is ever turned back on.
+		// ⚠️ Rules are read at ZONE BOOT -- a zone restart (or #reloadrules) is needed, not just a
+		// world restart.
+		.check       = "SELECT rule_name FROM rule_values WHERE rule_name = 'NPC:LiveLikeEnrage' AND rule_value <> 'true'",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE rule_values SET rule_value = 'true' WHERE rule_name = 'NPC:LiveLikeEnrage';
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 19,
+		.description = "2026_08_05_aotv4_long_duration_buffs",
+		// Beneficial buffs behave like real buffs instead of needing constant re-application.
+		// Formula 11 = 30 * (level + 3) ticks: 12 min at level 1, 39 at 10, 99 at the level cap.
+		// This is the same treatment v17 gave bard songs, widened to the rest of the buff space.
+		//
+		// ⚠️⚠️ BOTH COLUMNS MOVE. CalcBuffDuration_formula ends with
+		//     if (duration && duration < temp) temp = duration;      (zone/spells.cpp:3116)
+		// so `buffduration` CAPS the formula. Changing the formula alone caps most spells at their old
+		// short duration while a handful with buffduration 0 get the full value -- a half-applied
+		// result that looks like the change "sort of" worked. buffduration = 0 removes the cap.
+		//
+		// EXCLUSIONS, every one of them load bearing:
+		// ⚠️⚠️ NOT PLAYER-CASTABLE (the big one, ~9,287 spells). NPC self-buffs, item clicks and procs.
+		//   Making those permanent means every mob keeps its buffs forever and proc buffs never fall
+		//   off. The `LEAST(classes1..16) BETWEEN 1 AND 100` test is what confines this to spells a
+		//   player can actually cast.
+		// ⚠️ DISCIPLINES -- mana = 0 AND an endurance cost, mirroring IsDiscipline (common/spdat.cpp)
+		//   exactly as the reward pool's blacklist does. A permanent Trueshot is not a buff.
+		// ⚠️ AA-GRANTED -- anything in aa_ranks.spell.
+		// ⚠️ INVULNERABILITY / TRUE HoT / DEATH SAVES -- SPA 40, 100, 101, 319, 150, 232.
+		// ⚠️ THE AoTv4 CUSTOM BAND 43000-44999 -- Shield Wall buffs, the Thirst line and the class
+		//   auras have CODE-DRIVEN lifecycles (explicit fade calls, numhits charges, aura membership).
+		//
+		// ⚠️⚠️ SPA 0 IS KEPT UP TO A BASE OF 30, AND THAT IS DELIBERATE. SPA 0 on a duration spell
+		// repeats every tick, so it reads as a heal-over-time -- but MAGNITUDE is what separates a
+		// regen from a heal, not mechanism. Hymn of Restoration is base **1** (one hit point a tick)
+		// and Cantata of Soothing is 4; those are regens and they belong in. Above 30 (up to 500+ a
+		// tick) it is a heal engine and is excluded. Filtering on SPA 100 alone misses every one of
+		// these, because the classic regens do not use it.
+		.check       = "SELECT id FROM spells_new s WHERE s.goodEffect <> 0 AND s.buffdurationformula NOT IN (0,11,50,51) AND s.id < 45000 AND s.id NOT BETWEEN 43000 AND 44999 AND LEAST(s.classes1,s.classes2,s.classes3,s.classes4,s.classes5,s.classes6,s.classes7,s.classes8,s.classes9,s.classes10,s.classes11,s.classes12,s.classes13,s.classes14,s.classes15,s.classes16) BETWEEN 1 AND 100 AND NOT (s.mana = 0 AND (s.EndurCost > 0 OR s.EndurUpkeep > 0)) LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE spells_new s SET s.buffdurationformula = 11, s.buffduration = 0
+WHERE s.goodEffect <> 0 AND s.buffdurationformula NOT IN (0,11,50,51) AND s.id < 45000
+  AND s.id NOT BETWEEN 43000 AND 44999
+  AND LEAST(s.classes1,s.classes2,s.classes3,s.classes4,s.classes5,s.classes6,s.classes7,s.classes8,
+            s.classes9,s.classes10,s.classes11,s.classes12,s.classes13,s.classes14,s.classes15,s.classes16) BETWEEN 1 AND 100
+  AND NOT (s.mana = 0 AND (s.EndurCost > 0 OR s.EndurUpkeep > 0))
+  AND NOT EXISTS (SELECT 1 FROM aa_ranks r WHERE r.spell = s.id)
+  AND NOT (s.effectid1 IN (40,100,101,319,150,232) OR s.effectid2 IN (40,100,101,319,150,232)
+        OR s.effectid3 IN (40,100,101,319,150,232) OR s.effectid4 IN (40,100,101,319,150,232)
+        OR s.effectid5 IN (40,100,101,319,150,232) OR s.effectid6 IN (40,100,101,319,150,232)
+        OR s.effectid7 IN (40,100,101,319,150,232) OR s.effectid8 IN (40,100,101,319,150,232))
+  AND NOT ((s.effectid1=0 AND s.effect_base_value1>30) OR (s.effectid2=0 AND s.effect_base_value2>30)
+        OR (s.effectid3=0 AND s.effect_base_value3>30) OR (s.effectid4=0 AND s.effect_base_value4>30)
+        OR (s.effectid5=0 AND s.effect_base_value5>30) OR (s.effectid6=0 AND s.effect_base_value6>30));
 )",
 		.content_schema_update = false,
 	},

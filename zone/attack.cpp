@@ -2318,7 +2318,45 @@ bool Client::Death(Mob* killer_mob, int64 damage, uint16 spell, EQ::skills::Skil
 		m_pp.zoneInstance = m_pp.binds[0].instance_id;
 		database.MoveCharacterToZone(CharacterID(), m_pp.zone_id);
 		Save();
+
+		// ⚠️⚠️ AoTv4: A DEATH THAT RESPAWNS YOU IN THE ZONE YOU DIED IN LEAVES YOU BROKEN.
+		// Client::Death has already done SetID(0) (above, when the corpse was made) and set
+		// dead = true. BOTH are only ever undone by ClearHover() -- which belongs to the respawn
+		// WINDOW path -- or by a real zone change re-creating the Client. `Character:RespawnFromHover`
+		// is FALSE here, so the window path never runs, and GoToDeath() is MovePC to your bind: when
+		// that bind is the zone you are already standing in, it is an IN-ZONE move, not a zone change.
+		// Nothing re-initialises you.
+		//
+		// The result is a player who is alive and at full health on the SERVER but, on the client,
+		// dead: entity id 0, `dead` stuck true, and therefore the whole tic block in Client::Process
+		// (`if (tic_timer.Check() && !dead)`) skipped -- so no CalcMaxHP, no DoHPRegen, no rest state.
+		// Reported from play as "I take my charm off and I'm sitting here at 0 hp", "it didn't refill
+		// at all", and "I can't zone I'm still down", while #showstats reported full health. The HP
+		// numbers the client showed (-21/36) were its own arithmetic drifting with nothing to correct
+		// it, which is why a server-side guard on negative HP never fired: the server was never
+		// negative.
+		//
+		// ⚠️⚠️ THIS SERVER MAKES IT THE COMMON CASE, NOT AN EDGE CASE. It is a roguelite: everybody
+		// binds to the Resplendent hub and dies constantly, so any death that happens IN the hub
+		// respawns you where you already are and hits this every time.
+		// ⚠️ Captured BEFORE GoToDeath() -- afterwards m_pp/zone state has moved on and the comparison
+		// no longer means "did we actually change zone".
+		const bool aotv4_same_zone_respawn = (
+			zone &&
+			m_pp.binds[0].zone_id == zone->GetZoneID() &&
+			m_pp.binds[0].instance_id == zone->GetInstanceID()
+		);
+
 		GoToDeath();
+
+		// ⚠️ ClearHover is the right call even though we never hovered: it is simply the function that
+		// undoes what Death() did -- restores a real entity id, re-announces the spawn to everyone
+		// else in the zone, resends buffs, and clears `dead`. Calling it is what the zone change would
+		// otherwise have done for us.
+		if (aotv4_same_zone_respawn) {
+			ClearHover();
+			SendHPUpdate();
+		}
 	}
 
 	if (PlayerEventLogs::Instance()->IsEventEnabled(PlayerEvent::DEATH)) {

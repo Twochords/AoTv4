@@ -1468,7 +1468,23 @@ void Mob::CastedSpellFinished(uint16 spell_id, uint32 target_id, CastingSlot slo
 	Mob *spell_target = entity_list.GetMob(target_id);
 	// here we do different things if this is a bard casting a bard song from
 	// a spell bar slot
-	if(GetClass() == Class::Bard) // bard's can move when casting any spell...
+	// AoTv4: ⚠️⚠️ SONG BEHAVIOUR KEYS OFF THE SPELL, NOT THE CASTER'S CLASS.
+	// Stock gates this whole block on GetClass() == Bard, which is correct on live where only a Bard
+	// can hold a song. Here the reward pool hands genuine bard songs to all sixteen classes, and a
+	// non-Bard singing one fell into the ELSE branch instead -- so it never entered song mode:
+	//   * NO PULSE. bardsong/bardsong_timer were never set, so the song was cast ONCE. Bard songs
+	//     carry a deliberately tiny buff_duration (a few ticks) *because* a Bard re-pulses them every
+	//     6 seconds, so it faded almost immediately and never refreshed. Reported from play as
+	//     "bard songs are not being consistently sung by non bards".
+	//   * MOVEMENT INTERRUPTED IT, because the else branch runs the channel/regain-concentration
+	//     check -- while an actual Bard may move freely.
+	// ⚠️ IsBardSong is already SKILL-gated (common/spdat.cpp: Singing/Percussion/Stringed/Wind/Brass),
+	// so only REAL songs qualify. The repurposed reward spells use skill 98 and still fall through to
+	// normal spell behaviour, which is the whole point of that gate -- do not widen this to "has a
+	// Bard level" or every reward spell becomes a song.
+	// ⚠️ A Bard is unchanged: the class test is kept first, so all of a Bard's casting keeps the stock
+	// behaviour and only songs enter song mode.
+	if(GetClass() == Class::Bard || IsBardSong(spell_id)) // bard's can move when casting any spell...
 	{
 		if (IsBardSong(spell_id) && slot < CastingSlot::MaxGems) {
 			if (spells[spell_id].buff_duration == 0xFFFF) {

@@ -329,7 +329,46 @@ int64 Client::CalcMaxHP()
 	max_hp += spellbonuses.FlatMaxHPChange + aabonuses.FlatMaxHPChange + itembonuses.FlatMaxHPChange;
 
 	max_hp += GroupLeadershipAAHealthEnhancement();
+
+	// ⚠️⚠️ AoTv4: max_hp MUST NOT BE ALLOWED TO GO NEGATIVE, AND current_hp MUST NOT BE LEFT THERE.
+	// Reported from play: after a class change, clicking a charm in and out of the inventory drove a
+	// character to "-39/33" and stuck them at 0 percent, alive and unable to recover.
+	//
+	// The mechanism is the clamp below, which only ever LOWERS. If max_hp evaluates negative even
+	// once -- a strongly negative percent term makes `nd` negative, and `max_hp * nd / 10000` flips
+	// the sign -- then current_hp is assigned that negative value. Re-equipping restores max_hp but
+	// NOTHING restores current_hp, so every toggle walks it further down. The character does not die
+	// because death is only ever checked in Mob::Damage, never on a bonus recalc: they are simply
+	// stuck alive at negative health, where regen cannot dig them out.
+	//
+	// ⚠️ Two guards, and both are needed. Flooring max_hp alone stops it getting WORSE but leaves
+	// anyone already negative stuck forever, because the clamp can never raise current_hp. The second
+	// guard is the repair, and it runs on every recalc so an already-broken character self-heals on
+	// their next zone or bonus refresh rather than needing a GM.
+	// ⚠️ Logged loudly rather than silently corrected: this is a symptom guard, not the root cause.
+	// If it fires, the log line is what identifies which bonus term went negative.
+	if (max_hp < 1) {
+		LogError(
+			"AoTv4: CalcMaxHP computed a NON-POSITIVE max_hp [{}] for [{}] -- base [{}] itemHP [{}] "
+			"pct(aa/spell/item) [{}]/[{}]/[{}] flat(spell/aa/item) [{}]/[{}]/[{}]. Flooring to 1.",
+			max_hp, GetCleanName(), CalcBaseHP(), itembonuses.HP,
+			aabonuses.PercentMaxHPChange, spellbonuses.PercentMaxHPChange, itembonuses.PercentMaxHPChange,
+			spellbonuses.FlatMaxHPChange, aabonuses.FlatMaxHPChange, itembonuses.FlatMaxHPChange
+		);
+		max_hp = 1;
+	}
+
 	if (current_hp > max_hp) {
+		current_hp = max_hp;
+	}
+
+	// The repair: negative health is never a legitimate state for a living character.
+	if (current_hp < 0) {
+		LogError(
+			"AoTv4: [{}] was at NEGATIVE health [{}] with max [{}] -- restoring to max. This means the "
+			"clamp above assigned a negative max_hp at some earlier point.",
+			GetCleanName(), current_hp, max_hp
+		);
 		current_hp = max_hp;
 	}
 	int64 hp_perc_cap = spellbonuses.HPPercCap[SBIndex::RESOURCE_PERCENT_CAP];

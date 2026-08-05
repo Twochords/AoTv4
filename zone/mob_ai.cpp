@@ -1842,6 +1842,59 @@ void Mob::AI_Event_NoLongerEngaged() {
 			m_combat_record.Stop();
 			CastToNPC()->SetCombatEvent(false);
 		}
+
+		// ⚠️⚠️ AoTv4: AN NPC THAT DROPS COMBAT RESETS TO FULL HEALTH.
+		// Stock leaves a disengaged mob sitting on whatever health it was left at, so a fight you ran
+		// from stays banked: you chip it, leave, come back, chip it again. Worse for anyone else --
+		// the next player finds a half-dead mob for full loot, or a boss somebody softened.
+		//
+		// ⚠️⚠️ THIS IS THE ONLY PLACE IT GOES. All three ways a hate list can empty funnel through
+		// this function -- Mob::RemoveFromHateList (mob.cpp), Mob::WipeHateList (mob.cpp) and the
+		// 10-minute stale-entry sweep in Mob::AI_Process (this file) -- so one edit covers fleeing,
+		// feign death, the target zoning out, the target dying, and hate simply going stale. Copies
+		// per call site would drift.
+		//
+		// ⚠️⚠️ `GetHP() > 0` IS LOAD BEARING -- WITHOUT IT THIS RESURRECTS THE MOB YOU JUST KILLED.
+		// NPC::Death does SetHP(0) (zone/attack.cpp:2754) and only LATER calls WipeHateList()
+		// (:3350), which lands here with the hate list still populated. So this function genuinely
+		// runs on a corpse-to-be, and an unguarded RestoreHealth() would put it back to full health
+		// before p_depop is set. The combat-event block directly above guards on GetHP() > 0 for
+		// exactly the same reason -- that is the precedent, not a coincidence.
+		//
+		// ⚠️⚠️ OWNED MOBS ARE EXCLUDED, AND THAT IS THE WHOLE EXPLOIT SURFACE. A charmed mob and a
+		// summoned pet are both NPCs, so without this test every pet would full heal each time it
+		// disengaged -- attrition against a pet class would stop meaning anything, and charm would
+		// become a free heal engine on a timer the player controls. Swarm pets are checked
+		// separately because they hang off GetSwarmOwner(), not GetOwnerID().
+		// 📌 It also sweeps up NPC-owned pets, which arguably should reset with their encounter.
+		// Accepted: they are transient, and "anything with an owner is somebody's asset" is a test
+		// that cannot be got wrong later, where "owned by a player, unless..." can.
+		//
+		// ⚠️ Mana is restored too. NPC casters have a real pool (NPC::CalcMaxMana) and the AI cast
+		// gate reads it, so without this a caster could be drained across repeated pulls and then
+		// fought while it had nothing left -- the same banked-progress trick as health. The delve
+		// warden in particular is built around its pool being full when the fight starts.
+		// ⚠️ Endurance is deliberately NOT restored: Mob::SetEndurance is a no-op and
+		// Mob::GetMaxEndurance returns 0 for anything that is not a Client (zone/mob.h), so
+		// RestoreEndurance() on an NPC does nothing at all. Calling it would only read as though
+		// NPC endurance were a thing that mattered here.
+		if (
+			RuleB(AoT, NPCFullHealOnReset) &&
+			GetHP() > 0 &&
+			!HasOwner() &&
+			!CastToNPC()->GetSwarmOwner() &&
+			entity_list.GetNPCByID(GetID())
+		) {
+			if (GetHP() < GetMaxHP()) {
+				LogAggroDetail(
+					"AoTv4: [{}] dropped combat at [{}]/[{}] health -- resetting to full.",
+					GetCleanName(), GetHP(), GetMaxHP()
+				);
+			}
+
+			RestoreHealth();   // SetMaxHP() + SendHPUpdate(), so con bars update for everyone
+			RestoreMana();
+		}
 	} else {
 		parse->EventBotMerc(EVENT_COMBAT, this, nullptr, [&]() { return "0"; });
 	}

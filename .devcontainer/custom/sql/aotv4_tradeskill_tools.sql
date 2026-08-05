@@ -66,7 +66,7 @@ UPDATE spells_new
 -- than something you swap in to craft.
 DROP TEMPORARY TABLE IF EXISTS it;
 CREATE TEMPORARY TABLE it AS SELECT * FROM items WHERE id = 1001;
-UPDATE it SET nodrop=1, norent=1, races=65535, classes=65535, reclevel=0, reqlevel=0;
+UPDATE it SET nodrop=0, norent=1, races=65535, classes=65535, reclevel=0, reqlevel=0;
 
 UPDATE it SET id=147930, Name="Angler's Brim";            INSERT INTO items SELECT * FROM it;
 UPDATE it SET id=147931, Name="Venomer's Wrap";           INSERT INTO items SELECT * FROM it;
@@ -167,3 +167,11 @@ UNION ALL SELECT 'all point at per-skill ach, not aggregate (24)', COUNT(*)
 -- TOOL, so the +20 and +30 could never be worn together -- which destroys the whole point of them
 -- stacking to +50. Inventory clicky is not a shortcut here, it is what makes the design work.
 -- ⚠️ All 24 items are classes=65535 races=65535 reqlevel=0 deity=0: every class, every race.
+
+-- ⚠️⚠️ nodrop = 0 MEANS "NO DROP". The flag is INVERTED: nodrop=0 is No Drop, nodrop=1 is tradeable
+-- (zone/client_packet.cpp:10755 "No Drop items have no vendor value" tests NoDrop == 0). These shipped
+-- as nodrop=1 for a day, which made an earned tool tradeable to somebody who had not earned it.
+-- ⚠️ norent = 1 is correct as-is and is the OTHER polarity again: 1 = permanent, 0 = temporary.
+-- ⚠️ death_loss.M.is_kept spares 147930-147953 from the roguelite wipe. Tradeskill skill is not reset
+-- by death, and the achievements grant these with claim_once=1, so without that rule one death would
+-- destroy them permanently with no way to re-earn them.

@@ -1006,11 +1006,48 @@ bool Client::RangedAttack(Mob* other, bool CanDoubleAttack) {
 	LogCombat("Calculated bow range to be [{}]", range);
 	range *= range;
 
+	// ⚠️⚠️ AoTv4: A BOW'S MINIMUM RANGE IS MELEE RANGE, WHICH MEANS THERE IS EFFECTIVELY NO MINIMUM.
+	// Stock refuses the shot inside Combat:MinRangedAttackDist (25 units), so an archer had to break
+	// off and back out of melee to use their own weapon. Here every class can be handed Archery
+	// (section 4), so "back up 25 units first" is a tax on a whole weapon type rather than a class
+	// identity, and this server's fights are not built around kiting.
+	//
+	// ⚠️⚠️ IT IS WRITTEN AS "NO FLOOR", NOT AS A SMALLER FLOOR, AND THAT IS THE POINT. Melee range is
+	// the CLOSEST you can stand to something you are fighting, so a minimum of "melee range" is
+	// satisfied at every distance you could ever be firing from -- the floor cannot bite. Expressing
+	// it literally via CombatRange() would read as more faithful and would be WORSE: melee range for
+	// a normal size 6-8 mob works out around 16 units (aggro.cpp: size_mod 8 -> 8*8*4 = 256), against
+	// a stock minimum of 25, so "allow inside melee range, else keep the stock floor" leaves a DEAD
+	// DOUGHNUT between the two -- you could shoot at 10 units and at 30, but not at 20. Do not
+	// "improve" this into that hybrid; a rule that turns itself back on in a band nobody can see is
+	// far more confusing than no rule.
+	//
+	// ⚠️⚠️ ONE CHOKE POINT COVERS BOTH PLAYER BOW PATHS. Client::RangedAttack is reached from the
+	// server-driven auto-fire loop (client_process.cpp:364) AND from the manual archery combat
+	// ability (Client::OPCombatAbility, :453), so one edit serves both -- the same reasoning that put
+	// the endurance cost in DoSpecialAttackDamage (section 22).
+	//
+	// ⚠️ SCOPED TO PLAYER BOWS ON PURPOSE. Combat:MinRangedAttackDist itself is left alone, so
+	// NPC::RangedAttack (:1453), the bot paths and Client::ThrowingAttack (:1634) all keep the stock
+	// floor. Changing the rule's value instead of adding this one would have silently let every enemy
+	// archer NPC shoot point blank too.
+	// 📌 Throwing is deliberately NOT included -- it is a separate function with its own copy of the
+	// check, and it was not asked for. It is a two line change if it is ever wanted.
+	//
+	// ⚠️ AUTO-FIRE IS SERVER DRIVEN, WHICH IS WHY A SERVER EDIT IS ENOUGH FOR IT: the client sends
+	// OP_AutoFire once as a toggle and the server then fires on its own ranged_timer, so this check
+	// is the authoritative gate for sustained archery, whatever the stock comment below says about
+	// the client catching it first.
+	const bool aotv4_bow_has_no_minimum = RuleB(AoT, BowMinRangeIsMeleeRange);
+
 	if (float dist = DistanceSquared(m_Position, other->GetPosition()); dist > range) {
 		LogCombat("Ranged attack out of range client should catch this. ([{}] > [{}]).\n", dist, range);
 		MessageString(Chat::Red,TARGET_OUT_OF_RANGE);//Client enforces range and sends the message, this is a backup just incase.
 		return false;
-	} else if (dist < (RuleI(Combat, MinRangedAttackDist)*RuleI(Combat, MinRangedAttackDist))){
+	} else if (
+		!aotv4_bow_has_no_minimum &&
+		dist < (RuleI(Combat, MinRangedAttackDist)*RuleI(Combat, MinRangedAttackDist))
+	) {
 		MessageString(Chat::Yellow,RANGED_TOO_CLOSE);//Client enforces range and sends the message, this is a backup just incase.
 		return false;
 	}

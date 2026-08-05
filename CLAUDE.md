@@ -1203,6 +1203,27 @@ addresses rebased at runtime. Four detours:
   the stock result but only genuine song skills stay songs: **Brass 12, Singing 41, Stringed 49, Wind 54,
   Percussion 70** (SPELL::Skill is a BYTE @ **+0x270**; per-class level array @ +0x246, Bard @ +0x24e).
 
+### ⚠️⚠️ A NON-BARD SINGING A REAL BARD SONG — the song machinery is class-gated (fixed 2026-08-05)
+`Client::CastedSpellFinished` gates the entire bard-song block on **`GetClass() == Class::Bard`**
+(`zone/spells.cpp:1471`). Correct on live, where only a Bard can hold a song — but the reward pool
+hands genuine songs to all sixteen classes here, and a non-Bard fell into the **else** branch:
+- **NO PULSE.** `bardsong` / `bardsong_timer` were never set, so the song was cast **once**. Bard
+  songs carry a deliberately tiny `buff_duration` (a few ticks) *precisely because* a Bard re-pulses
+  them every 6 seconds — so it faded almost immediately and never refreshed. Reported from play as
+  *"bard songs are not being consistently sung by non bards"*.
+- **MOVEMENT INTERRUPTED IT**, because the else branch is the channel / regain-concentration check,
+  while an actual Bard may move freely while casting anything.
+- Fixed by keying the block on the **SPELL** rather than the caster: `GetClass() == Class::Bard ||
+  IsBardSong(spell_id)`. The pulse tick itself (`client_process.cpp:221`) was never class-gated — it
+  only wants `bardsong != 0` — so it starts working as soon as that is set.
+- ⚠️ **Do NOT widen this to "has a Bard level".** `IsBardSong` is already SKILL-gated (see the note
+  above: Singing/Percussion/Stringed/Wind/Brass), which is what keeps the repurposed reward spells
+  (skill 98) behaving as normal spells. Widening it turns every reward spell into a song.
+- 📌 **`GetInstrumentMod` is STILL Bard-only** (`client_mods.cpp:1464` returns a flat 10 for anyone
+  else), so a non-Bard sings at baseline power with no instrument multiplier — even holding an
+  instrument and with the skill capped, both of which this server grants to everyone. That is a
+  separate *power* question from the *consistency* bug fixed here, and was left alone deliberately.
+
 **(b) Server mana.** `zone/client_mods.cpp CalcMaxMana`: the pure-melee else-branch = `GetLevel() * 40`.
 Keep this constant in step with the dll's `AOTV4_MELEE_MANA_PER_LEVEL` so the client gauge max == the server
 mana ceiling. (Server + client use different stat formulas; a shared `level*constant` keeps them in lockstep.)
@@ -2183,17 +2204,20 @@ It used to multiply the boss's own curve hp at `eff + BOSS_LVL_BONUS`, so the ra
 saw was `curve(eff+2)/curve(eff) × mult` — a number that drifts with the curve's local steepness and
 **falls as the rung rises**: ~19x at rung 1, ~6.5x at rung 10, ~5.6x at rung 30. Raising the constant
 could never fix that; it just slides the crooked curve up. The warden now **measures** an ordinary mob
-(`scale.regular_hp`) and multiplies that, so the ratio is `BOSS_HP_MULT` (**10.0**) at every rung and
+(`scale.regular_hp`) and multiplies that, so the ratio is `BOSS_HP_MULT` (**7.5**, was 10.0) at every rung and
 `BOSS_LVL_BONUS` is left to do what it should — damage, accuracy and AC.
 - ⚠️ `scale.regular_hp` **scales the npc as a side effect** and leaves it at the measured level; the
   caller must re-scale immediately after. Same measure-by-scaling trick as `elite_ratio`.
 - ⚠️ It deliberately **excludes the elite ratio**: "regular mob" means trash. An authored elite is up
-  to `ELITE_CAP` (4x) tougher, so the warden is only ~2.5x one of *those* — sizing the boss off
+  to `ELITE_CAP` (4x) tougher, so the warden is only ~1.9x one of *those* — sizing the boss off
   whatever happened to be standing nearby is exactly what makes the number meaningless.
 - ⚠️ The fine-trim factor is **shared** between `M.apply` and `regular_hp` (`fine_factor`) — if those
   two disagreed the boss would be a multiple of a mob that does not exist.
 - ⚠️ Rungs 1-2 remain **floor-governed** (`blvl × BOSS_HP_FLOOR_PER_LEVEL`), so the ratio there is
-  higher than 10x. That is the floor doing its job: 10x of an 11 hp mob is not a boss.
+  higher than the multiplier. That is the floor doing its job: 7.5x of an 11 hp mob is not a boss.
+  📌 Retuned 10.0 → 7.5 on 2026-08-05 — 10x played too long once the ratio was genuinely being
+  delivered at every rung. Because it multiplies a MEASURED regular mob rather than the boss's own
+  curve, retuning is just this one number and needs no per-rung re-check.
 
 #### ⚠️⚠️ Rewards must never be computed from gear at the END of a run
 The ledger records **the effective level of every mob actually killed, at the moment it died**
@@ -2635,6 +2659,19 @@ those lines and 2/4/8 on everything else — without that a "2 hp" T1 is a dead 
 - ⚠️ The DELETE clears the whole reserved band (147600-148199), not just the current rows — an
   earlier layout ran to 148007 and would otherwise strand its tail as orphans.
 - ⚠️ **`items` is shared memory**: world down → `./shared_memory` → restart.
+
+### ⚠️⚠️ The crucible REFUSES an augmented item — it used to eat the augment (fixed 2026-08-04)
+The upgrade is `DeleteItemInInventory` + `SummonItem`: the four inputs are **destroyed** and a fresh
+item handed back, so anything socketed into them was destroyed with them, **silently**. Reported from
+play: *"the aug that was in one of the items was lost"*.
+- ⚠️ **It cannot be fixed by carrying the augments across instead.** The crucible produces a
+  *different item id* with its own socket layout — a Mythic has three sockets, its base has one — so
+  there is no guaranteed home for what was in the old item. Refusing is the only answer that cannot
+  destroy something.
+- ⚠️ The check is **its own pass before the grouping loop**, so the refusal happens before a single
+  `DeleteItemInInventory` runs. Detecting it mid-loop would already have consumed an earlier group.
+- ⚠️ It refuses the **whole** combine, not just the offending group — a partial success plus a warning
+  is how you get someone re-clicking and losing the rest.
 
 ### The Refining Crucible does two different jobs — `AoTv4RefineCombine`
 Item **2000060**, gated by item id (not bagtype). Four IDENTICAL gear items become 1 of the next gear
@@ -3153,6 +3190,19 @@ tradeskill at all through any stock path.**
   what makes the design work.
 - ⚠️ All 24 items are `classes=65535 races=65535 reqlevel=0 reclevel=0 deity=0` — every class, every
   race, no level gate. The gate is the achievement, nothing on the item.
+- ⚠️⚠️ **THEY SURVIVE THE ROGUELITE DEATH — `death_loss.M.is_kept` spares 147930-147953.** Without it
+  the wipe destroys them like any other carried gear, **and the achievements grant them with
+  `claim_once = 1`, so they would never be re-granted**: one death would cost the tool and the mask
+  permanently, with no way back short of a GM. The justification is the same one that protects
+  evolving items — tradeskill skill is explicitly the one thing death does **not** reset
+  (`max_skills_for_level` skips tradeskills), so destroying the reward for it is incoherent.
+  ⚠️ It is an id **band**, not a property test, and it is mirrored from `AOTV4_TS_TOOL_BASE` in
+  `zone/tradeskills.cpp` — widening the reserved range there without widening it in `death_loss.lua`
+  silently makes the new items destructible.
+- ⚠️⚠️ **`nodrop = 0` MEANS "NO DROP" — THE FLAG IS INVERTED** (`client_packet.cpp:10755`: *"No Drop
+  items have no vendor value"* tests `NoDrop == 0`). These shipped as `nodrop = 1` for a day, which
+  made an **earned** tool tradeable to somebody who had not earned it. `norent = 1` is the opposite
+  polarity again and is correct: 1 = permanent, 0 = deleted on logout.
 - ⚠️⚠️ **THE ILLUSIONS ARE AT 44400, NOT 436xx.** The obvious-looking 43600 sits **inside the
   spell-rank band 43576-44327** and would have overwritten twelve rank rows. Check the §20 band map
   before reserving anything in 43xxx/44xxx; 44400 is clear and still under RoF2's 45000 ceiling.
@@ -3250,3 +3300,271 @@ why the short sword survived two class changes.
   player sees. `M.finish` is also where the stat rebase and the old class's combat-skill clear live —
   all three are "things that do not follow a class change on their own".
 - ⚠️ Primary is slot **13**, and `GetItemIDAt` returns **INVALID_ID (-1)** for an empty slot, not 0.
+
+## 34. ⚠️⚠️ "I'm stuck at 0 hp" — TWO separate bugs, neither one what it looked like — 2026-08-05
+
+Three reports over one evening turned out to be two distinct defects, and **both presented as a
+client-side HP problem while the server believed everything was fine**:
+
+> *"took off my charm and it knocked me down like I was bleeding out"*
+> *"it didn't refill at all"*
+> *"I'm sitting here at 0 hp / I can't zone"*
+> *"knocked unconscious … bleeding to death"*
+
+⚠️ **The charm was a red herring in both.** Toggling an item forces a bonus recalc, which is simply
+the thing that made an already-broken HP state visible. Chasing the charm wastes the session.
+
+### (a) A REFORGE saves the OLD class's hit points — fixed in `global_player.event_connect`
+`SetBaseClass` writes **`m_pp.class_` and nothing else**, so `GetClass()` still returns the **old**
+class while `aotv4_reforge.M.finish` runs. `AoTv4ApplyCreationStats` → `CalcBonuses` → `CalcMaxHP`
+therefore computes and clamps against the **old** class's maximum, and that value is saved. A Bard at
+**36** who becomes a Magician is saved at 36 against a new maximum of **30**, relogs with `cur > max`,
+and the client tracks HP down from an impossible number — reporting *"knocked unconscious"* and
+*"bleeding to death"* on its own while the server sees nothing wrong.
+- ⚠️⚠️ **The clamp MUST live in `event_connect`, not in `M.finish`.** Only after the forced relog is
+  the new class live, so that is the first moment `GetMaxHP()` means the right thing. Clamping inside
+  `M.finish` clamps to the old maximum again and fixes nothing.
+- ⚠️ It only ever **lowers** — a character legitimately below maximum regens normally.
+- ⚠️ HP, mana **and** endurance all need it; all three are class-derived.
+- 📌 The tell is in the DATA, not the code: `character_data.cur_hp` **greater than** the new class's
+  maximum. Check that first on any "impossible HP" report.
+
+### (b) A death that respawns you in the zone you died in leaves you half-dead — `zone/attack.cpp`
+`Client::Death` does **`SetID(0)`** and **`dead = true`**. Both are undone ONLY by `ClearHover()` — the
+respawn-**window** path — or by a real zone change re-creating the Client. `Character:RespawnFromHover`
+is **false** here, so the window path never runs, and `GoToDeath()` is `MovePC` to your bind: when
+that bind is the zone you are standing in, it is an **in-zone move, not a zone change**.
+Result: alive at full health server-side, dead client-side — entity id 0, `dead` stuck true, and the
+whole tic block in `Client::Process` (`if (tic_timer.Check() && !dead)`) skipped, so **no CalcMaxHP,
+no DoHPRegen, no rest state**, and zoning blocked.
+- ⚠️⚠️ **THIS SERVER MAKES IT THE COMMON CASE.** It is a roguelite where everyone binds to the
+  Resplendent hub and dies constantly, so any death *in* the hub hits it every time.
+- Fixed by detecting the same-zone respawn **before** `GoToDeath()` (afterwards the comparison no
+  longer means "did we change zone") and calling `ClearHover()` + `SendHPUpdate()` after — doing by
+  hand exactly what a zone change would have done.
+
+### 📌 How to tell these apart quickly, and the trap that cost the most time
+**`#showstats` reports the SERVER's view.** If it says full health while the bar says 0 percent, the
+server is fine and the problem is state the client was never told to leave — (a) or (b), not damage.
+- ⚠️⚠️ **A GUARD THAT NEVER FIRES IS EVIDENCE, NOT A FAILED FIX.** A defensive floor was added to
+  `Client::CalcMaxHP` (never let `max_hp` go non-positive; repair a negative `current_hp`) and it
+  logged **nothing** through every reproduction. That silence was the clue: under (b) `CalcMaxHP` is
+  not being called at all, and under (a) the server value was never negative. The guard is kept as
+  cheap insurance, but neither bug was what it was built for.
+- ⚠️ `QuestErrors` ships with **`log_to_file = 0`** (console + gmsay only), so a Lua error in a death
+  or reforge path leaves **nothing in the zone log**. It is now set to file. Check that before
+  concluding "no errors were logged".
+
+## 35. ⚠️⚠️ RE-APPLY ORDER AFTER A NATIVE ITEM DUMP — 2026-08-05
+
+A native-item rework (`aot_0.1.2.sql` + `aot_rules_0.1.2.sql` + `aot_items_0.1.3.sql`) arrives as
+HeidiSQL dumps full of `REPLACE INTO items`. **REPLACE deletes the row and re-inserts it**, so every
+per-row customisation on a replaced id is silently lost. Three things must be redone, IN THIS ORDER:
+
+1. **`custom/sql/aotv4_gear_tiers.sql`** — tiers are GENERATED FROM the base item's stats, so a base
+   rework leaves every Hallowed/Mythic row derived from numbers that no longer exist.
+   ⚠️⚠️ **It fails silently and looks fine.** After the 2026-08-05 rework, of 15,341 Mythic/base pairs
+   **3,166 had a Mythic with LESS AC than its own base** and 3,912 more had a wrong ratio — roughly
+   47 percent — while the row counts stayed a healthy 27,146. Counting rows proves nothing; check the
+   RATIO (Mythic AC should be exactly 2x base).
+2. **`custom/sql/aotv4_craft_sockets.sql`** — sockets are a column on the item row, so all 8,889
+   craftable wearables come back with the dump's own augslot values. Must run AFTER the tier script,
+   because that regenerates the tier rows and would drop their 2/3 sockets again.
+3. **`./shared_memory`** with world DOWN, then restart. `items` is shared memory.
+
+### ⚠️⚠️ AND DIFF `rule_values` AGAINST A PRE-MERGE BACKUP
+The 2026-08-05 dump changed **64 rules**, none of them announced. Two were actively dangerous and
+neither was visible without the diff:
+- **`Expansion:CurrentExpansion` 0 -> 9** and **`UseCurrentExpansionAAOnly` false -> true**. The first
+  opens Kunark..DoN wholesale, which defeats region locking and contradicts the era system (section
+  12) that treats `aotv4_era` as the source of truth; the second is the flag section 6 says must stay
+  **false** or AA loading breaks.
+- **`AA:ExpPerPoint` 200,000 -> 23,976,503.** That constant is **duplicated in Lua**
+  (`global_player.lua`, `AA_EXP_PER_POINT`) and the two MUST match -- the roguelite death payout is
+  computed from the hardcoded copy, so they had silently drifted ~120x apart.
+- Also changed and left alone pending a decision: the four `AoT:Mit*` melee-mitigation values
+  (section 14), which the dump inherited from whatever snapshot it was built on.
+📌 `rule_values` has **multiple rows per rule** (different `ruleset_id`), so scope updates by
+`rule_name` alone or you fix one ruleset and leave another behind.
+
+### 📌 Other things learned in that merge
+- **`aot_items_0.1.3.sql` writes to `items_clone`, NOT `items`** — a staging table. Nothing merges it;
+  a blind `REPLACE INTO items SELECT * FROM items_clone` would flatten tiers and sockets again.
+- ⚠️ **The AoTv4 custom item band (147500-147953) is NOT in the dumps**, so sigils, delve augments,
+  currencies, tools and masks survive untouched. Verify with a count (expect 352) rather than assuming.
+- ⚠️ **World DELETES `login.my.cnf` after its pre-migration backup.** A second migration run then
+  fails auth and **world exits** (section 15's trap). Recreate it read-only, or use explicit
+  `-u/-p` credentials for manual dumps.
+- 📌 `aotv4_client_install/spells_us.txt` is an **accidental pre-change snapshot of `spells_new`** and
+  was the only way to recover six spells' original durations. Duration columns are fields **17
+  (formula) and 18 (duration)**; find them by matching an untouched spell against the DB.
+
+### Hallowed damage is 1.5x, Mythic 2x — and they are NOT chained
+Both tiers are cloned from the **BASE** item, never one from the other. When both blocks read
+`damage*2` the two tiers came out with **identical weapon damage** and Mythic looked like it gave no
+upgrade at all. It shows only on weapons, which is why it survived so long -- every other stat does
+step up between tiers.
+⚠️ Keep Hallowed at `FLOOR(damage * 1.5)` and Mythic at `damage*2`. "Making them consistent" is the bug.
+
+## 36. Buffs last a real length of time — migrations v17 + v19 — 2026-08-05
+
+Beneficial spells now run **formula 11** (`30 * (level + 3)` ticks): **12 min at level 1, 39 at 10, 99
+at the level cap**. Live EQ's short durations assume you re-cast constantly; this is a roguelite where
+everybody is sent back to level 1 over and over, so re-buffing was most of what a run consisted of.
+v17 did the **bard songs** (205 converted), v19 the **rest of the player-castable buff space**.
+
+- ⚠️⚠️ **BOTH COLUMNS MUST MOVE.** `CalcBuffDuration_formula` ends with
+  `if (duration && duration < temp) temp = duration;` (`zone/spells.cpp:3116`), so **`buffduration`
+  CAPS whatever the formula produces**. Changing `buffdurationformula` alone caps most spells at their
+  old short value while the handful carrying `buffduration 0` get the full 99 minutes — a
+  half-applied result that reads as "the change sort of worked". `buffduration = 0` removes the cap.
+- ⚠️ **Formula 11, not 3.** Formula 3 is `30 * level`, which collapses to **three minutes at level 1**
+  — and level 1 is where every character spends the start of every run.
+- ⚠️ **Pulsing is unaffected.** `IsPulsingBardSong` keys off `buffduration == 0xFFFF`, not off the
+  formula and not off 0, so songs still re-apply to group members in range every 6 seconds (§14).
+- ⚠️ **The 16 spell-rank rows are included and MUST be** — otherwise ranking a song up (§29) would
+  *shorten* it from 99 minutes back to 12 seconds.
+- ⚠️ **`spells_new` is SHARED MEMORY** — world down → `./shared_memory` → restart, not just a reboot.
+
+### The exclusions are the whole design — every one is load bearing
+- ⚠️⚠️ **NOT PLAYER-CASTABLE (~9,287 spells, the big one).** NPC self-buffs, item clicks and procs.
+  Make those permanent and **every monster keeps its buffs forever** and proc buffs never fall off.
+  The `LEAST(classes1..16) BETWEEN 1 AND 100` test is what confines this to spells a player can cast.
+- ⚠️ **DISCIPLINES** — `mana = 0 AND an endurance cost`, mirroring `IsDiscipline` (`common/spdat.cpp`)
+  exactly as the reward pool's blacklist does (§20). A permanent Trueshot is not a buff.
+- ⚠️ **INVULNERABILITY / TRUE HoT / DEATH SAVES** — SPA 40, 100, 101, 319, 150, 232. A 99-minute
+  invulnerability is precisely the failure this exclusion exists for. Six songs are held back by it.
+- ⚠️ **AA-GRANTED** (anything in `aa_ranks.spell`) and **the AoTv4 band 43000-44999** — Shield Wall
+  buffs, the Thirst line and the class auras have **code-driven lifecycles** (explicit fade calls,
+  `numhits` charges, aura membership), so a rewritten duration fights the code that owns them.
+- ⚠️⚠️ **SPA 0 IS KEPT UP TO A BASE OF 30, DELIBERATELY.** SPA 0 on a duration spell repeats every
+  tick, so it *looks* like a heal-over-time — but **magnitude is what separates a regen from a heal,
+  not mechanism**. Hymn of Restoration is base **1** (one hit point a tick) and Cantata of Soothing is
+  4; those are regens and they belong in. Above 30 it is a heal engine and is excluded.
+  📌 Filtering on SPA 100 alone misses every one of these — the classic regens do not use it.
+
+## 37. Combat no longer banks progress — v18 + `AoT:NPCFullHealOnReset` — 2026-08-05
+
+Two changes with one theme: **you cannot store progress against a monster between attempts.**
+
+### Enrage is off (migration v18)
+404 `npc_types` carry the Enrage special ability; while enraged a mob **ripostes every frontal melee
+attack** (`zone/attack.cpp:492`), which turns a fight into "stop attacking and turn away".
+- ⚠️⚠️ **THE RULE NAME READS BACKWARDS: `NPC:LiveLikeEnrage = true` is what DISABLES it.**
+  `Mob::StartEnrage` returns early when the rule is set *unless* the mob is a player-controlled pet or
+  swarm pet — so "live like" means "only player pets enrage, as on live". Reading it as "enable
+  enrage" and setting it false does the exact opposite.
+- ⚠️ Done as a **rule**, not by stripping the ability off 404 rows: one reversible value instead of a
+  destructive edit that loses which mobs were meant to have it. `NPC:StartEnrageValue` stays meaningful.
+- ⚠️ **Rules are read at ZONE BOOT** — a zone restart or `#reloadrules`, not just a world restart.
+
+### An NPC that drops combat resets to full health and mana (`zone/mob_ai.cpp`)
+Stock leaves a disengaged mob on whatever health it was left at, so damage **banks** across attempts:
+chip it, run, come back, chip it again — and the next player finds a softened mob for full loot.
+Rule **`AoT:NPCFullHealOnReset`** (default **true**). **Needs a zone rebuild.**
+- ⚠️⚠️ **`Mob::AI_Event_NoLongerEngaged` IS THE ONLY PLACE IT GOES.** All three ways a hate list can
+  empty funnel through it — `Mob::RemoveFromHateList`, `Mob::WipeHateList` and the 10-minute
+  stale-entry sweep in `Mob::AI_Process` — so one edit covers fleeing, feign death, the target zoning
+  out, the target dying and hate simply going stale. Per-call-site copies would drift.
+- ⚠️⚠️ **`GetHP() > 0` IS LOAD BEARING — WITHOUT IT THIS RESURRECTS THE MOB YOU JUST KILLED.**
+  `NPC::Death` does `SetHP(0)` (`zone/attack.cpp:2754`) and only **later** calls `WipeHateList()`
+  (`:3350`), which lands here with the hate list still populated — so this genuinely runs on a
+  corpse-to-be, and an unguarded `RestoreHealth()` puts it back to full before `p_depop` is set. The
+  combat-event block directly above guards the same way; that is precedent, not coincidence.
+- ⚠️⚠️ **OWNED MOBS ARE EXCLUDED, AND THAT IS THE WHOLE EXPLOIT SURFACE.** A charmed mob and a
+  summoned pet are both NPCs — without the test every pet would full heal each time it disengaged,
+  attrition against a pet class would stop meaning anything, and **charm would become a free heal
+  engine on a timer the player controls**. Swarm pets need a separate check (`GetSwarmOwner()`, not
+  `GetOwnerID()`).
+- ⚠️ **Mana is restored too** — NPC casters have a real pool and the AI cast gate reads it, so without
+  it a caster could be drained across repeated pulls. The delve warden (§24) is built around a full
+  pool at fight start. **Endurance is deliberately NOT restored**: `Mob::SetEndurance` is a no-op and
+  `Mob::GetMaxEndurance` returns 0 for anything that is not a `Client`, so the call would do nothing
+  and only imply NPC endurance mattered here.
+- ⚠️ **`GetSwarmOwner()` is on `NPC`, not `Mob`** — it needs the `CastToNPC()` the surrounding block
+  already uses. `HasOwner()` *is* on `Mob`. Writing the pair symmetrically does not compile.
+- 📌 **`RestoreHealth()` does NOT recalculate max HP, despite calling `SetMaxHP()`.** That is
+  `current_hp = max_hp` (`zone/mob.h:567`) and **only `Client` overrides it** — so a delve mob's
+  scaled `max_hp` (§24, applied via `ModifyNPCStat`) survives a reset intact. The name reads like a
+  recalculation and is the obvious thing to fear here; it is not one.
+- ⚠️ **`GetSwarmOwner()` is on `NPC`, not `Mob`** — it needs the `CastToNPC()` the surrounding block
+  already uses. `HasOwner()` *is* on `Mob`. Writing the pair symmetrically does not compile.
+- 📌 **`RestoreHealth()` does NOT recalculate max HP, despite calling `SetMaxHP()`.** That is
+  `current_hp = max_hp` (`zone/mob.h:567`) and **only `Client` overrides it** — so a delve mob's
+  scaled `max_hp` (§24, applied via `ModifyNPCStat`) survives a reset intact. The name reads like a
+  recalculation and is the obvious thing to fear here; it is not one.
+- 📌 Feign death now yields a **full-health** mob on stand-up rather than a softened one. That is the
+  intended direction, not a regression.
+
+## 38. ⚠️⚠️ NUMBERS INHERITED FROM LIVE EQ THAT A LEVEL 30 CAP BREAKS — 2026-08-05
+
+Two unrelated-looking reports, one root cause: **stock values tuned for a level 70+ / 10,000 hp game
+mean something entirely different at our cap**, and nothing warns you.
+
+### A percentage-based effect is silently worth almost nothing (migration v15)
+Reported as *"Bulwark Within increased my mana and endurance, but didn't increase HP"*. It was not
+broken — it is **stock**, and the cap is what breaks it. The AA mixes effect KINDS:
+`SPA 214 MaxHPChange` is a **percentage** (`CalcMaxHP` divides by 10000) while `SPA 97 ManaPool` and
+`SPA 190 EndurancePool` beside it are **flat**. base1 300 = 3 percent: ~300 hp on live, **~45 at our
+~1,500 hp**, which reads as nothing next to the flat +200 mana.
+- ⚠️⚠️ **THIS IS A CLASS OF PROBLEM, NOT ONE AA.** Any percentage-based effect is devalued by a low
+  cap while flat ones keep full value. **`SPA 69 TotalHP` is the flat counterpart**
+  (`bonuses.cpp:786` → `FlatMaxHPChange`), so swapping the effect id while keeping base1 turns
+  2 / 1.5 / 3 percent into a flat **+200 / +150 / +300** — proportional to what they were.
+- ⚠️ Scoped to the **three enabled** AAs (rank ids 279, 423, 1367). **17 rows use SPA 214 in total**;
+  the other 14 sit on disabled AAs and will need the same treatment if they are ever switched on.
+  Converting all 17 would silently rebalance AAs nobody can currently train.
+
+### A zone's experience multiplier is stock data, not something we set (migration v16)
+Reported as *"blues in delves were giving 4-5% exp, while yellows in LOIO were giving 2%"*. Nothing in
+the delve did this: the six delve zones are **Dragons of Norrath**, which ships the highest
+`zone_exp_multiplier` in the game (**2.90-3.10**, because on live it is endgame), against Kunark's
+**0.80** — a ~3.7x gap before con colour. Normalised to **1.00**.
+- ⚠️ `zone_exp_multiplier` multiplies **normal xp** (`zone/exp.cpp:130`), **AA xp** (`:294`) **and
+  group xp** (`:443`) — it is not just a kill-xp knob.
+- ⚠️⚠️ **EVERY VERSION ROW, NOT JUST VERSION 0.** Zone config loads per `(zone, version)` and the
+  delve **never uses version 0** (§24) — the mission versions are what players stand in, and they
+  carried the *higher* value (thenest v0 is 3.05, its other 15 versions 3.10). Updating version 0
+  alone would have changed nothing a player ever sees. 67 rows across the six zones.
+- 📌 The delve's reward is the score sheet, the sigil, augments and coin — **not** raw experience. Its
+  creatures are already scaled to the player, so a delve kill should be worth an equivalent
+  open-world kill.
+
+## 39. A bow's minimum range is melee range — `AoT:BowMinRangeIsMeleeRange` — 2026-08-05
+
+Stock refuses a bow shot inside `Combat:MinRangedAttackDist` (**25 units**), so an archer had to break
+off and back out of melee to use their own weapon. Rule **`AoT:BowMinRangeIsMeleeRange`** (default
+**true**) makes the floor melee range instead. **Needs a zone rebuild** (`ruletypes.h` is in
+`common/`, so it is a wide one).
+Every class here can be handed Archery (§4), so "back up 25 units first" was a tax on a whole weapon
+type rather than a class identity, and these fights are not built around kiting.
+
+- ⚠️⚠️ **IT IS IMPLEMENTED AS "NO FLOOR", NOT AS A SMALLER FLOOR, AND THAT IS CORRECT.** Melee range
+  is the **closest you can stand** to something you are fighting, so a minimum *of* melee range is
+  satisfied at every distance you could ever be firing from — the floor cannot bite. The rule name
+  describes the intent; the code is a skip.
+- ⚠️⚠️ **DO NOT "IMPROVE" IT INTO A `CombatRange()` TEST.** That reads as more faithful and is
+  strictly worse. Melee range for a normal size 6-8 mob is about **16 units** (`aggro.cpp:1124-1147`,
+  `size_mod 8 → 8*8*4 = 256`) against a stock minimum of **25**, so "allow inside melee range, else
+  keep the stock floor" leaves a **dead doughnut** between the two: you could shoot at 10 units and
+  at 30, but not at 20. A rule that silently switches back on in a band nobody can see is far more
+  confusing than no rule.
+- ⚠️⚠️ **ONE CHOKE POINT COVERS BOTH PLAYER BOW PATHS.** `Client::RangedAttack`
+  (`zone/special_attacks.cpp:905`) is reached from the server-driven **auto-fire loop**
+  (`client_process.cpp:364`) **and** from the **manual archery combat ability**
+  (`Client::OPCombatAbility`, `special_attacks.cpp:453`). Same reasoning as §22's endurance cost.
+- ⚠️⚠️ **`Combat:MinRangedAttackDist` ITSELF IS LEFT ALONE — changing that rule instead would have
+  silently let every enemy archer NPC shoot point blank too.** It still governs `NPC::RangedAttack`
+  (`:1453`), the bot paths (`bot.cpp:3124`, `:7016`) and `Client::ThrowingAttack` (`:1634`).
+- 📌 **Throwing is deliberately NOT included** — a separate function with its own copy of the check.
+  Two lines if it is ever wanted.
+- ⚠️ **Auto-fire is SERVER driven, which is why a server edit is enough for it.** The client sends
+  `OP_AutoFire` **once, as a toggle** (`client_packet.cpp:3578`) and the server then fires on its own
+  `ranged_timer` — so this check is the authoritative gate for sustained archery, despite the stock
+  comment claiming the client catches it first.
+  📌 **The manual single shot is the uncertain one.** That stock comment says the RoF2 client enforces
+  the minimum and sends `RANGED_TOO_CLOSE` itself, so if the client refuses to *send* the archery
+  combat ability point blank, that path stays blocked until a dll detour lifts it — the three-layer
+  problem of §4 (client display, client send, server execute). Auto-fire is unaffected either way.
+  **Test point blank with auto-fire first**, then the manual shot; a difference between the two is
+  the client, not this rule.

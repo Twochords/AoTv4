@@ -94,7 +94,14 @@ UPDATE tmp_hallowed SET
   hp = FLOOR(hp*2), mana = FLOOR(mana*2), endur = FLOOR(endur*2),
   astr=astr*2, asta=asta*2, aagi=aagi*2, adex=adex*2, awis=awis*2, aint=aint*2, acha=acha*2,
   fr=fr*2, cr=cr*2, mr=mr*2, dr=dr*2, pr=pr*2, svcorruption=svcorruption*2,
-  damage = damage*2,
+  -- ⚠️⚠️ HALLOWED DAMAGE IS 1.5x NATIVE, MYTHIC IS 2x. Both tiers are cloned from the BASE item
+  -- (see the INSERT ... SELECT * FROM items above and in the Mythic block), NOT chained one off the
+  -- other -- so when both blocks said damage*2 the two tiers came out with IDENTICAL damage and
+  -- Mythic looked like it gave no weapon upgrade at all over Hallowed. It is only visible on weapons,
+  -- which is why it survived: every other stat does step up between the tiers.
+  -- ⚠️ Keep this as 1.5 and the Mythic block as 2. "Making them consistent" by setting both to the
+  -- same multiplier is precisely the bug.
+  damage = FLOOR(damage * 1.5),                -- damage: 1.5x native (Mythic is 2x)
   ac = FLOOR(ac * 1.5),                        -- AC: 1.5x native
   bardvalue = FLOOR(bardvalue * 1.5),
   procrate = IF(proceffect > 0, GREATEST(10, procrate * 2), procrate),   -- Hallowed procs 2x native (min 10)
@@ -130,7 +137,7 @@ UPDATE tmp_mythic SET
   hp = FLOOR(hp*2.5), mana = FLOOR(mana*2.5), endur = FLOOR(endur*2.5),
   astr=astr*2, asta=asta*2, aagi=aagi*2, adex=adex*2, awis=awis*2, aint=aint*2, acha=acha*2,
   fr=fr*2, cr=cr*2, mr=mr*2, dr=dr*2, pr=pr*2, svcorruption=svcorruption*2,
-  damage = damage*2,
+  damage = damage*2,                           -- damage: 2x native (Hallowed is 1.5x -- see that block)
   ac = FLOOR(ac * 2),                          -- AC: 2x native
   bardvalue = FLOOR(bardvalue * 2),
   procrate = IF(proceffect > 0, GREATEST(20, procrate * 4), procrate),   -- Mythic procs 4x native = 2x Hallowed (min 20)
