@@ -653,6 +653,16 @@ bool Group::DelMember(Mob* oldmember, bool ignoresender)
 		return false;
 	}
 
+	// ⚠️⚠️ AoTv4: GROUP BUFFS COME OFF WHEN THE GROUP BREAKS UP -- both directions.
+	// A buff cast on a group mate gets the long duration (AoT:SelfBuffDurationTicks), so leaving has
+	// to take those buffs back: the leaver's buffs come off everyone else, and everyone else's come
+	// off the leaver. Without it you could group for one second, blanket the party, disband, and hand
+	// out three-day buffs to strangers.
+	// ⚠️ Done HERE, at the top, while `members[]` is still intact -- the loop below nulls the slot out,
+	// and after that there is no way to tell who just left from whom.
+	// ⚠️ Self-cast buffs are never touched (guarded inside AoTv4FadeBuffsCastBy by name).
+	AoTv4FadeGroupBuffs(oldmember);
+
 	// TODO: fix this shit
 	// okay, so there is code below that tries to handle this. It does not.
 	// So instead of figuring it out now, lets just disband the group so the client doesn't
@@ -912,7 +922,45 @@ uint32 Group::GetTotalGroupDamage(Mob* other) {
 	return total;
 }
 
+// ⚠️⚠️ AoTv4: unwind the long group buffs. `leaver` non-null = one member is going, so take their
+// buffs off everyone else and everyone else's off them. `leaver` null = full disband, so unwind every
+// pairing (at most 6 members, so the O(n^2) is 30 comparisons).
+// ⚠️ Must run while `members[]` is still populated -- both callers do it first, before the arrays are
+// cleared, because afterwards there is no record of who was grouped with whom.
+// ⚠️ Only CLIENTS are considered on both sides: a pet or bot holding a group buff is transient, and
+// their owner leaving already tears them down.
+void Group::AoTv4FadeGroupBuffs(Mob *leaver)
+{
+	if (leaver) {
+		const char *leaver_name = leaver->GetCleanName();
+
+		for (uint32 i = 0; i < MAX_GROUP_MEMBERS; i++) {
+			if (!members[i] || members[i] == leaver || !members[i]->IsClient()) {
+				continue;
+			}
+			members[i]->AoTv4FadeBuffsCastBy(leaver_name);            // mine off them
+			leaver->AoTv4FadeBuffsCastBy(members[i]->GetCleanName()); // theirs off me
+		}
+		return;
+	}
+
+	for (uint32 i = 0; i < MAX_GROUP_MEMBERS; i++) {
+		if (!members[i] || !members[i]->IsClient()) {
+			continue;
+		}
+		for (uint32 j = 0; j < MAX_GROUP_MEMBERS; j++) {
+			if (i == j || !members[j] || !members[j]->IsClient()) {
+				continue;
+			}
+			members[i]->AoTv4FadeBuffsCastBy(members[j]->GetCleanName());
+		}
+	}
+}
+
 void Group::DisbandGroup(bool joinraid) {
+	// AoTv4: take the long group buffs back before the member list is torn down (see above).
+	AoTv4FadeGroupBuffs(nullptr);
+
 	if (RuleB(Bots, Enabled)) {
 		Bot::UpdateGroupCastingRoles(this, true);
 	}

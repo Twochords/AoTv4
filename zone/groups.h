@@ -69,6 +69,10 @@ public:
 	bool	DelMemberOOZ(const char *Name);
 	bool	DelMember(Mob* oldmember,bool ignoresender = false);
 	void	DisbandGroup(bool joinraid = false);
+	// AoTv4: strip the long group buffs when the group breaks up. Pass the departing member to take
+	// their buffs off everyone and everyone's off them; pass nullptr on a full disband to unwind
+	// every pairing. Self-cast buffs are never touched.
+	void	AoTv4FadeGroupBuffs(Mob *leaver);
 	void	GetMemberList(std::list<Mob*>& member_list, bool clear_list = true);
 	void	GetClientList(std::list<Client*>& client_list, bool clear_list = true);
 	void	GetBotList(std::list<Bot*>& bot_list, bool clear_list = true);

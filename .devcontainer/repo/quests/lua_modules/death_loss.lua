@@ -103,6 +103,17 @@ function M.process(client)
 	local destroyed = 0
 	if ok_rs then destroyed = ranksys.on_death_before_wipe(client) end
 
+	-- ⚠️⚠️ FADE EVERY BUFF. The wipe takes the spellbook, so a buff that outlived it would be one the
+	-- player can no longer cast, re-apply or even identify -- and with buffs now running ~3 days
+	-- (AoT:SelfBuffDurationTicks) they would otherwise ride straight through the death that was
+	-- supposed to reset the run.
+	-- ⚠️ BuffFadeAll, not the engine's own death fade: Client::Death only runs BuffFadeNonPersistDeath,
+	-- which deliberately SPARES any spell flagged persist_death. Those are exactly the ones that were
+	-- observed surviving with their icon intact but their stats gone.
+	-- ⚠️ It runs BEFORE the auras are re-scribed below, so the class aura is re-applied cleanly rather
+	-- than being faded a line later.
+	client:BuffFadeAll()
+
 	client:UnmemSpellAll(false)                              -- clear gems (false = no per-spell spam;
 	client:UnscribeSpellAll(false)                           -- the client refreshes on the death-zone)
 	client:UntrainDiscAll(false)                             -- clear TRAINED disciplines too -- they live in

@@ -3914,63 +3914,6 @@ void Mob::BuffProcess()
 		}
 	}
 
-	// ⚠️⚠️ AoTv4: A PERMANENT BUFF FADES ONCE ITS SPELL LEAVES YOUR SPELL GEMS.
-	// Migration v20 made the player-castable beneficial buff space permanent (formula 50). Permanence
-	// with no cost means you would eventually be wearing every good buff in the game at once, so the
-	// spell gems are the leash: you may hold as many permanent buffs as you have gems, and freeing a
-	// gem for something else is what costs you the buff. Pairs with AoT:PermanentBuffSelfOnly, which
-	// stops a group from handing each other permanent buffs and bypassing this entirely.
-	//
-	// ⚠️⚠️ `HasSpellScribed` IS THE SCOPING TEST AND IT IS LOAD BEARING. 1,103 STOCK spells already
-	// ship formula 50, and they reach players by routes that have nothing to do with gems -- item
-	// clicks, AA, quest and NPC-applied buffs. Without this test every one of those would be stripped
-	// the moment it landed, because it was never in a gem and never could be. Only a spell the player
-	// has actually SCRIBED is something they chose to carry and can choose to memorise.
-	//
-	// ⚠️⚠️ IT DELIBERATELY DOES NOT TEST `buffs[i].casterid`. That is an ENTITY id, and it does not
-	// survive zoning -- after a zone the caster reference is stale, so a "was this self-cast?" test
-	// would silently stop firing and permanent buffs would become un-leashed for anyone who zoned.
-	// The test is unnecessary anyway: AoT:PermanentBuffSelfOnly means a permanent beneficial buff on a
-	// player is self-cast by construction.
-	//
-	// ⚠️ ORDER IS FOR COST, NOT STYLE. This runs on every buff tick for every player, so the cheap
-	// tests come first: the formula check is a struct read, FindMemmedSpellBySpellID walks only the 12
-	// gems, and HasSpellScribed -- which walks up to 720 spellbook slots -- is reached ONLY by a
-	// permanent buff that is already not memorised, i.e. the rare fade case.
-	// ⚠️ Fade-then-recalc-once, mirroring the cleanse block above: CalcBonuses is called at most once
-	// per tick no matter how many buffs drop.
-	if (RuleB(AoT, PermanentBuffNeedsMemmed) && IsClient()) {
-		Client *gem_owner   = CastToClient();
-		int     gem_slots   = GetMaxTotalSlots();
-		bool    gem_recalc  = false;
-
-		for (int i = 0; i < gem_slots; i++) {
-			const uint16 sid = buffs[i].spellid;
-			if (!IsValidSpell(sid)) {
-				continue;
-			}
-			if (spells[sid].buff_duration_formula != DF_Permanent) {
-				continue;   // timed buffs expire on their own; auras (DF_Aura) are range-scoped
-			}
-			if (gem_owner->FindMemmedSpellBySpellID(sid) != -1) {
-				continue;   // still memorised, still yours to keep
-			}
-			if (!gem_owner->HasSpellScribed(sid)) {
-				continue;   // item click / AA / NPC-applied -- never gem-driven, never ours to strip
-			}
-
-			LogSpells(
-				"AoTv4: fading permanent buff [{}] from [{}] -- no longer in a spell gem.",
-				sid, GetCleanName()
-			);
-			BuffFadeBySlot(i, false);
-			gem_recalc = true;
-		}
-
-		if (gem_recalc) {
-			CalcBonuses();
-		}
-	}
 
 	int buff_count = GetMaxTotalSlots();
 

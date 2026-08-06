@@ -104,10 +104,85 @@ local function rung(level, d) local L = {} for k, v in pairs(d) do L[k] = v end 
 local CYCLE = { D.delvea, D.delveb, D.stillmoona, D.stillmoonb, D.thundercrest, D.thenest }
 
 M.MAX_LEVEL = 70
+-- ⚠️⚠️ THE MAP IS STATIC PER RUNG, AND THE TWO FAMILIES ALTERNATE (2026-08-06).
+-- A random draw at entry was tried and reverted the same day: knowing which dungeon a rung is matters
+-- both for planning a run and for knowing what the kill-credit rewards will be, and a map you cannot
+-- see until you are standing in it tells you neither. It also made the window's dungeon column
+-- unfillable and silently cost run history its dungeon name.
+--
+-- ⚠️⚠️ ALTERNATING IS WHAT MAKES IT 50/50, and it has to be done this way rather than by concatenating
+-- the pools. DoN has 6 dungeons and LDoN has 34; a single combined cycle would run through six DoN
+-- rungs and then thirty-four LDoN ones, so the ladder would arrive in two long blocks instead of a
+-- mix. Odd rungs take DoN, even rungs take LDoN, each family cycling independently -- so every rung
+-- is fixed and knowable, and the two halves of the pool appear equally often.
+-- ⚠️ Falls back to whichever family is populated if the other is empty, so LDoN can be removed (or
+-- fail to load) without leaving holes in the ladder.
+--
+-- ⚠️⚠️ THE ORDER OF THESE TABLES IS LOAD BEARING AGAIN. M.LAYERS is indexed 1..70 and the index IS the
+-- unlock high-water mark, so reordering either family silently reassigns what every stored
+-- `delve_cleared_<id>` means -- a character's cleared rungs would point at different dungeons.
+M.ZONES_DON  = CYCLE
+
+-- ⚠️ Loaded with pcall so a missing or broken generated file degrades to "DoN only" rather than
+-- taking the whole delve system -- and with it global_player -- down at require time (section 20).
+local ok_ldon, ldon_pool = pcall(require, "aotv4_dungeon_ldon")
+M.ZONES_LDON = (ok_ldon and type(ldon_pool) == "table") and ldon_pool or {}
+
+-- Every descriptor in one list, for resolving a zone NAME back to its descriptor (history, and the
+-- instance->rung confirmation). A cache, not a source.
+M.ZONES = {}
+for _, d in ipairs(M.ZONES_DON)  do M.ZONES[#M.ZONES + 1] = d end
+for _, d in ipairs(M.ZONES_LDON) do M.ZONES[#M.ZONES + 1] = d end
+
+-- ⚠️ An LDoN descriptor carries a LIST of populated layouts. The rung picks one deterministically so
+-- the map stays static -- the same rung is always the same dungeon AND the same layout.
+local function fix_version(d, lvl)
+    if not d.versions or #d.versions == 0 then return d end
+    local copy = {}
+    for k, v in pairs(d) do copy[k] = v end
+    copy.version = d.versions[((lvl - 1) % #d.versions) + 1]
+    return copy
+end
 
 M.LAYERS = {}
-for lvl = 1, M.MAX_LEVEL do
-    M.LAYERS[lvl] = rung(lvl, CYCLE[((lvl - 1) % #CYCLE) + 1])
+do
+    local don, ldon = M.ZONES_DON, M.ZONES_LDON
+    local i_don, i_ldon = 0, 0
+    for lvl = 1, M.MAX_LEVEL do
+        local use_don = (lvl % 2 == 1)
+        if #don == 0 then use_don = false end
+        if #ldon == 0 then use_don = true end
+
+        local d
+        if use_don then
+            d = don[(i_don % #don) + 1]; i_don = i_don + 1
+        else
+            d = ldon[(i_ldon % #ldon) + 1]; i_ldon = i_ldon + 1
+        end
+        M.LAYERS[lvl] = rung(lvl, fix_version(d, lvl))
+    end
+end
+-- ⚠️⚠️ THE DESCRIPTOR FOR A LIVE RUN. Merges the zone the run rolled with the rung it was entered at.
+-- Every consumer that used to do `M.layer_of(run)` must call this instead -- that lookup now
+-- returns a level-only stub and would silently hand out a nil zone/task/zoneid.
+function M.layer_of(run)
+    if not run then return nil end
+
+    -- ⚠️ The rung's own map is authoritative now that maps are static again -- but only if it still
+    -- MATCHES what the run recorded. A run started before the pool was edited would otherwise be
+    -- handed a different dungeon's task and entry coords halfway through.
+    local L0 = M.LAYERS[run.layer]
+    if L0 and L0.zone == run.zone then return L0 end
+
+    for _, d in ipairs(M.ZONES) do
+        if d.zone == run.zone then
+            local L = rung(run.layer, d)
+            return L
+        end
+    end
+    -- Unknown zone (pool changed under a live run): fall back to the level-only stub so callers that
+    -- only want L.level keep working rather than erroring.
+    return M.layer_of(run)
 end
 
 -- ---------------------------------------------------------------- the evolving charm
@@ -664,13 +739,21 @@ M.HISTORY_MAX = 20
 
 local function hkey(c) return "delve_hist_" .. c:CharacterID() end
 
-function M.record_history(c, layer_idx, outcome)
+-- ⚠️⚠️ THE ZONE IS RECORDED, and it has to be now that maps are random (2026-08-06). The row used to
+-- store only the rung, and the dungeon NAME was resolved from M.LAYERS[rung] on the way out -- which
+-- worked only while each rung had a fixed map. With a random draw the rung says nothing about where
+-- you actually went, so without this every past run reads as the same placeholder.
+-- ⚠️ Appended AFTER `bands` rather than inserted mid-row so a pre-2026-08-06 entry still parses; the
+-- reader treats a missing trailing field as "unknown". Safe because `bands` never contains a '|'
+-- (it is comma separated, e.g. "45-12,50-20").
+function M.record_history(c, layer_idx, outcome, zone)
     if not c or not c.valid then return end
     local led = scale.ledger(c)
     if not led or led.kills <= 0 then return end   -- nothing was killed; not worth a row
 
-    local entry = string.format("%d|%d|%d|%d|%.1f|%d|%d|%s|%s",
-        os.time(), layer_idx, led.kills, led.score, led.avg, led.lo, led.hi, outcome, led.bands)
+    local entry = string.format("%d|%d|%d|%d|%.1f|%d|%d|%s|%s|%s",
+        os.time(), layer_idx, led.kills, led.score, led.avg, led.lo, led.hi, outcome, led.bands,
+        zone or "")
 
     local raw = eq.get_data(hkey(c)) or ""
     local list = {}
@@ -695,13 +778,28 @@ function M.send_history(c)
 
     local out = {}
     for i = #list, 1, -1 do
-        local when, idx, kills, score, avg, lo, hi, outcome, bands =
-            list[i]:match("^(%d+)|(%d+)|(%d+)|(%d+)|([%d.]+)|(%d+)|(%d+)|(%a)|(.*)$")
+        -- ⚠️ `bands` is [^|]* rather than (.*) so the trailing zone field can be split off. Bands are
+        -- comma separated ("45-12,50-20") and never contain a '|', so this does not truncate them.
+        -- ⚠️ The zone group is optional: a row written before 2026-08-06 has no trailing field and
+        -- still parses, yielding an empty zone that reads as "unknown".
+        local when, idx, kills, score, avg, lo, hi, outcome, bands, zone =
+            list[i]:match("^(%d+)|(%d+)|(%d+)|(%d+)|([%d.]+)|(%d+)|(%d+)|(%a)|([^|]*)|?(.*)$")
         if when then
+            -- ⚠️⚠️ THE DUNGEON NAME COMES FROM THE RECORDED ZONE, NOT FROM THE RUNG. Resolving it from
+            -- M.LAYERS[idx] only worked while each rung had a fixed map; with a random draw the rung
+            -- knows nothing about where the run actually happened.
+            local dungeon = "unknown"
+            if zone and zone ~= "" then
+                for _, d in ipairs(M.ZONES) do
+                    if d.zone == zone then dungeon = d.name break end
+                end
+                if dungeon == "unknown" then dungeon = zone end   -- pool changed; the short name still tells you where
+            end
+
             local L = M.LAYERS[tonumber(idx)]
             -- 10 fields: when, level, dungeon, kills, score, avg, lo, hi, outcome, bands
             out[#out + 1] = string.format("%s|%d|%s|%s|%s|%s|%s|%s|%s|%s",
-                when, L and L.level or 0, L and L.name or "unknown",
+                when, L and L.level or tonumber(idx) or 0, dungeon,
                 kills, score, avg, lo, hi, outcome, bands)
         end
     end
@@ -725,8 +823,23 @@ end
 -- ONCE per character, not once per life: after a death drops you to level 1, every rung you had
 -- already beaten is still open, and you pick the one that matches whatever level you have levelled
 -- back to.
+-- ⚠️⚠️ THE LADDER IS ALSO OPEN TO YOUR OWN LEVEL + 1, NOT ONLY TO WHAT YOU HAVE CLEARED (2026-08-06).
+-- Clear-only unlocking meant a level 30 character who had never delved started at rung 1 and had to
+-- grind up through 29 rungs of content far beneath them. The level floor makes the TOP of the list --
+-- which is what the window lands on -- always `your level + 1`, so the default delve is very slightly
+-- ahead of you rather than wherever your clear history happens to sit.
+-- ⚠️ It is a FLOOR, never a cap: clearing past your level keeps those rungs open when you die back to
+-- level 1, which is the whole point of the clear chain on a roguelite.
+-- ⚠️ +1 rather than exact level so the default is a step UP. The gear bump (aotv4_dungeon_scale) then
+-- moves it further for a geared character, and does nothing for a naked one.
 function M.unlocked_count(c)
     local n = get_cleared(c) + 1
+
+    if c and c.valid then
+        local by_level = (c:GetLevel() or 1) + 1
+        if by_level > n then n = by_level end
+    end
+
     if n > #M.LAYERS then n = #M.LAYERS end
     return n
 end
@@ -823,6 +936,10 @@ function M.enter(c, level, mode_id)
     end
 
     local L = M.LAYERS[idx]
+    if not L or not L.zone then
+        c:Message(MT.Red, "No delve maps are configured. Tell a GM.")
+        return
+    end
 
     -- Remember where they came from BEFORE anything else, so both Exit and the DZ's own safe return
     -- can put them back there.
@@ -954,7 +1071,7 @@ function M.enter(c, level, mode_id)
     -- at the moment most of the population appears -- and without this M.layer_for_zone falls back to
     -- "first layer matching this zone", which is the lowest rung that dungeon appears at. See the
     -- note on M.layer_for_zone: it is why thundercrest always scaled to rung 5.
-    M.set_instance_layer(inst, idx)
+    M.set_instance_layer(inst, idx, L.zone)
 
     for _, m in ipairs(party_c) do
         eq.set_data(bkey(m, "back"), string.format("%d|%d|%d|%d",
@@ -1126,12 +1243,26 @@ function M.on_npc_spawn(e)
 
     -- Scaled to the PLAYER, not just to the layer. The layer level is the floor; how far above the
     -- naked expectation for their level the player is decides the rest (aotv4_dungeon_scale.lua).
-    -- ⚠️ Whoever is in the instance is the reference. With one occupant that is unambiguous; with a
-    -- group it takes the FIRST client found, which is a known simplification -- see section 24.
-    local ref
+    -- ⚠️⚠️ THE REFERENCE IS THE STRONGEST OCCUPANT, NOT THE FIRST ONE FOUND (2026-08-06).
+    -- It used to take whichever client the entity list yielded first, which section 24 flagged as a
+    -- simplification. It is worse than a simplification -- it is an EXPLOIT: bring a naked alt into
+    -- the instance ahead of the geared main and the whole delve scales to the alt, so a full group
+    -- fights content tuned for a level 1 in rags. Entity list order is not something a player can see,
+    -- but it is something they can influence by who zones in first.
+    -- ⚠️ MAX, not average, and that is the same reasoning the ledger uses (section 26): an average
+    -- lets a geared player dilute the scaling by bringing along mules, where the maximum cannot be
+    -- gamed by ADDING people. Group SIZE is already paid for separately by M.GROUP_* above.
+    -- ⚠️ The party is scaled to its best member, which is the honest reading of how hard a group is:
+    -- a fight that is trivial for the best-geared member is trivial for the group.
+    local ref, ref_power
     local clients = eq.get_entity_list():GetClientList()
     for cl in clients.entries do
-        if cl and cl.valid then ref = cl break end
+        if cl and cl.valid then
+            local p = scale.power(cl)
+            if not ref or (p and ref_power and p > ref_power) then
+                ref, ref_power = cl, p
+            end
+        end
     end
 
     -- ⚠️⚠️ AN EMPTY INSTANCE MUST STILL BE SCALED, TO THE LAYER. This used to `return` here, and that
@@ -1244,8 +1375,15 @@ end
 -- zone, which is the whole bug above -- so it must never be the primary answer.
 local function lkey(inst) return "delve_layer_" .. tostring(inst) end
 
-function M.set_instance_layer(inst, layer)
-    if inst and inst ~= 0 and layer then eq.set_data(lkey(inst), tostring(layer)) end
+-- ⚠️⚠️ THE BUCKET CARRIES THE ZONE AS WELL AS THE RUNG, and it has to now that maps are random.
+-- It used to store just the rung, and M.layer_for_zone confirmed it by comparing M.LAYERS[n].zone to
+-- the current zone. Layers no longer HAVE a zone, so that check would compare against nil and pass
+-- garbage through -- a stale bucket from a recycled instance id would scale a dungeon to another
+-- dungeon's rung, intermittently. Storing the zone keeps the confirmation honest.
+function M.set_instance_layer(inst, layer, zone)
+    if inst and inst ~= 0 and layer then
+        eq.set_data(lkey(inst), string.format("%d|%s", layer, zone or ""))
+    end
 end
 
 function M.layer_for_zone()
@@ -1253,18 +1391,26 @@ function M.layer_for_zone()
 
     local inst = eq.get_zone_instance_id()
     if inst and inst ~= 0 then
-        local n = tonumber(eq.get_data(lkey(inst)))
-        -- ⚠️ Confirm the recorded rung really is this zone. A stale bucket from a recycled instance
-        -- id would otherwise scale a dungeon to another dungeon's rung, which is worse than the bug
-        -- this replaces because it would be intermittent.
-        if n and M.LAYERS[n] and M.LAYERS[n].zone == zone then
-            return M.LAYERS[n]
+        local raw = eq.get_data(lkey(inst))
+        if raw and raw ~= "" then
+            local n, z = raw:match("^(%d+)|(.*)$")
+            n = tonumber(n or raw)   -- tolerate a pre-2026-08-06 bucket that holds only the rung
+            -- ⚠️ Confirm the recorded rung really is THIS zone. A stale bucket from a recycled
+            -- instance id would otherwise scale a dungeon to another dungeon's rung -- intermittent,
+            -- and worse than the bug it replaces.
+            if n and z and z ~= "" and z == zone then
+                for _, d in ipairs(M.ZONES) do
+                    if d.zone == zone then return rung(n, d) end
+                end
+            end
         end
     end
 
-    for _, L in ipairs(M.LAYERS) do
-        if L.zone == zone then return L end
-    end
+    -- ⚠️⚠️ NO ZONE-SCAN FALLBACK ANY MORE, DELIBERATELY. It used to walk M.LAYERS for a layer whose
+    -- zone matched and return that -- which worked only because each zone appeared at fixed rungs.
+    -- With random maps a zone has no rung of its own, so any such guess would be a WRONG difficulty
+    -- rather than a missing one. Returning nil lets the caller fall back to its own reference, and
+    -- the ledger already refuses to score an unstamped mob at its native level (section 26).
     return nil
 end
 
@@ -1393,7 +1539,10 @@ M.BOSS_DMG_FLOOR_PER_LEVEL = 3    -- and hits for up to 9 instead of 1
 -- every rung. Retuning is now just this number -- because it is a multiple of a MEASURED regular mob
 -- rather than of the boss's own curve, the ratio a player sees is exactly this value everywhere, so
 -- there is no per-rung drift to re-check afterwards.
-M.BOSS_HP_MULT  = 7.5
+-- 📌 7.5 -> 6.0 (2026-08-06): still too long a fight in play. Same reasoning as the previous retune --
+-- this is a multiple of a MEASURED regular mob, so it is the ratio a player actually sees at every
+-- rung and needs no per-rung re-check.
+M.BOSS_HP_MULT  = 6.0
 M.BOSS_DMG_MULT = 1.6
 M.BOSS_LVL_BONUS = 2
 
@@ -1585,7 +1734,7 @@ function M.on_task_stage_complete(e)
 
     local run = M.current_run(c)
     if not run then return end
-    local L = M.LAYERS[run.layer]
+    local L = M.layer_of(run)
     if not L or e.task_id ~= M.task_for(L, run.modedef) then return end
 
     M.spawn_boss(c, L, run, 1)
@@ -1601,7 +1750,7 @@ function M.on_task_complete(e)
     local run = M.current_run(c)
     if not run then return end
 
-    local L = M.LAYERS[run.layer]
+    local L = M.layer_of(run)
     -- ⚠️ Compare against the task for the run's MODE, not the layer's base task -- each mode is its
     -- own task family, so a Hard run completes task base+10 and would never match L.task.
     if not L or e.task_id ~= M.task_for(L, run.modedef) then return end
@@ -1650,7 +1799,7 @@ function M.on_task_complete(e)
     -- ⚠️ Recorded here, on the CLEAR, and again on death/abandon in their own paths -- never in one
     -- shared place, because the outcome letter differs and it is the outcome that makes the row
     -- meaningful. M.record_history no-ops on a run with no kills.
-    M.record_history(c, run.layer, "C")
+    M.record_history(c, run.layer, "C", run.zone)
     -- ⚠️ Announce what is ACTUALLY open to THIS character, read back from their own progress after the
     -- clamp in set_cleared -- not `run.layer + 1`. For a member carried above their own rung those two
     -- are different, and naming the run's rung would promise a delve they still cannot enter. Reading
@@ -1708,7 +1857,7 @@ function M.leave(c, reason)
         return
     end
 
-    local L = M.LAYERS[run.layer]
+    local L = M.layer_of(run)
 
     -- ⚠️ Kill the close countdown on EVERY way out, not just the chest's. Exit, death and the
     -- zone-line failure all funnel through here, and a surviving "delveclose" timer would fire
@@ -1727,7 +1876,7 @@ function M.leave(c, reason)
     local run_task = L and M.task_for(L, run.modedef) or nil
     local abandoned = (run_task and c:IsTaskActive(run_task)) and true or false
     if abandoned then c:RemoveTaskByTaskID(run_task) end
-    if abandoned then M.record_history(c, run.layer, "A") end
+    if abandoned then M.record_history(c, run.layer, "A", run.zone) end
 
     local back = eq.get_data(bkey(c, "back")) or ""
     local zid, x, y, z = back:match("^(%d+)|(-?%d+)|(-?%d+)|(-?%d+)$")
@@ -1858,7 +2007,7 @@ function M.on_tick(c)
     if not c or not c.valid then return end
     local run = M.current_run(c)
     if not run then return end
-    local L = M.LAYERS[run.layer]
+    local L = M.layer_of(run)
     if not L then return end
     -- ⚠️ Guard on the ZONE as well as the bucket. The run bucket survives zoning out by any means the
     -- exit path did not handle (a crash, a GM port), and without this the sweep would rescale mobs in
@@ -1925,7 +2074,7 @@ function M.on_npc_death(e)
     end
 
     local mode = run.modedef or M.mode_by_id(M.MODE_DEFAULT)
-    local L    = M.LAYERS[run.layer]
+    local L    = M.layer_of(run)
     if not L or not mode then return end
 
     local was_boss = (e.self and e.self.valid and e.self:GetNPCTypeID() == M.BOSS_NPC)
@@ -2038,7 +2187,7 @@ function M.on_enter_zone(e)
     local run = M.current_run(c)
     if not run then return end
 
-    local L = M.LAYERS[run.layer]
+    local L = M.layer_of(run)
     if not L then return end
 
     -- Still inside the right instance of the right zone: this is the entry itself, nothing to do.
@@ -2057,7 +2206,7 @@ function M.on_enter_zone(e)
         local t = M.task_for(L, run.modedef)
         if c:IsTaskActive(t) then c:FailTask(t) end
     end
-    M.record_history(c, run.layer, "F")
+    M.record_history(c, run.layer, "F", run.zone)
 
     -- ⚠️ Read the return point BEFORE clearing the run, then send them there -- "drop me off where I
     -- started it". They are already out of the instance by the time this runs (the zone change has
@@ -2133,7 +2282,7 @@ function M.on_disconnect(c)
     -- Last one out: this is now the same teardown it always was.
     -- ⚠️ The instance still has its own 6 hour timer, so even this is a tidy-up rather than the only
     -- thing standing between us and an orphan.
-    M.record_history(c, run.layer, "A")
+    M.record_history(c, run.layer, "A", run.zone)
     clear_run(c)
     eq.delete_data(bkey(c, "back"))
 
@@ -2188,7 +2337,7 @@ function M.on_death(e)
     local run = M.current_run(c)
     if not run then return end
 
-    local L = M.LAYERS[run.layer]
+    local L = M.layer_of(run)
 
     if L then
         local t = M.task_for(L, run.modedef)
@@ -2197,7 +2346,7 @@ function M.on_death(e)
 
     -- A failed run still earned whatever it killed on the way down -- bank the score sheet before the
     -- ledger is lost, or dying would erase the record of a genuinely hard fight.
-    M.record_history(c, run.layer, "F")
+    M.record_history(c, run.layer, "F", run.zone)
 
     clear_run(c)
     eq.delete_data(bkey(c, "back"))
@@ -2284,7 +2433,7 @@ function M.handle_say(e)
             c:Message(MT.Red, "delveboss: you must be inside a delve (it needs the layer to scale to).")
             return true
         end
-        local L = M.LAYERS[run.layer]
+        local L = M.layer_of(run)
         local forced = tonumber(br)
         if forced and forced > 0 then
             -- ⚠️ Temporarily narrow the pool rather than adding a parameter to spawn_boss: the real
@@ -2312,7 +2461,7 @@ function M.handle_say(e)
         end
         local run = M.current_run(c)
         if run then
-            local L = M.LAYERS[run.layer]
+            local L = M.layer_of(run)
             local eff = scale.effective_level(L.level, c)
             c:Message(MT.Yellow, string.format("In %s: layer level %d, creatures scaling to %d.",
                 L.name, L.level, eff))

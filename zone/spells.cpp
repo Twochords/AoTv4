@@ -1464,6 +1464,10 @@ void Mob::CastedSpellFinished(uint16 spell_id, uint32 target_id, CastingSlot slo
 	}
 
 	bool bard_song_mode = false;
+	// AoTv4: a BENEFICIAL song, which we cast once as a buff instead of sustaining (see below). It
+	// still needs bard_song_mode for the instrument/component handling, but must NOT keep the spell
+	// bar locked the way a sustained song does.
+	bool aotv4_song_as_buff = false;
 	bool regain_conc = false;
 	Mob *spell_target = entity_list.GetMob(target_id);
 	// here we do different things if this is a bard casting a bard song from
@@ -1491,7 +1495,27 @@ void Mob::CastedSpellFinished(uint16 spell_id, uint32 target_id, CastingSlot slo
 				LogSpells("Bard song [{}] not applying bard logic because duration. dur=[{}], recast=[{}]", spell_id, spells[spell_id].buff_duration, spells[spell_id].recast_time);
 			}
 			else {
-				if (IsPulsingBardSong(spell_id)) {
+				// ⚠️⚠️ AoTv4: A BENEFICIAL SONG IS A BUFF, NOT A SUSTAINED SONG.
+				// Stock keeps a song alive by re-pulsing it every 6 seconds for as long as the singer
+				// keeps singing, which is why songs carry tiny durations. Combined with a long
+				// duration that becomes unstoppable: the singer is locked in song mode, re-applying a
+				// buff that never expires, with no way to stop -- reported from play as making
+				// gameplay impossible.
+				// So a beneficial song is now cast ONCE, like any other buff. It lands on the group
+				// through its own target type, takes the long group duration from CalcBuffDuration,
+				// and can be right-clicked off like anything else. That is the "buff that looks like a
+				// song" -- it keeps the song's name, icon and instrument scaling and loses only the
+				// pulse.
+				// ⚠️ DETRIMENTAL songs are untouched and still pulse. Debuff and DoT songs are meant
+				// to be sustained, they carry no long duration, and they are how a bard actually
+				// fights -- turning those into one-shots would be a real nerf.
+				// ⚠️ The test is IsBeneficialSpell, not "is it in the reward pool": a bard's own stock
+				// buff songs need this exactly as much as an awarded one does.
+				if (IsPulsingBardSong(spell_id) && IsBeneficialSpell(spell_id)) {
+					aotv4_song_as_buff = true;
+				}
+
+				if (IsPulsingBardSong(spell_id) && !IsBeneficialSpell(spell_id)) {
 					bardsong = spell_id;
 					bardsong_slot = slot;
 
@@ -1832,6 +1856,28 @@ void Mob::CastedSpellFinished(uint16 spell_id, uint32 target_id, CastingSlot slo
 
 			if (!IsFromItem) {
 				c->CheckSongSkillIncrease(spell_id);
+			}
+
+			// ⚠️⚠️ AoTv4: A SONG CAST AS A BUFF MUST RE-ENABLE THE SPELL BAR ITSELF.
+			// The non-song branch below ends with SendSpellBarEnable + SetMana, both commented in
+			// stock as "this tells the client that casting may happen again". This branch
+			// deliberately omits them, because a SUSTAINED song is supposed to hold the bar locked --
+			// the pulse tick re-enables it when the song finally stops.
+			// A beneficial song no longer pulses, so nothing was ever going to re-enable it: the gems
+			// stayed locked forever and clicking the gem to stop it answered "You haven't recovered
+			// yet". Reported from play on Selo's Accelerando, which showed its 72h buff correctly and
+			// then froze the caster.
+			// ⚠️ It stays inside bard_song_mode rather than falling through to the else branch on
+			// purpose: the else branch would expend the song's components as REAGENTS (see the
+			// `else if (!bard_song_mode)` reagent block) and would skip CheckSongSkillIncrease, since
+			// song skills are not IsCastingSkill. We want the song's handling and the normal spell
+			// bar, so the two lines are duplicated here rather than restructuring the branch.
+			// ⚠️ MemorizeSpell is called unconditionally here, not under the melody rule above -- the
+			// gem has to come back regardless of whether /melody is enabled.
+			if (aotv4_song_as_buff) {
+				SendSpellBarEnable(spell_id);
+				c->MemorizeSpell(static_cast<uint32>(slot), spell_id, memSpellSpellbar, casting_spell_recast_adjust);
+				SetMana(GetMana());
 			}
 		}
 		LogSpells("Bard song [{}] should be started", spell_id);
@@ -3044,36 +3090,118 @@ int Mob::CalcBuffDuration(Mob *caster, Mob *target, uint16 spell_id, int32 caste
 		res = 1;
 	}
 
-	// ⚠️⚠️ AoTv4: A PERMANENT BUFF CAST ON SOMEONE ELSE IS NOT PERMANENT.
-	// Migration v20 made the player-castable beneficial buff space permanent (formula 50), and
-	// AoT:PermanentBuffNeedsMemmed leashes that to your spell gems -- you keep as many permanent buffs
-	// as you have gems. That leash binds only a SOLO player: without this, a group would simply cast
-	// their permanent buffs on each other and every member would hold far more than their own gem
-	// count, filling all ~25 buff slots permanently. The gem limit has to survive other people.
+	// ⚠️⚠️ AoTv4: A BUFF YOU CAST ON YOURSELF LASTS ~3 DAYS. THE DURATION IS EXTENDED HERE, IN CODE,
+	// AND NEVER IN THE SPELL DATA.
+	// Live EQ durations assume you re-cast constantly, and this is a roguelite that puts everybody
+	// back to level 1 over and over, so re-buffing was most of what a run consisted of.
 	//
-	// ⚠️ So permanence is a SELF-buff mechanic, and buffing someone else still works -- it just gives
-	// the long-but-finite duration v19 used (formula 11 = 30 * (level + 3) ticks; 12 minutes at level
-	// 1, 99 at the level cap). Group buffing is not broken, it is simply not eternal.
+	// ⚠️⚠️ THIS REPLACES THE PERMANENT-BUFF EXPERIMENT (migrations v17/v19/v20, reverted by v21), AND
+	// BEING FINITE IS THE WHOLE POINT. "Permanent" means buffdurationformula 50, which makes
+	// CalcBuffDuration_formula return **-1**, and that -1 does not stay contained: it reaches the
+	// ramping-effect branches of CalcSpellEffectValue_formula as
+	//     ticdif = CalcBuffDuration_formula(...) - std::max(ticsremaining - 1, 0)   // = -1 - 0
+	// so the effect MAGNITUDE broke while the buff ICON persisted -- reported from play as "the buff
+	// stays but the stats do not", both on zoning and after death. A large finite tick count cannot
+	// do that. **Do not reintroduce formula 50 for player buffs.**
 	//
-	// ⚠️⚠️ `res == -1` IS THE PERMANENCE TEST, NOT `formula == 50`. CalcBuffDuration_formula returns
-	// -1 for DF_Permanent and **-4 for DF_Aura** (zone/spells.cpp, the formula switch), so testing the
-	// returned value both catches permanence and leaves AURAS alone -- an aura is already scoped by
-	// range and membership and must not be converted into a timed buff.
+	// ⚠️⚠️ REWRITING DURATIONS IN THE DATA IS WHAT MADE "NATIVE DURATION FOR OTHERS" IMPOSSIBLE.
+	// v17/v19 overwrote buffdurationformula/buffduration in spells_new, which destroyed the only copy
+	// of the native duration -- so there was nothing left to give a buff cast on someone else. Doing
+	// the extension HERE keeps the data native, and the else-case is simply "do nothing".
+	// 📌 That is also why v21 restores 1,760 rows from the 2026-08-03 spells_us.txt snapshot.
 	//
-	// ⚠️ Gated on `caster->IsClient()` and `IsBeneficialSpell`, so this only ever fires on a player
-	// buffing another target. Item clicks and self-buffs are caster == target and never reach it;
-	// NPC-applied and proc buffs are not client-cast. Stock permanent spells a player casts on someone
-	// ELSE (perm invis and the like) do become finite, which is the same trade and is intended.
-	// 📌 It deliberately does NOT re-derive the duration from the spell's ORIGINAL pre-v19 formula --
-	// that value is gone from the row. Formula 11 is the documented "long buff" for this server.
-	if (
-		RuleB(AoT, PermanentBuffSelfOnly) &&
-		res == -1 &&
+	// EXCLUSIONS, each one load bearing:
+	// 📌 BENEFICIAL BARD SONGS ARE **INCLUDED**, and that is safe only because they no longer pulse --
+	//   see the IsPulsingBardSong guard in CastedSpellFinished. A song that both pulses AND never
+	//   expires is what made the singer unable to stop. Detrimental songs still pulse and, being
+	//   detrimental, never reach this branch at all.
+	// ⚠️ ONLY WHEN res > 0. Leaves genuinely permanent stock buffs (-1) and AURAS (-4) exactly as they
+	//   are; an aura is scoped by range and membership and must never become a timed buff.
+	// ⚠️ CASTER == TARGET, and the caster is a CLIENT. Buffs on anyone else keep their native duration
+	//   (the explicit requirement). Item clicks and procs are not client casts.
+	// ⚠️ DISCIPLINES -- mirrors IsDiscipline; a 3 day Trueshot is not a buff.
+	// ⚠️ CHARGED buffs (hit_number > 0) are spent by USE, not time; extending one means an unspent
+	//   charge buff never leaves and stops being a consumable.
+	// ⚠️ THE AoTv4 BAND 43000-44999 -- Shield Wall buffs, the Thirst line and the class auras have
+	//   code-driven lifecycles (explicit fade calls, numhits charges, aura membership).
+	// ⚠️ INVULNERABILITY / TRUE HoT / DEATH SAVES (SPA 40, 100, 101, 319, 150, 232) -- a 3 day
+	//   invulnerability is not a buff, it is an unkillable character.
+	// ⚠️⚠️ GROUP MATES COUNT AS YOURSELF. A buff you cast on someone in your group gets the same long
+	// duration -- buffing the party is the point of grouping, and making only self-buffs long meant a
+	// healer's own buffs lasted days while everything they did for the group lasted minutes.
+	// It is taken back when the group breaks up: Group::AoTv4FadeGroupBuffs, from DelMember and
+	// DisbandGroup, strips these in both directions. Without that you could group for one second,
+	// blanket everybody and disband, handing three-day buffs to strangers.
+	// ⚠️ Both sides must be CLIENTS and in the SAME group object. A buff on a pet, bot or merc keeps
+	// its native duration -- they are transient and die with their owner's session.
+	// ⚠️ Anyone NOT in your group still gets the native duration, which is the whole reason v21 had to
+	// put the native durations back into the data.
+	const bool aotv4_same_group =
 		caster != target &&
+		caster->IsClient() && target->IsClient() &&
+		caster->CastToClient()->GetGroup() != nullptr &&
+		caster->CastToClient()->GetGroup() == target->CastToClient()->GetGroup();
+
+	// ⚠️⚠️ SPA 0 IS A HEAL ENGINE ABOVE A BASE OF 30, AND MAGNITUDE IS THE ONLY THING THAT SEPARATES
+	// IT FROM A REGEN. SPA 0 (SE_CurrentHP) on a DURATION spell repeats every tick, so it behaves as a
+	// heal-over-time without ever using SPA 100 -- filtering on 100/101/319 alone misses every one of
+	// the classic regens and every one of the classic heal songs.
+	//   Hymn of Restoration is base **1** (one hit point a tick) and Cantata of Soothing is **4** --
+	//   those are regens and they belong in.
+	//   The Cantata of Rodcet / Chorus of Rodcet lines run to hundreds a tick -- three days of that on
+	//   a whole group is infinite healing.
+	// ⚠️⚠️ THIS WAS AN EXCLUSION IN THE v19 SQL AND WAS LOST WHEN THE LOGIC MOVED INTO CODE. 382
+	// spells slip through without it, and the stakes went UP in the move: beneficial songs no longer
+	// pulse (so they are extended now) and group mates are covered, so the miss would have handed out
+	// three-day group heal engines. Do not drop it again.
+	// 📌 Threshold is deliberate, not a magic number -- see the regen figures above.
+	bool aotv4_is_heal_engine = false;
+	for (int i = 0; i < EFFECT_COUNT; i++) {
+		if (spells[spell_id].effect_id[i] == SpellEffect::CurrentHP &&
+			spells[spell_id].base_value[i] > 30) {
+			aotv4_is_heal_engine = true;
+			break;
+		}
+	}
+
+	// ⚠️⚠️ IT MUST BE A SPELL A PLAYER CAN ACTUALLY SCRIBE AND CAST. `caster->IsClient()` is NOT that
+	// test: a weapon PROC and an ITEM CLICK are both cast with the player as the caster and the player
+	// as the target, so they satisfy caster == target && IsClient() and would be handed a three-day
+	// duration -- a permanent clicky haste and procs that never fall off.
+	// The class table is the discriminator: a real player spell carries a usable level (1-100) for at
+	// least one class, while item-click, proc and NPC-only spells carry 255 in every slot.
+	// ⚠️⚠️ THIS WAS THE `LEAST(classes1..16) BETWEEN 1 AND 100` CLAUSE IN THE v19 SQL -- the single
+	// biggest exclusion it had (~9,287 spells) -- and it was lost in the move to code for the same
+	// reason the heal-engine test was. NPC self-buffs are already covered by IsClient(); procs and
+	// clicks are not, and this is what catches them.
+	bool aotv4_player_castable = false;
+	for (int i = 0; i < Class::PLAYER_CLASS_COUNT; i++) {
+		if (spells[spell_id].classes[i] >= 1 && spells[spell_id].classes[i] <= 100) {
+			aotv4_player_castable = true;
+			break;
+		}
+	}
+
+	const int aotv4_self_ticks = RuleI(AoT, SelfBuffDurationTicks);
+	if (
+		aotv4_self_ticks > 0 &&
+		res > 0 &&
+		(caster == target || aotv4_same_group) &&
 		caster->IsClient() &&
-		IsBeneficialSpell(spell_id)
+		IsBeneficialSpell(spell_id) &&
+		!IsDiscipline(spell_id) &&
+		spells[spell_id].hit_number == 0 &&
+		!(spell_id >= 43000 && spell_id <= 44999) &&
+		!IsEffectInSpell(spell_id, SpellEffect::DivineAura) &&          // 40
+		!IsEffectInSpell(spell_id, SpellEffect::HealOverTime) &&       // 100
+		!IsEffectInSpell(spell_id, SpellEffect::CompleteHeal) &&       // 101
+		!IsEffectInSpell(spell_id, SpellEffect::DeathSave) &&          // 150
+		!IsEffectInSpell(spell_id, SpellEffect::DivineSave) &&         // 232
+		!IsEffectInSpell(spell_id, SpellEffect::CriticalHealOverTime) &&  // 319
+		!aotv4_is_heal_engine &&
+		aotv4_player_castable
 	) {
-		res = CalcBuffDuration_formula(castlevel, 11, 0);
+		res = std::max(res, aotv4_self_ticks);   // a FLOOR: never shorten a natively longer buff
 	}
 
 	LogSpells("Spell [{}]: Casting level [{}], formula [{}], base_duration [{}]: result [{}]",
@@ -4953,6 +5081,60 @@ void Mob::BuffFadeAll()
 	if (recalc_bonus) {
 		CalcBonuses();
 	}
+}
+
+// ⚠️⚠️ AoTv4: fade every BENEFICIAL buff on this mob that a NAMED caster put there.
+// A buff a player casts on a group mate is given the long group duration
+// (AoT:SelfBuffDurationTicks), so it has to come off again when the group breaks up -- otherwise
+// you could group for one second, blanket everybody, disband, and walk away having handed out
+// three-day buffs to strangers. Called from Group::DelMember and Group::DisbandGroup.
+//
+// ⚠️⚠️ MATCHES ON caster_name, NOT casterid. `casterid` is an ENTITY id and does not survive
+// zoning -- a group mate who zoned would stop matching and keep the buff forever. `caster_name`
+// is a real char[64] on Buffs_Struct and is persisted in character_buffs, so it survives. (Same
+// trap already recorded for the spell-gem leash that used to live in BuffProcess.)
+//
+// ⚠️⚠️ SELF-CAST BUFFS ARE NEVER TOUCHED. A buff you put on yourself carries YOUR name, so without
+// this guard leaving a group would strip your own long self-buffs -- which have nothing to do with
+// the group at all.
+// ⚠️ Beneficial only: a detrimental effect a group mate applied is not a gift being withdrawn, and
+// stripping debuffs on disband would be a free cleanse.
+// ⚠️ Fade-then-recalc-once; returns the count so the caller can message sensibly.
+int Mob::AoTv4FadeBuffsCastBy(const char *caster_name)
+{
+	if (!caster_name || !caster_name[0]) {
+		return 0;
+	}
+
+	if (!strcasecmp(caster_name, GetCleanName())) {
+		return 0;   // never strip your own work
+	}
+
+	int faded      = 0;
+	int buff_count = GetMaxTotalSlots();
+
+	for (int buff_slot = 0; buff_slot < buff_count; buff_slot++) {
+		const uint16 sid = buffs[buff_slot].spellid;
+		if (!IsValidSpell(sid) || !IsBeneficialSpell(sid)) {
+			continue;
+		}
+		if (strcasecmp(buffs[buff_slot].caster_name, caster_name)) {
+			continue;
+		}
+
+		LogSpells(
+			"AoTv4: fading group buff [{}] from [{}] -- [{}] is no longer grouped with them.",
+			sid, GetCleanName(), caster_name
+		);
+		BuffFadeBySlot(buff_slot, false);
+		faded++;
+	}
+
+	if (faded) {
+		CalcBonuses();
+	}
+
+	return faded;
 }
 
 void Mob::BuffFadeNonPersistDeath()

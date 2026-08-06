@@ -455,6 +455,10 @@ public:
 	void BuffFadeBySpellIDAndCaster(uint16 spell_id, uint16 caster_id);
 	void BuffFadeByEffect(int effect_id, int slot_to_skip = -1);
 	void BuffFadeAll();
+	// AoTv4: fade every BENEFICIAL buff on this mob that was cast by `caster_name`. Used when a group
+	// breaks up -- see Group::DelMember / Group::DisbandGroup. Matches on the NAME, not casterid,
+	// because casterid is an entity id and does not survive zoning.
+	int  AoTv4FadeBuffsCastBy(const char *caster_name);
 	void BuffFadeBeneficial();
 	void BuffFadeNonPersistDeath();
 	void BuffFadeDetrimental();

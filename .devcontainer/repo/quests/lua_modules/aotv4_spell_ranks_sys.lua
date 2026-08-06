@@ -229,6 +229,35 @@ end
 -- means ink arriving by ANY route -- trade, quest, GM -- is absorbed the same way.
 -- ⚠️ Also called from event_connect as a backstop, so ink held across a logout is not stranded as an
 -- item that the next death would destroy.
+-- ⚠️⚠️ INK IS GRANTED AS CURRENCY ON A KILL -- IT NO LONGER DROPS AS AN ITEM (2026-08-06).
+-- It used to be a global_loot item at 1.5 percent that was converted afterwards, and that route needed
+-- three moving parts to be safe: EVENT_LOOT could not do the conversion (it fires at corpse.cpp:1740,
+-- a hundred lines BEFORE the item is placed in the bags at :1843, so RemoveItem silently did nothing
+-- and the player kept both), returning non-zero to suppress the loot was worse (it skips the
+-- RemoveItem that takes the item off the CORPSE, so the ink pays out on every click), and the working
+-- answer was a deferred one-second timer plus a bag sweep plus a login backstop.
+-- Granting the currency directly deletes that entire class of problem: there is no item, so there is
+-- nothing to place, remove, duplicate or strand.
+--
+-- ⚠️ ONE ROLL PER CORPSE, PAID TO THE KILLER -- deliberately matching the old behaviour. Section 31
+-- records that global loot stays SHARED under individual loot precisely because "a 1.5 percent Ink of
+-- the Lost multiplied by group size is a different drop rate". Paying the killer keeps one roll and
+-- one recipient.
+-- ⚠️ The ITEM ROW 147921 STAYS. An alternate currency is defined as a currency/item PAIR and the
+-- client reads the currency's name and icon from that item -- deleting it would leave the currency
+-- nameless in the window.
+M.INK_KILL_CHANCE = 1.5   -- percent, matching the loot table it replaces
+
+function M.grant_ink_on_kill(killer)
+    if not killer or not killer.valid then return end
+    if math.random() * 100.0 >= M.INK_KILL_CHANCE then return end
+    killer:AddAlternateCurrencyValue(M.INK_CURRENCY, 1)
+    killer:Message(15, "You gather an Ink of the Lost.")
+end
+
+-- ⚠️ Kept as a MIGRATION path, not as part of the drop flow: nothing produces the item any more, but
+-- players may still be carrying copies from before the change, and the roguelite wipe would destroy
+-- them. Still called from event_connect so those are absorbed on next login.
 function M.absorb_ink(c)
     if not c or not c.valid then return 0 end
     local n = c:CountItem(M.INK_ITEM) or 0

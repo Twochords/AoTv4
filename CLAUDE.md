@@ -725,6 +725,24 @@ class, `classes8`, skill caps, expansion). The windows are generic (`SPELLCHOICE
   respawns them — killing only `dynamic_*` leaves already-booted named zones (e.g. freporte) on
   the old code. Then **relog**.
 - **Can't hook EQ's D3D device** — dummy-device vtable trick fails here; use the layered window.
+  - ⚠️⚠️ **BUT THAT MAY ONLY BE TRUE OF THE APPROACH WE TRIED — OPEN LEAD, NOT PROVEN (2026-08-06).**
+    Our finding was that a device we create shares no vtable with the one EQ renders through, so
+    patching it never fires (`present=0 swap=0` with all vtables patched). That is a fact about the
+    **dummy-device** route, not about D3D hooking in general.
+    **`tunaria/NMS-Release` appears to do it a different way**: it injects into **`EQGraphicsDX9.dll`
+    itself** (`ZoneRender_Injection_Detour` in `RenderHooks.h`) and captures the device from the
+    **`this` pointer** inside the real `BeginScene`/`EndScene` detours — rather than creating a device
+    and hoping the vtable matches. It then uses `WorldToScreen()` to place floating damage text in the
+    world (`MQ2FloatingDamage.cpp`, hooking `CEverQuest::ReportSuccessfulHit`).
+    ⚠️ That repo is **address-compatible with us** — same RoF2 build (May 10 2013 23:30:08) and every
+    offset we hook matches — so it is portable if it works.
+    📌 **If it does work it overturns this bullet and unlocks in-world rendering we have recorded as
+    impossible**: floating damage, world markers, and a better answer to §17b's wanted short-buff /
+    autoskill tracker than burning a spell row and a buff slot per marker (43380-43382 Shield Wall,
+    43022 Divine Aura, the Thirst line — all of which exist only to be SEEN).
+    ⚠️ **Unverified.** Nobody has built or run it here. Treat as the next thing to try when in-world
+    drawing is wanted, not as a settled capability — and re-read this bullet's original finding first,
+    because the dummy-device route genuinely does not work.
 - **DllMain loader lock** — defer window/thread/D3D creation out of the `Enable*` functions.
 - **Skill cap hook** — only *reveal* (cap 0 → value); never override a native cap, and bound to
   ids `0..76` or you get "None" rows. Skill values live in `CHARINFO2` (not the `pChar`
@@ -863,8 +881,15 @@ class, `classes8`, skill caps, expansion). The windows are generic (`SPELLCHOICE
     entirely. Expect marginally fewer Hallowed than before (25% of drops, not 25% plus the 5% that
     also rolled Mythic).
   - **The tiers are always created in PAIRS** — `aotv4_gear_tiers.sql` generates Hallowed and Mythic
-    from the same base set, and the DB confirms it: 27,146 rows each, **zero** Hallowed without a
-    Mythic and zero Mythic without a Hallowed (checked 2026-07-29). So the split really is a clean
+    from the same base set, and the DB confirms it: **27,137** rows each, **zero** Hallowed without a
+    Mythic and zero Mythic without a Hallowed (re-checked 2026-08-05 after the 0.1.3 item import; it
+    was 27,146 on 2026-07-29 — **the COUNT drifts whenever the base set changes, the PAIRING does
+    not**, so verify the invariant, never the number).
+    ⚠️⚠️ **COUNT THE TIER BANDS AS `[300000,599999]` AND `[600000,899999]`, NOT `id >= 600000`.** The
+    loose test sweeps in ordinary high-id items and invents unpaired rows that do not exist — on
+    2026-08-05 it reported 3 phantom "Mythic without Hallowed": stock `990061` Artisan's Universal
+    Kit, our `2000060` Refining Crucible, and stock `3008007` **"Mythic Hallowed Shuriken"**, whose
+    name alone makes it look like a tier row. That cost a false alarm mid-import. So the split really is a clean
     5 / 25 / 70, and the only item that is native 100% of the time is one with **no tier rows at all**
     (quest paper, whatever the tier script skipped), which returns the base untouched.
   - 📌 The Mythic branch **falls through** to the Hallowed test instead of returning, so a half-tiered
@@ -1989,6 +2014,12 @@ no C++ server change at all**, because all four primitives are already native an
 - ⚠️ **Layers unlock in order and only unlocked ones are ever SENT.** With loot out of scope the
   reward is XP, so a freely pickable level would be a power-level machine. The window cannot show or
   ask for a layer it was never told about, and `M.enter` re-checks anyway.
+  - ⚠️ **Also open to `your level + 1`** (2026-08-06). Clear-only unlocking meant a level 30 character
+    who had never delved started at rung 1 and ground up through 29 rungs beneath them. It is a
+    **FLOOR, never a cap** — clearing past your level keeps those rungs open when you die back to
+    level 1, which is the entire point of the clear chain on a roguelite. `+1` rather than exact level
+    so the window's default (the top of the list) is a step *up*; the gear bump then moves it further
+    for a geared character and does nothing for a naked one.
 - ⚠️⚠️ **ENTERING IS REFUSED IN COMBAT (`GetAggroCount() > 0`), fixed 2026-08-04.** The delve window
   opens anywhere, so "Enter Delve" was a **free escape from any losing fight** — and a better one than
   Gate: it removes you from the zone entirely, breaks every hate list at once, costs no reagent and
@@ -2123,6 +2154,76 @@ no C++ server change at all**, because all four primitives are already native an
 - 📌 Not built yet: loot in the chest, group entry (`assign_to_instance` is per character today),
   a floor/ascent chain, and any Torghast-style in-run power picker.
 
+### The map ladder — static, 50/50 DoN and LDoN — 2026-08-06
+**70 rungs, one level apart, and every rung is a FIXED, KNOWABLE dungeon.** Odd rungs are DoN, even
+rungs are LDoN, each family cycling independently: **35 / 35**.
+
+- ⚠️⚠️ **ALTERNATING IS WHAT MAKES IT 50/50 — CONCATENATING THE POOLS DOES NOT.** DoN has 6 dungeons
+  and LDoN has 34, so a single combined cycle delivers six DoN rungs and then thirty-four LDoN ones:
+  the ladder arrives in two long blocks instead of a mix.
+- ⚠️⚠️ **A RANDOM DRAW AT ENTRY WAS TRIED AND REVERTED THE SAME DAY.** Knowing the map matters for
+  planning a run and for knowing what the kill-credit rewards will be, and a map you cannot see until
+  you are standing in it tells you neither. It also made the window's dungeon column **unfillable**
+  (there is genuinely nothing true to print before the roll) and silently cost run history its
+  dungeon name. If it is ever revisited, those three are the cost.
+- ⚠️⚠️ **THE ORDER OF BOTH POOLS IS LOAD BEARING.** `M.LAYERS` is indexed 1..70 and the index **is**
+  the unlock high-water mark, so reordering either family silently reassigns what every stored
+  `delve_cleared_<id>` means — a character's cleared rungs start pointing at different dungeons.
+- ⚠️ **`M.layer_of(run)` prefers the rung's own map but only when it MATCHES the zone the run
+  recorded.** A run started before a pool edit would otherwise be handed a different dungeon's task
+  and entry coordinates halfway through.
+- ⚠️ Run history records the **zone**, not just the rung, and resolves the name from that — correct
+  even after a pool edit. Appended after `bands` so pre-2026-08-06 rows still parse (`bands` is comma
+  separated and never contains a `|`); a row without it reads "unknown" and cannot be backfilled.
+
+#### LDoN — 34 zones, and it needed ZERO new task rows
+`lua_modules/aotv4_dungeon_ldon.lua` is **generated**: every LDoN zone with >= 60 spawn points and a
+real safe point, each carrying its list of populated layouts (up to 21). The rung picks one layout
+deterministically, so a repeated dungeon is not a repeated map.
+- ⚠️⚠️ **ENTRY IS THE ZONE SAFE POINT, NOT `dynamic_zone_templates.zone_in_*`.** Only **7** LDoN
+  (zone, version) pairs have template coordinates at all. That is safe **for LDoN specifically** and
+  would not be for DoN: an LDoN zone is only ever reachable through the adventure system, so its safe
+  point *is* the normal zone-in. The warning against safe points elsewhere in this section is a DoN
+  statement.
+- ⚠️ **`zone_version = 0` is legitimate for LDoN** — it is just the default layout, not the
+  "open world" set it is in DoN.
+- ⚠️⚠️ **Migration v22 clears `task_activities.zones` on the delve band (2000300-2000399).**
+  `TaskActivity::CheckZone` (`common/tasks.h`) opens with `if (zone_ids.empty()) return true;`, so an
+  empty list credits **anywhere** — the same mechanism as the empty `npc_match_list` above. Without
+  it, LDoN would have needed 34 zones x 6 modes of new task rows. `zones` is `varchar(64)` (~15 zone
+  ids), so listing them explicitly was never an option.
+  ⚠️ **This is a real widening, accepted knowingly.** The only thing keeping a delve kill inside the
+  dungeon is now `M.on_enter_zone`, which fails the run the moment you are outside your instance. The
+  second, independent guard the zone column provided is gone.
+
+#### ⚠️⚠️ THE GEAR BUMP CLAMP WAS FLAT AND PUT LEVEL 21 MOBS IN A LEVEL 1 DELVE (fixed 2026-08-06)
+Reported from play: *"someone joined a level 1 and the mobs were level 21"* — which is exactly rung 1
+plus a flat `MAX_BUMP` of 20.
+The two clamps were **asymmetric**: down was `layer_level * MAX_DROP_FRAC` (proportional), up was a
+flat 20. A flat number across a ladder spanning rungs 1 to 70 is not one rule but two — +20 at rung 50
+is a 40 percent bump, +20 at rung 1 is a **2000 percent** one.
+- 📌 **The reasoning was already written down, one clamp away.** The comment beneath the up-clamp
+  explains at length why flat clamps are wrong; it was applied to the DOWN clamp only. The constant's
+  own comment gives the assumption away — *"a fully decked character can push the level 50 layer to
+  70"* — it was only ever reasoned about at the top of the ladder.
+- Now `min(MAX_BUMP, layer_level * M.MAX_BUMP_FRAC)` with **`MAX_BUMP_FRAC = 0.50`**: rung 1 tops out
+  at level 2, rung 10 at 15, rung 30 at 45, and **rung 40+ is unchanged** because the flat cap still
+  binds there. Only the low rungs moved.
+- ⚠️ The fraction is deliberately larger than `MAX_DROP_FRAC` (0.20): being over-geared should push a
+  delve up harder than being under-geared drops it, or gear stops mattering at depth.
+
+#### ⚠️ OPEN — the AC axis is not level-normalised
+`M.power` is meant to read **gear, not level**, and three axes deliver that: `stats` and `resists`
+divide by the naked totals (585 / 130) and do not change with level, while `hp`/`mana` divide by
+`shape(level)` so level cancels — confirmed against `base_data` (a Warrior is 250/500/750 at 10/20/30,
+exactly `25 * level`). **A naked character therefore scores ~1.0 at every level and gets the rung
+exactly.**
+⚠️ **`ac` is the exception** — it divides by a flat `BASE_AC = 31` with no `shape(level)`, while naked
+AC does climb with level (defense skill cap, agility). At weight 0.20 and `BUMP_PER_POWER 12`, every
+0.5 of drift there is roughly **+1.2 effective levels**, so a naked level 30 likely fights a slightly
+harder delve than a naked level 10 at the same rung. The exact curve was not measured. **Measure a
+naked character at 10 and at 30 before calling the scaling settled.**
+
 ### Player-relative creature scaling — `aotv4_dungeon_scale.lua` — 2026-07-29
 The layer level is only the **floor**. Creatures also scale by how far the player sits above the
 **naked expectation** for their level, which is the gear-bloat correction. `/say delvepower` prints
@@ -2204,7 +2305,7 @@ It used to multiply the boss's own curve hp at `eff + BOSS_LVL_BONUS`, so the ra
 saw was `curve(eff+2)/curve(eff) × mult` — a number that drifts with the curve's local steepness and
 **falls as the rung rises**: ~19x at rung 1, ~6.5x at rung 10, ~5.6x at rung 30. Raising the constant
 could never fix that; it just slides the crooked curve up. The warden now **measures** an ordinary mob
-(`scale.regular_hp`) and multiplies that, so the ratio is `BOSS_HP_MULT` (**7.5**, was 10.0) at every rung and
+(`scale.regular_hp`) and multiplies that, so the ratio is `BOSS_HP_MULT` (**6.0**, was 7.5 and 10.0 before that) at every rung and
 `BOSS_LVL_BONUS` is left to do what it should — damage, accuracy and AC.
 - ⚠️ `scale.regular_hp` **scales the npc as a side effect** and leaves it at the measured level; the
   caller must re-scale immediately after. Same measure-by-scaling trick as `elite_ratio`.
@@ -2214,8 +2315,8 @@ could never fix that; it just slides the crooked curve up. The warden now **meas
 - ⚠️ The fine-trim factor is **shared** between `M.apply` and `regular_hp` (`fine_factor`) — if those
   two disagreed the boss would be a multiple of a mob that does not exist.
 - ⚠️ Rungs 1-2 remain **floor-governed** (`blvl × BOSS_HP_FLOOR_PER_LEVEL`), so the ratio there is
-  higher than the multiplier. That is the floor doing its job: 7.5x of an 11 hp mob is not a boss.
-  📌 Retuned 10.0 → 7.5 on 2026-08-05 — 10x played too long once the ratio was genuinely being
+  higher than the multiplier. That is the floor doing its job: 6x of an 11 hp mob is not a boss.
+  📌 Retuned 10.0 → 7.5 (2026-08-05) → 6.0 (2026-08-06) — each time it played too long once the ratio was genuinely being
   delivered at every rung. Because it multiplies a MEASURED regular mob rather than the boss's own
   curve, retuning is just this one number and needs no per-rung re-check.
 
@@ -2913,8 +3014,20 @@ Three things are deliberately separate, and conflating them is the main way to m
 - ⚠️ **`ranked_id()` is the single funnel.** Everything that awards a spell goes through it, so there
   is one place that knows how to resolve base → owned rank. Do not add a second.
 - **Economy**: **Parchment Fragment 147920** (one per spell destroyed on death, so income scales with
-  how deep the run got — a full climb scribes ~31) and **Ink of the Lost 147921** (a `global_loot`
-  drop at **1.5%**). Costs live in `M.COST` and **double for fragments while ink is flat +10**:
+  how deep the run got — a full climb scribes ~31) and **Ink of the Lost 147921** (**1.5% per kill**).
+  ⚠️⚠️ **NEITHER DROPS AS AN ITEM ANY MORE — BOTH ARE GRANTED DIRECTLY AS CURRENCY (ink: 2026-08-06,
+  migration v26).** Fragments never did; ink used to be a `global_loot` item converted afterwards, and
+  that route needed **three** moving parts to be safe (see the EVENT_LOOT trap below). Granting the
+  currency deletes the whole class of problem: **there is no item, so nothing can be placed, removed,
+  duplicated or stranded.** `grant_ink_on_kill` fires from `global_npc.event_death_complete`.
+  ⚠️ **One roll per corpse, paid to the killer** — matching the old behaviour deliberately, because
+  §31 keeps global loot **shared** under individual loot for exactly this reason ("1.5 percent
+  multiplied by group size is a different drop rate").
+  ⚠️ `absorb_ink` **survives as a migration path only**, still called from `event_connect`, so copies
+  players were carrying before the change are absorbed rather than destroyed by the next wipe.
+  📌 **Do not reintroduce an EVENT_LOOT conversion for any currency item** — the placement ordering
+  below makes it wrong in both directions.
+  Costs live in `M.COST` and **double for fragments while ink is flat +10**:
   rank 2 = 30/10, 3 = 60/20, 4 = 120/30, 5 = 240/40.
   ⚠️ The two scale differently **on purpose**: fragments come from *dying* so they track how hard you
   have been pushing, ink comes from *killing* so it tracks time played. A rank costs both.
@@ -3372,6 +3485,25 @@ per-row customisation on a replaced id is silently lost. Three things must be re
    because that regenerates the tier rows and would drop their 2/3 sockets again.
 3. **`./shared_memory`** with world DOWN, then restart. `items` is shared memory.
 
+### Merging `items_clone` into `items` — the actual procedure (done 2026-08-05)
+The dumps land in the **staging** table `items_clone`; nothing merges it for you. It is base-only
+(ids 1001-147494) with **zero** rows in the tier bands and **zero** in the AoTv4 custom band, so the
+merge itself is safe — it is the *derived* data afterwards that is not.
+1. ⚠️⚠️ **Back up `items` first**, and **verify COLUMN ORDER before any `SELECT *`**:
+   `SELECT COUNT(*) FROM (…items…) a JOIN (…items_clone…) b ON a.ordinal_position=b.ordinal_position
+   WHERE a.column_name <> b.column_name;` must be **0**. Both tables have 285 columns; a positional
+   mismatch would silently write every value into the wrong field.
+2. `REPLACE INTO items SELECT * FROM items_clone;` — ~7s, and the row count must **not** change
+   (every clone id already exists; 0 new ids, 0 base items missing from the clone).
+3. Then steps 1-3 above, **in that order**, then `DROP TABLE items_clone`. It is regenerable — the
+   `.sql` file is its only source — so dropping loses nothing.
+- ⚠️⚠️ **TO VERIFY THE IMPORT LANDED, DIFF THE CLONE AGAINST `items` EXCLUDING THE COLUMNS OUR OWN
+  SCRIPTS REWRITE.** A naive full-row diff reports ~48,000 differences and looks catastrophic. It is
+  not: `aotv4_craft_sockets.sql` rewrites the **augslot** columns, and `aotv4_gear_tiers.sql` edits
+  **native rows in place** — `classes` (18,835), `races` (7,668), `loregroup` (37,576), `nodrop`
+  (9,694). Exclude those and the correct result is **0 differences** on Name, ac, damage, hp, mana,
+  delay, price, stats, norent and reclevel. Anything non-zero there is a genuinely incomplete import.
+
 ### ⚠️⚠️ AND DIFF `rule_values` AGAINST A PRE-MERGE BACKUP
 The 2026-08-05 dump changed **64 rules**, none of them announced. Two were actively dangerous and
 neither was visible without the diff:
@@ -3406,112 +3538,141 @@ upgrade at all. It shows only on weapons, which is why it survived so long -- ev
 step up between tiers.
 ⚠️ Keep Hallowed at `FLOOR(damage * 1.5)` and Mythic at `damage*2`. "Making them consistent" is the bug.
 
-## 36. Buffs are PERMANENT — migrations v17 + v19, superseded by v20 — 2026-08-05
+## 36. Self-buffs last ~3 days — extended in CODE, never in the data — 2026-08-05
 
-Beneficial player-castable spells run **formula 50 = permanent**. Live EQ's short durations assume you
-re-cast constantly; this is a roguelite where everybody is sent back to level 1 over and over, so
-re-buffing was most of what a run consisted of.
+A beneficial buff a player casts **on themselves** is floored at **`AoT:SelfBuffDurationTicks`
+(43,200 ticks ≈ 3 days)** in `Mob::CalcBuffDuration` (`zone/spells.cpp`). A buff cast on **anyone
+else** is untouched and keeps its **native** duration. Live EQ durations assume constant re-casting,
+and this is a roguelite that returns everybody to level 1 over and over, so re-buffing was most of
+what a run consisted of.
 
-⚠️⚠️ **v17 AND v19 ARE HISTORY — THEY MOVED THE BUFF SPACE TO FORMULA 11 (12 min at level 1, 99 at the
-cap) AND v20 THEN MADE IT PERMANENT.** Both are still in the manifest and both still run in order on a
-fresh database, so the **11 → 50 chain is load bearing**: v20 targets `buffdurationformula = 11`, which
-is precisely what v17/v19 produce. Do not "tidy up" by deleting v17/v19 or by retargeting v20 at the
-original formulas — v20 would then convert nothing on a fresh DB and buffs would silently come out at
-99 minutes instead of permanent.
-- 📌 Targeting formula 11 also deliberately sweeps in the **302 spells that were ALREADY formula 11**
-  before either migration, so near-identical buffs cannot end up one permanent and one on a timer.
-  **1,859 spells end up permanent**; 205 songs are in scope and 181 convert (the other 24 are
-  non-player-castable or the one discipline).
+### ⚠️⚠️ THE PERMANENT-BUFF EXPERIMENT FAILED. DO NOT REBUILD IT.
+Migrations **v17 / v19 / v20** rewrote `buffdurationformula` in `spells_new` — first to 11
+(30*(level+3)), then to **50 (permanent)**. **v21 reverts all three.** Four separate failures, and
+the first is the one that matters:
 
-### ⚠️⚠️ PERMANENT IS A FORMULA, NOT A BIG NUMBER
-`CalcBuffDuration_formula` **returns early** for `50` (**-1**, permanent) and `51` (**-4**, permanent
-until you leave an aura) — `zone/spells.cpp:3105`. **1,103 stock spells already ship formula 50**, so
-this is the game's own mechanism. Never express permanence as a huge tick count: the buff would still
-tick down and every duration display would show a countdown in days.
-- ⚠️ Because 50 returns **before** the `buffduration` cap line, v20 does **not** touch that column —
-  a row reading formula 50 with a stale `buffduration` of 720 is correct and simply ignored. That is
-  the opposite of v17/v19, where the cap was the whole trap (below).
+- ⚠️⚠️ **PERMANENT IS `-1`, AND THE `-1` ESCAPES.** `CalcBuffDuration_formula` returns **-1** for
+  formula 50, and that value reaches the ramping-effect branches of `CalcSpellEffectValue_formula`:
+  ```
+  ticdif = CalcBuffDuration_formula(...) - std::max(ticsremaining - 1, 0);   // -1 - 0 = -1
+  ```
+  so the effect **magnitude** broke while the buff **icon** persisted. Reported from play as *"the
+  buff stays but the stats don't"* — on zoning **and** after death. A large finite tick count cannot
+  do this. **Never use formula 50 for player buffs.**
+- ⚠️⚠️ **BARD SONGS BECAME UNSTOPPABLE.** A song that never expires keeps its pulse alive, so the
+  singer sings forever with no way to stop — reported as making gameplay impossible. Songs are now
+  excluded outright.
+- ⚠️⚠️ **REWRITING THE DATA DESTROYED THE NATIVE DURATION**, which made "a buff on someone else keeps
+  its native duration" unimplementable — there was nothing left to hand out. This is the single
+  strongest reason the extension belongs in **code**: the data stays native and the else-case is
+  simply *do nothing*.
+- ⚠️ The spell-gem leash (`PermanentBuffNeedsMemmed`) existed only as the price of permanence and is
+  **removed**. Swapping a gem no longer costs you a buff.
 
-### The v17/v19 trap, still true for any FORMULA-BASED duration change
-- ⚠️⚠️ **BOTH COLUMNS MUST MOVE.** `CalcBuffDuration_formula` ends with
-  `if (duration && duration < temp) temp = duration;` (`zone/spells.cpp:3116`), so **`buffduration`
+### Recovering the native durations — v21
+- ⚠️⚠️ **THE ONLY SURVIVING COPY WAS `aotv4_client_install/spells_us.txt`**, a pre-change snapshot
+  from **2026-08-03** (the migrations landed 08-05). Fields **17** and **18** are
+  `buffdurationformula` and `buffduration`. §35 already records that file as a duration recovery
+  source; this is the second time it has saved a session. **Do not delete old client exports.**
+- ⚠️⚠️ **ONLY 1,760 OF THE 3,942 SPELLS AT FORMULA 11/50 ARE RESTORED.** Formula 11 and formula 50 are
+  **both legitimate stock formulas** — 2,183 of those spells were already 11 or 50 natively (1,103
+  stock spells ship formula 50). Restoring all of them would give genuinely permanent stock buffs a
+  timer they never had. Diff against the snapshot; never assume "at formula 11" means "we changed it".
+- ⚠️ Sentinel: spell **7 Hymn of Restoration** is natively formula 5 / duration 3. The migration is
+  idempotent on that test.
 
-- ⚠️⚠️ **BOTH COLUMNS MUST MOVE.** `CalcBuffDuration_formula` ends with
-  `if (duration && duration < temp) temp = duration;` (`zone/spells.cpp:3116`), so **`buffduration`
-  CAPS whatever the formula produces**. Changing `buffdurationformula` alone caps most spells at their
-  old short value while the handful carrying `buffduration 0` get the full 99 minutes — a
-  half-applied result that reads as "the change sort of worked". `buffduration = 0` removes the cap.
-- ⚠️ **Formula 11, not 3.** Formula 3 is `30 * level`, which collapses to **three minutes at level 1**
-  — and level 1 is where every character spends the start of every run.
-- ⚠️ **Pulsing is unaffected.** `IsPulsingBardSong` keys off `buffduration == 0xFFFF`, not off the
-  formula and not off 0, so songs still re-apply to group members in range every 6 seconds (§14).
-- ⚠️ **The 16 spell-rank rows are included and MUST be** — otherwise ranking a song up (§29) would
-  *shorten* it, from permanent back to 12 seconds.
-- ⚠️ **`spells_new` is SHARED MEMORY** — world down → `./shared_memory` → restart, not just a reboot.
+### The exclusions, all in `CalcBuffDuration`
+- ⚠️ **`res > 0` only** — leaves natively permanent buffs (**-1**) and **auras** (**-4**) exactly as
+  they are. An aura is scoped by range and membership and must never become a timed buff.
+- ⚠️ **`caster == target`, or both are CLIENTS in the same group** (see the group section below).
+- ⚠️ **Disciplines** (`IsDiscipline`), **charged buffs** (`hit_number > 0` — spent by use, not time),
+  the **AoTv4 band 43000-44999** (code-driven lifecycles), and **invulnerability / true HoT / death
+  saves** (SPA 40, 100, 101, 150, 232, 319).
+- ⚠️ Applied with `std::max`, i.e. a **floor** — a spell whose native duration is already longer is
+  never shortened.
 
-### The exclusions are the whole design — every one is load bearing
-⚠️⚠️ **v20 CARRIES ALL OF THESE OVER VERBATIM, AND THEY MATTER MORE ONCE "LONG" BECOMES "FOREVER".**
-They hold back **678** of the formula-11 spells. Verified by name rather than by count: **Death Pact**
-(death save), the **Mending** line (true HoTs) and the **Cantata / Chorus** heal songs (SPA 0 > 30) are
-the ones actually being caught — precisely the set that would be catastrophic as permanent.
-- ⚠️⚠️ **NOT PLAYER-CASTABLE (~9,287 spells, the big one).** NPC self-buffs, item clicks and procs.
-  Make those permanent and **every monster keeps its buffs forever** and proc buffs never fall off.
-  The `LEAST(classes1..16) BETWEEN 1 AND 100` test is what confines this to spells a player can cast.
-- ⚠️ **DISCIPLINES** — `mana = 0 AND an endurance cost`, mirroring `IsDiscipline` (`common/spdat.cpp`)
-  exactly as the reward pool's blacklist does (§20). A permanent Trueshot is not a buff.
-- ⚠️⚠️ **INVULNERABILITY / TRUE HoT / DEATH SAVES** — SPA 40, 100, 101, 319, 150, 232. **This is the
-  single most important line in either migration**: a permanent invulnerability is not a buff, it is
-  an unkillable character, and a permanent true heal-over-time is infinite healing.
-- ⚠️ **AA-GRANTED** (anything in `aa_ranks.spell`) and **the AoTv4 band 43000-44999** — Shield Wall
-  buffs, the Thirst line and the class auras have **code-driven lifecycles** (explicit fade calls,
-  `numhits` charges, aura membership), so a rewritten duration fights the code that owns them.
-- ⚠️⚠️ **SPA 0 IS KEPT UP TO A BASE OF 30, DELIBERATELY.** SPA 0 on a duration spell repeats every
-  tick, so it *looks* like a heal-over-time — but **magnitude is what separates a regen from a heal,
-  not mechanism**. Hymn of Restoration is base **1** (one hit point a tick) and Cantata of Soothing is
-  4; those are regens and they belong in. Above 30 it is a heal engine and is excluded.
-  📌 Filtering on SPA 100 alone misses every one of these — the classic regens do not use it.
-- ⚠️⚠️ **CHARGED BUFFS (`numhits > 0`) ARE EXCLUDED FROM PERMANENCE.** A charge buff is spent by
-  **use**, not by time (`numhits` + `numhitstype`, decremented in `CheckNumHitsRemaining`), so a
-  permanent one that is never used never leaves and stops being a consumable at all. **208** of the
-  formula-11 buffs carry charges, across 9 different `numhitstype` values. They stay at formula 11, so
-  they still expire on time **or** on charges, whichever comes first.
-  📌 This is **not** the same test as the SPA exclusions: a charged buff can be completely benign in
-  its effects and still must not be permanent, because the charge *is* the cost.
+#### ⚠️⚠️ TWO EXCLUSIONS WERE LOST MOVING FROM SQL TO CODE — BOTH RESTORED, DO NOT DROP THEM AGAIN
+The v19 SQL carried exclusions that the first code version silently did not. Neither fails loudly;
+both just quietly hand out three-day buffs. Caught only because someone asked *"we did exclude heals
+and invulnerabilities, right?"*
+1. ⚠️⚠️ **SPA 0 ABOVE A BASE OF 30 — the heal engines (`aotv4_is_heal_engine`, 382 spells).** SPA 0
+   (`SE_CurrentHP`) on a **duration** spell repeats every tick, so it is a heal-over-time that never
+   touches SPA 100 — filtering on 100/101/319 alone misses **every classic regen and every classic
+   heal song**. **Magnitude is the only discriminator**: Hymn of Restoration is base **1** and Cantata
+   of Soothing **4** (regens, kept); the Cantata / Chorus of Rodcet lines run to hundreds a tick
+   (excluded). ⚠️ The stakes went **up** in the move — beneficial songs no longer pulse and so are now
+   extended, and group mates are covered, so the miss would have created three-day **group** heal
+   engines.
+2. ⚠️⚠️ **NOT PLAYER-CASTABLE (`aotv4_player_castable`).** `caster->IsClient()` is **not** this test —
+   a weapon **proc** and an **item click** are both cast with the player as caster *and* target, so
+   they pass `caster == target && IsClient()` and would get three days (permanent clicky haste, procs
+   that never fall off). The class table discriminates: a real player spell carries a level 1-100 for
+   some class, while proc/click/NPC-only spells carry 255 everywhere. This was
+   `LEAST(classes1..16) BETWEEN 1 AND 100` in v19 — its single largest exclusion (~9,287 spells).
+   NPC self-buffs are already covered by `IsClient()`; **procs and clicks are not.**
+📌 The general lesson: **when a filter moves from SQL to code, enumerate the old WHERE clause line by
+line and tick each one off.** Both misses here were clauses that had no obvious code equivalent, so
+they simply evaporated.
 
-### ⚠️⚠️ THE PRICE OF PERMANENCE IS A SPELL GEM — and it takes TWO rules, not one
-Permanence with no cost ends with every player wearing every good buff in the game. The leash is the
-spell gems: **you keep as many permanent buffs as you have gems.** Both rules are required — either
-one alone is trivially bypassed.
-- **`AoT:PermanentBuffNeedsMemmed`** (`Mob::BuffProcess`, `zone/spell_effects.cpp`) — a permanent buff
-  fades once its spell is no longer in a gem.
-- **`AoT:PermanentBuffSelfOnly`** (`Mob::CalcBuffDuration`, `zone/spells.cpp`) — a permanent
-  beneficial buff a player casts on **someone else** gets formula 11 instead (12 min to 99 min).
-  Without it the gem leash binds only a **solo** player: a group would buff each other and every
-  member would hold far more permanent buffs than they have gems.
+### ⚠️⚠️ A BENEFICIAL BARD SONG IS A BUFF THAT LOOKS LIKE A SONG — it no longer PULSES
+Stock sustains a song by re-pulsing it every 6 seconds for as long as the bard keeps singing, which
+is *why* songs ship with tiny durations. Give that a long duration and it becomes unstoppable: the
+singer is locked in song mode re-applying a buff that never expires. Reported from play as making
+gameplay impossible.
+The `IsPulsingBardSong` branch in `Client::CastedSpellFinished` is now gated on
+**`!IsBeneficialSpell(spell_id)`**, so a beneficial song is cast **once**, lands on the group through
+its own target type, takes the long duration, and can be right-clicked off like any other buff.
+- ⚠️ **`bard_song_mode` stays true** — deliberately. The song keeps its bard casting behaviour
+  (instant, movable, no fizzle) and its name, icon and instrument scaling. **Only the pulse is gone.**
+  That is what "a buff that looks like a song" means here.
+- ⚠️⚠️ **DETRIMENTAL SONGS STILL PULSE AND MUST.** Debuff and DoT songs are meant to be sustained,
+  carry no long duration, and are how a bard actually fights — one-shotting them would be a real nerf.
+- ⚠️⚠️ **THE TWO GUARDS SHARE ONE PREDICATE, IN OPPOSITE SENSES — THAT IS THE SAFETY PROPERTY.** The
+  pulse test is `!IsBeneficialSpell` and the duration test is `IsBeneficialSpell`, so a song is
+  **either** "no pulse + extended" **or** "pulses + native duration" and can never be both or neither.
+  Two independent lists would drift; one predicate cannot. **Keep it that way** — do not reimplement
+  either side as its own spell-id list or skill test.
+  | | pulse (`!IsBeneficialSpell`) | extended (`IsBeneficialSpell`) |
+  |---|---|---|
+  | beneficial song | no | **yes** |
+  | detrimental song | **yes** | no |
+- 📌 Verified in the data too: **0** detrimental songs sit at formula 11 or 50 — all 190 keep native
+  formulas (5, 0, 7, 3, 1, 6, 4). They were never in scope, because v17/v19/v20 all filtered on
+  `goodEffect <> 0`. Re-check with that query if the migrations are ever re-run.
+- ⚠️ The test is `IsBeneficialSpell`, **not** "is it a reward-pool spell": a bard's own stock buff
+  songs need this exactly as much as an awarded one does.
 
-- ⚠️⚠️ **`HasSpellScribed` IS THE SCOPING TEST AND IT IS LOAD BEARING.** **1,103 STOCK spells already
-  ship formula 50**, reaching players by routes that have nothing to do with gems — item clicks, AA,
-  quest and NPC-applied buffs. Without that test every one would be stripped the instant it landed,
-  because it was never in a gem and never could be. Only a **scribed** spell is one the player chose
-  to carry and can choose to memorise.
-- ⚠️⚠️ **DO NOT TEST `buffs[i].casterid` — IT IS AN ENTITY ID AND DOES NOT SURVIVE ZONING.** A
-  "was this self-cast?" test would silently stop firing after a zone, un-leashing permanent buffs for
-  anyone who zoned. It is unnecessary anyway: with `PermanentBuffSelfOnly` on, a permanent beneficial
-  buff on a player is self-cast **by construction**.
-- ⚠️⚠️ **`res == -1` IS THE PERMANENCE TEST IN `CalcBuffDuration`, NOT `formula == 50`.**
-  `CalcBuffDuration_formula` returns **-1** for `DF_Permanent` and **-4** for `DF_Aura`, so testing the
-  returned value catches permanence *and* leaves **auras** alone — an aura is already scoped by range
-  and membership and must not be turned into a timed buff.
-- ⚠️ **Order in `BuffProcess` is for COST, not style.** It runs every buff tick for every player, so:
-  formula check (struct read) → `FindMemmedSpellBySpellID` (12 gems) → `HasSpellScribed` (**up to 720
-  spellbook slots**), which is reached only by a permanent buff that is already un-memmed — the rare
-  fade case. Fade-then-recalc-once, mirroring the cleanse-on-peace block above it.
-- 📌 **`CalcBuffDuration` already carried an AoTv4 note rejecting the OPPOSITE approach** — an earlier
-  rule extended beneficial buffs to 1,000,000 tics in *code* and was removed because it silently
-  overrode designed durations (Vengeful Aura trades a downside for a 4-tic window; permanent turns it
-  into a curse). Its conclusion — *"abilities meant to be always-on are modelled as permanent passives
-  in their spell data (buffdurationformula 50), not by overriding a finite duration here"* — is
-  exactly what v20 does. **Keep permanence in the DATA; this override only ever shortens.**
+### ⚠️⚠️ GROUP MATES COUNT AS YOURSELF — and the buffs come back off on disband
+A buff cast on someone in your **group** gets the same long duration. Buffing the party is the point
+of grouping, and extending only self-buffs meant a healer's own buffs lasted days while everything
+they did for the group lasted minutes. Anyone **not** in your group still gets the spell's **native**
+duration — which is the whole reason v21 had to put the native durations back in the data.
+- ⚠️⚠️ **IT IS TAKEN BACK WHEN THE GROUP BREAKS UP, IN BOTH DIRECTIONS.**
+  `Group::AoTv4FadeGroupBuffs` runs from **`DelMember`** (one member leaving: their buffs off
+  everyone, everyone's off them) and **`DisbandGroup`** (`nullptr` = unwind every pairing, ≤6 members
+  so 30 comparisons). Without it you could group for one second, blanket the party, disband, and walk
+  away having handed three-day buffs to strangers.
+- ⚠️⚠️ **BOTH CALLERS MUST RUN IT BEFORE `members[]` IS CLEARED.** `DelMember` nulls the slot a few
+  lines later and `DisbandGroup` tears the array down; after either, there is no record of who was
+  grouped with whom and the pairing is unrecoverable.
+- ⚠️⚠️ **`Mob::AoTv4FadeBuffsCastBy` MATCHES ON `caster_name`, NOT `casterid`.** `casterid` is an
+  **entity id** and does not survive zoning, so a group mate who zoned would stop matching and keep
+  the buff forever. `caster_name` is a real `char[64]` on `Buffs_Struct` and is persisted in
+  `character_buffs`. Same trap the retired spell-gem leash hit.
+- ⚠️⚠️ **SELF-CAST BUFFS ARE NEVER STRIPPED.** Your own buffs carry *your* name, so without the
+  explicit name guard leaving a group would tear off your own long self-buffs, which have nothing to
+  do with the group.
+- ⚠️ **Beneficial only** — stripping debuffs on disband would be a free cleanse.
+- ⚠️ Clients on both sides only; a pet, bot or merc holding a group buff is transient and dies with
+  its owner's session.
+
+### ⚠️⚠️ DEATH FADES EVERY BUFF — `death_loss.M.process`
+`client:BuffFadeAll()` runs immediately before the spellbook wipe. The engine's own death handling is
+**not** enough: `Client::Death` calls `BuffFadeNonPersistDeath`, which deliberately **spares** any
+spell flagged `persist_death` — and those were exactly the buffs observed surviving a death with the
+icon intact and the stats gone. A buff that outlives the spellbook is one the player can no longer
+cast, re-apply or identify.
+📌 `Spells:BuffsFadeOnDeath` (currently **true**) is the engine-level switch if this is ever revisited.
 
 ## 37. Combat no longer banks progress — v18 + `AoT:NPCFullHealOnReset` — 2026-08-05
 

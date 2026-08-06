@@ -2,25 +2,26 @@
 
 ## Buffs
 
-- **Buffs are permanent — for as long as you keep the spell memorised.** A buff you cast on yourself
-  no longer expires. The catch is the leash: **the moment that spell leaves your spell gems, the buff
-  drops.** So you can carry as many permanent buffs as you have gems, and swapping a gem for something
-  else is what costs you the buff. Live EQ's durations assume you re-buff constantly; that is most of
-  what a run was.
-- **Buffing someone else is long, not permanent.** A buff you cast on another player runs **12 minutes
-  at level 1**, rising to **99 minutes** at the level cap. Group buffing works exactly as before — it
-  just is not eternal, so a group cannot hand each other permanent buffs and sidestep the gem limit.
-- **Buffs with charges still run out.** Anything spent by use rather than by time keeps its old
-  duration and its charges, so it goes away when used up instead of sitting on you forever.
-- **Bard songs are permanent too.** Most beneficial songs ran **12 seconds**, because on live a Bard
-  twists them continuously. They now last like any other buff.
-  - Songs still **pulse** to group members in range every 6 seconds — that is unchanged.
-- Deliberately **not** made permanent: **invulnerability effects, true heal-over-time spells and death
-  saves** — a permanent invulnerability is not a buff, it is an unkillable character, and a permanent
-  heal-over-time is infinite healing. Bard heal songs (the Cantata and Chorus lines) are excluded for
-  the same reason, though the regen songs like Hymn of Restoration are included. **Disciplines** are
-  unchanged — a permanent Trueshot is not a buff either. NPC self-buffs, procs and item clicks are
-  untouched, so monsters do not keep their buffs forever.
+- **Buffs you cast on yourself last about three days.** Cast it once and it is there for the rest of
+  your play session and then some. Live EQ's short durations assume you re-buff constantly; that was
+  most of what a run consisted of.
+- **Buffs you cast on a group mate also last about three days.** Buffing the party is the point
+  of grouping. **When the group breaks up, those buffs come off** — yours off them and theirs off
+  you — so you cannot group for a second, blanket everyone and disband. Your own self-buffs are
+  never touched. Anyone outside your group gets the spell's normal duration.
+- **Beneficial bard songs are now buffs that look like songs.** You sing one once and it sticks
+  like any other buff, for the same long duration, and you can right-click it off. You are no
+  longer locked into singing it forever with no way to stop.
+  - Songs keep their name, icon and instrument bonus. **Detrimental songs are unchanged** and
+    still work the way they always did.
+- **Buffs with charges are unchanged.** Anything spent by use rather than by time keeps its normal
+  duration and charges, so it runs out when used up instead of sitting on you for days.
+- Deliberately **not** extended: **invulnerability effects, true heal-over-time spells and death
+  saves** — a three day invulnerability is not a buff, it is an unkillable character. **Disciplines**
+  are unchanged, and so are NPC self-buffs, procs and item clicks, so monsters do not keep their
+  buffs forever.
+- **Dying now clears every buff.** Death takes your spellbook, so a buff that survived it was one you
+  could no longer cast, re-apply or even identify. Everything fades.
 
 ## Spells
 

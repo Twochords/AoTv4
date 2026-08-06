@@ -50,6 +50,18 @@ end
 function event_death_complete(e)
   aotv4_worldboss.on_death(e)
 
+  -- Ink of the Lost, granted straight as currency rather than dropped as an item (section 29).
+  -- ⚠️⚠️ `e.other` IS A Lua_Mob, NOT A Lua_Client -- IsClient() is true on it but CharacterID and the
+  -- currency bindings are only defined on Lua_Client, so calling them directly is "attempt to call
+  -- method (a nil value)" on EVERY kill. Resolve through the entity list, exactly as the delve's
+  -- M.as_client does (section 24 records this costing a whole system once already).
+  if e.other and e.other.valid and e.other:IsClient() then
+    local killer = eq.get_entity_list():GetClientByID(e.other:GetID())
+    if killer and killer.valid then
+      require("aotv4_spell_ranks_sys").grant_ink_on_kill(killer)
+    end
+  end
+
   -- Delve: bank what this creature was worth into the run's difficulty ledger. Keyed off the mob's
   -- OWN scaled level, stamped when it spawned, so no later change of gear can revalue it.
   aotv4_dungeon.on_npc_death(e)

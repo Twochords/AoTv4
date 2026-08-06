@@ -396,30 +396,47 @@ static void AoTv4RefineCombine(Client* user, EQ::ItemInstance* container, int co
 	// collide with the gear path's grouping.
 	static const uint32 AOTV4_AUG_KEY_BASE = 0xF0000000;
 
-	// ⚠️⚠️ REFUSE THE WHOLE COMBINE IF ANYTHING IN THE BAG IS AUGMENTED, AND SAY SO.
+	// ⚠️⚠️ AUGMENTS ARE POPPED OUT AND HANDED BACK, NOT DESTROYED -- AND NOT REFUSED EITHER.
 	// The upgrade path is DeleteItemInInventory + SummonItem: the four inputs are destroyed outright
-	// and a fresh item is handed back, so anything socketed into them is destroyed with them. It was
-	// silent -- reported in play as "the aug that was in one of the items was lost".
-	// ⚠️ This CANNOT be fixed by moving the augments to the new item instead: the crucible produces a
-	// different item id with its own socket layout (a Mythic has three sockets, its base has one), so
-	// there is no guaranteed home for what was in the old one. Refusing is the only answer that
-	// cannot destroy anything.
-	// ⚠️ Checked in its own pass BEFORE the grouping loop, so the refusal happens before a single
-	// DeleteItemInInventory has run. Detecting it mid-loop would already have eaten an earlier group.
-	// ⚠️ Blanket, not gear-only: an augment cannot itself hold augments, so this only ever fires on
-	// the gear path, but scanning everything keeps the guard true if the crucible ever learns a
-	// third job.
+	// and a fresh item is handed back, so anything socketed into them used to be destroyed with them,
+	// silently -- reported in play as "the aug that was in one of the items was lost".
+	//
+	// ⚠️⚠️ THE FIRST FIX REFUSED THE WHOLE COMBINE, on the reasoning that the augments could not be
+	// CARRIED ACROSS: the crucible produces a different item id with its own socket layout (a Mythic
+	// has three sockets, its base has one), so there is no guaranteed home for what was in the old
+	// one. That reasoning is still correct -- but it only rules out RE-SOCKETING. It does not rule out
+	// simply giving the augments back as loose items, which needs no home at all and cannot destroy
+	// anything. That is what happens now: refining works, and your augments land in your inventory.
+	//
+	// ⚠️⚠️ EVERY AUGMENT IS RETURNED BEFORE A SINGLE DeleteItemInInventory RUNS. Doing it in its own
+	// pass is what makes it safe: if the summon half failed partway through a mixed loop, some inputs
+	// would already be gone. Nothing is destroyed until every augment is out.
+	// ⚠️ SummonItem falls back to the cursor when the bags are full, and the cursor is a queue, so a
+	// full inventory delays the augments rather than eating them.
+	// ⚠️ Blanket, not gear-only: an augment cannot itself hold augments, so this only ever fires on the
+	// gear path, but scanning everything keeps it true if the crucible ever learns a third job.
+	int aotv4_augs_returned = 0;
 	for (uint8 s = 0; s < bag->BagSlots; ++s) {
 		EQ::ItemInstance *it = container->GetItem(s);
-		if (it && it->GetItem() && it->IsAugmented()) {
-			user->Message(
-				Chat::Red,
-				"%s still has an augment in it. Remove every augment before refining -- the refining "
-				"process destroys the original items, and anything socketed into them would be lost.",
-				it->GetItem()->Name
-			);
-			return;
+		if (!it || !it->GetItem() || !it->IsAugmented()) {
+			continue;
 		}
+
+		for (const uint32 aug_id : it->GetAugmentIDs()) {
+			if (aug_id == 0) {
+				continue;
+			}
+			user->SummonItem(aug_id);
+			aotv4_augs_returned++;
+		}
+	}
+
+	if (aotv4_augs_returned > 0) {
+		user->Message(
+			Chat::Yellow,
+			"%d augment%s removed and returned to you before refining.",
+			aotv4_augs_returned, aotv4_augs_returned == 1 ? " was" : "s were"
+		);
 	}
 
 	std::map<uint32, std::vector<uint8>> by_id;

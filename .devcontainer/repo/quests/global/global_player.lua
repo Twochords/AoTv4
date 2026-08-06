@@ -540,13 +540,10 @@ function event_connect(e)
 end
 
 function event_timer(e)
-	if e.timer == "inkconv" then
-		-- one-shot: the ink looted a second ago is now really in the bags, so bank it as currency.
-		-- ⚠️ StopTimer FIRST -- a client timer REPEATS, and without this it would sweep every second
-		-- forever. Same trap already recorded for "delveclose".
-		e.self:StopTimer("inkconv")
-		require("aotv4_spell_ranks_sys").absorb_ink(e.self)
-	elseif e.timer == "skillsync" then
+	-- ⚠️ The "inkconv" branch is gone (2026-08-06): ink is granted as currency on a kill, so nothing
+	-- arms that timer any more. absorb_ink survives and is still called from event_connect, purely to
+	-- migrate item copies players were carrying before the change.
+	if e.timer == "skillsync" then
 		-- one-shot: fire ~2s after zone-in, once the client has finished building its Combat Abilities
 		-- list, then (re)send the earned-skill set + nudge a rebuild so abilities show without jumping.
 		e.self:StopTimer("skillsync")
@@ -1041,14 +1038,13 @@ end
 -- ⚠️ The item row is still needed and is NOT being retired: alternate currency is defined as a
 -- currency/item PAIR and the client reads the currency's name and icon from the item.
 -- ⚠️ Fragments need no equivalent hook -- they are paid straight into the currency by death_loss.
+-- ⚠️⚠️ THE INK CONVERSION HOOK IS GONE (2026-08-06) -- ink is now granted as CURRENCY on a kill
+-- (global_npc.event_death_complete -> aotv4_spell_ranks_sys.grant_ink_on_kill), so no item is ever
+-- produced and there is nothing to convert.
+-- This used to arm a one-second "inkconv" timer, because EVENT_LOOT fires at corpse.cpp:1740 while
+-- the item is not placed in the bags until :1843 -- converting here banked the currency and removed
+-- nothing, so the player kept both. Do NOT reintroduce an EVENT_LOOT conversion for any currency
+-- item: the placement ordering makes it wrong, and returning non-zero to suppress the loot is worse
+-- (it skips the RemoveItem that takes the item off the CORPSE, so it pays out on every click).
 function event_loot(e)
-  local ranksys = require("aotv4_spell_ranks_sys")
-  if e.item and e.item.valid and e.item:GetID() == ranksys.INK_ITEM then
-    -- ⚠️⚠️ ARM A TIMER; DO NOT CONVERT HERE. EVENT_LOOT fires at corpse.cpp:1740 but the item is not
-    -- placed in the bags until :1843, so converting here added the currency and then removed nothing
-    -- -- the player kept the item AND the currency. See M.absorb_ink for the full account, including
-    -- why returning non-zero to cancel the loot is an infinite-currency bug rather than a fix.
-    -- ⚠️ One second is comfortably past the placement and is invisible in play.
-    e.self:SetTimer("inkconv", 1000)
-  end
 end

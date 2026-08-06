@@ -65,7 +65,8 @@ M.WEIGHTS = { hp = 0.30, mana = 0.15, ac = 0.20, stats = 0.20, resists = 0.15 }
 
 -- How many effective levels a doubling of power is worth, and how far it may move the layer level.
 M.BUMP_PER_POWER = 12
-M.MAX_BUMP       = 20   -- a fully decked character can push the level 50 layer to 70
+M.MAX_BUMP       = 20   -- absolute ceiling: a fully decked character pushes the level 50 layer to 70
+M.MAX_BUMP_FRAC  = 0.50 -- ...but never by more than half the rung, so rung 1 cannot become level 21
 M.MAX_DROP       = 5    -- ...and stripping down cannot drop it more than this many levels, OR
 M.MAX_DROP_FRAC  = 0.20 -- ...this fraction of the rung, whichever is SMALLER.
 -- ⚠️⚠️ THE FRACTION IS WHAT MAKES THE CLAMP MEAN THE SAME THING AT EVERY RUNG. A flat 5 levels is a
@@ -143,7 +144,23 @@ function M.effective_level(layer_level, c)
     local power = M.power(c)
     local delta = M.BUMP_PER_POWER * (power - 1.0)
 
-    if delta > M.MAX_BUMP then delta = M.MAX_BUMP end
+    -- ⚠️⚠️ THE UPWARD CLAMP IS A FRACTION OF THE RUNG TOO -- A FLAT ONE PUT LEVEL 21 MOBS IN A
+    -- LEVEL 1 DELVE. Reported from play: "someone joined a level 1 and the mobs were level 21",
+    -- which is exactly rung 1 + a flat MAX_BUMP of 20.
+    --
+    -- This is the SAME defect the downward clamp below already documents, mirrored and left unfixed.
+    -- A flat number across a ladder spanning rungs 1 to 70 is not one rule but two: +20 at rung 50 is
+    -- a 40 percent bump, while +20 at rung 1 is a 2000 percent one. The old constant's own comment
+    -- gives it away -- "a fully decked character can push the level 50 layer to 70" -- it was only
+    -- ever reasoned about at the top of the ladder.
+    --
+    -- ⚠️ MAX_BUMP is kept as the absolute ceiling so the top of the ladder is unchanged: at rung 40
+    -- and above the fraction exceeds 20 and the flat cap still binds. It is the LOW rungs that move.
+    -- ⚠️ Deliberately a larger fraction than MAX_DROP_FRAC (0.20): being over-geared should push a
+    -- delve up harder than being under-geared drops it, or gear stops mattering at depth.
+    local max_bump = layer_level * M.MAX_BUMP_FRAC
+    if max_bump > M.MAX_BUMP then max_bump = M.MAX_BUMP end
+    if delta > max_bump then delta = max_bump end
 
     -- ⚠️⚠️ THE DOWNWARD CLAMP IS A FRACTION OF THE RUNG, NOT A FLAT NUMBER OF LEVELS -- and getting
     -- this wrong is what made an entire rung spawn at level 1.
