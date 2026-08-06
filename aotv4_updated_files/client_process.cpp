@@ -503,6 +503,7 @@ bool Client::Process() {
 				if (!GetAutoSkillStatus(skill)) {
 					continue;
 				}
+
 				if (skill == EQ::skills::SkillTaunt) {
 					if (!p_timers.Expired(&database, pTimerTaunt, false)) {
 						continue;
@@ -515,6 +516,11 @@ bool Client::Process() {
 					}
 					continue;
 				}
+				pTimerType ca_timer = (pTimerType)(AOTV4_SKILL_TIMER_BASE + skill_to_use);
+				if (!p_timers.Expired(&database, ca_timer, false)) {
+					continue;
+				}
+
 				if (processing_skill[skill])
     				continue;
 				processing_skill[skill] = true;

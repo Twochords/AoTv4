@@ -498,8 +498,14 @@ bool Client::Process() {
 		// returns SILENTLY when the shared combat-ability reuse timer isn't ready, so there's no cooldown
 		// spam. Taunt has no damage path, so we queue OP_Taunt (respecting pTimerTaunt) only while the
 		// player isn't already top of the target's hate list. Check() is last so the timer only ticks in combat.
+		//
+		// Carolus: Added a check, `processing_skill` to fix a bug where autoskilling would trigger multiple times
+		// while the skill was being processed and hadnt been set it's cooldown yet,
+		// which would cause anywhere from 2 to 5 calls of DoClassAttacks and show in game as multiple skill attacks.
+		//
 		if ((AutoAttackEnabled() || AutoFireEnabled()) && auto_attack_target != nullptr && may_use_attacks
-			&& !auto_attack_target->IsClient() && attack_autoskill_timer.Check()) {
+			&& !auto_attack_target->IsClient() && attack_autoskill_timer.Check() && !processing_skill) {
+			processing_skill = true;
 			for (const auto skill : GetAutoSkillsList()) {
 				if (!GetAutoSkillStatus(skill)) {
 					continue;
@@ -516,19 +522,10 @@ bool Client::Process() {
 					}
 					continue;
 				}
-				if (processing_skill[skill])
-    				continue;
-				processing_skill[skill] = true;
 				DoClassAttacks(auto_attack_target, skill, false);
-				processing_skill[skill] = false;
 			}
 		}
-		else
-		{
-			for (const auto skill : GetAutoSkillsList()) {
-				processing_skill[skill] = false;
-			}
-		}
+		processing_skill = false;
 
 		if (viral_timer.Check() && !dead) {
 			VirusEffectProcess();
