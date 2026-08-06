@@ -523,6 +523,12 @@ bool Client::Process() {
 				processing_skill[skill] = false;
 			}
 		}
+		else
+		{
+			for (const auto skill : GetAutoSkillsList()) {
+				processing_skill[skill] = false;
+			}
+		}
 
 		if (viral_timer.Check() && !dead) {
 			VirusEffectProcess();
