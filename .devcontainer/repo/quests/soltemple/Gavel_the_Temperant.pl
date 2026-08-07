@@ -34,27 +34,27 @@ sub EVENT_ITEM {
     quest::summonitem(4925); # Item: Bracers of the Reverent
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({19049 => 2, 19016 => 1, 19015 => 1})) { # Items: Magnetized Platinum Bar x 2, Icon of Sacrament, Ingot of the Sacrament
     quest::say("Well done! You are truly a skilled cleric. I have crafted you a weapon - take it.");
     quest::summonitem(6407); # Item: Caduceus of Sacrament
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({19047 => 2, 19011 => 1, 19012 => 1})) { # Items: Galvanized Platinum Bar x 2, Ingot of the Constant, Icon of the Constant
     quest::say("Well done! You are truly a skilled cleric. I have crafted you a chestplate - take it.");
     quest::summonitem(4926); # Item: Chestplate of the Constant
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif(quest::handin({19048 => 2, 19013 => 1, 19014 => 1})) { # Items: Vulcanized Platinum Bar x 2, Ingot of the Devout, Icon of the Devout
     quest::say("Well done! You are truly a skilled cleric. I have crafted you a shield - take it.");
     quest::summonitem(9427); # Item: Shield of the Devout
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
 }

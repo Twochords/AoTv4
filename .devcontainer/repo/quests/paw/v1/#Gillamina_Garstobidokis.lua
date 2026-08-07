@@ -18,7 +18,7 @@ function event_trade(e)
 		e.self:Say("Remarkable! I cannot wait to study these! Here is your reward as promised! Safe travels.");
 		e.other:SummonItem(71271); -- Elemental Stone
 		e.other:Ding();
-		e.other:AddEXP(500000);
+		e.other:AddEXP(1600);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

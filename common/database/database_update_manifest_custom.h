@@ -3892,6 +3892,82 @@ DROP TEMPORARY TABLE aotv4_delve_m;
 )",
 		.content_schema_update = false,
 	},
+
+	ManifestEntry{
+		.version     = 37,
+		.description = "2026_08_07_aotv4_delve_zone_expansion_bypass",
+		// ⚠️⚠️ THERE ARE TWO INDEPENDENT GATES BETWEEN A PLAYER AND A DELVE MAP, AND v27 ONLY OPENED
+		// ONE OF THEM. v27 moved the 33 LDoN delve zones out of region 99 "Unused" (the AoTv4 region
+		// lock). The SECOND gate is stock EQEmu and is checked separately in Client::ZonePC
+		// (zone/zoning.cpp:367):
+		//
+		//     if (CurrentExpansion >= Classic && !GetGM()) {
+		//         if (z->expansion <= CurrentExpansion || z->bypass_expansion_check) { ...ok... }
+		//     }
+		//
+		// The LDoN delve zones are `zone.expansion` = 6 and this server runs Classic
+		// (Expansion:CurrentExpansion = 0), so entry was refused with "The zone that you are
+		// attempting to enter is part of an expansion that you do not yet own." That is HALF THE
+		// LADDER -- the map ladder alternates DoN/LDoN, so all 35 even rungs were unenterable.
+		//
+		// ⚠️⚠️ NOTE THE `!GetGM()` -- THIS IS THE SECOND TIME THAT HAS HIDDEN THIS EXACT BUG. The GM
+		// flag skips the check entirely ("Bypassing zone expansion checks because GM flag is set"), so
+		// it works for every test character and fails for every player. The identical trap is written
+		// up in custom/sql/aotv4_delve_zone_access.sql, which fixed the DoN six on 2026-08-02 -- the
+		// LDoN dungeons simply joined the ladder afterwards and were never added to it.
+		// 📌 It also presents as "the delve opened and then threw me out": the run bucket, the task and
+		// the instance are all created BEFORE the move, so the refusal lands after the setup succeeded.
+		//
+		// ⚠️⚠️ `bypass_expansion_check`, NOT `expansion = 0`. `expansion` is real metadata -- content
+		// filtering, zone listings and the era system (section 12) all read it -- so rewriting it would
+		// make LDoN zones claim to be Classic content everywhere else in the server. The bypass flag
+		// exempts ONLY the entry gate and leaves the zone honest about what it is.
+		//
+		// ⚠️ Applied to EVERY version row, not just version 0. The delve enters layout versions, and
+		// although the check itself reads version 0 via GetZoneWithFallback, leaving the others at 0 is
+		// a trap for the next person who changes how the version is resolved.
+		//
+		// ⚠️⚠️ `veksar` IS DELIBERATELY ABSENT, exactly as it is from v27. It is LDoN by expansion but a
+		// real Kunark world zone with 2 zone_points leading into it, so it was removed from the delve
+		// pool rather than unlocked -- bypassing its entry gate would open Kunark travel to anyone who
+		// had not earned Cabilis. The list here is the SAME 33 short names as v27 and must stay in step.
+		//
+		// ⚠️ The six DoN delve zones are folded in too. They were fixed by the hand-run
+		// custom/sql/aotv4_delve_zone_access.sql, which is NOT in this manifest and therefore never
+		// applies itself -- on live, or on any freshly imported database, they would be blocked the
+		// same way. Re-stating them here is idempotent (the check only fires on rows still at 0) and
+		// makes the whole delve pool self-applying.
+		// 📌 That script's OTHER fix -- `thenest` min_level 66, a different gate again
+		// (Client::CanEnterZone) -- is included below for the same reason. No LDoN delve zone carries
+		// min_level, min_status or flag_needed, so those 33 need nothing beyond the bypass.
+		//
+		// ⚠️ The `zone` table is NOT shared memory, but it is read at boot by world AND zone: restart
+		// both. No ./shared_memory rebuild.
+		.check       = "SELECT short_name FROM zone WHERE bypass_expansion_check = 0 AND short_name IN ('delvea','delveb','stillmoona','stillmoonb','thundercrest','thenest','guka','gukc','guke','gukf','gukh','mira','mirb','mirc','mird','mirg','mirj','mmca','mmcb','mmcc','mmcd','mmce','mmcf','mmcg','mmch','mmci','mmcj','ruja','rujd','rujf','rujg','ruji','rujj','taka','takb','takc','takd','take','takg') LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE zone
+   SET bypass_expansion_check = 1
+ WHERE short_name IN ('delvea','delveb','stillmoona','stillmoonb','thundercrest','thenest',
+                      'guka','gukc','guke','gukf','gukh',
+                      'mira','mirb','mirc','mird','mirg','mirj',
+                      'mmca','mmcb','mmcc','mmcd','mmce','mmcf','mmcg','mmch','mmci','mmcj',
+                      'ruja','rujd','rujf','rujg','ruji','rujj',
+                      'taka','takb','takc','takd','take','takg');
+
+UPDATE zone
+   SET min_level = 0
+ WHERE min_level > 0
+   AND short_name IN ('delvea','delveb','stillmoona','stillmoonb','thundercrest','thenest',
+                      'guka','gukc','guke','gukf','gukh',
+                      'mira','mirb','mirc','mird','mirg','mirj',
+                      'mmca','mmcb','mmcc','mmcd','mmce','mmcf','mmcg','mmch','mmci','mmcj',
+                      'ruja','rujd','rujf','rujg','ruji','rujj',
+                      'taka','takb','takc','takd','take','takg');
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

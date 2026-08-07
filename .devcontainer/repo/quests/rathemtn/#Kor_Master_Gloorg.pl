@@ -56,7 +56,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 51094 =>1 )) {
 quest::say("Great work.  These notes will help us in our cause.");
   quest::summonitem(51096); # Item: Maul of the Kor Initiate
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 }

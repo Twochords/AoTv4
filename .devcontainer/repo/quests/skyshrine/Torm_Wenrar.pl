@@ -25,7 +25,7 @@ sub EVENT_ITEM {
     quest::faction(430,25);   # +Claws of Veeshan
     quest::faction(436,25);  # +Yelinak
     quest::faction(448,-25); # -Kromzek
-    quest::exp(1000);
+    quest::exp(200);
     # Summon: Potion of Draconic Rage
     quest::summonitem(12555); # Item: Potion of Draconic Rage
   }
@@ -36,7 +36,7 @@ sub EVENT_ITEM {
     quest::faction(430,50);   # +Claws of Veeshan
     quest::faction(436,50);  # +Yelinak
     quest::faction(448,-50); # -Kromzek
-    quest::exp(1500);
+    quest::exp(240);
     # Summon: Draconic Girdle
     quest::summonitem(12556); # Item: Draconic Girdle
   }
@@ -47,7 +47,7 @@ sub EVENT_ITEM {
     quest::faction(430,100);   # +Claws of Veeshan
     quest::faction(436,100);  # +Yelinak
     quest::faction(448,-100); # -Kromzek
-    quest::exp(2000);
+    quest::exp(260);
     # Summon: Draconic Pauldrons
     quest::summonitem(12557); # Item: Draconic Pauldrons
   } 

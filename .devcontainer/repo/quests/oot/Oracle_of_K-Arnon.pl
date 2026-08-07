@@ -71,7 +71,7 @@ if(plugin::check_handin(\%itemcount, 18202 => 1)){ # Book of Turmoil
 	quest::summonitem(10071); # Glowing Torch
 	quest::faction(402, 5); # Faction: Oracle of K`Arnon
 	quest::faction(403, -10); # Faction: Oracle of Marud
-	quest::exp(72900); # 10% of level 10 xp
+	quest::exp(840); # 10% of level 10 xp
 	}
 	
 if (plugin::check_handin(\%itemcount, 55274 => 1)) { # Letter for the Oracle

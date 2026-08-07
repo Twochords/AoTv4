@@ -18,7 +18,7 @@ function event_trade(e)
 		e.self:Say("The gem!! I would notice it's sparkle anywhere!! I cannot believe you are handing it back to me!! What a fool. Here you are fool. You can have this worthless key now.");
 		e.other:SummonItem(12351); -- A Tiny Key
 		e.other:Ding();
-		e.other:AddEXP(15000);
+		e.other:AddEXP(500);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 14017,item2 = 14017,gold = 20})) then
 		e.other:SummonItem(14016); -- Snake Venom
 		e.other:Ding();

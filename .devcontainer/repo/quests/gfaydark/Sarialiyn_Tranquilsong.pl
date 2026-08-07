@@ -53,7 +53,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 22694 => 2, 27540 => 1)){
     quest::say("I never though I would see my lute again. I owe you my sincere thanks $name. Please take this weapon that I carried for most of my days as a symbol of my gratitude. May it guide you to victory in all of your battles.");
     quest::summonitem(27533); # Item: Long Sword of the Tranquilsong
-    quest::exp(500);
+    quest::exp(160);
   }
   plugin::try_tome_handins(\%itemcount, $class, 'Bard');
   plugin::return_items(\%itemcount);

@@ -15,12 +15,12 @@ function event_trade(e)
 	if(item_lib.check_turn_in(e.trade, {item1 = 18173})) then
 		e.self:Say("Gans sent you to check on me did he? Well you can tell my dear brother that the surveying has been halted. One of those furballs has stolen my tools, making my job impossible. Kerrans, kobolds, gnolls, we're constantly under siege by these primitives. Anyway, perhaps you could [help me]?");
 		e.other:Ding();
-		e.other:AddEXP(150);
+		e.other:AddEXP(120);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 1768})) then
 		e.self:Say("Thank you for recovering my tools, please take this to my brother for your reward.");
 		e.other:SummonItem(1771); -- Item: Yelesom's Reports
 		e.other:Ding();
-		e.other:AddEXP(150);
+		e.other:AddEXP(120);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

@@ -21,19 +21,19 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 20932, item2 = 20780, item3 = 20781})) then 	--necromancer test of flight using verdant tessera, ebon shard, griffon's beak
 		e.other:SummonItem(27712); --bloody griffon-hide wrist guard
-		e.other:AddEXP(1000000);
+		e.other:AddEXP(2000);
 		e.self:Say("Very good. Now take this and leave me.");
 		eq.stop_timer("depop");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20938, item2 = 20782, item3 = 20783})) then --necromancer test of power using silver disc, spiroc feathers, black silk cape
 		e.other:SummonItem(1278); --cloak of spiroc feathers
-		e.other:AddEXP(1000000);
+		e.other:AddEXP(2000);
 		e.self:Say("Very good. Now take this and leave me.");
 		eq.stop_timer("depop");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20945, item2 = 20784, item3 = 20785})) then --necromancer test of mind using rogous globe, djinni blood, fine cloth raiment
 		e.other:SummonItem(1279); --bloodsoaked raiment
-		e.other:AddEXP(1000000);
+		e.other:AddEXP(2000);
 		e.self:Say("Very good. Now take this and leave me.");
 		eq.stop_timer("depop");
 		eq.depop();

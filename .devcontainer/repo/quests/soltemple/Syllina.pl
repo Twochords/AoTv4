@@ -42,20 +42,20 @@ sub EVENT_ITEM {
     quest::summonitem(1355); # Item: Robe of Enshroudment
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({14363 => 1, 13234 => 1, 10534 => 1, 16485 => 1})) { # Items: Scepter, Hand of Shadow, Skeletal Finger, Spell: Nullify Magic
     quest::say("Well done, $name! Here are your gloves, as promised."); # Made this text up
     quest::summonitem(3318); # Item: ShadowBound Gloves
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({14364 => 1, 13180 => 1, 10533 => 1, 16483 => 1})) { # Items: Scepter, Eye of Shadow, Skeletal Toe, Shadow Silk
     quest::say("Well done, $name! Here are your boots, as promised."); # Made this text up
     quest::summonitem(3317); # Item: ShadowBound Boots
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
 }

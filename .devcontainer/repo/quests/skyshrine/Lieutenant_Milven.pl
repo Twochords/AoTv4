@@ -21,7 +21,7 @@ sub EVENT_ITEM {
   quest::faction(430,15); # +Claws of Veeshan
   quest::faction(436,3); # +Yelinak
   quest::faction(448,-7); # -Kromzek
-  quest::exp(10000);
+  quest::exp(440);
  }
  #Handin: Storm Giant Toes (29124)
  elsif(plugin::check_handin(\%itemcount, 29124 => 1)){ #End of: Strike Home Toe The Giants (Storm)
@@ -32,7 +32,7 @@ sub EVENT_ITEM {
   quest::faction(436,1); # +Yelinak
   quest::faction(448,-3); # -Kromzek
   quest::givecash(14,10,14,4);
-  quest::exp(10000);
+  quest::exp(440);
  }
  #Handin: Frost Giant Toes (29125)
  elsif(plugin::check_handin(\%itemcount, 29125 => 1)){ #End of: Strike Home Toe The Giants (Frost)
@@ -43,7 +43,7 @@ sub EVENT_ITEM {
   quest::faction(436,1); # +Yelinak
   quest::faction(448,-3); # -Kromzek
   quest::givecash(14,10,14,4);
-  quest::exp(5000);
+  quest::exp(360);
  }
   plugin::return_items(\%itemcount);
 }

@@ -49,7 +49,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 29064 => 1)) {
     quest::say("You've returned, and with the shipment of ore intact! It was wise to send you out on that mission, $name, and I'm glad you did not fail. If you're looking for more assignments to do, I may have something that is just right for you. If you're interested in it, just let me know and we'll talk.");
-    quest::exp(12500);
+    quest::exp(480);
     quest::givecash(7,6,10,4);
     quest::faction(436,10); #Yelinak
     quest::faction(430,10); #CoV
@@ -63,7 +63,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 29065 => 1) && ($friendofthekin == 1)) {
     quest::say("You have shown us yet again your loyalty to our people. Please accept this token of our gratitude.");
     quest::summonitem(29050); # Item: Dragon Tooth Choker
-    quest::exp(32500);
+    quest::exp(640);
     quest::givecash(0,0,10,10);
     quest::faction(436,10); #Yelinak
     quest::faction(430,10); #CoV

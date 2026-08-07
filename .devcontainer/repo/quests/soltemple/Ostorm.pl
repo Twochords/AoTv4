@@ -31,7 +31,7 @@ sub EVENT_ITEM {
       }
     }
     quest::me("Your specialize skills have all been set to 49.");
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({"gold" => 50})) { # Cash: Gold x 50
     quest::say("Thank you.");

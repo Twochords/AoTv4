@@ -49,7 +49,7 @@ function event_trade(e)
 		e.self:Say("Thank you for your work. I heard news of the troubles you encountered. Besides these troubles you still completed your mission. We are grateful. And as I once stated, your reward awaits.");
 		e.other:SummonItem(eq.ChooseRandom(15380,15477,15656)); -- Item(s): Spell: Column of Frost (15380), Spell: Fire Bolt (15477), Spell: Shock of Ice (15656)
 		e.other:Ding();
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:GiveCash(0,0,0,1);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

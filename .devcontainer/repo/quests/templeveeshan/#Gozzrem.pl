@@ -50,7 +50,7 @@ sub EVENT_ITEM {
     quest::faction(430,+75); # claws of veeshan
     quest::faction(436,+18); # yelinak
     quest::faction(448,-37); # zek
-    quest::exp(200000);
+    quest::exp(1180);
   }
   else {
     quest::say("You need to prove your dedication to our cause before I can discuss such matters with you.");

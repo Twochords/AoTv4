@@ -38,7 +38,7 @@ function event_trade(e)
 		e.other:Faction(237,1,0); -- Faction: Dark Ones
 		e.other:Faction(308,1,0); -- Faction: Shadowknights of Night Keep
 		e.other:Faction(251,-1,0); -- Faction: Frogloks of Guk
-		e.other:AddEXP(210);
+		e.other:AddEXP(120);
 	elseif (item_lib.check_turn_in(e.trade, {item1 = 13050, item2 = 13054})) then
 		e.self:Say("'So you know all about da rat now. Dat is good. Next step is important. You need to learn to [" .. eq.say_link("fight like da alligator",false,"fight like da alligator") .. "].");
 		e.other:SummonItem(7381); -- Item: Dark One's Cap
@@ -46,7 +46,7 @@ function event_trade(e)
 		e.other:Faction(237,2,0); -- Faction: Dark Ones
 		e.other:Faction(308,1,0); -- Faction: Shadowknights of Night Keep
 		e.other:Faction(251,-1,0); -- Faction: Frogloks of Guk
-		e.other:AddEXP(210);
+		e.other:AddEXP(120);
 	elseif (item_lib.check_turn_in(e.trade, {item1 = 13725})) then
 		e.self:Say("Ok meez believe you. Here your reward. Meez think you just about ready for [" .. eq.say_link("next part of your training",false,"next part of your training") .. "].");
 		e.other:SummonItem(7382); -- Item: Dark One's Leggings
@@ -54,7 +54,7 @@ function event_trade(e)
 		e.other:Faction(237,6,0); -- Faction: Dark Ones
 		e.other:Faction(308,1,0); -- Faction: Shadowknights of Night Keep
 		e.other:Faction(251,-1,0); -- Faction: Frogloks of Guk
-		e.other:AddEXP(210);
+		e.other:AddEXP(120);
 	elseif (item_lib.check_turn_in(e.trade, {item1 = 22524})) then
 		e.self:Say("You did it! You cause lots of fear for them. Dat good. Even da spirits are starting to tremble. Soon you will be able to make dem do what you want. But there is [" .. eq.say_link("one more task",false,"one more task") .. "] meez want you to do.");
 		e.other:SummonItem(7383); -- Item: Dark One's Claw
@@ -62,7 +62,7 @@ function event_trade(e)
 		e.other:Faction(237,28,0); -- Faction: Dark Ones
 		e.other:Faction(308,7,0); -- Faction: Shadowknights of Night Keep
 		e.other:Faction(251,-4,0); -- Faction: Frogloks of Guk
-		e.other:AddEXP(210);
+		e.other:AddEXP(120);
 	elseif (item_lib.check_turn_in(e.trade, {item1 = 13354, item2 = 13354, item3 = 13354, item4 = 13354})) then
 		e.self:Say("Meez impressed. Da spirits, they tremble in terror before you. Meez can't teach you no more. Go and dominate through fear. Fight like da alligator and tear your enemies apart.");
 		e.other:SummonItem(7384); -- Item: Dark One's Leather
@@ -70,7 +70,7 @@ function event_trade(e)
 		e.other:Faction(237,10,0); -- Faction: Dark Ones
 		e.other:Faction(308,2,0); -- Faction: Shadowknights of Night Keep
 		e.other:Faction(251,-1,0); -- Faction: Frogloks of Guk
-		e.other:AddEXP(210);
+		e.other:AddEXP(120);
 	end
 
 	item_lib.return_items(e.self, e.other, e.trade)

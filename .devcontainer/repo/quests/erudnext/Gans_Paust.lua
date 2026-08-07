@@ -38,7 +38,7 @@ function event_trade(e)
 		e.other:Faction(242,100,0); -- Deepwater Knights
 		e.other:Faction(266,15,0); -- High Council of Erudin
 		e.other:Faction(265,-15,0); -- Heretics
-		e.other:AddEXP(20);
+		e.other:AddEXP(60);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 1771})) then
 		e.self:Say("Excellent! Thank you for checking on my brother, I am glad to hear that he is well.  Here is something that shall help you on your way.");
 		e.other:SummonItem(1763); -- Item: Midnight Sea Mail Sleeves
@@ -46,7 +46,7 @@ function event_trade(e)
 		e.other:Faction(242,25,0); -- Deepwater Knights
 		e.other:Faction(266,3,0); -- High Council of Erudin
 		e.other:Faction(265,-3,0); -- Heretics
-		e.other:AddEXP(2500);
+		e.other:AddEXP(280);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

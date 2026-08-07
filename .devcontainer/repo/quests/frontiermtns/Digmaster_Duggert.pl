@@ -16,7 +16,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 62100 => 3, 62101 => 1)) {#3x Hoodlum Symbol of Dust  ,Heaprit's Heart
     quest::say("May the blessing of the earth be with you. Here take this, it may prove useful to you.");#Text borrowed from another in same line of quests
     quest::summonitem(62206); #Antique Ring of Truth
-    quest::exp(6987750);#2% of level 56 xp, quest intended for level 55 characters
+    quest::exp(3840);#2% of level 56 xp, quest intended for level 55 characters
   }
   
    plugin::return_items(\%itemcount);

@@ -19,17 +19,17 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 20955, item2 = 20856, item3 = 20857})) then 					--ranger test of the element of thunder using djinni statuette, spiroc thunder totem, white gold earring
 		e.other:SummonItem(14568); --thunderforged earring
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Take this as your reward.");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20859, item2 = 20860, item3 = 20858, item4 = 20962})) then 	--ranger test of the blade using bitter honey, circlet of brambles, efreeti long sword, emerald spiroc feather
 		e.other:SummonItem(27732); --arydryidriyorn
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Take this as your reward.");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20861, item2 = 20969, item3 = 20862, item4 = 20863})) then 	--ranger test of the art of ranged attack using efreeti war bow, thickened nectar, sphinx tallow, shimmering pearl
 		e.other:SummonItem(11696); --windstriker
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Take this as your reward.");
 		eq.depop();
 	end

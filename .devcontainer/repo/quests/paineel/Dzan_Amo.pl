@@ -17,7 +17,7 @@ sub EVENT_ITEM {
     quest::faction(254, -5); #Gate Callers
     quest::faction(231, -5);  #Craftkeepers
     quest::faction(233, -5);  #Crimson Hands
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 }

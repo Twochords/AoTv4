@@ -17,7 +17,7 @@ function event_trade(e)
 		e.other:Faction(245,1,0); -- Faction: Eldritch Collective
 		e.other:Faction(255,1,0); -- Faction: Gem Choppers
 		e.other:Faction(239,-2,0); -- Faction: The Dead
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:GiveCash(0,7,3,0);
 		eq.depop_with_timer();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 1717})) then
@@ -26,7 +26,7 @@ function event_trade(e)
 		e.other:Faction(245,1,0); -- Faction: Eldritch Collective
 		e.other:Faction(255,1,0); -- Faction: Gem Choppers
 		e.other:Faction(239,-2,0); -- Faction: The Dead
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		eq.depop_with_timer();		
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

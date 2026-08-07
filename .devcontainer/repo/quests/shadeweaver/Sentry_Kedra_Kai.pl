@@ -20,7 +20,7 @@ sub EVENT_ITEM {
     #Paludal Carapace Shield
     quest::summonitem(85054); # Item: Paludal Carapace Shield
     quest::faction(1513,5); # +Guardians of Shar Vahl
-    quest::exp(250);
+    quest::exp(140);
     quest::ding();
     }
   plugin::return_items(\%itemcount);

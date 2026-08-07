@@ -12,7 +12,7 @@ function event_trade(e)
 		e.self:Say("You were sent by Geeda!! Here. Take the information. Maybe next you shall earn your [Scout Blade] from Laren. Quickly!! Leave at once!!");
 		e.other:SummonItem(12183); -- Crushbone Information
 		e.other:Ding();
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

@@ -19,7 +19,7 @@ function event_trade(e)
 		e.other:Faction(298,20,0); -- Faction: Peace Keepers
 		e.other:Faction(266,20,0); -- Faction: High Council of Erudin
 		e.other:Faction(265,-20,0); -- Faction: Heretics
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13913})) then
 		e.self:Say("You found the man?  That is excellent work, young Paladin, here take this for your trouble and we thank you once again.");
 		e.other:SummonItem(15011); -- Item: Spell: Holy Armor
@@ -27,7 +27,7 @@ function event_trade(e)
 		e.other:Faction(298,20,0); -- Faction: Peace Keepers
 		e.other:Faction(266,20,0); -- Faction: High Council of Erudin
 		e.other:Faction(265,-20,0); -- Faction: Heretics
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

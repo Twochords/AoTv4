@@ -15,7 +15,7 @@ function event_trade(e)
 		e.other:Faction(336,10,0); -- Faction: Coalition of Tradefolk Underground
 		e.other:Faction(281,-10,0); -- Faction: Knights of Truth
 		e.other:Faction(362,-10,0); -- Faction: Priests of Marr
-		e.other:AddEXP(50);
+		e.other:AddEXP(80);
 		e.other:GiveCash(1,1,1,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

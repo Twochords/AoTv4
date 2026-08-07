@@ -20,7 +20,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 6923 => 1)) {
     quest::say("I say we round up the Furballs AND the Dog Faces and let them kill each other off! Then we can easily finish off the survivors!");
-    quest::exp(300);
+    quest::exp(140);
     quest::depop_withtimer();
   }
   plugin::return_items(\%itemcount);

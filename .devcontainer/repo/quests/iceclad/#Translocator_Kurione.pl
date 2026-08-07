@@ -15,7 +15,7 @@ sub EVENT_ITEM {
   # 60333 Joshel's Bandana
   if (plugin::check_handin(\%itemcount,60333=>1)) {
     quest::say("Whew, it's good that you were able to find him, and doing so well. Thanks very much for checking on him for me. I would have done so myself, but with the problems with the boats, I just haven't had the time. Thanks again.");
-    quest::exp(1);
+    quest::exp(20);
     quest::ding();
   }
 

@@ -40,7 +40,7 @@ sub EVENT_ITEM
 			quest::say("Outstanding!  Take this!");#text made up
 			quest::faction(1016, 10);#Dranik Loyalists
 			quest::faction(1013, -20);#Overlord Mata Muram
-			quest::exp(10000);
+			quest::exp(440);
 			#Reward depends on class
 			if (($class eq "Wizard") || ($class eq "Enchanter") || ($class eq "Magician") || ($class eq "Necromancer") || ($class eq "Cleric") || ($class eq "Druid") || ($class eq "Shaman")) {
 				quest::summonitem(71153);#Ancient Ivory Figurine
@@ -54,7 +54,7 @@ sub EVENT_ITEM
 			quest::say("Perfect! This will light a fire under those laggards. Here, take this ring I found in the gauntlets. It appears you were a bit tough on him when you pulled these off. Good for you!");
 			quest::faction(1016, 10);#Dranik Loyalists
 			quest::faction(1013, -20);#Overlord Mata Muram
-			quest::exp(10000);
+			quest::exp(440);
 			#Reward depends on class
 			if (($class eq "Wizard") || ($class eq "Enchanter") || ($class eq "Magician") || ($class eq "Necromancer") || ($class eq "Cleric") || ($class eq "Druid") || ($class eq "Shaman")) {
 				quest::summonitem(71148);#Muramite Glyphed Ring
@@ -68,7 +68,7 @@ sub EVENT_ITEM
 			quest::say("Superb!  Take this!");#Text made up
 			quest::faction(1016, 10);#Dranik Loyalists
 			quest::faction(1013, -20);#Overlord Mata Muram
-			quest::exp(10000);
+			quest::exp(440);
 			#Reward depends on class
 			if (($class eq "Wizard") || ($class eq "Enchanter") || ($class eq "Magician") || ($class eq "Necromancer") || ($class eq "Cleric") || ($class eq "Druid") || ($class eq "Shaman")) {
 				quest::summonitem(71150);#Diamond Earring of the Victor

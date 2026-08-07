@@ -50,7 +50,7 @@ function event_trade(e)
 		e.other:Faction(262,1,0); -- Guards of Qeynos
 		e.other:Faction(341,1,0); -- Priests of Life
 		e.other:Faction(280,1,0); -- Priests of Life
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13751, gold = 15})) then
 		e.self:Say("Oh.. I see.. But um.. I still need the other thing before I can make anything for you.. sorry.");
 		e.self:Say("Ohh good.. good! I.. um.. can make.. Oh great. Here you go. I hope you like it. I always um.. try my best. Tell your um.. friends where you got your bear things!");
@@ -60,7 +60,7 @@ function event_trade(e)
 		e.other:Faction(262,1,0); -- Guards of Qeynos
 		e.other:Faction(341,1,0); -- Priests of Life
 		e.other:Faction(280,1,0); -- Priests of Life
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13750, gold = 5})) then
 		e.self:Say("Oh.. I see.. But um.. I still need the other thing before I can make anything for you.. sorry.");
 		e.self:Say("Great. Oh, here, now I can make the.. um.. ok.. here. Yes.. good. I love making bear skin belts. Here you go. I hope you like it.");
@@ -70,7 +70,7 @@ function event_trade(e)
 		e.other:Faction(262,1,0); -- Guards of Qeynos
 		e.other:Faction(341,1,0); -- Priests of Life
 		e.other:Faction(280,1,0); -- Priests of Life
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

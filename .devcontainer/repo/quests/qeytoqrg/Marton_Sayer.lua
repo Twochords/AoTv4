@@ -23,7 +23,7 @@ function event_trade(e)
 		e.other:Faction(219,10,0); -- Faction: Antonius Bayle
 		e.other:Faction(229,10,0); -- Faction: Coalition of Tradefolk
 		e.other:Faction(262,10,0); -- Faction: Guards of Qeynos
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 8357,item2 = 8356,item3 = 5416})) then
 		e.self:Say("'The eye and the journal! What a great day! The Gnoll Slayer shall be returned to full strength because of you. Your service to Qeynos will not soon be forgotten.");
 		e.other:SummonItem(5417); -- Item: Gnoll Slayer
@@ -33,7 +33,7 @@ function event_trade(e)
 		e.other:Faction(219,10,0); -- Faction: Antonius Bayle
 		e.other:Faction(229,10,0); -- Faction: Coalition of Tradefolk
 		e.other:Faction(262,10,0); -- Faction: Guards of Qeynos
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

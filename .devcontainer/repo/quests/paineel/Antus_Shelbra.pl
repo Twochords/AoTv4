@@ -30,7 +30,7 @@ sub EVENT_ITEM {
     quest::faction(231,-30);  #Craftkeepers
     quest::faction(233,-30);  #Crimson Hands
     quest::givecash(5,4,6,1);
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 }

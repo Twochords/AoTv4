@@ -28,7 +28,7 @@ function event_trade(e)
 		e.other:AddAAPoints(10);
 		e.other:Ding();
 		e.other:Message(MT.Yellow,'You have gained 10 ability points!');
-		e.other:AddEXP(10000); -- not sure how much exp to reward
+		e.other:AddEXP(440); -- not sure how much exp to reward
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end		

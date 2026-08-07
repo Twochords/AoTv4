@@ -32,7 +32,7 @@ sub EVENT_ITEM {
     quest::faction(1484,-10); # -Hand of Seru
     quest::faction(1485,-10);  # -Eye of Seru
     quest::faction(1541,-10); # -Hand Legionnaries
-    quest::exp(1000);
+    quest::exp(200);
   }
   #Handin: 2x Vampyre Infiltrator Fang (31832), 1x Gem of Condensed Flame (31831), 1x Reflective Combine Claymore (31829)
   elsif(plugin::check_handin(\%itemcount, 31832 => 2, 31831 => 1, 31829 =>1)){
@@ -48,7 +48,7 @@ sub EVENT_ITEM {
     quest::faction(1484,-10); # -Hand of Seru
     quest::faction(1485,-10);  # -Eye of Seru
     quest::faction(1541,-10); # -Hand Legionnaries
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif(plugin::check_handin(\%itemcount, 3873 => 1)){ #Colain head turn-in for Saureem's Assistance
     quest::say("It is very unfortunate that you had to be exposed to such corruption.  Please, do not consider what you have seen during this situation to be the standard for our community.  This was a rare occurrence.  This situation did however allow you to prove yourself to us.  We thank you for your bravery and selfless action in this matter.  May you be followed by favor and may this small gift from my fellow governors and me assist you in your journeys.");
@@ -63,7 +63,7 @@ sub EVENT_ITEM {
     quest::faction(1484,-10); # -Hand of Seru
     quest::faction(1485,-10);  # -Eye of Seru
     quest::faction(1541,-10); # -Hand Legionnaries
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::try_tome_handins(\%itemcount, $class, 'Paladin');
   plugin::return_items(\%itemcount);

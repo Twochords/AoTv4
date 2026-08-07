@@ -34,7 +34,7 @@ sub EVENT_ITEM {
     quest::emote("tosses the beetle eyes into his mouth & attempts to say something to the effect of 'here is your payment.' The sound of crunching gristle & popping eyeballs prevents him from saying it 
 properly.");
     quest::givecash("3","3","0","0"); 
-    quest::exp(1000);
+    quest::exp(200);
     quest::ding();
   }
   # takes repair order from master Barkhem

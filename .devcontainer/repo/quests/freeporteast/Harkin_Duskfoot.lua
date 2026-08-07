@@ -26,7 +26,7 @@ function event_trade(e)
 		e.other:Faction(329,2,0); -- Carson McCabe
 		e.other:Faction(230,1,0); -- Corrupt Qeynos Guards
 		e.other:Faction(330,3,0); -- Freeport Militia
-		e.other:AddEXP(1500);
+		e.other:AddEXP(240);
 		e.other:GiveCash(6,0,0,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

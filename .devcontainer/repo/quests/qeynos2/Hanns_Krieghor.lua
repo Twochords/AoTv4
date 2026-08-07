@@ -53,7 +53,7 @@ function event_trade(e)
 		e.other:SummonItem(7501); -- Item: Fanged Skull Stiletto
 		e.other:Ding();
 		e.other:Faction(223,20,0); -- Circle of Unseen Hands
-		e.other:AddEXP(50000);
+		e.other:AddEXP(740);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

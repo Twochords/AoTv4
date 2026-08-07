@@ -33,14 +33,14 @@ sub EVENT_ITEM {
     quest::faction(451,3); # Faction: Brood of Di`Zok
     quest::faction(307,3); # Faction: Sarnak Collective
     quest::faction(259,-1); # Faction: Goblins of Mountain Death
-    quest::exp(1000);
+    quest::exp(200);
   }
   if (plugin::check_handin(\%itemcount,22135=>1)) { # Green Goblin Skin
     quest::say("Green Goblin Skin! You have indeed been busy! I shall speak to my masters of this, continue your good work and return to me with more skins.");
     quest::faction(451,3); # Faction: Brood of Di`Zok
     quest::faction(307,3); # Faction: Sarnak Collective
     quest::faction(259,-1); # Faction: Goblins of Mountain Death
-    quest::exp(1000);
+    quest::exp(200);
   } 
   if (plugin::check_handin(\%itemcount,6476=>1,5728=>1)) { # Head of Skargus & Di'Zok Signet of Service
     quest::say("Ah hah! You are notworthy indeed amongst the servants of the Sarnak! Perhaps I should have you killed, before your deeds outdo mine.. Hmm..");
@@ -48,7 +48,7 @@ sub EVENT_ITEM {
     quest::faction(451,500); # Faction: Brood of Di`Zok
     quest::faction(307,500); # Faction: Sarnak Collective
     quest::faction(259,-200); # Faction: Goblins of Mountain Death
-    quest::exp(50000);
+    quest::exp(740);
     quest::summonitem(5727); # 5727  Regal Band of Bathezid
     quest::delglobal("RegalBandBathezid");
   }

@@ -32,7 +32,7 @@ sub EVENT_ITEM {
 		quest::signal(160288,20000); # Centurion Goran
 		quest::signal(160427,700000); # A Vah Shir Courier Depop signal
 		quest::faction(1513,10); # Guardians of Shar Vahl
-		quest::exp(1500);
+		quest::exp(240);
 		quest::ding();
 	}
 	if (plugin::check_handin(\%itemcount, 31839 => 1)) {  # Resealed Runed Iron Bound Chest
@@ -40,7 +40,7 @@ sub EVENT_ITEM {
 		quest::summonitem(31841);  # Roshawna's Report of Occurrences
 		quest::summonitem(31839);  # Resealed runed iron bound chest
 		quest::faction(1513,10); # Guardians of Shar Vahl
-		quest::exp(2000);
+		quest::exp(260);
 		quest::ding();
 	}
 	plugin::return_items(\%itemcount);

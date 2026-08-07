@@ -26,7 +26,7 @@ sub EVENT_ITEM {
  if(plugin::check_handin(\%itemcount, 7879 => 1, 7880 => 1, 7881 => 1)){
   quest::say("So you are finally ready for the final rung. Here it is, you shall receive mine for I quest for the fists of Cazic Thule no longer.");
   quest::summonitem(4199); # Item: Shackle of Tynnonium
-  quest::exp(60000);
+  quest::exp(800);
   quest::ding();
   quest::faction(444,100); # Faction: Swift Tails
   quest::faction(441,25); # Faction: Legion of Cabilis

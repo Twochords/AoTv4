@@ -20,7 +20,7 @@ sub EVENT_ITEM {
  if(plugin::check_handin(\%itemcount, 12839 => 1, 4194 => 1, 4195 => 1)){
   quest::emote("hands you a shackle and removes the coppernickel shackle so he may flee. He places your shackles on his wrists and darts into the darkness.");
   quest::summonitem(4196); # Item: Shackle of Steel
-  quest::exp(50000);
+  quest::exp(740);
   quest::ding();
   quest::faction(444,20); # Faction: Swift Tails
   quest::faction(441,10); # Faction: Legion of Cabilis

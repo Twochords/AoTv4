@@ -22,7 +22,7 @@ sub EVENT_ITEM {
 		quest::faction(302,+30); # protectors of the pine
 		quest::faction(272,+30); # jaggedpine treefolk
 		quest::faction(324,-60); # unkempt druids
-		quest::exp(10000);		
+		quest::exp(440);		
     }
 	elsif(plugin::takeItemsCoin(0,0,2000,0, 12305 => 1, 12306 => 1)) {
 		quest::say("Here are your boots.");
@@ -32,7 +32,7 @@ sub EVENT_ITEM {
 		quest::faction(302,+30); # protectors of the pine
 		quest::faction(272,+30); # jaggedpine treefolk
 		quest::faction(324,-60); # unkempt druids
-		quest::exp(10000);		
+		quest::exp(440);		
     }
     elsif(plugin::takeItems(10059 => 1, 12328 => 1)) {
 		quest::say("Here are your leggings.");
@@ -42,7 +42,7 @@ sub EVENT_ITEM {
 		quest::faction(302,+30); # protectors of the pine
 		quest::faction(272,+30); # jaggedpine treefolk
 		quest::faction(324,-60); # unkempt druids
-		quest::exp(10000);		
+		quest::exp(440);		
     }
     plugin::returnUnusedItems();
 }

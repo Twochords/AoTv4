@@ -21,17 +21,17 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 20983, item2 = 20963, item3 = 20981,item4 = 20982})) then -- warrior test of bash using efreeti battle axe, honeyed nectar, bottled djinni, ethereal emerald
 		e.other:SummonItem(11675); --fangol
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Yuz do good! Take dis!");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20980,item2 = 20979, item3 = 20956})) then -- warrior test of smash using djinni war blade, virulent poison, mottled spiroc feather
 		e.other:SummonItem(11674); -- dagas
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Yuz do good! Take dis!");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20976, item2 = 20977, item3 = 20978})) then -- warrior test of think using efreeti belt, pegasus statuette, spiroc wind totem, wind tablet
 		e.other:SummonItem(11673); -- belt of the four winds
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Yuz do good! Take dis!");
 		eq.depop();
 	end

@@ -23,13 +23,13 @@ function event_trade(e)
 			e.other:SummonItem(18499); -- Item: Elf Essence Recipe
 			e.other:Ding();
 			e.other:Faction(251,10,0); -- Froglok of Guk
-			e.other:AddEXP(500);
+			e.other:AddEXP(160);
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 11274,item2 = 11276,item3 = 10254,item4 = 26999})) then
 			e.self:Say("Frroooaaaaaakkkk!!! This cloaaak so waaarm! Here let me work! Frroooaaaaaakkkk!' The old froglok goes to work on the crown and after uttering a few froaks, a small cloud of smoke rises from the crown. You reach over and pick it up. 'Frroooaaaaaakkkk! Maaagic haaat! Taaake good care of it aaand staay away from baaad frogs! Frroooaaaaaakkkk!");
 			e.other:SummonItem(11277); -- Item: Crown of Deceit
 			e.other:Ding();
 			e.other:Faction(251,10,0); -- Froglok of Guk
-			e.other:AddEXP(500);
+			e.other:AddEXP(160);
 		end
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

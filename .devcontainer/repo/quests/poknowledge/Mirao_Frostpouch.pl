@@ -17,7 +17,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 28090 => 1)) {#Black Lava Powder
     quest::emote("takes the powder and quickly dashes it into a boiling cauldron. He then stirs it and pours the concoction into a small bottle. 'Here you go, this should make poor Bolcen feel much better. Hurry now, he's waiting.");
     quest::summonitem(28091);#Curative Potion
-    quest::exp(250);
+    quest::exp(140);
   }
   plugin::return_items(\%itemcount);
 }#END of FILE Zone:poknowledge  ID:202153 -- Mirao_Frostpouch 

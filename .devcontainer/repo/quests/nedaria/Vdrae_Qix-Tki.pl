@@ -20,7 +20,7 @@ sub EVENT_ITEM {
 if (plugin::check_handin(\%itemcount, 66186 => 4)) { # Basilisk Hides
 
 quest::say("What a relief! I was just about out of hides to work with it. Thank you! Here is your reward. Oh, did you know that Morden Rasp has had the Grozmok Stone for some time? Several of us knew, but were sworn to secrecy. Morden plucked it right out of the smelly hands of the trolls at Broken Skull Rock, I hear."); 
-quest::exp(10000);
+quest::exp(440);
 quest::givecash(11,10,11,6);
 
 }
@@ -28,7 +28,7 @@ quest::givecash(11,10,11,6);
 elsif (plugin::check_handin(\%itemcount, 66193 => 4)) { # Silverfur Hides
 
 quest::say("What a relief! I was just about out of hides to work with it. Thank you! Here is your reward. Oh, did you know that Morden Rasp has had the Grozmok Stone for some time? Several of us knew, but were sworn to secrecy. Morden plucked it right out of the smelly hands of the trolls at Broken Skull Rock, I hear."); 
-quest::exp(10000);
+quest::exp(440);
 quest::givecash(11,10,11,6);
 
 }

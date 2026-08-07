@@ -30,11 +30,11 @@ function event_trade(e)
 		if((e.other:Class() == "bard") or (e.other:Class() == "beastlord") or (e.other:Class() == "paladin") or (e.other:Class() == "ranger") or (e.other:Class() == "rogue") or (e.other:Class() == "shadowknight") or (e.other:Class() == "warrior")) then
 			e.other:SummonItem(63050); -- Item: Bonebite
 			e.other:Ding();
-			e.other:AddEXP(5000);
+			e.other:AddEXP(360);
 		else
 			e.other:SummonItem(63051); -- Item: Signet of Grisk
 			e.other:Ding();
-			e.other:AddEXP(5000);
+			e.other:AddEXP(360);
 		end
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

@@ -13,7 +13,7 @@ function event_trade(e)
 		e.other:Faction(281,20,0); -- Faction: Knights of Truth
 		e.other:Faction(296,-20,0); -- Faction: Opal Darkbriar
 		e.other:Faction(330,-20,0); -- Faction: The Freeport Militia
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

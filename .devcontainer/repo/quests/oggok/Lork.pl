@@ -32,7 +32,7 @@ sub EVENT_ITEM {
     quest::faction(228,10); # Faction: Clurg
     quest::faction(261,-10); # Faction: Green Blood Knights
     quest::summonitem(13357); # Item: Cracked Stein
-    quest::exp(50);
+    quest::exp(80);
   }
   elsif(plugin::check_handin(\%itemcount, 18840 => 1)) {
     quest::say("What this!! So, dark elves think they can bash ogres. Replace with blue orcs. Dumb Zulort friend with dark elf ambassador in Oggok. We kill him. We kill Crushbone dark elf ambassador also. This slow down plan. We need a hero. Me guess you do. You go. Go bring Lork both Crushbone and Oggok dark elf hearts. Then you be hero.");

@@ -33,7 +33,7 @@ sub EVENT_TASKACCEPTED {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 54604 => 1)) {
     quest::say("Well done $name! We shall start brewing right away.");
-    quest::exp(25);
+    quest::exp(60);
   }
   elsif (plugin::check_handin(\%itemcount, 8500 => 1)) {
     if (quest::istaskactivityactive(1396, 0)) {

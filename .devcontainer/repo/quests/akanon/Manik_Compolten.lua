@@ -18,7 +18,7 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 13208})) then
 		e.self:Say("Ah! Excellent work! I think we may have further use for you if you like.");
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:GiveCash(1,3,1,2);
 		e.other:Faction(255,3,0); 	-- gem choppers
 		e.other:Faction(333,3,0); 	-- King ak'anon
@@ -34,7 +34,7 @@ function event_trade(e)
 		e.other:Faction(288,1,0); 	-- Merchants of Ak'Anon
 		e.other:Faction(1604,-1,0); 	-- Clan Grikbar
 		e.other:Faction(238,-1,0); 	-- Dark Reflection
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 		e.other:Ding();
 	elseif (item_lib.check_turn_in(e.trade, {item1 = 13215})) then -- text is not per live. Need original
 		e.self:Say("What's this? You've found and smashed Red V?! Amazing! Wonderful! Take this as a sign of my thanks!");
@@ -44,7 +44,7 @@ function event_trade(e)
 		e.other:Faction(288,1,0); 	-- Merchants of Ak'Anon
 		e.other:Faction(1604,-1,0); 	-- Clan Grikbar
 		e.other:Faction(238,-1,0); 	-- Dark Reflection
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 		e.other:Ding();
 		e.other:GiveCash(1,3,0,0);
 	end

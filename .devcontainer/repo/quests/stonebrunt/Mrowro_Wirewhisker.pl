@@ -7,7 +7,7 @@ sub EVENT_ITEM {
     #quest::spawn2(quest::ChooseRandom(100223,100224,100225),$x+5, $y+5, $z+5, $h); #Apparitions
     quest::faction(473,10); #Kejek Village
     quest::faction(298,10); #Peace Keepers
-    quest::exp(50000);
+    quest::exp(740);
   }
   plugin::return_items(\%itemcount);
 }

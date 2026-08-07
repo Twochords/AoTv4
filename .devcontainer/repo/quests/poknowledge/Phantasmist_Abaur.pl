@@ -17,7 +17,7 @@ sub EVENT_ITEM {
 		(plugin::check_handin(\%itemcount, 1252 => 1))) {#Insidious Armor, the comments on Alla's about this not being taken are in error, I believe.  It's Fine Insidious that's not taken.
     	quest::say("Thank you, $name.");#Text made up
     	quest::summonitem(quest::ChooseRandom(10028, 10037, 22503, 15981));#Random gem: Peridot, Diamond, Blue Diamond, Raw Diamond
-    	quest::exp(698775);
+    	quest::exp(1780);
   }
   plugin::return_items(\%itemcount);
 }#END of FILE Zone:poknowledge  ID:202241 -- Phantasmist_Abaur 

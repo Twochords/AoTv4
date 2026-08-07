@@ -15,7 +15,7 @@ sub EVENT_ITEM {
       quest::faction(1561,100); #concillium universus
       quest::faction(1483,-10); #seru
       quest::faction(1486,-50); #heart of seru
-      quest::exp(1000000);
+      quest::exp(2000);
     }
   }
   if (plugin::check_handin(\%itemcount, 29860 => 1, 7810 => 1)) {
@@ -24,7 +24,7 @@ sub EVENT_ITEM {
     quest::faction(1561,200); #concillium universus
     quest::faction(1483,-20); #seru
     quest::faction(1486,-100); #heart of seru
-    quest::exp(2000000);
+    quest::exp(2520);
   }
   plugin::return_items(\%itemcount); # return unused items
 }

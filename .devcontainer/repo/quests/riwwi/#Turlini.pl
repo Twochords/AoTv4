@@ -21,7 +21,7 @@ sub EVENT_ITEM {
     quest::say("This is wonderful news, friend. Freedom is within our grasp! The only problem remaining is the ever-present guards. They are always watching over us. We would need a monumental distraction to buy enough time for me to release everyone. Which is where you come in. One of your kind who goes by the name of Reyna has been taken to the arena and has been tortured daily in front of the Muramite masses. If you were to create enough of a ruckus in the arena trying to free her I think we could make our escape.");
     quest::faction(1770,50); # Faction: Yunjo Slave Resistance
     quest::faction(1771,-25); # Faction: Gladiators of Mata Muram
-    quest::exp(10000);
+    quest::exp(440);
     quest::setglobal("bic_riw",8,5,"F");
     $client->Message(12,"You have received a character flag!");
   }

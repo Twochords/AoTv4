@@ -62,14 +62,14 @@ sub EVENT_ITEM {
 		quest::say("He simply gave this to you?  Cunning indeed for him to cover his weakness so thoroughly- he must have powerful protective enchantments in place, no doubt put in place by his good friend and associate, Tsaph Katta!");
 		quest::ding();
 		quest::faction(1577,10); # Faction: The Truth
-		quest::exp(1000000);
+		quest::exp(2000);
 		quest::summonitem(17516); # Item: Silver Wrapping Paper
 	}
 	elsif(plugin::check_handin(\%itemcount, 29692 => 1)){
 		quest::say("Ahh, you have retrieved the memoirs, let me see.' Arbogast opens the book and starts flipping through pages, 'Yes here, you... no, wait it must be back... hrmmm, maybe he... but it must... Well, that was pretty clever of old Tsaph Katta, removing any record of who he truly is- probably did it to cover up the fact that Norrath does not really exist.");
 		quest::ding();
 		quest::faction(1577,10); # Faction: The Truth
-		quest::exp(1000000);
+		quest::exp(2000);
 		quest::summonitem(17517); #gold wrapping paper
 	}
 	elsif(plugin::check_handin(\%itemcount, 29694 => 1)){ # gold wrapped book
@@ -77,7 +77,7 @@ sub EVENT_ITEM {
 		quest::signal(160226,5000); # NPC: Yavik_Teralin
 		quest::ding();
 		quest::faction(1577,10); # Faction: The Truth
-		quest::exp(1000000);
+		quest::exp(2000);
 		quest::summonitem(17518); #black wrapping paper
 	}
 	elsif(plugin::check_handin(\%itemcount, 29695 => 1)){ # black wrapped item
@@ -85,7 +85,7 @@ sub EVENT_ITEM {
 		quest::signalwith(160111,6,5000); # NPC: Miller
 		quest::ding();
 		quest::faction(1577,10); # Faction: The Truth
-		quest::exp(1000000);
+		quest::exp(2000);
 	}
 	plugin::return_items(\%itemcount);
 }

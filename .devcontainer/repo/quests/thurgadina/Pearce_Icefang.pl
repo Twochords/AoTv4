@@ -46,7 +46,7 @@ sub EVENT_ITEM {
   if ($faction <= 3) { # Require warmly and greater faction 
     if (plugin::check_handin(\%itemcount, 25814 => 3, 24942 => 1)) { # tunic 
       quest::summonitem(5454); # Item: Chestguard of the Beastlord
-      quest::exp(100000); 
+      quest::exp(940); 
       quest::faction(406,20); # coldain 
       quest::faction(405,20); # Dain Frostreaver IV 
       quest::faction(419,-60); # Kromrif
@@ -56,7 +56,7 @@ sub EVENT_ITEM {
     } 
     elsif (plugin::check_handin(\%itemcount, 25821 => 3, 24944 => 1)) { # sleeves 
       quest::summonitem(5455); # Item: Armband of the Beastlord
-      quest::exp(100000); 
+      quest::exp(940); 
       quest::faction(406,20); # coldain 
       quest::faction(405,20); # Dain Frostreaver IV 
       quest::faction(419,-60); # Kromrif
@@ -66,7 +66,7 @@ sub EVENT_ITEM {
     } 
     elsif (plugin::check_handin(\%itemcount, 25825 => 3, 24943 => 1)) { # leggings 
       quest::summonitem(5458); # Item: Leggings of the Beastlord
-      quest::exp(100000); 
+      quest::exp(940); 
       quest::faction(406,20); # coldain 
       quest::faction(405,20); # Dain Frostreaver IV 
       quest::faction(419,-60); # Kromrif
@@ -76,7 +76,7 @@ sub EVENT_ITEM {
     } 
     elsif (plugin::check_handin(\%itemcount, 25832 => 3, 24948 => 1)) { # gloves 
       quest::summonitem(5457); # Item: Gloves of the Beastlord
-      quest::exp(100000); 
+      quest::exp(940); 
       quest::faction(406,20); # coldain 
       quest::faction(405,20); # Dain Frostreaver IV 
       quest::faction(419,-60); # Kromrif
@@ -86,7 +86,7 @@ sub EVENT_ITEM {
     } 
     elsif (plugin::check_handin(\%itemcount, 25831 => 3, 24947 => 1)) { # cap     
       quest::summonitem(5453); # Item: Crown of the Beastlord
-      quest::exp(100000); 
+      quest::exp(940); 
       quest::faction(406,20); # coldain 
       quest::faction(405,20); # Dain Frostreaver IV 
       quest::faction(419,-60); # Kromrif
@@ -96,7 +96,7 @@ sub EVENT_ITEM {
     } 
     elsif (plugin::check_handin(\%itemcount, 25838 => 3, 24946 => 1)) { # bracers 
       quest::summonitem(5456); # Item: Bracer of the Beastlord
-      quest::exp(100000); 
+      quest::exp(940); 
       quest::faction(406,20); # coldain 
       quest::faction(405,20); # Dain Frostreaver IV 
       quest::faction(419,-60); # Kromrif
@@ -106,7 +106,7 @@ sub EVENT_ITEM {
     } 
     elsif (plugin::check_handin(\%itemcount, 25833 => 3, 24945 => 1)) { # boots 
       quest::summonitem(5459); # Item: Boots of the Beastlord
-      quest::exp(100000);
+      quest::exp(940);
       quest::faction(406,20); # coldain
       quest::faction(405,20); # Dain Frostreaver IV
       quest::faction(419,-60); # Kromrif

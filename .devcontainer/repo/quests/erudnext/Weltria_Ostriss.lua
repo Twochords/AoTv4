@@ -17,7 +17,7 @@ end
 		e.other:Faction(289,5,0); -- Faction: Merchants of Erudin
 		e.other:Faction(266,5,0); -- Faction: High Council of Erudin
 		e.other:Faction(267,5,0); -- Faction: High Guard of Erudin
-		e.other:AddEXP(1500);
+		e.other:AddEXP(240);
 		e.other:GiveCash(50,0,0,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

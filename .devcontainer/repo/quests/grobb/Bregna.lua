@@ -26,7 +26,7 @@ function event_trade(e)
 		e.self:Say("Dis am gud. I see you've been talkin' to Garuuk. Methanks you fer da help. Take dis note back ta Garuuk so he knows you helped me. Tanks again!");
 		e.other:SummonItem(28740); -- Item: Troll Receipt
 		e.other:Ding();
-		e.other:AddEXP(10000);
+		e.other:AddEXP(440);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

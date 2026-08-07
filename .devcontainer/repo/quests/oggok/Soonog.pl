@@ -47,7 +47,7 @@ sub EVENT_ITEM {
 		quest::faction(312,-10); # Storm Guard
 		quest::faction(308,-10); # Shadowknight of Night Keep
 		quest::ding();
-    quest::exp(50);
+    quest::exp(80);
   }
   #do all other handins first with plugin, then let it do disciplines
   plugin::try_tome_handins(\%itemcount, $class, 'Shadowknight');

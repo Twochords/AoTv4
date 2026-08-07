@@ -12,7 +12,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 13716 => 1, 16989 => 1, 1437 => 1, 7005 => 1)) { #Kerran Doll, Ichor, Initiate Symbol of Cazic Thule, Giant Snake Fang
     quest::say("Excellent work, $name. You are well on your way to proving yourself worthy to serve Cazic Thule.");
     quest::summonitem(1438); #Disciple Symbol of Cazic Thule
-    quest::exp(2000);
+    quest::exp(260);
   }
   plugin::return_items(\%itemcount);
 }

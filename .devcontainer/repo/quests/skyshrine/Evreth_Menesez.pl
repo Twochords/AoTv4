@@ -24,7 +24,7 @@ sub EVENT_ITEM {
       quest::faction(430,30); # Faction: Claws of Veeshan
       quest::faction(436,30); # Faction: Yelinak
       quest::faction(448,-30); # Faction: Kromzek
-      quest::exp(1250);
+      quest::exp(220);
      }
   }
   plugin::return_items(\%itemcount);

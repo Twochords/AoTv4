@@ -45,7 +45,7 @@ function event_trade(e)
 	if(item_lib.check_turn_in(e.trade, {item1 = 22668,item2 = 22696,item3 = 22696,item4 = 22696})) then
 		e.other:SummonItem(22697); -- Item: Mace of the Stoutdeacon
 		e.other:Ding();
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

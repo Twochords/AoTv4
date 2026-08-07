@@ -35,7 +35,7 @@ sub EVENT_ITEM {
 if (plugin::check_handin(\%itemcount, 18167 => 1)) {
     quest::say("More mail - you have done us a noteworthy service!  Please take this gold for your troubles.  If you are interested in more work, just ask me.");
     quest::givecash(0,0,quest::ChooseRandom(8,9,10,11,12),0);
-    quest::exp(1550);
+    quest::exp(240);
     quest::faction(284,5); #league of antonican bards
     quest::faction(281,1); #knights of truth
     quest::faction(262,1); #guards of qeynos

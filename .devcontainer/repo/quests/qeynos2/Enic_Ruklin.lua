@@ -42,7 +42,7 @@ function event_trade(e)
 			e.other:Faction(219,15); -- Antonius Bayle
 			e.other:SummonItem(eq.ChooseRandom(13297,13296)); -- Item(s): Band of Rodcet Nife (13297), Prayer Beads (13296)
 			e.other:GiveCash(0,0,2,0);
-			e.other:AddEXP(400);
+			e.other:AddEXP(160);
 		end
 	end	
 

@@ -19,17 +19,17 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 20934, item2 = 20834, item3 = 20835})) then						--shaman test of might using auburn tessera, drake fang, leather cord
 		e.other:SummonItem(14566); --drake fang amulet
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Excellent! Take this as your reward.");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20940, item2 = 20836, item3 = 20837, item4 = 20838})) then 	--shaman test of health using platinum disc, ethereal amber, shimmering amber, ceremonial belt
 		e.other:SummonItem(27727); --bracelet of the spirits
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Excellent! Take this as your reward.");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20947, item2 = 20839, item3 = 20840})) then	--shaman test of sight using phosphoric globe, sphinx hide, light damask mantle
 		e.other:SummonItem(27728); --fairy-hide mantle
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Excellent! Take this as your reward.");
 		eq.depop();
 	end

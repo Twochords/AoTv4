@@ -25,7 +25,7 @@ sub EVENT_ITEM {
 if(plugin::check_handin(\%itemcount,31772=>1)){
    quest::say("Thanks! $name, I hope this does the trick.");
    quest::ding();
-   quest::exp(2000);
+   quest::exp(260);
    quest::faction(1503, 10); # Faction: Validus Custodus
    quest::faction(1502, 10); # Faction: Katta Castellum Citizens
    quest::faction(1504, 10); # Faction: Magus Conlegium

@@ -28,7 +28,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 64001 =>1 )) {
     quest::emote("takes the ring and studies it for a moment.");
     quest::say("So the time has finally come. Unfortunately, I have had little success. Our traditional poisons have absolutely no effect on these invaders. They don't even seem to notice the poison. But, there is some hope. I believe I can distill a poison that will affect them if I had the right [ingredients].");
-    quest::exp(1000);
+    quest::exp(200);
     quest::ding();
   }
   if (plugin::check_handin(\%itemcount, 64002 =>1, 64003 =>1, 64004 =>1, 64005 =>1 )) {
@@ -37,7 +37,7 @@ sub EVENT_ITEM {
  quest::say("That should do it. I can't be positive that this will do more than give Ixvet an upset stomach, but we can hope. Please take this to Proteri Amari.");
  quest::summonitem(64006); # Item: Poisoned Fruit
  quest::faction(1761, 10); # Faction: Nihil
- quest::exp(1000);
+ quest::exp(200);
  quest::ding();
  }
  }

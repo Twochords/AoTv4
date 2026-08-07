@@ -23,7 +23,7 @@ function event_trade(e)
 			e.other:Faction(298,50,0); -- Faction: Peace Keepers
 			e.other:Faction(266,12,0); -- Faction: High Council of Erudin
 			e.other:Faction(265,-12,0); -- Faction: Heretics
-			e.other:AddEXP(12500);
+			e.other:AddEXP(480);
 			e.other:GiveCash(0,0,20,3);
 		end
 	end

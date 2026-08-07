@@ -39,7 +39,7 @@ function event_trade(e)
 		e.other:Faction(284,2,0); -- League of Antonican Bards
 		e.other:Faction(230,-5,0); -- Corrupt Qeynos Guards
 		e.other:Faction(330,-5,0); -- Freeport Militia
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13116,item2 = 13119})) then -- Winds of Karana sheet 1, Winds of Karana sheet 2
 		e.self:Say("Thank you, my friend. I have just completed the composition. It is a work of art. Here. Have a copy. I hope you have the musical talent required to play it. If not.. Practice, practice, practice!");
 		e.other:SummonItem(eq.ChooseRandom(15722,15717)); -- Song: Jaxan's Jig o' Vigor or Song: Selo's Accelerando 
@@ -49,7 +49,7 @@ function event_trade(e)
 		e.other:Faction(262,2,0); -- Guards of Qeynos
 		e.other:Faction(304,-5,0); -- Ring of scale
 		e.other:Faction(230,-5,0); -- Mayong Mistmoore
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 		e.other:GiveCash(5,0,0,0);
 	elseif(qglobals["bard15"] == "5" and item_lib.check_turn_in(e.trade, {item1= 77627})) then -- Note from Metala, bard 1.5
 		e.self:Say("No this can't be true! Metala must have been kidnapped and forced to sign this letter!  You must find her and save her, " .. e.other:GetName() .. "! Please!  Take this necklace; it was a gift she gave me on our anniversary long ago.  Surely it will help her remember her true self and make her come to her senses.");

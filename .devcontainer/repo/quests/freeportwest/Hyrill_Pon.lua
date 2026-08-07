@@ -17,7 +17,7 @@ function event_trade(e)
 			e.other:Faction(281,3,0); -- Faction: Knights of Truth
 			e.other:Faction(362,3,0); -- Faction: Priests of Marr
 			e.other:Faction(0,0,0);
-			e.other:AddEXP(1000);
+			e.other:AddEXP(200);
 		end
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

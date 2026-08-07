@@ -49,7 +49,7 @@ sub EVENT_ITEM {
   elsif (plugin::check_handin(\%itemcount, 12967 => 1, 12966 => 1, 12965 => 1)) {
     quest::emote("embraces the bottles as if they were babes. 'Rejoice my friends!! Your souls are safe. $name, you are a good wizard. You deserve to know the secret of concussion.'");   
     quest::summonitem(12968); # Scroll of Brain Bite
-    quest::exp(100000);
+    quest::exp(940);
     quest::faction(1022,20);  # Firiona Vie
     quest::faction(326,20);   # Emarald Warriors
     quest::faction(312,20);  # Storm Guard

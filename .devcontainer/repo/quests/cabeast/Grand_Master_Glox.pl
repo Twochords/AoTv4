@@ -41,7 +41,7 @@ sub EVENT_ITEM {
 		quest::emote("nods slightly");
 		quest::summonitem(14783); # Item: Glox Reference
 		quest::ding();
-		quest::exp(10000);
+		quest::exp(440);
 	}
 	plugin::try_tome_handins(\%itemcount, $class, 'Monk');
 	plugin::return_items(\%itemcount);

@@ -36,7 +36,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 54025 => 1)) {#Swirling Vial
     quest::emote("takes the vial gently from your hands and begins murmuring quietly. Thick incense smoke moves lazily through the air as she works, curling about and hanging onto your clothing. The strange liquid inside the vial begins to glow a deep red and seemingly moves of its own volition. Ofala quickly smears a bit of the substance about her eyes and looks up at you. 'We have solved it! I believe I can recall this again, let me get this down for you now before the spell wears. Use it well.' Withdrawing a fine quill from a pouch at her waist, she dips the tip into the swirling potion and scrawls out the words of a spell onto parchment.");
     quest::summonitem(59015); # Item: Spell: Leviathan Eyes
-    quest::exp(1107392);#1% of level 45 xp
+    quest::exp(2080);#1% of level 45 xp
   }
   elsif(plugin::check_handin(\%itemcount, 16506 => 1, 54006 => 2)) {#Enchanted Gold Bar, 2 Gleaming Zraxthril Ores
     quest::emote("eyes you with a new measure of respect. 'Very well done! I did not think you would be successful in this. Let me harness this energy quickly then you must have Stofo take a look at it!' Being careful not to touch the gems too much with her bare hands, Ofala Olan deftly crafts a slim golden band, crossing strands of gold across the dimly pulsing stones to bind them in place and protect the wearer from harm. 'He still holes himself up in that dim room in Erudin. I don't know HOW he studies like that, but take it to him please! I am sure he will be most interested.");

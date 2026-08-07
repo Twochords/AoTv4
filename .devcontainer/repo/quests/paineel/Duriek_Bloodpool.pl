@@ -6,7 +6,7 @@ sub EVENT_ITEM {
   if (($faction >= 7) && plugin::check_handin(\%itemcount, 18099 => 1)) {
     quest::say("Yes, most unfortunate. I was informed last week of the death of my most recent apprentice. A few months ago, I paid a substantial sum to a group of rogues sent from Neriak to collect on a gambling debt. He swore to me that was the end of it, but I suspected otherwise. My warnings of gambling with the rogues fell on deaf ears. Please accept this for your troubles.");
     quest::faction (404,7); # Faction: Truespirit
-    quest::exp(15000);
+    quest::exp(500);
   }
   if (($faction >= 14) && plugin::check_handin(\%itemcount, 14365 => 1)) {
     quest::say("Thank you. Now, quickly, there is not much time for me. What I tell you here now must never be shared with another soul. I have spent the better part of my life piecing together clues for the creation of a legendary dark blade, a corrupted Ghoulbane. I am very close to understanding the method used in manipulating the enchantments of the Ghoulbane, but in my current condition, I cannot finish collecting the research. My previous apprentice was searching for this last clue when he met his untimely demise.");

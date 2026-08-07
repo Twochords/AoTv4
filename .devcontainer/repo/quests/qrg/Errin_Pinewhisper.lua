@@ -44,7 +44,7 @@ function event_trade(e)
 		e.other:Faction(343,30); --qrg protected animals
 		e.other:Faction(324,-30); --unkempt druids
 		e.other:Faction(262,30); --guards of qeynos
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 		e.other:SummonItem(19950); -- Item: Rusty Pine Scout Sword
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20104,item2 = 13915, item3 = 19945})) then
 		e.self:Emote("fashions a grip from the large king snake skin, attaches the gnoll fang to the heel of the swords hilt, and polishes the blade of the sword with a luminescent green polish.");
@@ -55,7 +55,7 @@ function event_trade(e)
 		e.other:Faction(343,30); --qrg protected animals
 		e.other:Faction(324,-30); --unkempt druids
 		e.other:Faction(262,30); --guards of qeynos
-		e.other:AddEXP(10000);
+		e.other:AddEXP(440);
 		e.other:SummonItem(20263); -- Item: Pine Scout Longsword
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

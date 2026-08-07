@@ -21,7 +21,7 @@ function event_trade(e)
 		e.other:SummonItem(11880); -- Rune of Frost
 		e.other:SummonItem(11881); -- Rune of the Astral
 		e.other:Ding();
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

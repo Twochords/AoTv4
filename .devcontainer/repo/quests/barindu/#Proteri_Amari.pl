@@ -49,13 +49,13 @@ sub EVENT_ITEM {
     quest::say("I heard what you did for Kayin and Njanu. When you help my brothers and sisters, you help me as well. You have my thanks. Njanu was correct about this ring. It holds magic deep within the rock.' Proteri Amari holds the ring between his hands and whispers to the stone. Glancing up, he says, 'It's all about knowing how to convince the stone that it wants to awaken.' When he opens his hands, the ring seems to glow from within. Proteri Amari says 'There you go. Again, thank you for your aid and take care with that ring. When the stone is freshly awakened, it tends to be a bit fragile.");
     quest::faction(1761,10); # Nihil
     quest::summonitem(64017); # Njanu's Ring of Gratitude
-    quest::exp(200000);
+    quest::exp(1180);
   }
   elsif(plugin::check_handin(\%itemcount, 64006 => 1)) { # Poisoned Fruid V1
     quest::say("I knew Kunimi would come through! Our day of escape is almost here. Take this to Abena Taifa. She is the servant who brings Ixvet his meals and is loyal to our cause.");
     quest::summonitem(64007); # Poisoned Fruit V2	
     quest::faction(1761, 10); # Faction: Nihil
-    quest::exp(5000); #made up amount
+    quest::exp(360); #made up amount
     quest::ding();
   }
   if (plugin::check_handin(\%itemcount, 64012 =>1 )) {
@@ -65,7 +65,7 @@ sub EVENT_ITEM {
     quest::say("There you are. Again, thank you for your aid and take care with that bracelet. When the stone is freshly awakened, it tends to be a bit fragile.");
     quest::summonitem(64013); # Item: Vasha's Bracelet of Mourning
     quest::faction(1761,15); # Faction: Nihil
-    quest::exp(100000);
+    quest::exp(940);
   }
   plugin::return_items(\%itemcount);
   }

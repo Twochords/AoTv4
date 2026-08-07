@@ -22,7 +22,7 @@ sub EVENT_ITEM {
     quest::summonitem(30051); # Item: Icy Totem of Protection
     quest::faction(439, 30); # Faction: Snowfang Gnolls
     quest::faction(431, -30); # Faction: Ulthork
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 }

@@ -17,13 +17,13 @@ sub EVENT_ITEM {
     quest::say("You're scruffy and you smell, but you're a fast enough learner.' He says as he pulls a leather strap out of his waistband and carefully wraps it around the hilt of your sword. He hands the sword back to you hilt first and says, 'Wrapping the hilt in that manners allows you to grip the sword better and hit harder. Take the sword and show it to Noril Galoon. He will instruct you further.");
     quest::summonitem(5545); # Item: Leather Gripped Short Sword
     quest::ding();
-    quest::exp(2000);
+    quest::exp(260);
     quest::faction(1513,10); # Faction: Guardians of Shar Vahl
   }
   elsif (plugin::check_handin(\%itemcount, 5550 => 1, 5545 => 1, 3453 => 1)) {
     quest::say("Excellent work! You're progressing nicely, young warrior. You are well suited to the path of the Khala Dun. Take this new cloak and wear it proudly. You have earned the right to consider yourself an Apprentice of the Khala Dun. Please speak to Guard Kuash and show him your new buckler.");
     quest::shout("Citizens and travelers, please welcome, $name to the rank of Apprentice to the noble Khala Dun! We should all serve our people in such an honorable fashion!");
-    quest::exp(3000);
+    quest::exp(300);
     quest::faction(1513,10); # Faction: Guardians of Shar Vahl
     quest::ding();
     quest::summonitem(5557); # Item: Cloak of the Khala Dun Apprentice

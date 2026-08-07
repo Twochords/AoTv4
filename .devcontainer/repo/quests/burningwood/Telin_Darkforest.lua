@@ -42,7 +42,7 @@ function event_trade(e)
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 20468})) then
 			e.self:Emote("nods as he unbuckles his sword and hands it to you. 'The storm callers are working on containing and fighting against the corruption but they can not hold back the inevitable for long. It is up to us to strike against Innoruuk directly. If we were warriors or paladins we would have a fancy ceremony and plenty of feasting but we're just rangers, without time for pleasantries. The sword you hold in your hands is one of the oldest blades known, even to the eldest. To strike at the darkest heart of evil requires a weapon beyond this, or even ones you may carry at your side. The first task, the first preparation you must make, is the smithing of that blade. Its edge sharpened, its balance made perfect. When you have finished, bring me this sword again.'");
 			e.other:Ding();
-			e.other:AddEXP(1000000);
+			e.other:AddEXP(2000);
 			e.other:SummonItem(20477); -- Item: Ancient Longsword
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 20481})) then
 			e.self:Emote("smiles slowly. 'Now that's fine work, " .. e.other:GetName() .. ". Just a moment, we have a friend here who can enchant one of the blades. Give her the blade that the ancient smithed.'");

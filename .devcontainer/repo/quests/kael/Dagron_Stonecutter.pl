@@ -45,7 +45,7 @@ sub EVENT_ITEM {
   if ($faction == 1) { #requires ally Kromzek faction
     if (plugin::check_handin(\%itemcount, 25831 => 3, 24919 => 1)) { # cap
       quest::summonitem(25440); # Item: Golden Star Headband
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -55,7 +55,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25814 => 3, 24914 => 1)) { # bp
       quest::summonitem(25441); # Item: Golden Star Chest Wraps
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -65,7 +65,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25821 => 3, 24916 => 1)) { # sleeves
       quest::summonitem(25442); # Item: Golden Star Arm Wraps
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -75,7 +75,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25838 => 3, 24918 => 1)) { # wrist
       quest::summonitem(25443); # Item: Golden Star Wrist Wraps
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -85,7 +85,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25832 => 3, 24920 => 1)) { # gloves
       quest::summonitem(25444); # Item: Fist of the Golden Star
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -95,7 +95,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25825 => 3, 24915 => 1)) { # legs
       quest::summonitem(25445); # Item: Golden Star Pants
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -105,7 +105,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25833 => 3, 24917 => 1)) { # boots
       quest::summonitem(25446); # Item: Golden Star Slippers
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan

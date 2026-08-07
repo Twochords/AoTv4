@@ -53,7 +53,7 @@ sub EVENT_ITEM {
       quest::faction(293, 25); # Miners Guild 249
       quest::faction(290, 25); # Merchants of Kaladim
       quest::faction(232, -25); # Craknek Warriors
-      quest::exp(250);
+      quest::exp(140);
       quest::givecash(0, 3, 7, 1);
       quest::summonitem(6302); # Ogre War Maul
    }

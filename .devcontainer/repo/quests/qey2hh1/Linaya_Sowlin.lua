@@ -31,7 +31,7 @@ function event_trade(e)
 		e.other:Faction(343,10,0); -- Faction: Surefall Protected Animals
 		e.other:Faction(324,-30,0); -- Faction: Unkempt Druids
 		e.other:Faction(262,10,0); -- Faction: Guards of Qeynos
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:GiveCash(math.random(10),math.random(10),math.random(10),math.random(10));
 		eq.spawn2(12181,0,0,-8000,-3400,23,205.8); -- NPC: Draze_Slashyn
 	end

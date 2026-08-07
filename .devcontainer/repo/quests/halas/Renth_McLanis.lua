@@ -39,11 +39,11 @@ function event_trade(e)
 			e.other:Faction( 327, 5); -- Faction: Shamen of Justice
 			e.other:Faction( 328, 5); -- Faction: Merchants of Halas
 			e.other:Faction( 311, 5); -- Faction: Steel Warriors
-			e.other:AddEXP(2000);
+			e.other:AddEXP(260);
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 13249, item2 = 13248, item3 = 13247, item4 = 13233})) then
 			e.self:Say("Thank ye, " .. e.other:GetName() .. "! I knew ye could do it. It is a sad thing, but at least now he can rest in peace. Here is something for your efforts. If ye are interested, there is a [dangerous matter] that needs to be looked into.");
 			e.other:Ding();
-			e.other:AddEXP(3000);
+			e.other:AddEXP(300);
 			e.other:GiveCash(0,0,8,0);
 		end
 	end
@@ -55,7 +55,7 @@ function event_trade(e)
 			e.other:Faction( 327, -15); -- Faction: Shamen of Justice
 			e.other:Faction( 328, -15); -- Faction: Merchants of Halas
 			e.other:Faction( 311, -15); -- Faction: Steel Warriors
-			e.other:AddEXP(10000);
+			e.other:AddEXP(440);
 			e.other:SummonItem(5367); -- Item: Langseax
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 12225, item2 = 13248, item3 = 13247, item4 = 13233})) then
 			e.self:Say("Nice work " .. e.other:GetName() .. "! Paglan has always been an outcast of sorts. I'm glad to see you were able to stop him. Here is a Langseax of the Wolves for your efforts.");
@@ -64,7 +64,7 @@ function event_trade(e)
 			e.other:Faction( 327, -20); -- Faction: Shamen of Justice
 			e.other:Faction( 328, -20); -- Faction: Merchants of Halas
 			e.other:Faction( 311, -20); -- Faction: Steel Warriors
-			e.other:AddEXP(12000);
+			e.other:AddEXP(460);
 			e.other:SummonItem(5368); -- Item: Langseax of the Wolves
 		end
 	end

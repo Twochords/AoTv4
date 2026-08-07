@@ -16,7 +16,7 @@ sub EVENT_ITEM{
 		quest::faction(1485,-1); # Faction: Eye of Seru
 		quest::faction(1541,-1); # Faction: Hand Legionnaries
 		quest::ding();
-		quest::exp(1000000);
+		quest::exp(2000);
 		quest::summonitem(7271); #Shade Figurine Sketch
 		quest::summonitem(7272); #Conlegium Enchanted Glaze
 	}

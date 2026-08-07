@@ -23,7 +23,7 @@ sub EVENT_ITEM {
   # 63145 :  Shard Filled Staff
   if (plugin::check_handin(\%itemcount,63145=>1)) {
     quest::say("Yes...exactly whay I was after. On the down side, such a pure source of Acrylia will no doubt fuel this war further. But, on the up side, there's a lot of profit to be made. Thank you, $name. Here, this should give you a taste of the wealth of possibilities. Ha!");
-    quest::exp(300000); # Lots of xp, that's mostly the reward of that quest
+    quest::exp(1340); # Lots of xp, that's mostly the reward of that quest
     quest::givecash(0,0,0,750); # 750 plat
     quest::faction(1552,10); # VahShir Crusaders
   }
@@ -31,7 +31,7 @@ sub EVENT_ITEM {
   # 63135 :  Loaded Sample Chest
   if (plugin::check_handin(\%itemcount,63135=>1)) {
     quest::say("So... perfect! Thank you");
-    quest::exp(300000);
+    quest::exp(1340);
     quest::givecash(0,0,0,300);
     quest::faction(1552,10); # VahShir Crusaders
   }

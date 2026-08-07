@@ -31,7 +31,7 @@ function event_trade(e)
 		e.self:Say("Tank you. You saved me neck. Kaglari not learn me mistake now. Me give you a [Kaglari mana doll].");
 		e.other:SummonItem(12212); -- Item: Kaglari Mana Doll
 		e.other:Ding();
-		e.other:AddEXP(145); -- A guess
+		e.other:AddEXP(120); -- A guess
 		e.other:Faction(251,-1,0); -- -Frogloks of Guk
 		e.other:Faction(237,10,0);  -- +Dark Ones
 		e.other:Faction(308,2,0);  -- +Shadowknights of Night Keep

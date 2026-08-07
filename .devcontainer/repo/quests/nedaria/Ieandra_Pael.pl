@@ -20,7 +20,7 @@ sub EVENT_ITEM {
 if (plugin::check_handin(\%itemcount, 66183 => 3)) { # Griffawn Beaks
 
 quest::say("This is perfect and couldn't have come at a better time, I've very close to finishing up a new magic that may protect the ship."); 
-quest::exp(10000);
+quest::exp(440);
 quest::givecash(8,6,13,7);
 
 }

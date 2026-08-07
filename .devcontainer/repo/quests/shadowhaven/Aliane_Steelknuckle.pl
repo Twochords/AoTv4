@@ -11,7 +11,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 4756 => 1)) {
     quest::say("Oh my sweet Daosorak, such a hard worker he is. It brings a smile upon my face to know that his mining operation is going well and that he will be home soon. I thank you for bringing me this letter from him.");
-    quest::exp(2500);
+    quest::exp(280);
     quest::faction(1512,10); #house of stout
     quest::faction(1508,10); #traders of the haven
   }

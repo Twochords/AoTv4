@@ -30,7 +30,7 @@ sub EVENT_ITEM {
 			quest::faction( 445,10); # Faction: Scaled Mystics
 			quest::faction( 442,10); # Faction: Crusaders of Greenmist
 			quest::faction( 444,10); # Faction: Swift Tails
-			quest::exp(1000);
+			quest::exp(200);
 			quest::givecash(0,14,0,0);
 		}
 		if (plugin::check_handin(\%itemcount, 12673 => 1)) {
@@ -42,7 +42,7 @@ sub EVENT_ITEM {
 			quest::faction( 445,2); # Faction: Scaled Mystics
 			quest::faction( 442,2); # Faction: Crusaders of Greenmist
 			quest::faction( 444,2); # Faction: Swift Tails
-			quest::exp(250);
+			quest::exp(140);
 			quest::givecash(0,9,0,0);
 		}
 	}

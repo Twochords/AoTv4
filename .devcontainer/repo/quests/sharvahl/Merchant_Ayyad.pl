@@ -19,7 +19,7 @@ sub EVENT_ITEM {
     quest::summonitem(2877); #Acrylia Slate of Shar Vahl
     quest::summonitem(17233); #Ayyad's Clay Bowl
     quest::summonitem(3497); #Reusable Gray Jar Sketch
-    quest::exp(1000);
+    quest::exp(200);
   }
   if (plugin::check_handin(\%itemcount, 3498 => 1)) { #Gray Jar
     quest::say("Excellent! Please accept this knapsack as payment for your trouble. Here is my seal as well. I can always use more jars and if you give me four of my seals I will share with you a family secret.");

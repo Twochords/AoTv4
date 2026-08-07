@@ -21,7 +21,7 @@ function event_trade(e)
 		e.other:Faction(242,2,0); -- Faction: Deepwater Knights
 		e.other:Faction(266,2,0); -- Faction: High Council of Erudin
 		e.other:Faction(265,-2,0); -- Faction: Heretics
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

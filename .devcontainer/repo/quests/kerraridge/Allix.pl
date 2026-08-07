@@ -20,7 +20,7 @@ sub EVENT_ITEM {
     quest::say("Ajrah! Raaarrr! Ajrah Leaf! Allix destined to be mighty saiar now! Allix unsure how to thank you. Here, take this. Is my most treasured tunic.");
     #Summon: Erudehide Tunic
     quest::summonitem(1120); # Item: Erudehide Tunic
-    quest::exp(25);
+    quest::exp(60);
    }
   plugin::return_items(\%itemcount);
 }

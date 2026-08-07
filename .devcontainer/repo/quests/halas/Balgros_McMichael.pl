@@ -50,7 +50,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 12223 => 4)) {
     quest::say("You have done well and learned much during your training. You have made me proud, $name. Take this weapon as a symbol of your dedication and hard work. You have earned it. Your training with me has ended. Farewell.");
     quest::summonitem(55126); # Item: Cudgel of Justice
-    quest::exp(5000);
+    quest::exp(360);
     quest::faction(327,30); #shamen of justice
     quest::faction(328,30); #merchants of halas
     quest::faction(223,-30); #circle of unseen hands

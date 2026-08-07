@@ -13,7 +13,7 @@ sub EVENT_ITEM {
   }
   elsif(plugin::check_handin(\%itemcount, 12993 => 1)) { #Small Sealed Bag
     quest::say("My revenge has been satisfied. Thank you, my child. You have proven yourself to be a most worthy asset to our cause. Here, I no longer have any use for this, my ties to the old life are now severed.");
-    quest::exp(2000);
+    quest::exp(260);
     quest::givecash(5,3,0,0);
     quest::faction(265,5);  #Heretics
     quest::faction(242,-5);  #Deepwater Knights

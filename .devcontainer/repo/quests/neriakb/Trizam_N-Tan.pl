@@ -21,7 +21,7 @@ sub EVENT_ITEM {
     quest::faction(270,5);   # +Indigo Brotherhood
     quest::faction(326,-5);   # -Emerald Warriors
     quest::faction(311,-5);  # -Steel Warriors
-    quest::exp(25);
+    quest::exp(60);
     quest::ding();
     # Summon: Neriak Nectar 
     quest::summonitem(13021, 2); # Item: Neriak Nectar

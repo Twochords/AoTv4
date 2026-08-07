@@ -11,7 +11,7 @@ sub EVENT_ITEM {
     # Mechanical Net Delivery (kael)
     quest::say("So you are the servant of Wenglawks here to retrieve his cloak.
 I will need more scales to make the cloak in his size. I have already slaughtered a good thirty sirens and the cloak is nearly complete. Go forth and slaughter my kind and bring me three excellent scales and this idol. Let this idol be your protection from the wrath of E'ci. I will continue my work on the cloak.");
-    quest::exp(1000);
+    quest::exp(200);
     # Summon: Idol of Solusek Ro (statless)
     quest::summonitem(25108); # Item: Idol of Solusek Ro
   }

@@ -52,7 +52,7 @@ sub EVENT_ITEM {
 		#:: Ding!
 		quest::ding();
 		#:: Grant a small amount of experience
-		quest::exp(250);
+		quest::exp(140);
 		#:: Create a hash for storing cash - 500 to 700cp
 		my %cash = plugin::RandomCash(500,700);
 		#:: Grant a random cash reward

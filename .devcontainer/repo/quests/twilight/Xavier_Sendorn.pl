@@ -71,7 +71,7 @@ sub EVENT_ITEM {
 
     quest::summonitem(3703); # Item: Sandals of Enrapturement
 
-    quest::exp(10000);   
+    quest::exp(440);   
 
   }
 
@@ -79,7 +79,7 @@ sub EVENT_ITEM {
 
     quest::summonitem(3704); # Item: Veil of Enrapturement
 
-    quest::exp(10000);
+    quest::exp(440);
 
   }
 
@@ -87,7 +87,7 @@ sub EVENT_ITEM {
 
     quest::summonitem(3705); # Item: Cape of Enrapturement
 
-    quest::exp(10000);
+    quest::exp(440);
 
   }
 
@@ -95,7 +95,7 @@ sub EVENT_ITEM {
 
     quest::summonitem(3706); # Item: Gloves of Enrapturement
 
-    quest::exp(10000);
+    quest::exp(440);
 
   }
 
@@ -103,7 +103,7 @@ sub EVENT_ITEM {
 
     quest::summonitem(3707); # Item: Choker of Enrapturement
 
-    quest::exp(10000);
+    quest::exp(440);
 
   }
 
@@ -111,7 +111,7 @@ sub EVENT_ITEM {
 
     quest::summonitem(3708); # Item: Belt of Enrapturement
 
-    quest::exp(10000);
+    quest::exp(440);
 
   }
   
@@ -119,7 +119,7 @@ sub EVENT_ITEM {
 
     quest::summonitem(3709); # Item: Staff of Enrapturement
 
-    quest::exp(10000);
+    quest::exp(440);
 
   }
 

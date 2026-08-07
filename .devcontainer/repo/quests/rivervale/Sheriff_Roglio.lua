@@ -48,7 +48,7 @@ function event_trade(e)
 		e.other:Faction(355, 1,0); -- Storm Reapers
 		e.other:Faction(292, 1,0); -- Merchants of Rivervale
 		e.other:Faction(334,-1,0); -- Dreadguard Outer
-		e.other:AddEXP(6400);
+		e.other:AddEXP(380);
 		e.other:GiveCash(0,8,0,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

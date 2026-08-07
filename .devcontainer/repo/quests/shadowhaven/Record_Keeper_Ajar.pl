@@ -10,7 +10,7 @@ sub EVENT_ITEM{
 		quest::say("So you were sent by the Magistrates of Katta Castellum I see. It isn't very often we get requests for records as old as these.  'Ajar shuffles through several books on a cluttered shelf and a few minutes later procures the records and begins writing down the requested information.'  Here are the names that have been requested by Magistrate Dionicas. You can assure him when you deliver this record that it is quite accurate.");
 		quest::ding();
 		quest::summonitem(18352); #Old Merchant Records
-		quest::exp(1000000);
+		quest::exp(2000);
 	}
 	plugin::return_items(\%itemcount);
 }

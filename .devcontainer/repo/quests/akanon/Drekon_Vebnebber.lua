@@ -19,7 +19,7 @@ function event_trade(e)
 		e.other:Faction(333,1); -- Faction: King Ak`Anon
 		e.other:Faction(238,-1); -- Faction: Dark Reflection
 		e.other:Faction(1604,-1); -- Faction: Clan Grikbar
-		e.other:AddEXP(2000);
+		e.other:AddEXP(260);
 		e.other:Ding();
 	elseif (item_lib.check_turn_in(e.trade, {item1 = 18838})) then
 		e.self:Say("Oh my! It seems two of the obsolete duster models were not fully shut down. You must find them. They could be anywhere in Ak'Anon! After you destroy them, take their scraps to Sanfyrd Montop. He is the operator of the scrapyard.");
@@ -28,7 +28,7 @@ function event_trade(e)
 		e.other:Faction(333,1); -- Faction: King Ak`Anon
 		e.other:Faction(238,-1); -- Faction: Dark Reflection
 		e.other:Faction(1604,-1); -- Faction: Clan Grikbar
-		e.other:AddEXP(2000);
+		e.other:AddEXP(260);
 		e.other:Ding();
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

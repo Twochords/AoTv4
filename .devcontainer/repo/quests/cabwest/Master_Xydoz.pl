@@ -32,7 +32,7 @@ sub EVENT_ITEM {
   }
   elsif (plugin::check_handin(\%itemcount, 4260 => 1, 18208 => 1)) {
     quest::say("A job well done, apprentice. Your fine service shall earn you the second circle apprentice skullcap. I would advise you to forget this tapestry, it is nothing more than an ancient rug of no importance.");
-    quest::exp(120); 
+    quest::exp(100); 
     quest::faction(441,20); # Faction: Legion of Cabilis
     quest::faction(443,20); # Faction: Brood of Kotiz
     quest::summonitem(4261); # Item: Apprentice Skullcap - 2nd Rank
@@ -45,7 +45,7 @@ sub EVENT_ITEM {
      quest::say("Well done");
      quest::summonitem(14831); # Item: Glosk's Reference: Greaves
      quest::ding();
-     quest::exp(10000);
+     quest::exp(440);
   }
   plugin::return_items(\%itemcount);
 }

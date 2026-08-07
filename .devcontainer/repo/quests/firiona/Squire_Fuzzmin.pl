@@ -32,7 +32,7 @@ sub EVENT_ITEM {
     quest::faction(312,15);   # Storm Guard better
     quest::faction(441,-15);  # Legion of Cabilis worse
     quest::faction(313,-15);  # Pirates of Gunthak worse
-    quest::exp(700000);
+    quest::exp(1780);
     quest::ding;
     quest::summonitem(5057); # Item: Wurmslayer
   }

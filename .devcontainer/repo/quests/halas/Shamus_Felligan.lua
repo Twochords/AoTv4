@@ -15,7 +15,7 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 13968})) then								--Shattered Caster Beads
 		e.self:Say("Yes thankyou. This was exactly what i was after, maybe a little battered, but worth a little something none-the-less.");
-		e.other:AddEXP(1600);
+		e.other:AddEXP(240);
 		e.other:Ding();
 		e.other:Faction(328,2);																--Merchants of Halas
 		e.other:Faction(327,2); 															--Shamen of Justice
@@ -27,7 +27,7 @@ function event_trade(e)
 		end
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13969})) then							--Caster Beads
 		e.self:Say("Yes thankyou. This was exactly what i was after, and in pristine condition ta boot, Take this for your efforts.");
-		e.other:AddEXP(6400);
+		e.other:AddEXP(380);
 		e.other:Ding();
 		e.other:Faction(328,6); 															--Merchants of Halas
 		e.other:Faction(327,6); 															--Shamen of Justice

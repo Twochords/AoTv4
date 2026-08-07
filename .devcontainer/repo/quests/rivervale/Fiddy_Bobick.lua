@@ -30,7 +30,7 @@ local item_lib = require("items");
 		e.other:Faction(286,5); -- Faction: Mayor Gubbin
 		e.other:Faction(336,-5); -- Faction: Coalition of Tradefolk Underground
 		e.other:GiveCash(0,8,1,0);
-		e.other:AddEXP(15);
+		e.other:AddEXP(60);
 	else
 		item_lib.return_items(e.self, e.other, e.trade); -- return unused items
 	end

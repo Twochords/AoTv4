@@ -57,7 +57,7 @@ function event_trade(e)
 			e.other:Faction(262,1,0); -- Faction: Guards of Qeynos
 			e.other:Faction(341,1,0); -- Faction: Priests of Life
 			e.other:Faction(280,1,0); -- Faction: Knights of Thunder
-			e.other:AddEXP(500);
+			e.other:AddEXP(160);
 			moonstone = moonstone - 1;
 		until moonstone == 0
 	end

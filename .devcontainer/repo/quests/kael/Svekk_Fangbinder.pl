@@ -44,7 +44,7 @@ sub EVENT_ITEM {
 		if(plugin::takeCoin(50000)) {
 			quest::emote("heaves a large pack from a pile in the corner and sets it before you.  'I wish you luck in your endeavor, $race.'");
 			quest::ding();
-			quest::exp(250);
+			quest::exp(140);
 			quest::summonitem(25266); # Giant Sack of Supplies
 		}
 		if(plugin::takeItems(25278=>1)) { # Velium Torque
@@ -54,7 +54,7 @@ sub EVENT_ITEM {
 			quest::faction(419,10); # Kromrif
 			quest::faction(429,10); # King Tormax
 			quest::faction(430,-30); # Claws of Veeshan
-			quest::exp(250);
+			quest::exp(140);
 			quest::givecash(0,0,0,15);
 		}
 		if(plugin::takeItems(25267=>1)) { # Bekerak's Letter to Svekk
@@ -64,7 +64,7 @@ sub EVENT_ITEM {
 			quest::faction(419,10); # Kromrif
 			quest::faction(429,10); # King Tormax
 			quest::faction(430,-30); # Claws of Veeshan
-			quest::exp(250);
+			quest::exp(140);
 			quest::summonitem(25270); # Supply Voucher
 		}
 		if(plugin::takeItems(25270=>1, 25271=>1)) { # Supply Voucher / Klezendian Crystal
@@ -74,7 +74,7 @@ sub EVENT_ITEM {
 			quest::faction(419,10); # Kromrif
 			quest::faction(429,10); # King Tormax
 			quest::faction(430,-30); # Claws of Veeshan
-			quest::exp(250);
+			quest::exp(140);
 			quest::summonitem(25269); # Large Supply Sack for Bekerak
 		}
 	}

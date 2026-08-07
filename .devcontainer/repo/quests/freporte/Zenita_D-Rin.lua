@@ -19,7 +19,7 @@ function event_trade(e)
 		e.self:Say("Why I will be.. You got it!! I thought I took it out of the deck. Very well. You win the Spare Lens fair and square. Here you are. Now get out of my sight.");
 		e.other:SummonItem(13279); -- Phiz's lens
 		e.other:Ding();
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13121})) then
 		e.self:Say("Let see what card you pulled.");
 		e.other:SummonItem(eq.ChooseRandom(22293,22294,22295,22296,22297,22298,22299)); -- Item(s): Castle Card (22293), Beggar Card (22294), Joker Card (22295), Wild Card (22296), Queen Card (22297), King Card (22298), Knight Card (22299)

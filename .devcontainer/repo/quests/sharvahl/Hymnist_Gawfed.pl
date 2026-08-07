@@ -23,7 +23,7 @@ sub EVENT_ITEM {
   elsif (plugin::check_handin(\%itemcount, 5959 => 1)) { #Bag of Feathers
     quest::say("It looks like you're all set. I'll have this sent over to my brother at once. Thank you again for fetching the vase for me. I can't wait to give it to the missus. I just know that she's going to love it. I have another task for you. It shouldn't take much time at all. Your cloak won't be done for a while, so you can do this while you wait. Take this piece of parchment to Jangle. He'll give you a bag of lute strings. I'm restringing all of my instruments before the party. Please be quick. Thank you again.");
     quest::summonitem(5960); #Note for Jangle
-    quest::exp(1000);
+    quest::exp(200);
     quest::faction(1513,10); #Guardians of Shar Vahl
   }
   elsif (plugin::check_handin(\%itemcount, 5962 => 1)) { #Note from Jangle
@@ -35,7 +35,7 @@ sub EVENT_ITEM {
     quest::faction(1513,10); #Guardians of Shar Vahl
     quest::summonitem(5966); #Cloak of the Jharin Apprentice
     quest::summonitem(5967); #Lute of the Jharin Apprentice
-    quest::exp(3000);
+    quest::exp(300);
     quest::shout("Everyone, please welcome my student and friend, $name, to the rank of Jharin Apprentice!");
     quest::say("Now, please meet with Aljuum Mohim. He will be responsible for your training during my holiday. Please show him the lute that I just gave you. He'll most likely be in a tavern somewhere. I just hope that he is sober. Take care, friend!");
   }

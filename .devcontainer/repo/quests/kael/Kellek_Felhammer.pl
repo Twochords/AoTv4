@@ -27,7 +27,7 @@ sub EVENT_ITEM {
 	quest::ding();
 	quest::summonitem(1721); # Collar of the Storm
 	quest::summonitem(1723); # Noble's Seal
-	quest::exp(2000);
+	quest::exp(260);
   }
   plugin::return_items(\%itemcount);
 }

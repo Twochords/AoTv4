@@ -21,7 +21,7 @@ function event_trade(e)
 		e.self:Say(string.format("Excellent work, %s!  This will teach the pirates of Broken Skull a lesson and help our cause in repelling them.  Here is your reward.",e.other:GetName()));
 		e.other:SummonItem(54024); -- Item: Twisted Silver Torque
 		e.other:Ding();
-		e.other:AddEXP(10000);
+		e.other:AddEXP(440);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

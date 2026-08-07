@@ -14,7 +14,7 @@ function event_trade(e)
 		e.self:Emote("grabs the heart as you toss it to him before realizing what it is. As soon as it touches his hands, his body convulses, a sickly light emanating from his eyes and oozing cracks appear in his skin. As he melts into the ground, a small glowing ball floats where he once stood.");
 		e.other:SummonItem(20698); -- Item: Cleansed Spirit of Antonica
 		e.other:Ding();
-		e.other:AddEXP(2000);
+		e.other:AddEXP(260);
 		eq.depop_with_timer();
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

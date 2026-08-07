@@ -18,7 +18,7 @@ function event_trade(e)
 		e.self:Say("Ah, you've done quite well. Take this, it's a special gift I recovered from a recent adventure, and I can think of no greater person to keep it than you. Remember if you're in need of fishing supplies, come see us any time.");
 		e.other:SummonItem(29175); -- Fisherman's Companion
 		e.other:Ding();
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

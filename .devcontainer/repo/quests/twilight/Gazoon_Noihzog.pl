@@ -43,7 +43,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 4724 => 1, 4491 => 1, 4723 => 1)) { #bracer
     quest::summonitem(3715); # Item: Bracer of Detonation
     quest::say("This doesn't in any way make you a real wizard. Merely an apprentice.");
-    quest::exp(50000);
+    quest::exp(740);
   }
   if (plugin::check_handin(\%itemcount, 4711 => 1, 4709 => 1, 4710 => 1, 4493 => 1)) { #cap
     quest::summonitem(3710); # Item: Cap of Detonation

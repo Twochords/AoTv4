@@ -33,7 +33,7 @@ sub EVENT_ITEM {
     quest::summonitem(3957); # Item: Woodsman's Girdle
     quest::emote("smiles at you.");
     quest::say("Thank You! Here is your payment.");
-    quest::exp(25000);
+    quest::exp(600);
   }
   if (plugin::check_handin(\%itemcount, 5844 => 1, 5698 => 1, 4492 => 1, 5699 => 1)) { #cape
     quest::summonitem(3954); # Item: Woodsman's Cape

@@ -19,7 +19,7 @@ function event_trade(e)
 		e.other:Faction(343, 10,0); --QRG Protected Animals
 		e.other:Faction(324, -30,0); --Unkempt Druids
 		e.other:Faction(262, 10,0);   --Guards of Qeynos
-		e.other:AddEXP(250);
+		e.other:AddEXP(140);
 		e.other:GiveCash(10,2,0,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

@@ -17,7 +17,7 @@ function event_trade(e)
 		e.other:Faction(288,1,0); -- Faction: Merchants of Ak`Anon
 		e.other:Faction(255,1,0); -- Faction: Gem Choppers
 		e.other:Faction(238,-1,0); -- Faction: Dark Reflection
-		e.other:AddEXP(1500);
+		e.other:AddEXP(240);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

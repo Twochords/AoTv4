@@ -20,7 +20,7 @@ sub EVENT_ITEM {
 if (plugin::check_handin(\%itemcount, 66185 => 4)) { # panther claws
 
 quest::say("Dats a big help for Iggill. Take dis as reward."); 
-quest::exp(10000);
+quest::exp(440);
 quest::givecash(15,8,10,6);
 
 }

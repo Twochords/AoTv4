@@ -37,7 +37,7 @@ function event_trade(e)
 			e.other:Faction(279,1,0); -- King Tearis Thex
 			e.other:Faction(310,1,0); -- Soldiers of Tunare
 			e.other:Faction(234,-1,0); -- Crushbone Orcs
-			e.other:AddEXP(10);
+			e.other:AddEXP(60);
 			muffin = muffin - 1;
 		until muffin == 0
 	end

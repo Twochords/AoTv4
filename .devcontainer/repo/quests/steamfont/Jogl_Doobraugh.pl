@@ -24,7 +24,7 @@ sub EVENT_ITEM {
     quest::faction(255 ,1 ); # Faction: Gem Choppers
     quest::faction( 287,-1 ); # Faction: Meldrath
     quest::faction( 239,-1 ); # Faction: The Dead
-    quest::exp(1000);
+    quest::exp(200);
     quest::ding();
   }
   plugin::return_items(\%itemcount);

@@ -17,7 +17,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 28088 => 1)) {#Onirelin's Jewel
     quest::say("How did you get this away from Narik? Oh never mind, I'm just happy to have it back. I shall give you what Cador desires now, keep it secure and deliver it to him.");
     quest::summonitem(28089);#Cador's Artifact
-    quest::exp(250);
+    quest::exp(140);
   }
   plugin::return_items(\%itemcount);
 }#END of FILE Zone:poknowledge  ID:202041 -- Onirelin_Gali 

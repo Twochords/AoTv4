@@ -17,7 +17,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 28086 => 1)) {#Letter to Elisha
     quest::emote("reads the letter and says, 'Oh happy day! Boiron will be visiting me soon. You may take Narik's ring back to him now. If you'll excuse me, I have some cleaning up to do.'");
     quest::summonitem(28087);#Narik's Ring
-    quest::exp(250);
+    quest::exp(140);
   }
   plugin::return_items(\%itemcount);
 }#END of FILE Zone:poknowledge  ID:202133 -- Elisha_Dirtyshoes 

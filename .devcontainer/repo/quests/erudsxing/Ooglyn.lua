@@ -12,7 +12,7 @@ function event_trade(e)
 		e.self:Say("Ahhh, tank you, now me can...OH LOOK!! DA SIGN!!!! Oh, sorry you missed it. The sign show you where to wait for da test. Follow me...I like you so I take you there. We goin for a swim, " .. e.other:GetName() .. "!");
 		e.other:Ding();
 		e.other:Faction(404,50,0); -- Faction: Truespirit
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.self:Say("Ok shaman, let us be off.");
 		eq.start(57);
 	end

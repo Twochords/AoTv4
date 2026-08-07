@@ -19,7 +19,7 @@ sub EVENT_ITEM{
 		quest::faction(1541,-1); # Faction: Hand Legionnaries
 		quest::ding();
 		quest::unique_spawn(172186,0,0,-1414,-1265,-38,0); # NPC: #Trigger_Kerzar_Clawtore
-		quest::exp(1000000);
+		quest::exp(2000);
 	}
 	plugin::return_items(\%itemcount);
 }

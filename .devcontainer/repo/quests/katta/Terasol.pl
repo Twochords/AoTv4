@@ -20,7 +20,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 4754 => 1)) {
     quest::say("Ah, of course, you must be sent to pick up the supplies that Daesorak has been needing for his mining operation. I was wondering when that crazy Dwarf was going to come and pick these up. I imagine then that you will [take the mining picks] to Daesorak?");
-    quest::exp(1000);
+    quest::exp(200);
     $notecheck = 1;
   }
   plugin::return_items(\%itemcount);

@@ -42,7 +42,7 @@ sub EVENT_ITEM {
       quest::say("The glory of Dranik upon you! I cannot tell you what this means to me. Here you must take this earring as payment for your help. It has been in my family for generations, but I believe my ancestors would like you to have it."); #Text borrowed from ring turn in as this text not available
       quest::faction(1016,1); #dranik loyalists
       quest::faction(1013,-3); #overlord mata muram
-      quest::exp(100000);
+      quest::exp(940);
       if ($class eq "Warrior" || $class eq "Paladin" || $class eq "Shadowknight" || $class eq "Monk" || $class eq "Bard" || $class eq "Rogue" || $class eq "Ranger" || $class eq "Beastlord" || $class eq "Berserker") {
         quest::summonitem(71145); #Gilded Earring of Travels
       }
@@ -54,7 +54,7 @@ sub EVENT_ITEM {
       quest::say("The glory of Dranik upon you! I cannot tell you what this means to me. Here you must take this ring as payment for your help. It has been in my family for generations, but I believe my ancestors would like you to have it.");
       quest::faction(1016,1); #dranik loyalists
       quest::faction(1013,-3); #overlord mata muram
-      quest::exp(100000);
+      quest::exp(940);
       if($class eq "Warrior" || $class eq "Paladin" || $class eq "Shadowknight" || $class eq "Monk" || $class eq "Bard" || $class eq "Rogue" || $class eq "Ranger" || $class eq "Beastlord" || $class eq "Berserker") {
         quest::summonitem(71143); #Dragorn Engraved Platinum Ring
       }

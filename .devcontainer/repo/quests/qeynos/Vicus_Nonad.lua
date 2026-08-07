@@ -36,7 +36,7 @@ function event_trade(e)
 		e.other:Faction(304,-15,0); -- Faction: Ring of Scale
 		e.other:Faction(273,-15,0); -- Faction: Kane Bayle
 		e.other:Faction(291,10,0); -- Faction: Merchants of Qeynos
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:GiveCash(0,1,2,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13181})) then
 		e.self:Say("Very good <cough> work. But I need both the full tax collection box and the list of debtors. You did get the [list] from me before you left, right? <cough>");

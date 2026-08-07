@@ -106,7 +106,7 @@ function event_trade(e)
       e.other:Message(MT.NPCQuestSay, string.format("Maroley Nazuey says, 'You've done well, %s. I believed this temple was more than you could handle despite your success with the first temple. You faced two enemies at once and came back in one piece. You only have one trial left to complete before you can proceed onto more difficult tasks. Please return to Kevren for information on the final trial. Good luck!'", e.other:GetCleanName()))
       if not finished_second_trial then
         eq.set_global("ikky", "3", 5, "F")
-        e.other:AddEXP(1)
+        e.other:AddEXP(20)
       end
     end
   end

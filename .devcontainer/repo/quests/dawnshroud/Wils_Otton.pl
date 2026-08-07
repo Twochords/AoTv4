@@ -8,7 +8,7 @@ quest::summonitem(31781); # Item: Note to Carre
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 31782 => 1)) {
 quest::say("We've been hunting those wolves for a long time now. They killed many of my men. I'm glad to see that they are gone. Take this Hunter's Pike and get some good use out of it.");
-quest::exp(1000);
+quest::exp(200);
 quest::summonitem(32170); # Item: Hunter's Pike
 }
  }

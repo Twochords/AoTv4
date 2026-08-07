@@ -8,7 +8,7 @@ function event_trade(e)
 		e.self:Say("Crroooaak! Crrroooooaaakk!");
 		e.other:SummonItem(10601); -- Item: Ink of the Dark
 		e.other:Ding();
-		e.other:AddEXP(10000);
+		e.other:AddEXP(440);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

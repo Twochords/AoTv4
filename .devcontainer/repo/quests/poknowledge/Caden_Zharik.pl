@@ -17,7 +17,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 28084 => 1)) {#Note to Caden
     quest::emote("eyes go wide with relief. 'Oh thank you thank you! Here, take the standard. And do apologize to Boiron for me. It shall never happen again. Again, thank you!'");
     quest::summonitem(28085);#Boiron's Standard
-    quest::exp(250);
+    quest::exp(140);
   }
    plugin::return_items(\%itemcount);
     

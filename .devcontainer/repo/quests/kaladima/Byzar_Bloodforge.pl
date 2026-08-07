@@ -25,7 +25,7 @@ sub EVENT_ITEM {
     quest::faction(293,15);   # MinersGuild249 better
     quest::faction(290,15);   # MerchantsOfKaladim better
     quest::faction(232,-15);   # CraknekWarriors worse
-    quest::exp(10000);
+    quest::exp(440);
     quest::ding();
     quest::givecash(7,1,2,0);
     quest::summonitem(quest::ChooseRandom(2113,2114,2115,2117,2119,2121,2122)); # Item(s): Small Tattered Skullcap (2113), Small Tattered Mask (2114), Small Tattered Gorget (2115), Small Tattered Shoulderpads (2117), Small Tattered Belt (2119), Small Tattered Wristbands (2121), Small Tattered Gloves (2122)
@@ -37,7 +37,7 @@ sub EVENT_ITEM {
     quest::faction(293,15);   # MinersGuild249 better
     quest::faction(290,15);   # MerchantsOfKaladim better
     quest::faction(232,-15);   # CraknekWarriors worse
-    quest::exp(10000);
+    quest::exp(440);
     quest::ding;
     quest::summonitem(quest::ChooseRandom(3090,3090,3090,3090,3090,3090,3091,3092,3093,3094,3095,3096)); # Item(s): Bloodforge Helm (3090), Bloodforge Helm (3090), Bloodforge Helm (3090), Bloodforge Helm (3090), Bloodforge Helm (3090), Bloodforge Helm (3090), Bloodforge Mail (3091), Bloodforge Armplates (3092), Bloodforge Bracers (3093), Bloodforge Gauntlets (3094), Bloodforge Legplates (3095), Bloodforge Boots (3096)
   }
@@ -48,7 +48,7 @@ sub EVENT_ITEM {
     quest::faction(293,15);   # MinersGuild249 better
     quest::faction(290,15);   # MerchantsOfKaladim better
     quest::faction(232,-15);   # CraknekWarriors worse
-    quest::exp(10000);
+    quest::exp(440);
     quest::ding;
     quest::summonitem(13314); # Item: Bloodforge Hammer
   }

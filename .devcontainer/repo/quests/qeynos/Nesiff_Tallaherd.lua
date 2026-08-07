@@ -28,7 +28,7 @@ function event_trade(e)
 		e.other:Faction(219,10,0); -- Antonius Bayle
 		e.other:Faction(229,10,0); -- Coalition of Tradefolk
 		e.other:Faction(262,10,0); -- Guards of Qeynos
-		e.other:AddEXP(8000);
+		e.other:AddEXP(400);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 18012})) then
 		e.self:Say("Oh dear. I hope my mistake will not bring too much grief down on poor Weleth. He was told not to order arrows from me after the last time I fouled up their shipment. But Weleth knew I needed the account to stay in business. Could you please rush this new invoice to him right away? Thank you.");
 		e.other:SummonItem(13864); -- Item: Wooden Statue
@@ -38,7 +38,7 @@ function event_trade(e)
 		e.other:Faction(219,10,0); -- Antonius Bayle
 		e.other:Faction(229,10,0); -- Coalition of Tradefolk
 		e.other:Faction(262,10,0); -- Guards of Qeynos
-		e.other:AddEXP(250);
+		e.other:AddEXP(140);
 	end
 	
 	item_lib.return_items(e.self, e.other, e.trade)

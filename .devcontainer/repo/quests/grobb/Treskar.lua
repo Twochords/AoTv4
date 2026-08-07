@@ -35,7 +35,7 @@ function event_trade(e)
 		e.other:Faction(222,-5,0); 	-- Broken Skull Clan
 		e.other:Faction(308,20,0); 	-- Shadowknights of Night Keep (Troll SK)
 		e.other:Faction(222,-3,0); 	-- Green Blood Knights (Ogre SK)
-		e.other:AddEXP(10000); 		-- Appropriate for ~level 10?
+		e.other:AddEXP(440); 		-- Appropriate for ~level 10?
 	elseif (item_lib.check_turn_in(e.trade, {item1 = 12199,item2 = 12199,item3 = 12199, gold = 2})) then
 		e.self:Say("Hmm... You do good job. You surprise Treskar. Maybe you good after all. Maybe Treskar give you [secret mission]. Maybe not.");
 		e.other:SummonItem(5020); -- Item: Rusty Battle Axe
@@ -45,7 +45,7 @@ function event_trade(e)
 		e.other:Faction(222,-5,0); 	-- Broken Skull Clan
 		e.other:Faction(308,20,0); 	-- Shadowknights of Night Keep (Troll SK)
 		e.other:Faction(222,-3,0); 	-- Green Blood Knights (Ogre SK)
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 
 	item_lib.return_items(e.self, e.other, e.trade)

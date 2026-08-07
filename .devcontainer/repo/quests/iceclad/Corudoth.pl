@@ -23,7 +23,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
 	if(plugin::check_handin(\%itemcount, 1710 => 1)) { # inscribed velium tablet
 		quest::ding();
-		quest::exp(1000);
+		quest::exp(200);
 		quest::emote("curses and goes into a fit of frustration before finally giving in. The ancient sea turtle finally says, 'Fine. I don't know what Helssen wants with that but I know where you can find it. Years and years back I traveled with a group was called the Icy Mugs. We were a mercenary company out for fun and profit, and there was plenty of that. During our adventures we ran across a great many foes.'");			
 		quest::summonitem(1711); # Lock of Dwarven Hair
 	}

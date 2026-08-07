@@ -21,7 +21,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 12828 => 1)) {
     quest::say("Kackling Quellious!! This will bring a fortune on the black market!! Well, a deal is a deal. Here is the tail.");
-    quest::exp(25000);
+    quest::exp(600);
     quest::summonitem(12822); # Item: Mechanical Iksar Tail
   }
   plugin::return_items(\%itemcount);

@@ -44,7 +44,7 @@ sub EVENT_ITEM {
   }
   elsif (plugin::check_handin(\%itemcount, 20199 => 1, 19946 => 1)) {
     quest::say("Well done, $name. Now go, spread the gifts of the Plague Lord upon the world.");
-    quest::exp(15000);
+    quest::exp(500);
     quest::summonitem(20261); # Item: Pestilence Priest Mace
   }
   plugin::return_items(\%itemcount);

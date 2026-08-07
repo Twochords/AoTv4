@@ -30,7 +30,7 @@ sub EVENT_ITEM {
     quest::say("B - Bilgewater. Barnacle brained blunderhead. Blast yer ballast...");
     quest::emote("happily reads through the book.");
     quest::summonitem(30041); # Item: Ice Forged Shackles
-    quest::exp(10000);
+    quest::exp(440);
   }
   plugin::return_items(\%itemcount);
 }

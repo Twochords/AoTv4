@@ -24,7 +24,7 @@ function event_trade(e)
 		  e.other:Faction(464,500,0); 	-- Zlandicar
 		  e.other:Faction(430,-50,0);	-- CLaws of Veeshan
 		  e.other:Faction(304,-50,0); 	-- Ring of Scale
-		  e.other:AddEXP(250000);
+		  e.other:AddEXP(1260);
 		  end
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

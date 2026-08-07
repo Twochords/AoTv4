@@ -19,7 +19,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 51628 => 1, 51629 => 1, 51626 => 1, 51627=> 1)) { #Bottom Left Section of a Map, Bottom Right Section of a Map, Top Left Section of a Map, Top Right Section of a Map
     quest::say("Thank you for helping me assemble the map, it was quite detailed and displayed a secondary entrance to Mithainel's temple, which you may use as your entry point.");
-    quest::exp(1000);
+    quest::exp(200);
 	# Flag for hohonorb.  Ideally should set a global like pop_hohb_alt, I would assume, but I don't see one anywhere.
 	# Since this is alternate access, it just lets you into the zone.  You still have to do trials to get elemental access.
 	if(quest::has_zone_flag(220) != 1) {

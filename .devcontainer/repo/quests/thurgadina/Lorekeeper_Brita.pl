@@ -42,7 +42,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 1427 => 1, 1417 => 1)) {
     quest::say("Ohh, that's better. I get so touchy when I'm hungry. I should probably go apologize to Derrin for being snappy. Please return this to Mordin for me.");
     quest::summonitem(1424); # Item: Used Pie Tin
-    quest::exp(150000);
+    quest::exp(1080);
     quest::faction(406,20); # coldain
     quest::faction(405,20); # Dain Frostreaver IV
     quest::faction(419,-60); # Kromrif
@@ -50,7 +50,7 @@ sub EVENT_ITEM {
   }
   elsif (plugin::check_handin(\%itemcount, 1427 => 1)) {
     quest::say("Ohh, that's better. I get so touchy when I'm hungry. I should probably go apologize to Derrin for being snappy.");
-    quest::exp(5000);
+    quest::exp(360);
   }
   else {
     if ($faction <= 3) { # Require warmly and greater faction
@@ -79,7 +79,7 @@ sub EVENT_ITEM {
         plugin::return_items(\%itemcount);
         return 1;
       }
-      quest::exp(100000);
+      quest::exp(940);
       quest::faction(406,20); # coldain
       quest::faction(405,20); # Dain Frostreaver IV
       quest::faction(419,-60); # Kromrif

@@ -30,7 +30,7 @@ local item_lib = require("items");
 		e.other:Faction(329, -1); -- Faction: Carson McCabe
 		e.other:Faction(223, -1); -- Faction: Circle of Unseen Hands
 		e.other:Faction(336, -1); -- Faction: Coalition of Tradefolk Underground
-		e.other:AddEXP(10);
+		e.other:AddEXP(60);
 		e.other:Ding();
 	elseif (item_lib.check_turn_in(e.trade,  {item1 = 13957})) then
 		e.self:Say("Oh excellent! These carrots are perfect! The finest Reebo has ever sent us. The mayor will be so pleased. Here is the payment for the carrots. Excuse me, but I must finish preparing the stew. Hmm. Where the heck did [Jillin] go?");
@@ -40,7 +40,7 @@ local item_lib = require("items");
 		e.other:Faction(329, 1); -- Faction: Carson McCabe
 		e.other:Faction(223, 1); -- Faction: Circle of Unseen Hands
 		e.other:Faction(336, 1); -- Faction: Coalition of Tradefolk Underground
-		e.other:AddEXP(20);
+		e.other:AddEXP(60);
 		e.other:Ding();
 	elseif (item_lib.check_turn_in(e.trade,  {item1 = 13971})) then
 		e.self:Say("What are these?!  I am trying to make stew for the mayor and you bring me ROTTEN CARROTS?!  Have you no sense??  Take these back to Reebo.");

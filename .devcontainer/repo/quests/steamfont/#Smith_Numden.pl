@@ -7,7 +7,7 @@ sub EVENT_ITEM {
     quest::say("These picks are in sad shape, that they are. This would take longer than it is worth. I just forged some new ones, just take those and get out!");
     quest::ding();
     quest::summonitem(54435); # Item: Bundle of Shiny New Picks
-    quest::exp(1000);
+    quest::exp(200);
   } 
   plugin::return_items(\%itemcount);
 }

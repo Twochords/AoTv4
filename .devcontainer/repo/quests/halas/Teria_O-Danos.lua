@@ -23,7 +23,7 @@ function event_trade(e)
 		e.other:Faction(328,5); 								--Merchants of Halas
 		e.other:Faction(320,5); 								--Wolves of the North
 		e.other:Faction(327,5);									--Shamen of Justice
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:Ding();
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

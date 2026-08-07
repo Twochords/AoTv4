@@ -17,7 +17,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 28091 => 1)) {#Curative Potion
     quest::say("Oh thank you so much.' He drinks from the bottle, then reaches in his pocket and produces a set of needles. 'I believe this is what Willamina is in need of. Please take these to her and give her my best.");
     quest::summonitem(28092);#New Sewing Needles
-    quest::exp(250);
+    quest::exp(140);
   }
   plugin::return_items(\%itemcount);
 }#END of FILE Zone:poknowledge  ID:202036 -- Bolcen_Tendag 

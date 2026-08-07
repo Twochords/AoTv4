@@ -29,7 +29,7 @@ if (plugin::check_handin(\%itemcount, 19574 => 1, 16197 => 1, 19554 => 1)) {
 if (plugin::check_handin(\%itemcount, 19573 => 1)) {
    quest::say("I'm surprised, I really am. I didn't think somebody like you could pull it off. Here, take this before I change my mind.");
   quest::summonitem(19607); # Item: Bone Hilted Long Sword
-  quest::exp(1000);
+  quest::exp(200);
   quest::faction(236,10); # Faction: Dark Bargainers
   quest::faction(370,10); # Faction: Dreadguard Inner
   quest::faction(334,10); # Faction: Dreadguard Outer
@@ -39,7 +39,7 @@ if (plugin::check_handin(\%itemcount, 19573 => 1)) {
 if (plugin::check_handin(\%itemcount, 19570 => 4)) {
    quest::emote("fashions the petrified femurs into a shield frame. This will be the frame of your new shield. Return now again to the Nektulos Forest, in the gray ashen region of the forest near the Lavastorm mountains the basilisks often come down from the fiery peaks to lay their eggs in the ashen soil. Basilisk hatchlings can be found there as they make their way towards the warmer interior of the mountains. Hunt these basilisk hatchlings and gather two Basilisk Hatchling Skins. Once this is done take the skins and frame to Medron Y'Lask at the Furrier Royale.");
    quest::summonitem(19571); # Item: Petrified Femur Shield Frame
-   quest::exp(1000);
+   quest::exp(200);
    quest::faction(239,15); # Faction: The Dead
    quest::faction(303,2); # Faction: Queen Cristanos Thex
    quest::faction(278,-2); # Faction: King Naythox Thex

@@ -63,7 +63,7 @@ if(plugin::check_handin(\%itemcount, 54001 => 1))
 this as a token of my gratitude.");
   quest::ding();
   quest::faction(1709,100); # Faction: Protectors of Gukta
-  quest::exp(25000);
+  quest::exp(600);
   quest::summonitem(54002); # Item: Trainer's Bauble
   }
   plugin::return_items(\%itemcount);

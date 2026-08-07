@@ -11,7 +11,7 @@ if(plugin::check_handin(\%itemcount, 29062 => 4)){
   quest::faction(406, 50); # Faction: Coldain
   quest::faction(405, 50); # Faction: Dain Frostreaver IV
   quest::faction(429, -25); # Faction: King Tormax
-  quest::exp(64000);
+  quest::exp(800);
   quest::ding();
   quest::givecash(0,0,0,20);
  }

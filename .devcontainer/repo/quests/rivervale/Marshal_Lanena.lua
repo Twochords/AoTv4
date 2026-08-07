@@ -29,7 +29,7 @@ function event_trade(e)
 		e.other:Faction(355,10,0); -- Faction: Storm Reapers
 		e.other:Faction(292,10,0); -- Faction: Merchants of Rivervale
 		e.other:Faction(334,-10,0); -- Faction: Dreadguard Outer
-		e.other:AddEXP(200);
+		e.other:AddEXP(120);
 		e.other:GiveCash(0,1,0,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 12155})) then
 		e.self:Say("Fine work. We shall continue to study these and shall determine if we need to seek the source.");
@@ -40,7 +40,7 @@ function event_trade(e)
 		e.other:Faction(355,15,0); -- Faction: Storm Reapers
 		e.other:Faction(292,15,0); -- Faction: Merchants of Rivervale
 		e.other:Faction(334,-20,0); -- Faction: Dreadguard Outer
-		e.other:AddEXP(200);
+		e.other:AddEXP(120);
 		e.other:GiveCash(0,1,0,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

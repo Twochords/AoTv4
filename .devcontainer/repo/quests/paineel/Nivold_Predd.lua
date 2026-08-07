@@ -21,7 +21,7 @@ function event_trade(e)
 		e.other:Faction(254,-400,0); -- Faction: Gate Callers
 		e.other:Faction(231,-400,0); -- Faction: Craftkeepers
 		e.other:Faction(233,-400,0); -- Faction: Crimson Hands
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:GiveCash(math.random(9),math.random(9),math.random(9),math.random(9));
 		eq.unique_spawn(75164,0,0,474,1230,-37,256); -- spawn avatar of dread
 	else

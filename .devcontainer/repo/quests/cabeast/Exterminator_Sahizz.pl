@@ -9,7 +9,7 @@ sub EVENT_SAY {
   sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 12466 =>4 )) {
     quest::say("Thank you, $name.  Here is your reward.");
-    quest::exp(50);
+    quest::exp(80);
     quest::givecash(0,5,0,0);
     quest::faction( 440,3 ); # Faction: Cabilis Residents
     quest::faction( 441,3 ); # Faction: Legion of Cabilis

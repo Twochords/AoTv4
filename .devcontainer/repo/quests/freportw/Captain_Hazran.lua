@@ -19,7 +19,7 @@ function event_trade(e)
 		e.other:Faction(362,-1,0); -- priests of marr
 		e.other:Faction(281,-1,0); -- Knights of Truth
 		e.other:Faction(336,1,0); -- coalition of trade folk underground
-		e.other:AddEXP(28000); --14000 xp per belt
+		e.other:AddEXP(620); --14000 xp per belt
 		e.other:GiveCash(0,0,8,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

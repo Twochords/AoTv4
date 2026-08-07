@@ -33,7 +33,7 @@ sub EVENT_ITEM {
         quest::faction(436,12); # Yelinak
         quest::faction(430,50); # Claws of Veeshan
         quest::faction(448,-24); # Kromzek
-        quest::exp(100000);
+        quest::exp(940);
         quest::targlobal("CircletFalinkan","2","Y1",114002,$charid,114); # sets the global to 2 for Ralgyn in skyshrine
         quest::depop_withtimer();
       }

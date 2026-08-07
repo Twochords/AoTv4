@@ -25,13 +25,13 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 8365 => 1)) { #Soul Essence of Aten Ha Ra
     quest::say("$name, you have done more than was ever expected. Take this and my blessing will be with you always.");
     quest::summonitem(8364); #Talisman of Vah Kerrath
-    quest::exp(1670);
+    quest::exp(240);
   }
   if(plugin::check_handin(\%itemcount, 28102 => 4)) { #Elysian Skull
     quest::say("You have done well. Clear your mind of all distractions and ask the whisperlings if you are worthy of my knowledge.");
     quest::faction(1520,5); #Whisperling
     quest::faction(1521,-5);  #Akheva
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 }

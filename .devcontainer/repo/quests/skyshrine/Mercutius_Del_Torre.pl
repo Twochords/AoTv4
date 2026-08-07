@@ -57,7 +57,7 @@ sub EVENT_ITEM {
     plugin::return_items(\%itemcount);
     return 1;
   }
-  quest::exp(50000);
+  quest::exp(740);
   quest::faction(430,10); #cov
 }
 

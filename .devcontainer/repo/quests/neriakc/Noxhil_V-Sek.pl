@@ -42,7 +42,7 @@ sub EVENT_ITEM {
 		quest::faction(275,-1); #Keepers of Art
 		quest::faction(245,-1); #Eldritch Collective
 		quest::faction(1522,-20); #Primordial Malice
-		quest::exp(6400);#reparsed for accuracy (Huffin)
+		quest::exp(380);#reparsed for accuracy (Huffin)
 		quest::givecash(0,16,0,0);#16 silver
 		quest::summonitem(quest::ChooseRandom(13021, 13022));#Neriak Necter or Rotgrub Rye
 	}
@@ -54,7 +54,7 @@ sub EVENT_ITEM {
 		quest::faction(275,-10); #Keepers of Art
 		quest::faction(245,-10); #Eldritch Collective
 		quest::faction(1522,-10); #Primordial Malice
-		quest::exp(17150);#5% level 8 experience, comments on alla's suggest the reward is this much.
+		quest::exp(520);#5% level 8 experience, comments on alla's suggest the reward is this much.
 		#Lesser summon corpse was not in the game when I played, and not one of the rewards.
 		#However, it is a level 12 necro spell now, and I have no clue if it was added to the
 		#list of rewards on live, so I'm adding it for completeness. -Kilelen

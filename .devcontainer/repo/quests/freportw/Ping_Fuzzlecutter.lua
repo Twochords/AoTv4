@@ -35,7 +35,7 @@ function event_trade(e)
 		e.other:Faction(281,3,0); -- Faction: Knights of Truth
 		e.other:Faction(291,3,0); -- Faction: Merchants of Qeynos
 		e.other:Faction(336,3,0); -- Faction: Coalition of Tradefolk Underground
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

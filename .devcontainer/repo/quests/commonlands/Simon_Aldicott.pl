@@ -22,7 +22,7 @@ sub EVENT_ITEM {
     quest::faction(362,100); #priests of marr
     quest::faction(330,-50); #freeport militia
     quest::faction(281,100); #knights of truth
-    quest::exp(200000);
+    quest::exp(1180);
   }
   plugin::return_items(\%itemcount);
 }

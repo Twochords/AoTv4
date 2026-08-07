@@ -17,7 +17,7 @@ sub EVENT_ITEM {
 		quest::faction(419,10); # Kromrif
 		quest::faction(406,-30); # Coldain
 		quest::faction(430,-30); # Claws of Veeshan
-		quest::exp(250);
+		quest::exp(140);
 		quest::summonitem(25278); # Velium Torque
 	}
 	plugin::return_items(\%itemcount);

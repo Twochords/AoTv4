@@ -58,7 +58,7 @@ sub EVENT_ITEM {
     quest::faction(263, 12); # Faction: Guardians of the Vale
     quest::faction(286, 12); # Faction: Mayor Gubbin
     quest::faction(336, -15); # Faction: Coalition of Tradefolk Underground
-    quest::exp(65);
+    quest::exp(100);
     quest::givecash(0,8,3,0);
   }
   plugin::return_items(\%itemcount);

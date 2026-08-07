@@ -11,7 +11,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 18247 => 1, 12672 => 1)) { #Legion Order (7 signed), Goblin Scout Beads
     quest::summonitem(18248); #Legion Order (8 signed)
-    quest::exp(500);
+    quest::exp(160);
   }
   elsif (plugin::check_handin(\%itemcount, 18247 => 1)) {
     quest::say("No, NO! I want the goblin scout beads and the legion order.");

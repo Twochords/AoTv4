@@ -22,7 +22,7 @@ function event_trade(e)
 		e.other:Faction(320, 5); -- Faction: Wolves of the North
 		e.other:Faction(327, 5); -- Faction: Shamen of Justice
 		e.other:Faction(305, -5); -- Faction: Rogues of the White Rose
-		e.other:AddEXP(150);
+		e.other:AddEXP(120);
 		e.other:GiveCash(0,0,1,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 12223, item2 = 12223})) then
 		e.self:Say("Fine work hunter!  As your reward please accept this item which I have fashioned for you.");
@@ -32,7 +32,7 @@ function event_trade(e)
 		e.other:Faction(320, 5); -- Faction: Wolves of the North
 		e.other:Faction(327, 5); -- Faction: Shamen of Justice
 		e.other:Faction(305, -5); -- Faction: Rogues of the White Rose
-		e.other:AddEXP(150);
+		e.other:AddEXP(120);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

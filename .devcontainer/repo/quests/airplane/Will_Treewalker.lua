@@ -19,17 +19,17 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 20930, item2 = 20728, item3 = 20729})) then 	--druid test of the wolf using azure tessera, black face paint, worn leather mask
 		e.other:SummonItem(2706);  	--drake-hide mask
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Good work.");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20936, item2 = 20731, item3 = 20730})) then --druid test of the bear using copper disc, mantle of woven grass, nature walker's sky emerald
 		e.other:SummonItem(2705); 	--nature walker's mantle
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Good work.");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20943, item2 = 20732, item3 = 20733})) then --druid test of the tree using diaphanous globe, hardened clay, spiroc battle staff
 		e.other:SummonItem(6411); 	--shillelagh
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Good work.");
 		eq.depop();
 	end

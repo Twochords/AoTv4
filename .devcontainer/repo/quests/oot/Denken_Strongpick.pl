@@ -23,7 +23,7 @@ sub EVENT_ITEM {
   # 20664 :  Keg of Vox Tail Ale
   if (plugin::check_handin(\%itemcount,16889=>2,20665=>1,20664=>1)) {
     quest::summonitem(20667); # 20667  Ancient Sword Blade
-    quest::exp(50000); 
+    quest::exp(740); 
     quest::ding();
     quest::say("Excellent! Here is your sword. I feel like I'm at home already!");
   }

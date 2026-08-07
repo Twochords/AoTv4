@@ -24,7 +24,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 12114 => 2)) { #Tumpy Tonic (Only 2)
     quest::say("Thank you, that hit the spot!! Here is the spool, as promised."); #Real text still needed
     quest::summonitem(12111); #Dwarven Wire
-    quest::exp(1000);
+    quest::exp(200);
     quest::faction(312,5); #Storm Guard
     quest::faction(274,5); #Kazon Stormhammer
     quest::faction(293,5); #Miners Guild 249
@@ -42,7 +42,7 @@ sub EVENT_ITEM {
     else {
       quest::say("Thank you, that hit the spot!! Here is the spool, as promised."); #Real text still needed
       quest::summonitem(12111); #Dwarven Wire
-      quest::exp(1000);
+      quest::exp(200);
       quest::faction(312,5); #Storm Guard
       quest::faction(274,5); #Kazon Stormhammer
       quest::faction(293,5); #Miners Guild 249

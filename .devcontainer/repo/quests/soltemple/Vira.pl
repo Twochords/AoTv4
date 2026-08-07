@@ -39,28 +39,28 @@ sub EVENT_ITEM {
   if (quest::handin({16544 => 1, 16543 => 1, 16538 => 1, 10032 => 1})) { # Items: Broom, Cyclops Toes, Griffon Feathers, Star Ruby
     quest::say("All of the components to make the infamous broom of Trilon! Well done, adventurer. As you have proven yourself worthy, I grant you this broom.");
     quest::summonitem(6360); # Item: Broom of Trilon
-    quest::exp(1000);
+    quest::exp(200);
     quest::faction(415,15);  # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
   }
   elsif (quest::handin({10035 => 1, 10014 => 1, 16545 => 1, 16539 => 1})) { # Items: Ruby, Gargoyle Eye, Shovel, Hill Giant Toes
     quest::say("Each of the four items needed to construct the famed Shovel of Ponz! Very well. As you have displayed ingenuity, I grant you this shovel.");
     quest::summonitem(6361); # Item: Shovel of Ponz
-    quest::exp(1000);
+    quest::exp(200);
     quest::faction(415,15);  # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
   }
   elsif (quest::handin({16540 => 1, 16542 => 1, 10034 => 1, 16547 => 1})) { # Items: Ice Giant Toes, Mermaid Scale, Sapphire, Stein 
     quest::say("The four components required for the stein of Ulissa?! I am impressed! As you have displayed valor, I grant you this stein.");
     quest::summonitem(6363); # Item: Stein of Ulissa
-    quest::exp(1000);
+    quest::exp(200);
     quest::faction(415,15);  # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
   }
   elsif (quest::handin({16546 => 1, 16534 => 1, 10033 => 1, 16541 => 1})) { # Items: Torch, Fire Drake Scale, Fire Emerald, Fire Giant Toes
     quest::say("All of the pieces of the famous Torch of Alna! I never thought you would find them all! As you have displayed courage, I grant you this torch.");
     quest::summonitem(6362); # Item: Torch of Alna
-    quest::exp(1000);
+    quest::exp(200);
     quest::faction(415,15);  # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
   }

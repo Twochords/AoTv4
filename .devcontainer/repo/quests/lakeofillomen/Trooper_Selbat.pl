@@ -12,7 +12,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 18248 => 1)) { #Legion Order (8 signed)
     quest::emote("signs the note and hands back to you. 'Be off now. Before I do choose to slay the messenger.'");
     quest::summonitem(18249); #Legion Order (9 signed)
-    quest::exp(200);
+    quest::exp(120);
   }
   plugin::return_items(\%itemcount);
 }

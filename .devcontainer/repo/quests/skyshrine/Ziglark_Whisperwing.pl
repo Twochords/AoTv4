@@ -28,7 +28,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 28601 => 1)){
     # Key to Cobalt Scar [End]
     quest::say("I appear to have mistaken your declaration of worth as a phony attempt at bravado, and do apologize. You have truly proven yourself worthy of the shrine, and in short order as well. For your troubles, and as a token of your worth to the shrine, I grant you this key to traverse into the lands of the Cobalt Scar. Praise be with you and good journeys always, $name.");
-    quest::exp(500);
+    quest::exp(160);
     # Summon: Shrine Key
     quest::summonitem(28602); # Item: Shrine Key
    } 

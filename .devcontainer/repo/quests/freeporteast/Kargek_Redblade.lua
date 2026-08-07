@@ -30,17 +30,17 @@ function event_trade(e)
     e.self:Say("What is this? A note from my brother? Thank you for the gift as well.' Kargek reads the note and hands you the huge sword hilt. Your mind is filled with the sound of battle and a voice. 'Place the ancient sword blade, ancient blade, finely crafted dragon head hilt and the jeweled dragon head hilt into the scabbard to receive your rewards. If you think you are worthy, place your rewards into the scabbard and see what havoc you can unleash on the world. Kargek addresses you as you turn to leave. 'One more thing. Gartrog over there has told me of a great discovery. Seems there are all sorts of stones being found in the recently discovered lost dungeons scattered around Antonica. The Wayfarer's Brotherhood has found a way to make items even more powerful by using the stones with existing items.");
     e.other:SummonItem(17859); -- Red Scabbard
     e.other:Ding();
-    e.other:AddEXP(1000000);
+    e.other:AddEXP(2000);
   elseif(item_lib.check_turn_in(e.trade, {item1 = 20674})) then -- Tiny Lute
     e.self:Say("Thank you for delivering the note to my associate. Take this book - it will tell you a little of the history of the old scabbard. If you would like to own the scabbard, seek out my younger brother Tenal and give him the book.");
     e.other:SummonItem(18083); -- Redblade's Legacy
     e.other:Ding();
-    e.other:AddEXP(1000);
+    e.other:AddEXP(200);
   elseif (qglobals['warrior_pre'] ~= nil and qglobals['warrior_pre'] == "3" and item_lib.check_turn_in(e.trade, {item1 = 60287})) then
     e.self:Say("You got it, I'm so relieved! I know the rest of my family will be just as relieved as I am to know that we can return the sword to its resting spot atop my father's grave. You have done such a service to my family that I must give you something as a token of my thanks. This hilt bears the markings of the Redblade family. Combine it with the proper blade and you will have an amazing weapon. Thanks once again!");
     e.other:SummonItem(60288); -- Item: Emblazoned Champion's Hilt
     e.other:Ding();
-    e.other:AddEXP(1000);
+    e.other:AddEXP(200);
   end
   item_lib.return_items(e.self, e.other, e.trade)
 end

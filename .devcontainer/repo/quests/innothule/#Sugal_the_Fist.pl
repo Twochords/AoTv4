@@ -107,7 +107,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 63090 => 1)) { # Filled Survival Pack
     quest::say("Excellent. You look much more hardy and lean. But you have a long way to go still. Take this token as a mark of your achievement. Make sure to keep it safe. Now go practice your weapon skills some more. When you think you're ready, come back here. We'll see what other weaknesses we can whittle away.");
-    quest::exp(10000);
+    quest::exp(440);
     quest::ding();
     quest::summonitem(63091); # Guja Token
     quest::setglobal("token", 1, 5, "F");
@@ -116,7 +116,7 @@ sub EVENT_ITEM {
     if ($race eq "Froglok" && defined $qglobals{token} && $qglobals{token} == 1) {
       if ($client->GetSkill(0) >= 165 && $client->GetSkill(1) >= 165 && $client->GetSkill(2) >= 165 && $client->GetSkill(3) >= 165 && $client->GetSkill(36) >= 165) {
         quest::say("Hmm, You've learned much. You know how to survive in a wide variety of environments. You've learned the ways of watery warfare. Yes, I will notch your token. But the [third notch] is something you must earn on your own.");
-        quest::exp(10000);
+        quest::exp(440);
         quest::summonitem(63103); # Twice Notched Guja Token
         quest::setglobal("token", 2, 5, "F");
       }
@@ -129,7 +129,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 63103 => 1, 63104 => 1)) { # Twice Notched Guja Token, Lizardman Samples
     if ($race eq "Froglok" && defined $qglobals{token} && $qglobals{token} == 2) {
       quest::say("I wish I could say I welcome your return. But news has reached us. Apparently you did your job too well. The Lizardmen are even now readying for war. We cannot afford that fight. The council has decided we must . . .accept [another option].");
-      quest::exp(10000);
+      quest::exp(440);
       quest::summonitem(63105); # Thrice Notched Guja Token
       quest::setglobal("token", 3, 5, "F");
     }
@@ -137,7 +137,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 63106 => 1)) { # Tongue of Thugat
     if ($race eq "Froglok" && defined $qglobals{token} && $qglobals{token} == 3) {
       quest::say("Well done! The Lizardmen have been spurned. They will lick their wounded pride for months. This is a great victory for Gukta, $name. Here, take my own sigil of the Guja. And my shield. They are the best gifts I can think to give. Wear them proudly. You are truly a Guja now.");
-      quest::exp(10000);
+      quest::exp(440);
       quest::summonitem(63107); # Sugal's Sigil
       quest::summonitem(63108); # Sugal's Shield
     }

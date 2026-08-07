@@ -26,7 +26,7 @@ sub EVENT_ITEM {
 			} elsif ($class eq "Beastlord") { quest::summonitem(69381);
 			} else { quest::summonitem(69382);
 			}
-			quest::exp(10000);
+			quest::exp(440);
 		}
         if (plugin::check_handin(\%itemcount, 69381 => 1)) {
 			quest::say("How utterly obtuse and arrogant. How about this one then?");

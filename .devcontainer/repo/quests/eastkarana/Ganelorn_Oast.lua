@@ -19,12 +19,12 @@ function event_trade(e)
 		e.other:Faction(226,50,0); -- Faction: Clerics of Tunare
 		e.other:Faction(310,50,0); -- Faction: Soldiers of Tunare
 		e.other:Faction(234,-50,0); -- Faction: Crushbone Orcs
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20878})) then
 		e.self:Say("This does speak highly of you, my friend, an award from Kithicor does not come easy. But I must see more of your skills before I can consider teaching you. Lily's brother Devin is my current pupil - I need you to gather some equipment for me so I can properly train him. I require the following items of you - a smoldering sash, an adamantine ring and a blade forged of electrum. I also need a favor. Take this credit slip to Aanina Rockfinder. She is a merchant from whom I purchased a gift for Lily; it should be ready by now.");
 		e.other:SummonItem(20879); -- Item: Note of Credit
 		e.other:Ding();
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20881,item2 = 20880,item3 = 10151,item4 = 5408})) then
 		e.self:Say("You have done well. I sense the one I have been hunting in the distance. As your final test, you must track him down and destroy him.");
 		eq.spawn2(15183,0,0,-800,-2712,15.6,276); -- NPC: Vance_Bearstalker
@@ -34,7 +34,7 @@ function event_trade(e)
 		e.other:Faction(226,50,0); -- Faction: Clerics of Tunare
 		e.other:Faction(310,50,0); -- Faction: Soldiers of Tunare
 		e.other:Faction(234,-50,0); -- Faction: Crushbone Orcs
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20882})) then
 		e.self:Say(string.format("You, %s, are a worthy forester. It brings me great pride to present you this scroll that I have only passed to the finest in all of Norrath. Now you, too, may call the flames.",e.other:GetName()));
 		e.other:SummonItem(15691); -- Item: Spell: Call of Flame
@@ -44,7 +44,7 @@ function event_trade(e)
 		e.other:Faction(226,50,0); -- Faction: Clerics of Tunare
 		e.other:Faction(310,50,0); -- Faction: Soldiers of Tunare
 		e.other:Faction(234,-50,0); -- Faction: Crushbone Orcs
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

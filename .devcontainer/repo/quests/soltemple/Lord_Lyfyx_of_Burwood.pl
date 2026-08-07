@@ -21,6 +21,6 @@ sub EVENT_ITEM {
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15);  # Faction: Shadow Men worse
     quest::summonitem(12952); # Item: Dragon Scales
-    quest::exp(50000);
+    quest::exp(740);
   }
 }

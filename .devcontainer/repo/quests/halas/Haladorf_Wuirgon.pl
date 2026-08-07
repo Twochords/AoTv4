@@ -51,7 +51,7 @@ sub EVENT_ITEM {
  if(plugin::check_handin(\%itemcount, 20184 => 1, 27409 => 1, 20179 => 1, 13058 => 1)){
   quest::say("Well done, $name.  Take this axe, and wield it with pride!"); # Text made up
   quest::summonitem(55353); #axe of the rabidwolf
-  quest::exp(1000);
+  quest::exp(200);
  }
  plugin::return_items(\%itemcount);
 }

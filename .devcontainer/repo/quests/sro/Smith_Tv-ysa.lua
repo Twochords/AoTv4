@@ -22,7 +22,7 @@ function event_trade(e)
 		e.other:Faction(370,10,0); -- Dreadguard Inner
 		e.other:Faction(334,10,0); -- Dreadguard Outer
 		e.other:Faction(236,10,0); -- Dark Bargainers
-		e.other:AddEXP(137200); -- 5% level 15 experience.
+		e.other:AddEXP(1040); -- 5% level 15 experience.
 	end
 	if(item_lib.check_turn_in(e.trade, {item1 = 10400})) then -- Greater Lightstone
 		e.self:Say("A greater lightstone? Thank you very much. Here is a 'Concordance of Research' for you.");
@@ -31,7 +31,7 @@ function event_trade(e)
 		e.other:Faction(370,10,0); -- Dreadguard Inner
 		e.other:Faction(334,10,0); -- Dreadguard Outer
 		e.other:Faction(236,10,0); -- Dark Bargainers
-		e.other:AddEXP(274400); -- 10% level 15 experience.
+		e.other:AddEXP(1300); -- 10% level 15 experience.
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

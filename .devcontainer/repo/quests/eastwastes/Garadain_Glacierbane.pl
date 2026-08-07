@@ -121,7 +121,7 @@ sub EVENT_ITEM {
     quest::faction(419, -30); # Faction: Kromrif
     quest::faction(448, -30); # Faction: Kromzek
 
-    quest::exp(50000);
+    quest::exp(740);
   }
 
 ###########################
@@ -138,7 +138,7 @@ sub EVENT_ITEM {
     quest::faction(419, -30); # Faction: Kromrif
     quest::faction(448, -30); # Faction: Kromzek
 
-    quest::exp(60000);
+    quest::exp(800);
   }
 
 ###########################
@@ -155,7 +155,7 @@ sub EVENT_ITEM {
     quest::faction(419, -30); # Faction: Kromrif
     quest::faction(448, -30); # Faction: Kromzek
 
-    quest::exp(70000);
+    quest::exp(840);
   }
 
 ###########################
@@ -172,7 +172,7 @@ sub EVENT_ITEM {
     quest::faction(419, -30); # Faction: Kromrif
     quest::faction(448, -30); # Faction: Kromzek
 
-    quest::exp(80000);
+    quest::exp(880);
   }
 
 ###########################
@@ -189,7 +189,7 @@ sub EVENT_ITEM {
     quest::faction(419, -30); # Faction: Kromrif
     quest::faction(448, -30); # Faction: Kromzek
 
-    quest::exp(90000);
+    quest::exp(900);
   }
 
 ###########################
@@ -206,7 +206,7 @@ sub EVENT_ITEM {
     quest::faction(419, -30); # Faction: Kromrif
     quest::faction(448, -30); # Faction: Kromzek
 
-    quest::exp(100000);
+    quest::exp(940);
   }
 
 ###########################
@@ -223,7 +223,7 @@ sub EVENT_ITEM {
     quest::faction(419, -30); # Faction: Kromrif
     quest::faction(448, -30); # Faction: Kromzek
 
-    quest::exp(110000);
+    quest::exp(960);
   }
 
 ###########################
@@ -240,7 +240,7 @@ sub EVENT_ITEM {
     quest::faction(419, -30); # Faction: Kromrif
     quest::faction(448, -30); # Faction: Kromzek
 
-    quest::exp(120000);
+    quest::exp(1000);
   }
 
   # Ring 8 reward moved to #Garadain_Glacierbane to emulate Live's timing of head turn-in
@@ -255,7 +255,7 @@ sub EVENT_ITEM {
   #   quest::faction(419,-30);
   #   quest::faction(448,-30);
 
-  #   quest::exp(2000000);
+  #   quest::exp(2520);
   # }
 
   plugin::return_items(\%itemcount);

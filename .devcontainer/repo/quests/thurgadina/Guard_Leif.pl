@@ -6,11 +6,11 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 1415 => 1, 1425 => 1)) {
     quest::say("Well I'll be derned. An outlander that can make a good Bearmeat 'n Bread! Thank ye, $name.");
     quest::summonitem(1419); # Item: Used Napkin
-    quest::exp(50000);
+    quest::exp(740);
   }
   elsif (plugin::check_handin(\%itemcount, 1425 => 1)) {
     quest::say("Well I'll be derned. An outlander that can make a good Bearmeat 'n Bread! Thank ye, $name.");
-    quest::exp(5000);
+    quest::exp(360);
   }
   else {
     plugin::return_items(\%itemcount);

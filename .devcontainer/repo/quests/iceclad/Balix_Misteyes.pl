@@ -24,7 +24,7 @@ sub EVENT_ITEM {
     quest::say("Good for hitting or for talisman. Powerful thing to hold. All Snowfang thank you. Now, all of us are safer.");
     quest::summonitem(30056); # Item: Garou Bone Club
     quest::faction(439, 10); # Faction: Snowfang Gnolls
-    quest::exp(1000);
+    quest::exp(200);
   }
 }
 

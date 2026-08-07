@@ -20,7 +20,7 @@ if(plugin::check_handin(\%itemcount, 1690 => 1,22569 => 1)) { # Small piece of V
 	quest::faction(405,5); # Dain Frostreaver IV
 	quest::faction(448,-10); # Kromzek
 	quest::faction(419,-10); # Kromrif
-	quest::exp(1000);
+	quest::exp(200);
 	quest::summonitem(1691); # Norman's Axe V2 6 Damage
 	}
 

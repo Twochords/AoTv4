@@ -46,7 +46,7 @@ function event_trade(e)
 		e.other:Faction(279,10,0); -- King Tearis Thex
 		e.other:Faction(246,10,0); -- Faydark's Champions
 		e.other:Faction(239,-10,0); -- The Dead
-		e.other:AddEXP(250);
+		e.other:AddEXP(140);
 	-- Handin: Rough Artkeepers Initiate Staff, Pristine Forest Drakeling Scales, Arborean Amber
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20296,item2 = 20271,item3 = 20274})) then
 		e.self:Emote("fashions a grip for the staff from the pristine forest drakeling scales, places the arborean amber into a mithril fixture and attaches the fixture to one end of the staff. 'Here is your new staff young Art Keeper may it serve you well in the pursuit of your studies.'");
@@ -56,7 +56,7 @@ function event_trade(e)
 		e.other:Faction(279,10,0); -- King Tearis Thex
 		e.other:Faction(246,10,0); -- Faydark's Champions
 		e.other:Faction(239,-10,0); -- The Dead
-		e.other:AddEXP(250);
+		e.other:AddEXP(140);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

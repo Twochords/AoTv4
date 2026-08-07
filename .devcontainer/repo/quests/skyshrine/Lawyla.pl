@@ -33,7 +33,7 @@ sub EVENT_ITEM {
    quest::faction(430,100); # +ClawsofVeeshan 
    quest::faction(436,100); # +Yelinak
    quest::faction(448,-100); # -Kromzek
-   quest::exp(1000); 
+   quest::exp(200); 
    #Summon: Hsagra's Wrath (19470)
    quest::summonitem(19470); # Item: Spell: Hsagra's Wrath
   } 

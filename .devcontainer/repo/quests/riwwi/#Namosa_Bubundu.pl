@@ -24,13 +24,13 @@ sub EVENT_ITEM {
     quest::emote("gasps");
     quest::say("What?! Oh no, this isn't good at all. She isn't supposed to die. I am! Quick, go and see Councilman Tentric in Qinimi and let him know what's happening. He has always helped our family when we were in need. If you bring this token he will know I sent you!");
     quest::summonitem(52176); # Item: Token of Understanding
-    quest::exp(10000);
+    quest::exp(440);
     quest::faction(1770,10); # Faction: Yunjo Slave Resistance
     quest::faction(1771,-10); # Faction: Gladiators of Mata Muram
   }
   if (plugin::check_handin(\%itemcount, 52175 =>1 )) {
     quest::say("A drakelily? My aunt grew these in her garden. In fact, I helped her plant some of them myself. She always told me they were a sign of hope. Thank you, $name. I'll inform our people of your kindness.");
-   quest::exp(10000);
+   quest::exp(440);
     quest::faction(1770,50); # Faction: Yunjo Slave Resistance
     quest::faction(1771,-25); # Faction: Gladiators of Mata Muram
     quest::setglobal("bic_riw",7,5,"F");

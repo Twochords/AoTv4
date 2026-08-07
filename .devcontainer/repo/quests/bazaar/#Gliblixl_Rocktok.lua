@@ -18,7 +18,7 @@ function event_trade(e)
 		e.other:Faction(1512, 10); -- Faction: House of Stout
 		e.other:Faction(1508, 10); -- Faction: Traders of the Haven
 		e.other:Ding();
-		e.other:AddEXP(250);
+		e.other:AddEXP(140);
 		e.other:GiveCash(0, 0, 0, 44);
 		eq.spawn2(151057, 0, 0, e.self:GetX(), e.self:GetY(), e.self:GetZ(), e.self:GetHeading()); -- NPC: Gliblixl_Rocktok
 		eq.depop_with_timer();
@@ -30,7 +30,7 @@ function event_trade(e)
 		e.other:Faction(1511, 10); -- Faction: House of Midst
 		e.other:Faction(1512, 10); -- Faction: House of Stout
 		e.other:Faction(1508, 10); -- Faction: Traders of the Haven
-		e.other:AddEXP(250);
+		e.other:AddEXP(140);
 		e.other:GiveCash(0, 0, 0, 14);
 		eq.spawn2(151057, 0, 0, e.self:GetX(), e.self:GetY(), e.self:GetZ(), e.self:GetHeading()); -- NPC: Gliblixl_Rocktok
 		eq.depop_with_timer();

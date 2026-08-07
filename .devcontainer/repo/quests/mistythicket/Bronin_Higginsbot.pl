@@ -53,7 +53,7 @@ sub EVENT_ITEM {
       quest::faction(292, -10); # Merchants of Rivervale
       quest::faction(336, 10);   # Coalition of Tradefolk Underground
       quest::faction(329, 10);   # Carson McCabe
-      quest::exp(500);
+      quest::exp(160);
       quest::summonitem(12193); # H.K. 106
    }
    

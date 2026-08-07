@@ -15,7 +15,7 @@ function event_trade(e)
 		e.self:Say("I am sorry to see you check out. Here is all you had in your box. We hope to serve you again. Have a nice day!! Next!");
 		e.other:SummonItem(13323); -- Item: Emerald Shard
 		e.other:Ding();
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:GiveCash(0,4,5,1);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

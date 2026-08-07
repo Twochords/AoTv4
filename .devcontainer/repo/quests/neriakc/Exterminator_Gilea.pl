@@ -13,7 +13,7 @@ sub EVENT_ITEM {
     quest::faction(236,10); # +Dark Bargainers
     quest::faction(270,10); # +Indigo Brotherhood
     quest::faction(1522,-10); # -Primordial Malice
-    quest::exp(5);
+    quest::exp(40);
     quest::givecash(1,1,1,0);
   }
 }

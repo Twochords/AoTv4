@@ -12,7 +12,7 @@ sub EVENT_ITEM {
 	if(plugin::takeGold(1000)) {
 		quest::say("Here you are, you have made a marvelous purchase. I see that you have excellent taste.");
 		quest::ding();
-		quest::exp(1000);
+		quest::exp(200);
 		quest::summonitem(10676); # Faded Portrait of a Lady
 	}
 	else {

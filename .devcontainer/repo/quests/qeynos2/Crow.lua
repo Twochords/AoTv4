@@ -20,7 +20,7 @@ function event_trade(e)
 		e.other:Faction(230,10,0); -- Corrupt Qeynos Guards
 		e.other:Faction(262,-10,0); -- -Guards of Qeynos
 		e.other:Faction(273,10,0); -- Kane Bayle
-		e.other:AddEXP(250);
+		e.other:AddEXP(140);
 		e.other:GiveCash(0,0,6,0);
 
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 9816})) then --sealed package rog prequest, add global check , add npc check?

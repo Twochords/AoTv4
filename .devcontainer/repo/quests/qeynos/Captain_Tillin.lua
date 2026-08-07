@@ -25,7 +25,7 @@ function event_trade(e)
 		e.other:Faction(230,-4,0); -- Corrupt Qeynos Guards
 		e.other:Faction(262,4,0); -- Guards of Qeynos
 		e.other:Faction(291,4,0); -- Merchants of Qeynos
-		e.other:AddEXP(28000);
+		e.other:AddEXP(620);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13915, item2 = 13915, item3 = 13915})) then -- Gnoll Fang x 3
 		e.self:Say("Very good! One less gnoll the people of Qeynos need to fear. Here is your bounty as promised.");
 		e.other:SummonItem(10070); -- Moonstone
@@ -37,7 +37,7 @@ function event_trade(e)
 		e.other:Faction(230,-3,0); -- Corrupt Qeynos Guards
 		e.other:Faction(262,3,0); -- Guards of Qeynos
 		e.other:Faction(291,3,0); -- Merchants of Qeynos
-		e.other:AddEXP(21000);
+		e.other:AddEXP(560);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13915, item2 = 13915})) then -- Gnoll Fang x 2
 		e.self:Say("Very good! One less gnoll the people of Qeynos need to fear. Here is your bounty as promised.");
 		e.other:SummonItem(10070); -- Moonstone
@@ -48,7 +48,7 @@ function event_trade(e)
 		e.other:Faction(230,-2,0); -- Corrupt Qeynos Guards
 		e.other:Faction(262,2,0); -- Guards of Qeynos
 		e.other:Faction(291,2,0); -- Merchants of Qeynos
-		e.other:AddEXP(14000);
+		e.other:AddEXP(500);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13915})) then -- Gnoll Fang
 		e.self:Say("Very good! One less gnoll the people of Qeynos need to fear. Here is your bounty as promised.");
 		e.other:SummonItem(10070); -- Moonstone
@@ -58,7 +58,7 @@ function event_trade(e)
 		e.other:Faction(230,-1,0); -- Corrupt Qeynos Guards
 		e.other:Faction(262,1,0); -- Guards of Qeynos
 		e.other:Faction(291,1,0); -- Merchants of Qeynos
-		e.other:AddEXP(7000);
+		e.other:AddEXP(400);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 18815})) then
 		e.self:Say("Very good! One less gnoll the people of Qeynos need to fear. Here is your bounty as promised.");
 		e.other:SummonItem(13305); -- Item: Medal of Merit
@@ -68,7 +68,7 @@ function event_trade(e)
 		e.other:Faction(230,-1,0); -- Corrupt Qeynos Guards
 		e.other:Faction(262,1,0); -- Guards of Qeynos
 		e.other:Faction(291,1,0); -- Merchants of Qeynos
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:GiveCash(math.random(10),math.random(10),math.random(10),math.random(10));
 		eq.spawn2(1202,62,0,-412,75,-24,0); -- NPC: Executioner
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 18912})) then
@@ -79,7 +79,7 @@ function event_trade(e)
 		e.other:Faction(230,-1,0); -- Corrupt Qeynos Guards
 		e.other:Faction(262,1,0); -- Guards of Qeynos
 		e.other:Faction(291,1,0); -- Merchants of Qeynos
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:GiveCash(math.random(10),math.random(10),math.random(10),math.random(10));
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

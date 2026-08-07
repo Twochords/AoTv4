@@ -44,7 +44,7 @@ sub EVENT_ITEM {
     quest::summonitem(10792); # Item: Gleaming Coin of Tash
     quest::faction(5029,  10); # Faction: Temple Of Sol Ro
     quest::faction(416, -10); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 } 

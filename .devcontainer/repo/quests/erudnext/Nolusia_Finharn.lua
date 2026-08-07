@@ -28,7 +28,7 @@ function event_trade(e)
 		e.other:Faction(266,2,0); 	-- High Council of Erudin
 		e.other:Faction(265,-3,0); 	-- Heretics 
 		e.other:Faction(267,3,0); 	-- High Guard of Erudin
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13123})) then	-- Item: Label of Erud's Tonic
 		local random_copper = math.random(9);
 		local random_silver = math.random(4);
@@ -38,7 +38,7 @@ function event_trade(e)
 		e.other:Faction(266,3,0); 	-- High Council of Erudin
 		e.other:Faction(265,-4,0); 	-- Heretics
 		e.other:Faction(267,4,0); 	-- High Guard of Erudin
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:SummonItem(eq.ChooseRandom(13122, 5019, 6017)); -- Item(s): Erud's Tonic (13122)
 		e.other:GiveCash(random_copper,random_silver,0,0);
 	end

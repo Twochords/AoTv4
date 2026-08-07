@@ -22,7 +22,7 @@ function event_trade(e)
 		e.other:Faction(1510, 5); 	--House of Fordel
 		e.other:Faction(1511, 15); 	--House of Midst
 		e.other:Faction(1512, 15); 	--House of Stout
-		e.other:AddEXP(1000);		--This quest is doable at level 1, I didn't feel comfortable giving out more xp than this per step
+		e.other:AddEXP(200);		--This quest is doable at level 1, I didn't feel comfortable giving out more xp than this per step
 		eq.set_global("DeliveredToGearo","1",0,"D30");--Set a variable here.
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

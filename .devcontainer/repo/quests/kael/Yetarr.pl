@@ -27,7 +27,7 @@ sub EVENT_ITEM {
   	quest::faction(448, 20);#Kromzek
   	quest::faction(429, 10);#King Tormax
   	quest::faction(430, -30);#Claws of Veeshan
-  	quest::exp(1750000);#1% of level 51 exp
+  	quest::exp(2420);#1% of level 51 exp
   	quest::summonitem(25027);#Coldain Skin Boots
   }
   elsif(plugin::check_handin(\%itemcount, 25123 => 1)) {#Head of the Royal Scribe
@@ -36,7 +36,7 @@ sub EVENT_ITEM {
   	quest::faction(448, 20);#Kromzek
   	quest::faction(429, 10);#King Tormax
   	quest::faction(430, -30);#Claws of Veeshan
-  	quest::exp(1750000);#1% of level 51 exp
+  	quest::exp(2420);#1% of level 51 exp
   	quest::summonitem(25026);#Coldain Skin Gloves
   }
   plugin::return_items(\%itemcount);

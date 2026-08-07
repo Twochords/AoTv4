@@ -14,7 +14,7 @@ sub EVENT_ITEM {
       quest::faction(430,8);   #Claws of Veeshan
       quest::faction(436,2);  #Yelinak
       quest::faction(448,-4); #Kromzek
-      quest::exp(100000);
+      quest::exp(940);
       quest::unique_spawn(120115,0,0,-3501,-4868,-108); # a Kromzek Captain
       quest::spawn(120121,0,0,-3507,-4897,-106); # Kromzek Warrior
       quest::spawn(120121,0,0,-3496,-4874,-109); # Kromzek Warrior
@@ -33,7 +33,7 @@ sub EVENT_ITEM {
       quest::faction(448,-12); #Kromzek
       quest::summonitem(29688); #Scout Report
       quest::summonitem(29685); #Robe of Benevolence
-      quest::exp(100000);
+      quest::exp(940);
       quest::say("Ahhh the artifact, I will return this to Commander Leuz.  Please take this updated report to him ahead of me so he knows what to expect on my arrival.  Please accept this robe as a reward, I'm not very skilled at judging size so if you have a problem with wearing it please give it back and I will see what else I have for you.");
     }
     elsif (plugin::check_handin(\%itemcount, 29685 => 1)) { #Robe of Benevolence

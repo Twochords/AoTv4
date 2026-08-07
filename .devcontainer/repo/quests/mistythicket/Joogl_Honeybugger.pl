@@ -28,7 +28,7 @@ sub EVENT_ITEM {
       #Bandages for Honeybugger (END) 
       quest::say("Oh thank you, $name. If you are ever going to gather bixie honeycomb's pray you do not run into the queen. The only way I know of collecting the honey is by intercepting the drone's and taking the honeycomb's they sometime's carry. Good luck!!");
       quest::ding();
-      quest::exp(10);
+      quest::exp(60);
       quest::faction(241,10);   # +Deeppockets
       quest::faction(263,10);  # +Guardians of the Vale
       quest::faction(286,10);  # +Mayor Gubbin

@@ -2,7 +2,7 @@
 sub EVENT_ITEM{
   if($item1 == 18903){
     quest::say("My brother still lives? Thank you for this news. Please, take this with my deepest thanks.");
-    quest::exp(30000);
+    quest::exp(640);
     quest::ding();
     my $random = int(rand(5));
     if($random == 0){

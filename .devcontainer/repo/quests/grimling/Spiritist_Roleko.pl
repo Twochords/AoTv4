@@ -18,7 +18,7 @@ sub EVENT_ITEM {
    if (plugin::check_handin(\%itemcount, 31839 => 1, 31841 =>1)) {  # Resealed Runed Iron Bound Chest, Roshawna's Report of Occurrences
 
    quest::say("It was wise of Roshawna to send you to me instead of risk bringing something so tainted by the dark spirits within the walls of Shar Vahl.");
-   quest::exp(500);
+   quest::exp(160);
    quest::ding();
    quest::say("I shall begin the ritual immediately.");
    quest::say("What is that?! Look! There is a grimling heading this way followed by what appear to be grimling undead. Defend me while I perform the ritual.");
@@ -36,7 +36,7 @@ sub EVENT_ITEM {
    
    quest::summonitem(31849);  # Rolekos Report of Occurrences
    quest::faction(1533,10); # Dar Khura
-   quest::exp(2000);
+   quest::exp(260);
    quest::ding();
    
 }
@@ -47,7 +47,7 @@ sub EVENT_ITEM {
    quest::delglobal(Rakshasa);
    quest::spawn2(167546,0,0,-975.17,-825.20,6.74,40); # Rakshasa Karwoaro
    quest::faction(1533,10); # Dar Khura
-   quest::exp(2000);
+   quest::exp(260);
    quest::ding();
 
 }
@@ -56,7 +56,7 @@ sub EVENT_ITEM {
 
    quest::say("The threat of the Rakshasa appears to be eliminated. You have the gratitude of the Dar Khura for your bravery and assistance. Let us be wary however, the Rakshasa gained his power by allying with dark spirits that may not be indifferent to the Rakshasas death.");
    quest::faction(1533,30); # Dar Khura
-   quest::exp(5000);
+   quest::exp(360);
    quest::ding();
    quest::summonitem(31837); # Shield of Bane Warding
    

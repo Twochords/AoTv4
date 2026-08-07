@@ -18,7 +18,7 @@ function event_trade(e)
 		e.other:Faction(273, 10,0); -- Kane Bayle
 		e.other:Faction(223, 10,0); -- Circle Of Unseen Hands
 		e.other:Faction(221, 10,0); -- Bloodsabers
-		e.other:AddEXP(32000);
+		e.other:AddEXP(640);
 		e.other:GiveCash(random_copper,random_silver,0,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

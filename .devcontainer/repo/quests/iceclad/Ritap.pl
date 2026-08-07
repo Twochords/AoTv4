@@ -26,7 +26,7 @@ sub EVENT_ITEM {
     quest::say("Now take this here rope and tie yerself up! Come lets go tell the cap'n we've captured us some prisoners!");
     quest::summonitem(30049); # Item: Tinkered Rope
     quest::faction(447, 30); # Faction: Pirates of Iceclad
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 }

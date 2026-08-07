@@ -17,7 +17,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 13035 => 1)) {
     quest::say("Thank you kind sir <hic>, I am most grateful for your generosity.");
-    quest::exp(150);
+    quest::exp(120);
   }
   elsif (plugin::check_handin(\%itemcount, 13347 => 1, 13349 => 1, 13348 => 1, 13350 => 1)) {
     quest::say("This is a sad day, but it was the just thing to do. The Nybright name will no longer be tarnished. Here you are my friend. This is a bit uncared for, but it is yours. My warrior days are over. Now go. I must be alone.");
@@ -25,7 +25,7 @@ sub EVENT_ITEM {
     quest::faction(5001, 20); # Faction: Anti-mage
     quest::faction(226, 20); # Faction: Clerics of Tunare
     quest::faction(279, 20); # Faction: King Tearis Thex
-    quest::exp(300);
+    quest::exp(140);
   }
   plugin::return_items(\%itemcount);
 }

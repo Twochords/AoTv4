@@ -26,7 +26,7 @@ sub EVENT_ITEM {
    quest::summonitem(14783);   #proper item not in db
    quest::ding();
    quest::say("Well done");
-   quest::exp(10000);
+   quest::exp(440);
   }
   plugin::return_items(\%itemcount);
 }

@@ -25,7 +25,7 @@ sub EVENT_ITEM {
  if(plugin::check_handin(\%itemcount, 18468 => 1, 22923 => 1)){
   quest::emote("smiles at your dedication to Cazic Thule and hands you a small gem.");
   quest::summonitem(7881); # Item: Mark of Clarity
-  quest::exp(20000);
+  quest::exp(560);
   quest::ding();
   quest::faction(444,20); # Faction: Swift Tails
   quest::faction(441,10); # Faction: Legion of Cabilis
@@ -33,7 +33,7 @@ sub EVENT_ITEM {
  elsif(plugin::check_handin(\%itemcount, 18467 => 1, 22922 => 1)){
   quest::emote("smiles at your dedication to Cazic Thule and hands you a small gem.");
   quest::summonitem(7881); # Item: Mark of Clarity
-  quest::exp(20000);
+  quest::exp(560);
   quest::ding();
   quest::faction(444,20); # Faction: Swift Tails
   quest::faction(441,10); # Faction: Legion of Cabilis

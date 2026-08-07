@@ -48,7 +48,7 @@ sub EVENT_ITEM {
   if ($faction == 1) { #requires ally Kromzek faction
     if (plugin::check_handin(\%itemcount, 25831 => 3, 24905 => 1)) { # cap
       quest::summonitem(25370); # Item: Shining Helm
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -58,7 +58,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25814 => 3, 24900 => 1)) { # bp
       quest::summonitem(25371); # Item: Shining Breastplate
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -68,7 +68,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25821 => 3, 24902 => 1)) { # sleeves
       quest::summonitem(25372); # Item: Shining Vambraces
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -78,7 +78,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25838 => 3, 24904 => 1)) { # wrist
       quest::summonitem(25373); # Item: Shining Bracer
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -88,7 +88,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25832 => 3, 24906 => 1)) { # gloves
       quest::summonitem(25374); # Item: Shining Gauntlets
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -98,7 +98,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25825 => 3, 24901 => 1)) { # legs
       quest::summonitem(25375); # Item: Shining Greaves
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -108,7 +108,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25833 => 3, 24903 => 1)) { # boots
       quest::summonitem(25376); # Item: Shining Boots
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan

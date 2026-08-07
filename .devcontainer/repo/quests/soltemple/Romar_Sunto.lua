@@ -23,14 +23,14 @@ function event_trade(e)
     e.other:Ding();
     e.other:Faction(415,15,0); -- Faction: Temple of Solusek Ro
     e.other:Faction(416,-15,0); -- Faction: Shadowed Men
-    e.other:AddEXP(1000);
+    e.other:AddEXP(200);
   elseif (eq.handin({[10793] = 1})) then -- Item: Radiant Coin of Tash
     e.self:Say("The Coin of Tash - fully enchanted! I am in your debt. Here is the scroll of Tashania that was promised to you.");
     e.other:SummonItem(15678); -- Item: Spell: Tashania
     e.other:Ding();
     e.other:Faction(5029,15,0); -- Faction: Temple Of Sol Ro
     e.other:Faction(416,-15,0); -- Faction: Shadowed Men
-    e.other:AddEXP(1000);
+    e.other:AddEXP(200);
   elseif (eq.handin({[10790] = 1})) then -- Item: Coin of Tash
     e.self:Say("The Coin of Tash. It is of no use to me like this. You must take the coin to Tarn Visilin in High Keep to get it enchanted.");
     e.other:SummonItem(10790); -- Item: Coin of Tash

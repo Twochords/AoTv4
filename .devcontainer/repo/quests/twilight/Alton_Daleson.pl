@@ -35,7 +35,7 @@ sub EVENT_ITEM{
   if (plugin::check_handin(\%itemcount, 5852 => 1, 5853 => 1, 5851 => 1, 4488 => 1)) { #axe
   quest::emote("smiles.");
   quest::say("Here is what I promised, $name.");
-  quest::exp(25000);
+  quest::exp(600);
     quest::summonitem(3958); # Item: Woodsman's Axe
   }
   elsif (plugin::check_handin(\%itemcount, 5695 => 1, 5694 => 1, 4490 => 1)) { #boots

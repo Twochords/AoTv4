@@ -21,7 +21,7 @@ function event_trade(e)
 		e.other:Faction(330,-3,0); -- Faction: The Freeport Militia
 		e.other:Faction(271,-3,0); -- Faction: Dismal Rage
 		e.other:Faction(311,2,0); -- Faction: Steel Warriors
-		e.other:AddEXP(200);
+		e.other:AddEXP(120);
 		e.other:GiveCash(23,0,0,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

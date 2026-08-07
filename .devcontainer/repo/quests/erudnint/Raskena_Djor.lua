@@ -18,7 +18,7 @@ function event_trade(e)
 		e.other:SummonItem(eq.ChooseRandom(15373, 15054, 15205, 15288, 15372, 15374)); -- Item(s): Spell: Sphere of Light (15373)
 		e.self:Say("You have passed your first task. Nice work. Take this spell as your payment."); 
 		e.other:Ding();
-		e.other:AddEXP(150);
+		e.other:AddEXP(120);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

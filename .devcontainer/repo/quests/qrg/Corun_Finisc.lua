@@ -33,7 +33,7 @@ function event_trade(e)
 		e.other:Faction(272,10,0); -- Faction: Jaggedpine Treefolk
 		e.other:Faction(306,-30,0); -- Faction: Sabertooths of Blackburrow
 		e.other:Faction(262,10,0); -- Faction: Guards of Qeynos
-		e.other:AddEXP(1500);
+		e.other:AddEXP(240);
 		e.other:GiveCash(random_copper,random_silver,random_gold,random_planinum);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13231,item2 = 13232})) then
 		e.self:Say("Excellent! Here is a Jaggedpine Crook of your own. Please use it only to defend yourself and never to attack one of Tunare's creatures. You will find that while wielding the crook, Tunare grants you a boon of strength and the power to smite enemies who would otherwise be impervious to physical attacks.");
@@ -43,7 +43,7 @@ function event_trade(e)
 		e.other:Faction(272,10,0); -- Faction: Jaggedpine Treefolk
 		e.other:Faction(306,-30,0); -- Faction: Sabertooths of Blackburrow
 		e.other:Faction(262,10,0); -- Faction: Guards of Qeynos
-		e.other:AddEXP(1500);
+		e.other:AddEXP(240);
 		e.other:GiveCash(random_copper,random_silver,random_gold,random_planinum);		
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 62811})) then
 		e.self:Say("Well, this is certainly an unpleasant sight. If Althele sent you to me it must be because I've had a lot of experience with sick animals. If you can find me some animals that have become ill by eating this plant perhaps I can discover something about this disease. You must not kill these animals. It is never good to harm an animal if you do not need to. It is also important that the animal be alive when you take samples of their blood. If any animals have eaten this plant and become ill, you need to find a way to capture them and use your fletching kit and these vials to gather blood samples. Althele is rarely wrong about what she senses from Antonica. Be careful with that medicine bag, I borrowed it from a friend in Halas a while back. I'll need you to use it to store some samples as you capture the animals. Don't lose it, you don't want Lars angry with you!");

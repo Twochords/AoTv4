@@ -28,7 +28,7 @@ function event_trade(e)
 		e.other:Faction(272,10,0); -- Faction: Jaggedpine Treefolk
 		e.other:Faction(306,-30,0); -- Faction: Sabertooths of Blackburrow
 		e.other:Faction(262,10,0); -- Faction: Guards of Qeynos
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:GiveCash(math.random(10),math.random(10),math.random(10),math.random(10));
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 17970,item2 = 17970, item3 = 17970})) then
 		e.self:Say("Excellent!  Ridding the area of those foul beasts will certainly slow down whatever it is they are planning.  Here is the Cloak of Jaggedpine.  You should keep this, for you never know when we may decide to alter the enchantments on it.");
@@ -38,13 +38,13 @@ function event_trade(e)
 		e.other:Faction(272,10,0); -- Faction: Jaggedpine Treefolk
 		e.other:Faction(306,-30,0); -- Faction: Sabertooths of Blackburrow
 		e.other:Faction(262,10,0); -- Faction: Guards of Qeynos
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:GiveCash(math.random(10),math.random(10),math.random(10),math.random(10));
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 18811})) then
 		e.self:Say("Fine Work, "..e.other:GetName()..". Hmmm. It seems this needs taking care of. Take this note to the Captain of the City Guard in Qeynos. His name is Captain Tillin. He will have to attend to this matter. Also.. Let me see the gnoll\'s head. I must know you killed him. Be safe, my friend. I am sure that whoever this McNeal is, he was simply a lackey. Whoever he works for is most likely going to be looking for you. Watch your back in Qeynos.");
 		e.other:SummonItem(18815); -- Item: Tattered Note
 		e.other:Ding();
-		e.other:AddEXP(200);
+		e.other:AddEXP(120);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

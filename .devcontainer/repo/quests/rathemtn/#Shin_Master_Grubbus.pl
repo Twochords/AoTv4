@@ -58,7 +58,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 55017 => 1)) {
     quest::say("In the name of The Truthbringer! You have done it! Excellent work! Take this Blade of the Shin Initiate. May it aid you in your future battles!");
     quest::summonitem(55016); # Item: Blade of the Shin Initiate
-    quest::exp(1000);
+    quest::exp(200);
     quest::faction(1713,5); # Faction: Paladins of Gukta
     quest::faction(1709,5); # Faction: Protectors of Gukta
     quest::faction(1716,5); # Faction: High Council of Gukta

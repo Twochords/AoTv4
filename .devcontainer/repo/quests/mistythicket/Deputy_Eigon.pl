@@ -18,6 +18,6 @@ quest::faction(355, 5); # Faction: Storm Reapers
 quest::faction(292, 5); # Faction: Merchants of Rivervale
 quest::faction(334, -10); # Faction: Dreadguard Outer
 quest::givecash(0,0,1,0);
-quest::exp(500);
+quest::exp(160);
 }
   }

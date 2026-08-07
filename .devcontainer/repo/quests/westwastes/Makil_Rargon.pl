@@ -29,7 +29,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 24069 => 1)) {
     quest::say("Well done, $name. Here is your reward."); #generic text
-    quest::exp(500000);
+    quest::exp(1600);
     quest::summonitem(24070); # Item: Strength of the Elements
   }
   plugin::return_items(\%itemcount);

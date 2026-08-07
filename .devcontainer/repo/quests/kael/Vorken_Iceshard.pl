@@ -62,7 +62,7 @@ sub EVENT_ITEM {
     quest::faction(448,30); # Faction: Kromzek
     quest::faction(406,-30); # Faction: Coldain
     quest::faction(430,-30); # Faction: Claws of Veeshan
-    quest::exp(1000);
+    quest::exp(200);
 
   }
 }

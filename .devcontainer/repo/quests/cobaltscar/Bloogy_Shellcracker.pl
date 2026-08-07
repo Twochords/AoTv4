@@ -12,7 +12,7 @@ sub EVENT_ITEM {
   if ((plugin::check_handin(\%itemcount, 22812 => 1) || plugin::check_handin(\%itemcount, 22813 => 1)) && plugin::check_handin(\%itemcount, 19113 => 1, 16498 => 2)) {
     quest::say("It has been many moons since my people have feasted on this rarest of meat. Take this totem crafted in the form of our oceanlord Prexus and inscribed with the runes of our people. May the oceans watch over you, $name.");
     quest::summonitem(28514); #Othmir Prexus Totem
-    quest::exp(15000);
+    quest::exp(500);
     quest::faction(432, 30); #Othmir
     quest::faction(431, -60); #Ulthork
   }

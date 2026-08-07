@@ -74,7 +74,7 @@ sub EVENT_ITEM {
   quest::faction(445,10); #scaled mystics
   quest::faction(442,10); #crusaders of greenmist
   quest::faction(444,10); #swift tails
-  quest::exp(50000);
+  quest::exp(740);
   quest::givecash(0,6,12,12);
 }
 

@@ -17,7 +17,7 @@ quest::say("Very good. This meat will supply our warriors with much strength. We
    quest::faction( 270, -10); # Faction: Indigo Brotherhood
    quest::faction( 325, 10); # Faction: Merchants of Felwithe
    quest::faction( 276, 10); # Faction: Kelethin Merchants
-   quest::exp(150);
+   quest::exp(120);
    quest::givecash(0,7,0,23);
 }
   #do all other handins first with plugin, then let it do disciplines

@@ -34,7 +34,7 @@ sub EVENT_ITEM {
       quest::faction(436,18); # Yelinak
       quest::faction(430,75); # Claws of Veeshan
       quest::faction(448,-36); # Kromzek
-      quest::exp(100000);
+      quest::exp(940);
       quest::delglobal("CircletFalinkan");
       quest::depop_withtimer();
     }

@@ -24,7 +24,7 @@ sub EVENT_ITEM{
       quest::say("Amazing! You have returned the trophies I asked for, against impossible odds. Here is your reward, worthy minion, may it serve you well.");
       quest::summonitem(5727); # 5727 We get Regal Band of Bathezid back
       quest::summonitem(5723); # 5723  Spirit Wracked Cord, final reward
-      quest::exp(100000);
+      quest::exp(940);
       quest::faction(451,3); # Faction: Brood of Di`Zok
       quest::faction(307,3); # Faction: Sarnak Collective
       quest::faction(259,-1); # Faction: Goblins of Mountain Death

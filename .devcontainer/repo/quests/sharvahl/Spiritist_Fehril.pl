@@ -32,7 +32,7 @@ quest::say("As a member of the sacred Dar Khura, you will be asked to become pro
 
 quest::summonitem(17232); # Item: Empty Cask
 
-quest::exp(500);
+quest::exp(160);
 
 quest::signalwith(155164,1,0); # NPC: Elder_Spiritist_Grawleh Shaman Guildmaster
 
@@ -48,7 +48,7 @@ quest::say("Citizens often need assistance and the Dar Khura must be available w
 
 quest::summonitem(3494); #Hopperhide Treatment.
 
-quest::exp(500);
+quest::exp(160);
 
 }
 
@@ -66,13 +66,13 @@ quest::summonitem(15275); #Spell: Frost Rift.
 
 quest::setglobal("Shar_Vahl_Cit",8,5,"F");
 
-quest::exp(500); }
+quest::exp(160); }
 
 if (plugin::check_handin(\%itemcount, 5542 => 1, 3496 => 1, 5543 => 1)) {
 quest::say("Your progress fills me with pride. Please take these things as a sign of our appreciation. I hope that they help you as much as you have helped us. When you are ready to continue your training, please contact Jaima Seyel. You'll most likely find her in the Dar Khura Guildhall. She will train you from this point.");
 quest::shout("Fellow citizens, may I present to you with our newest apprentice to the sacred Dar Khura. $name has assisted us for some time now and we can only hope that this assistance doesn't go unnoticed. Now, please join me in thanking $name for such selfless service to our people.");
 quest::faction(1533,20); # Faction: Dar Khura
-quest::exp(1500);
+quest::exp(240);
 quest::summonitem(5543); # Item: Imbued Hopperhide Buckler
 quest::summonitem(5544); # Item: Cloak of the Dar Khura Apprentice
 quest::summonitem(15282); }

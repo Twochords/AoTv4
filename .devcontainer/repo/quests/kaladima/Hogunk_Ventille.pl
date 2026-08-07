@@ -13,7 +13,7 @@ quest::say("Then go to your guild. This is the hall of the dwarven warriors - no
 sub EVENT_ITEM {
 if (plugin::check_handin(\%itemcount, 12156 =>1, 5014 =>1 )) {
   quest::say("Well Done!");
-  quest::exp(5000);
+  quest::exp(360);
   quest::faction(274,5); # Faction: Kazon Stormhammer
   quest::faction(312,5); # Faction: Storm Guard
   quest::faction(293,5); # Faction: Miners Guild 249

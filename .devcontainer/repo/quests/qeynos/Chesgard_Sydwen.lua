@@ -35,7 +35,7 @@ function event_trade(e)
 		e.other:Faction(221,-20,0); -- Blood Sabers
 		e.other:Faction(341,15,0); -- Priests of Life
 		e.other:Faction(262,15,0); -- Guards of Qeynos
-		e.other:AddEXP(6200);
+		e.other:AddEXP(380);
 		e.other:GiveCash(0,12,1,0); -- 1 gold, 12 silver
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 18839})) then
 		e.self:Say("Hmmph!! My son is living in a fantasy world. Still, you have done well. Take this as a token of appreciation. It is not much, but it may come in handy.");
@@ -46,7 +46,7 @@ function event_trade(e)
 		e.other:Faction(221,-10,0); -- Blood Sabers
 		e.other:Faction(341,10,0); -- Priests of Life
 		e.other:Faction(262,10,0); -- Guards of Qeynos
-		e.other:AddEXP(1500);
+		e.other:AddEXP(240);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

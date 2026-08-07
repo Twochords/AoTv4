@@ -27,7 +27,7 @@ function event_trade(e)
 		e.other:Faction(288,3,0); -- Faction: Merchants of Ak`Anon
 		e.other:Faction(238,-3,0); -- Faction: Dark Reflection
 		e.other:Faction(1604,-3,0); -- Faction: Clan Grikbar
-		e.other:AddEXP(1000); -- Amount of Experience guessed, No actual Experience Info.
+		e.other:AddEXP(200); -- Amount of Experience guessed, No actual Experience Info.
 		e.other:GiveCash(4,5,1,1); -- Amount of coin recieved is guessed, No actual coin Info.
 		e.other:Ding();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 9426, item2 = 28618, item3 = 29906, item4 = 28165})) then -- Bundle of Super Conductive Wires, Gold Tipped Boar Horn, Shard of Pure Energy, Silicorrosive Grease
@@ -51,7 +51,7 @@ function event_trade(e)
 		e.other:Faction(238,-3,0); -- Faction: Dark Reflection
 		e.other:Faction(1604,-3,0); -- Faction: Clan Grikbar
 		e.other:Ding();
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

@@ -27,7 +27,7 @@ sub EVENT_ITEM {
   quest::faction(1484,-30); # -Hand of Seru
   quest::faction(1505,-30); # -Nathyn Illuminious
   quest::faction(1483,-30); # -Seru
-  quest::exp(500);
+  quest::exp(160);
  }
  plugin::return_items(\%itemcount);
 }

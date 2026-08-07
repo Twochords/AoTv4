@@ -21,7 +21,7 @@ sub EVENT_ITEM {
 		quest::faction(370, 10);#Dreadguard Inner
 		quest::faction(334, 10);#Dreadguard Outer
 		quest::faction(236, 10);#Dark Bargainers
-		quest::exp(72900);#10% of level 10 xp
+		quest::exp(840);#10% of level 10 xp
 		#The mob you kill for this quest is trivial at even level 10, or should be.  Giving a percentage of level 40
 		#xp seems too much.
 	}

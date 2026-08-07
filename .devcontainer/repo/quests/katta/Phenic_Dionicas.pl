@@ -48,7 +48,7 @@ sub EVENT_ITEM{
 		quest::faction(1561,2); # Faction: Concilium Universus
 		quest::faction(1483,-1); # Faction: Seru
 		quest::faction(1486,-1); # Faction: Heart of Seru
-		quest::exp(1000000);
+		quest::exp(2000);
 		quest::summonitem(31752); #First Badge of Service (Katta Castellum Badge of Service)
 	}
 	elsif(plugin::check_handin(\%itemcount, 31755 => 1)){
@@ -57,7 +57,7 @@ sub EVENT_ITEM{
 		quest::faction(1561,2); # Faction: Concilium Universus
 		quest::faction(1483,-1); # Faction: Seru
 		quest::faction(1486,-1); # Faction: Heart of Seru
-		quest::exp(1000000);
+		quest::exp(2000);
 		quest::summonitem(31756); #Orders for Legionnaire Falion
 	}
 	elsif(plugin::check_handin(\%itemcount, 18449 => 1)){
@@ -86,7 +86,7 @@ sub EVENT_ITEM{
 			quest::faction(1561,50); # Faction: Concilium Universus
 			quest::faction(1483,-5); # Faction: Seru
 			quest::faction(1486,-25); # Faction: Heart of Seru
-			quest::exp(1000000);
+			quest::exp(2000);
 			quest::summonitem(7398); #Loyalist Shield of Honor
 			quest::delglobal("ready_for_ashes");		
 		}

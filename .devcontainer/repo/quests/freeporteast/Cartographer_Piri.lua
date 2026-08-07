@@ -19,7 +19,7 @@ function event_trade(e)
 		e.self:Say("Incredible! With a little work, I will be able to create a finished map of the Gulf of Gunthak. No longer will the pirates be able to keep their lair a secret. Thank you! Please take this as a reward for your efforts.");
 		e.other:SummonItem(63048); -- Skyfall Seeker
 		e.other:Ding();
-		e.other:AddEXP(200);
+		e.other:AddEXP(120);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

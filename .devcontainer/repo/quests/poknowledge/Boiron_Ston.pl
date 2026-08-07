@@ -17,7 +17,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 28085 => 1)) {#Boiron's Standard
     quest::emote("seems to perk up. 'Ah, 'tis a beauty, is it not? I thank you for its safe return. Perhaps I shall go and visit Elisha after all. Please take this letter to her, so she may be ready for me when I arrive.'");
     quest::summonitem(28086);#Letter to Elisha
-    quest::exp(250);
+    quest::exp(140);
   }
 
    plugin::return_items(\%itemcount);

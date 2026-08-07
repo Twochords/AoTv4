@@ -50,7 +50,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 27421 => 2, 13058 => 2)) {
     quest::say("I must say, I am impressed. You have passed your training and should now have a full set of armor to begin your adventures. Take this weapon as a symbol of your dedication and hard work. You have earned it. Your training with me has ended. Farewell.");
     quest::summonitem(55103); # Item: Sword of the Northern Wolf
-    quest::exp(5000);
+    quest::exp(360);
     quest::faction(320,30); # Faction: Wolves of the North
     quest::faction(327,30); # Faction: Shamen of Justice
     quest::faction(328,30); # Faction: Merchants of Halas

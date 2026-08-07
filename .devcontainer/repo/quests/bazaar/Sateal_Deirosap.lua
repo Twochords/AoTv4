@@ -17,7 +17,7 @@ function event_trade(e)
 		e.other:Faction(1511, 5); 	--House of Midst
 		e.other:Faction(1512, 5); 	--House of Stout
 		e.other:Ding();
-		e.other:AddEXP(1000);		--This quest is doable at level 1, I didn't feel comfortable giving out more xp than this per step
+		e.other:AddEXP(200);		--This quest is doable at level 1, I didn't feel comfortable giving out more xp than this per step
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

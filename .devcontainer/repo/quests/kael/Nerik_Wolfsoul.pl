@@ -48,7 +48,7 @@ sub EVENT_ITEM {
   if ($faction == 1) { #requires ally Kromzek faction
     if (plugin::check_handin(\%itemcount, 25831 => 3, 24919 => 1)) { # cap
       quest::summonitem(5439); # Item: Crown of Beast Mastery
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -58,7 +58,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25814 => 3, 24914 => 1)) { # bp
       quest::summonitem(5440); # Item: Chestguard of Beast Mastery
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -68,7 +68,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25821 => 3, 24916 => 1)) { # sleeves
       quest::summonitem(5441); # Item: Armband of Beast Mastery
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -78,7 +78,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25838 => 3, 24918 => 1)) { # wrist
       quest::summonitem(5442); # Item: Bracer of Beast Mastery
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -88,7 +88,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25832 => 3, 24920 => 1)) { # gloves
       quest::summonitem(5443); # Item: Gloves of Beast Mastery
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -98,7 +98,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25825 => 3, 24915 => 1)) { # legs
       quest::summonitem(5444); # Item: Leggings of Beast Mastery
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -108,7 +108,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25833 => 3, 24917 => 1)) { # boots
       quest::summonitem(5445); # Item: Boots of Beast Mastery
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan

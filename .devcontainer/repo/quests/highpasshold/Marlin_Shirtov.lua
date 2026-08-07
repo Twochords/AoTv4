@@ -19,7 +19,7 @@ function event_trade(e)
 		e.other:Faction(331, 10,0); -- Merchant of Highpass
 		e.other:Faction(332, 10,0); -- Highpass Guard
 		e.other:Faction(329, 10,0); -- Carson McCabe
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

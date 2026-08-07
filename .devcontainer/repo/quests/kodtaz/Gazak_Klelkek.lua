@@ -86,7 +86,7 @@ function event_trade(e)
       e.other:Message(MT.NPCQuestSay, ("Gazak Klelkek says, 'Though you were pitted against a most heinous aggressor, you have proven that you are a capable adventurer thus far. Nicely done, %s. I urge you to continue honing your skills. Now that you are ready to move onto the next trial, you should return to Kevren for more information. Good luck!'"):format(e.other:GetCleanName()))
       if not finished_first_trial then
         eq.set_global("ikky", "2", 5, "F")
-        e.other:AddEXP(1)
+        e.other:AddEXP(20)
       end
     else
       e.other:Message(MT.NPCQuestSay, "Gazak Klelkek says, 'I appreciate that you must have fought hard for this, but I cannot accept it yet. Please speak with Kevren Nalavat about the trials and once I have received word that you are actually ready to do the trials, you can present it to me again.'")

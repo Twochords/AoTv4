@@ -47,7 +47,7 @@ sub EVENT_ITEM {
     elsif ($class eq "Magician"){quest::summonitem(59851);} # Ancient: Chaos Vortex
     elsif ($class eq "Necromancer"){quest::summonitem(59853);} # Ancient: Seduction of Chaos
     elsif ($class eq "Wizard"){quest::summonitem(59856);} # Ancient: Strike of Chaos
-    quest::exp(10000);
+    quest::exp(440);
   }
   elsif (plugin::check_handin(\%itemcount, 59906 => 1)) { # Taelosian Geomancy Stone Jelki
     quest::emote("shuffles back from you until familiarity dawns on him. You reach forward and hold the stone out in front of you. He tilts his head slightly and studies the stone for a moment before taking it from your hands."); 
@@ -68,7 +68,7 @@ sub EVENT_ITEM {
     elsif ($class eq "Magician"){quest::summonitem(59825);} # Elemental Siphon
     elsif ($class eq "Necromancer"){quest::summonitem(59828);} # Night Stalker
     elsif ($class eq "Wizard"){quest::summonitem(59844);} # White Fire
-    quest::exp(10000);
+    quest::exp(440);
   }
   elsif (plugin::check_handin(\%itemcount, 59975 => 1)) { # Taelosian Geomancy Stone Eril
     if ($class eq "Ranger"){quest::summonitem(59836);} # Sylvan Call
@@ -83,7 +83,7 @@ sub EVENT_ITEM {
     elsif ($class eq "Magician"){quest::summonitem(59827);} # Monster Summoning IV
     elsif ($class eq "Necromancer"){quest::summonitem(59830);} # Night's Beckon
     elsif ($class eq "Wizard"){quest::summonitem(59845);} # Telaka
-    quest::exp(10000);
+    quest::exp(440);
   }
   elsif (plugin::check_handin(\%itemcount, 59974 => 1)) { # Taelosian Geomancy Stone Yiktu
     if ($class eq "Ranger"){quest::summonitem(59834);} # Sylvan Light
@@ -98,7 +98,7 @@ sub EVENT_ITEM {
     elsif ($class eq "Enchanter"){quest::summonitem(59816);} # Dreary Deeds
     elsif ($class eq "Necromancer"){quest::summonitem(59829);} # Night Fire
     elsif ($class eq "Wizard"){quest::summonitem(59843);} # Black Ice
-    quest::exp(10000);
+    quest::exp(440);
   }
   plugin::return_items(\%itemcount);
 }

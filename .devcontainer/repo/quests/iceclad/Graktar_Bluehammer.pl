@@ -9,7 +9,7 @@ sub EVENT_ITEM {
 
 if (plugin::check_handin(\%itemcount, 25102 => 1)) { # Large Note
 	quest::say("So, Vkjor has sent you to assist me? He must want me back fighting in the arena as soon as possible if he'd send a mercenary out here to help me. My brother Felkak went missing no less than a fortnight ago. He told me he was traveling to the great Eastern Wastes to hunt, however, I have found no sign of him. My younger brother often lied about where he was going in order to be 'free'. Take my ring and search the lands for one that looks exactly like it. If my brother is alive, show him this ring and he will give you his, to prove to me that he is alive. If he is dead... Bring me his ring as proof that he is. I have heard that he may be near the Tower of Frozen Shadows but many times have I warned him not to enter that dread place. You may wish to begin your search in that area.");  
-	quest::exp(10000);
+	quest::exp(440);
 	}
 
 if (plugin::check_handin(\%itemcount, 25193 => 1)) { # Signet ring
@@ -20,7 +20,7 @@ if (plugin::check_handin(\%itemcount, 25193 => 1)) { # Signet ring
 	quest::faction(429,5); # King Tormax
 	quest::faction(430,-10); # Claws of Veeshan
 	quest::faction(406,-10); # Coldain
-	quest::exp(25000);
+	quest::exp(600);
 	quest::givecash(0,0,0,5);
 	}
 }

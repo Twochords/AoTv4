@@ -38,7 +38,7 @@ function event_trade(e)
 		e.other:Faction(266,20,0); -- Faction: High Council of Erudin
 		e.other:Faction(265,-20,0); -- Faction: Heretics
 		e.other:Faction(267,20,0); -- Faction: High Guard of Erudin
-		e.other:AddEXP(200);
+		e.other:AddEXP(120);
 		e.other:GiveCash(5,0,0,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13994})) then
 		e.self:Say("Lucky you. We were hoping to really clean you out. Here you go. Take the page. Even together, the book is nothing more than fiction.");

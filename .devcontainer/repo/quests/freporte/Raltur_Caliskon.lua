@@ -16,7 +16,7 @@ function event_trade(e)
 		e.other:Faction(296,1,0); -- Faction: Opal Darkbriar
 		e.other:Faction(271,1,0); -- Faction: Dismal Rage
 		e.other:Faction(281,-3,0); -- Faction: Knights of Truth
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 		e.other:GiveCash(0,2,0,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

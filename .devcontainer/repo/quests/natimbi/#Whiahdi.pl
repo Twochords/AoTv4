@@ -35,7 +35,7 @@ sub EVENT_ITEM {
     quest::delglobal("Soulwhisper");
 	$client->AddAAPoints(5);
 	$client->Message(15,"You have gained 5 ability points!");
-	quest::exp(25000);
+	quest::exp(600);
 	quest::ding();
   }
   elsif(plugin::check_handin(\%itemcount, 55940 => 1, 55932 => 1, 47100 => 1, 62581 => 1)) { #Staff Piece Number Two, Staff Piece Number Three, Globe of Discordant Engergy, Soulwhisper
@@ -44,7 +44,7 @@ sub EVENT_ITEM {
     quest::summonitem(64067); #Deathwhisper
 	$client->AddAAPoints(10);
 	$client->Message(15,"You have gained 10 ability points!");	
-	quest::exp(50000);
+	quest::exp(740);
 	quest::ding();
 	quest::setglobal("necro_epic",6,5,"F");
   }

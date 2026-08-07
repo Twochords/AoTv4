@@ -26,7 +26,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 19840 => 1)) {
     quest::say("Excellent work. I'm glad you were able to collect this shipment. The buyers were getting anxious to have it delivered. Come back later and I may have another job for you.");
-    quest::exp(25000);
+    quest::exp(600);
     quest::faction(1542,30); #haven smugglers
     quest::faction(1559,30); #lake recondite bandits
     quest::faction(1510,-40); #house of fordel

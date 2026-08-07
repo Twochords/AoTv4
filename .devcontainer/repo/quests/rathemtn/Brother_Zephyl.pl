@@ -28,7 +28,7 @@ sub EVENT_ITEM {
     quest::say("We had an agreement. The proof of a skilled monk, the red sash, and the idol of Zan Fi.");
     quest::say("We thank you for the return of the idol of Zan Fi. Take this rare robe pattern. You shall find it useful should you aid [Brother Qwinn] in his quest. His item, the rare robe pattern, a swatch of shadow silk and a scroll containing Jonathan's Whistling Warsong. Into a sewing kit they will be going. And into the brotherhood will you. I hope you do not wish me to [return the sash].");
     quest::summonitem(12315); #Rare Robe Pattern
-    quest::exp(200);
+    quest::exp(120);
   }
   elsif (plugin::check_handin(\%itemcount, 12315 => 1)) { #Rare Robe Pattern
     quest::summonitem(10133); #Red Sash of Order

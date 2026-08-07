@@ -24,7 +24,7 @@ sub EVENT_ITEM {
     quest::say("Wonderful! You have done well and are ready for the next portion of your training. I have finished your buckler and enhanced your cloak. They will both prove to be very valuable to you in your service to the Vah Shir. Show your buckler to Hymnist Gawfed for further instruction.");
     quest::shout("People of Shar Vahl, it is with great pleasure that I announce the Jharin has accepted as an official recruit. This honorable citizen will henceforth be charged with the duty of supporting and magnifying the spirit of our people through song while always being eager to help any Vah Shir in need. Please help me in celebrating coming of age!");
     quest::ding();
-    quest::exp(1000);
+    quest::exp(200);
     quest::summonitem(3657); # Item: Drum of the Jharin Recruit
     quest::summonitem(3658); # Item: Cloak of the Jharin Recruit
     quest::summonitem(3659); # Item: Buckler of the Jharin Recruit

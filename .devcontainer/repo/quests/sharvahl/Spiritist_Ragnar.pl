@@ -33,7 +33,7 @@ quest::summonitem(quest::ChooseRandom(31584,31589,31586,31590,31593,31594,31595,
 quest::summonitem(quest::ChooseRandom(31584,31589,31586,31590,31593,31594,31595,31588,31585,31592)); # Item(s): Padded Cap (31584), Padded Cape (31589), Padded Choker (31586), Padded Cord (31590), Padded Gloves (31593), Padded Pants (31594), Padded Sandals (31595), Padded Shawl (31588), Padded Veil (31585), Padded Wristband (31592)
 quest::summonitem(quest::ChooseRandom(31584,31589,31586,31590,31593,31594,31595,31588,31585,31592)); # Item(s): Padded Cap (31584), Padded Cape (31589), Padded Choker (31586), Padded Cord (31590), Padded Gloves (31593), Padded Pants (31594), Padded Sandals (31595), Padded Shawl (31588), Padded Veil (31585), Padded Wristband (31592)
 quest::givecash(0,2,3,0);
-quest::exp(1000);
+quest::exp(200);
 quest::ding();
 quest::faction(1513,8); # Faction: Guardians of Shar Vahl
 }
@@ -43,7 +43,7 @@ quest::summonitem(quest::ChooseRandom(31584,31589,31586,31590,31593,31594,31595,
 quest::summonitem(quest::ChooseRandom(31584,31589,31586,31590,31593,31594,31595,31588,31585,31592)); # Item(s): Padded Cap (31584), Padded Cape (31589), Padded Choker (31586), Padded Cord (31590), Padded Gloves (31593), Padded Pants (31594), Padded Sandals (31595), Padded Shawl (31588), Padded Veil (31585), Padded Wristband (31592)
 quest::summonitem(quest::ChooseRandom(31584,31589,31586,31590,31593,31594,31595,31588,31585,31592)); # Item(s): Padded Cap (31584), Padded Cape (31589), Padded Choker (31586), Padded Cord (31590), Padded Gloves (31593), Padded Pants (31594), Padded Sandals (31595), Padded Shawl (31588), Padded Veil (31585), Padded Wristband (31592)
 quest::givecash(0,4,2,0);
-quest::exp(750);
+quest::exp(200);
 quest::ding();
 quest::faction(1513,6); # Faction: Guardians of Shar Vahl
 }
@@ -52,7 +52,7 @@ quest::say("A blessing indeed! You have done well to bring this to me. With thes
 quest::summonitem(quest::ChooseRandom(31584,31589,31586,31590,31593,31594,31595,31588,31585,31592)); # Item(s): Padded Cap (31584), Padded Cape (31589), Padded Choker (31586), Padded Cord (31590), Padded Gloves (31593), Padded Pants (31594), Padded Sandals (31595), Padded Shawl (31588), Padded Veil (31585), Padded Wristband (31592)
 quest::summonitem(quest::ChooseRandom(31584,31589,31586,31590,31593,31594,31595,31588,31585,31592)); # Item(s): Padded Cap (31584), Padded Cape (31589), Padded Choker (31586), Padded Cord (31590), Padded Gloves (31593), Padded Pants (31594), Padded Sandals (31595), Padded Shawl (31588), Padded Veil (31585), Padded Wristband (31592)
 quest::givecash(0,6,1,0);
-quest::exp(500);
+quest::exp(160);
 quest::ding();
 quest::faction(1513,4); # Faction: Guardians of Shar Vahl
 }
@@ -60,7 +60,7 @@ if (plugin::check_handin(\%itemcount,30665 => 1)) {
 quest::say("A blessing indeed! You have done well to bring this to me. With these glands I will be able to save many lives. Thank you friend. Shar Vahl and its people are in your debt. Please, accept these gifts to assist you in your endeavors. It Is the least I can do to return the favor!");
 quest::summonitem(quest::ChooseRandom(31584,31589,31586,31590,31593,31594,31595,31588,31585,31592)); # Item(s): Padded Cap (31584), Padded Cape (31589), Padded Choker (31586), Padded Cord (31590), Padded Gloves (31593), Padded Pants (31594), Padded Sandals (31595), Padded Shawl (31588), Padded Veil (31585), Padded Wristband (31592)
 quest::givecash(0,8,0,0);
-quest::exp(250);
+quest::exp(140);
 quest::ding();
 quest::faction(1513,2); # Faction: Guardians of Shar Vahl
 }

@@ -18,7 +18,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 4758 => 1)) { #Item: Zimloro Ingredient List
     quest::say("Ah! Master Zimloro sent you, eh? This note indicates that he wants some specific ingredients. Luckily, I've got several [" . quest::saylink("fresh samples") . "] that I've only recently collected.");
     quest::set_data("$name-zimloro", 1);
-    quest::exp(500);
+    quest::exp(160);
   }
   plugin::return_items(\%itemcount);
 }

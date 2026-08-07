@@ -30,7 +30,7 @@ sub EVENT_ITEM {
 		&DoRandomPatchwork();
 		quest::givecash("0","2","0","0");
 		quest::faction(316, 10);#Scouts of Tunare
-		quest::exp(800);#10% of level 3 experience.  Newbie quest, being a bit generous compared to the guidelines.
+		quest::exp(200);#10% of level 3 experience.  Newbie quest, being a bit generous compared to the guidelines.
 	} 
 
   #do all other handins first with plugin, then let it do disciplines

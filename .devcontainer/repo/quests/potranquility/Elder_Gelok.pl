@@ -44,7 +44,7 @@ sub EVENT_ITEM {
   if((plugin::check_handin(\%itemcount, 28164 => 1)) ||  (plugin::check_handin(\%itemcount, 28165 => 1)) || (plugin::check_handin(\%itemcount, 28162 => 1)) || (plugin::check_handin(\%itemcount, 28163 => 1))){#Mini-gyro Shields, Silicorrosive Grease, Size 12 Sprockets, Tri-platinum Foil
   	quest::emote("examines the object for a moment and then says, 'This is great! The windmill should function for weeks to come due to your hard work. Feel free to bring me any others that you find. A stockpile of parts never hurt anyone!'");
     &DoRandomGem();
-    quest::exp(3000000); #7% AA using a 1.0 zone_exp_multiplier
+    quest::exp(2900); #7% AA using a 1.0 zone_exp_multiplier
   }
   plugin::return_items(\%itemcount);
 }#END of FILE Zone:potranquility  ID:203035 -- Elder_Gelok 

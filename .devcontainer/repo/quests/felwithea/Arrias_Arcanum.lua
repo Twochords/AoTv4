@@ -17,7 +17,7 @@ function event_trade(e)
 		e.other:Faction(5001,3,0); -- Faction: Anti-mage
 		e.other:Faction(226,3,0); -- Faction: Clerics of Tunare
 		e.other:Faction(279,3,0); -- Faction: King Tearis Thex
-		e.other:AddEXP(300);
+		e.other:AddEXP(140);
 		e.other:GiveCash(0,5,0,0); 
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

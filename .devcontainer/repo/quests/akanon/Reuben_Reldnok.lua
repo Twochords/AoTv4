@@ -54,7 +54,7 @@ function event_trade(e)
 		e.self:Say("Here " .. e.other:GetName() .. " , I have crafted this for you! May it always strike true!");
 		e.other:SummonItem(9104); -- Item: Deep Muses Defender
 		e.other:Ding();
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

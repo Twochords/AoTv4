@@ -45,7 +45,7 @@ sub EVENT_ITEM {
 		quest::faction(270,-10); # Faction: Indigo Brotherhood
 		quest::faction(276,10); # Faction: Kelethin Merchants
 		quest::faction(325,10); # Faction: Merchants of Felwithe
-		quest::exp(500);
+		quest::exp(160);
 	}
 	plugin::try_tome_handins(\%itemcount, $class, 'Warrior');
 	plugin::return_items(\%itemcount);

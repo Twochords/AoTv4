@@ -26,7 +26,7 @@ function event_trade(e)
 		e.self:Emote("takes a look at the documents you handed her and smiles, 'This is exactly what we needed. We'll be better prepared if the gnolls are foolish enough to actually attack. I hope you are willing to assist us in the defense of Surefall. Should you choose to aid us, this club will serve you well.'");
 		e.other:SummonItem(15935); -- Item: Club of Gnoll Bashing
 		e.other:Ding();
-		e.other:AddEXP(15000);
+		e.other:AddEXP(500);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

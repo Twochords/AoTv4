@@ -17,7 +17,7 @@ sub EVENT_ITEM {
     quest::emote("fits the pieces of the plans together and studies them for a moment.");
     quest::say("Ah, so the plot thickens. It seems that the rumored attacks are set to be conducted soon. Seek out Ixthal and tell him about these attacks. If he does not believe you, show him these plans as proof.");
     quest::summonitem(48064); #Lativ's Plans
-    quest::exp(15000);
+    quest::exp(500);
   }
   plugin::return_items(\%itemcount);
 }

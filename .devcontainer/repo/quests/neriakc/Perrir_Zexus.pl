@@ -38,7 +38,7 @@ sub EVENT_ITEM {
   if($faction < 5 && plugin::check_handin(\%itemcount, 14550 => 4)) { #Woven Grass Amulets
     quest::emote("laughs. 'Here, take this then!  You are now and initiate of Innoruuk.  Speak with Ithvol K`Jasn for further advancement.'"); #text made up
     quest::summonitem(1369); #Initiate Symbol of Innoruuk
-    quest::exp(2000);
+    quest::exp(260);
     quest::ding();
     quest::faction(278, 7);  #King Naythox Thex
     quest::faction(340, 50);  #Priests of Innoruuk

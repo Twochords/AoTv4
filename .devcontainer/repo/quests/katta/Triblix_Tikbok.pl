@@ -33,7 +33,7 @@ sub EVENT_ITEM {
   quest::faction(1499,-10); # -Citizens of Seru
   quest::faction(1483,-10); # -Seru
   quest::faction(1487,-10); # -Shoulders of Seru
-  quest::exp(500);
+  quest::exp(160);
   quest::givecash(0,0,1,0); 
  }
 }

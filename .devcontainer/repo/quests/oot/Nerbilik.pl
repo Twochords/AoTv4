@@ -13,7 +13,7 @@ sub EVENT_ITEM {
     quest::say("Oooh!! Grub locker! There is a loud click. He opens the locker and unwraps dwarf pickles. What this dumb wrapper? R, E, C, I, P, E.. Ahh!! It say pickles!! Me read good. Here your plat. Me give you little more. Me was very hungry for pickles.");
     quest::faction(235,10); #Da Bashers
     quest::faction(222,10); #Broken Skull Clan
-    quest::exp(150);
+    quest::exp(120);
     quest::givecash(0,0,0,2);
   }
   plugin::return_items(\%itemcount);

@@ -49,7 +49,7 @@ function event_trade(e)
 		e.other:Faction(298,5,0); --  Peace Keepers.
 		e.other:Faction(266,5,0); --  High Council of Erudin.
 		e.other:Faction(265,-5,0); --  Heretics.
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13883,item2 = 13883,item3 = 13883})) then
 		e.self:Say("Fine work. They shall never lay hands upon another kobold again. I mean paws. Here is a small reward for a fine job. Unfortunatly we have recently learned that the shamen in the forest are merely underlings to [more powerful kobold shamen] that reside in the kobold warrens. Continue the work of Quellious.");
 		e.other:SummonItem(eq.ChooseRandom(15213, 15011)); -- Item(s): Spell: Cure Disease (15213)
@@ -57,7 +57,7 @@ function event_trade(e)
 		e.other:Faction(298,20,0); -- Faction: Peace Keepers
 		e.other:Faction(266,20,0); -- Faction: High Council of Erudin
 		e.other:Faction(265,-20,0); -- Faction: Heretics
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 14582})) then -- need correct text
 		e.self:Say("I am unfamiliar with the markings that adorn these necklaces. You have done well thus far in hindering the kobolds worship of their evil deity. I award you the Initiate Symbol of Quellious. Return to me when you feel you are ready to deal with the [greater kobold shaman].");
 		e.other:Ding();
@@ -69,7 +69,7 @@ function event_trade(e)
 		e.other:Faction(298,20,0); -- Faction: Peace Keepers
 		e.other:Faction(266,20,0); -- Faction: High Council of Erudin
 		e.other:Faction(265,-20,0); -- Faction: Heretics
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 14585})) then
 		e.self:Say("It is imperative that we discern the nature of these symbols and the source of the kobolds shamanistic powers. There is a citizen of Erudin residing in Freeport named Glyssa Sonshaw. She is quite possibly the most knowledgeable individual in the field of heraldic and hieroglyphic studies. Take the high shamans necklace and this note to her. When you have discovered the nature of the symbols return to me with the documentation and your Disciple Symbol of Quellious.");
 		e.other:Ding();
@@ -82,7 +82,7 @@ function event_trade(e)
 		e.other:Faction(298,20,0); -- Faction: Peace Keepers
 		e.other:Faction(266,20,0); -- Faction: High Council of Erudin
 		e.other:Faction(265,-20,0); -- Faction: Heretics
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

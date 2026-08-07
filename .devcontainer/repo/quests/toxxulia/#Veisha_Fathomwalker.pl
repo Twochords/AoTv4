@@ -17,7 +17,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 12998 => 1)) { #Rolled up Note
     quest::say("Davorre, he is still alive! All these years I had thought him dead. He has kept his promise to me, and yet my most recent actions betray him so. I did not know. Here. Please give this to him with my most sincere regrets. I have moved on with my life and it is good to know that he is alive and well. But [Phaeril] is now my life.");
     quest::summonitem(12997); #Veisha's Engagement Ring
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif(plugin::check_handin(\%itemcount, 12995 => 1)) { #A Locked Chest
     quest::say("Vile creature! Child of heresy! My love's death shall be avenged! How dare you bring me his head in a box!");

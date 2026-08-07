@@ -13,7 +13,7 @@ sub EVENT_SAY {
 
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 13943 => 4)) { # Freeport Stout
-    quest::say("Blessed be ye! Tillgar immediately starts to swig down the stout. Take this for yer trouble. I don't much care fer wine.");quest::exp(1000);
+    quest::say("Blessed be ye! Tillgar immediately starts to swig down the stout. Take this for yer trouble. I don't much care fer wine.");quest::exp(200);
     quest::summonitem(55579); #  Cristov's Red Wine
     quest::setglobal("chrisredwinea",1,5,"F");
     quest::givecash(0,0,1,0);

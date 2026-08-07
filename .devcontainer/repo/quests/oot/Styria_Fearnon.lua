@@ -24,7 +24,7 @@ function event_trade(e)
 		e.other:Faction(310,5,0); -- Soldiers of Tunare
 		e.other:Faction(226,5,0); -- Clerics of Tunare
 		e.other:Faction(234,-10,0); -- Crushbone Orcs
-		e.other:AddEXP(250);
+		e.other:AddEXP(140);
 		e.other:GiveCash(0,5,5,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13336})) then -- Pirate Earrings
 		e.self:Say("Good work. I see you have removed that retchid pirate from here.");

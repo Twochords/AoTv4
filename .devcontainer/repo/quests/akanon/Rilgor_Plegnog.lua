@@ -47,7 +47,7 @@ function event_trade(e)
 	elseif (item_lib.check_turn_in(e.trade, {item1 = 1360})) then
 		e.self:Say("Very nice!! It is perfect! Here take this pen. Have fun with it.");
 		e.other:Ding();
-		e.other:AddEXP(50000);
+		e.other:AddEXP(740);
 		e.other:SummonItem(10600); -- Item: Mechanical Pen
 	elseif (item_lib.check_turn_in(e.trade, {item1 = 54317})) then
 		e.self:Say("'Very fine it is. So kind of you to fulfill a dream of mine. I believe this device should be able to handle just about anything you'd need. In fact, if I were you I would take it along to your master right away.' ");

@@ -21,17 +21,17 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 20929, item2 = 20997, item3 = 20998})) then 	--shadowknight test of bash using ebon tessera, sphinx eye opal, finely crafted amulet
 		e.other:SummonItem(14554); --sphinx eye amulet
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("You is powerful! Take this!");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20936, item2 = 20999, item3 = 20700})) then --shadowknight test of smash using copper disc, small sapphire, silvery ring
 		e.other:SummonItem(14553); --Djinni finger ring
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("You is powerful! Take this!");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20943, item2 = 20701, item3 = 20702})) then --shadowknight test of slash using diaphanous globe, dried leather, finely woven cloth belt
 		e.other:SummonItem(2704); --pegasus-hide belt
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("You is powerful! Take this!");
 		eq.depop();
 	end

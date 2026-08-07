@@ -48,7 +48,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 12160 => 4)){ #Basilisk Tongue x 4
     quest::say("You good! You help me much. Me give you dis! Me heart still hurt for Hooly be me rage comfortz me.");
-    quest::exp(25);
+    quest::exp(60);
     quest::summonitem(55399); #Axe of the Strongbear
   }
   plugin::return_items(\%itemcount);

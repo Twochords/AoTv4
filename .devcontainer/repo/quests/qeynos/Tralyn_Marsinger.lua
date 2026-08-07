@@ -18,7 +18,7 @@ function event_trade(e)
 		e.other:Faction(262,1,0); -- Faction: Guards of Qeynos
 		e.other:Faction(304,-1,0); -- Faction: Ring of Scale
 		e.other:Faction(285,-1,0); -- Faction: Mayong Mistmoore
-		e.other:AddEXP(1550);
+		e.other:AddEXP(240);
 		e.other:GiveCash(0,0,random_gold,0);
 	elseif (eq.handin({[18153] = 1}) or eq.handin({[18154] = 1})) then
 		local random_gold = math.random(12);
@@ -29,7 +29,7 @@ function event_trade(e)
 		e.other:Faction(262,1,0); -- Faction: Guards of Qeynos
 		e.other:Faction(304,-1,0); -- Faction: Ring of Scale
 		e.other:Faction(285,-1,0); -- Faction: Mayong Mistmoore
-		e.other:AddEXP(1550);
+		e.other:AddEXP(240);
 		e.other:GiveCash(0,0,random_gold,0);
 	end
 	

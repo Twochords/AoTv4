@@ -29,7 +29,7 @@ function event_trade(e)
 		e.other:Faction(230,-10,0); -- Corrupt Qeynos Guards
 		e.other:Faction(223,-10,0); -- Circle Of Unseen Hands
 		e.other:Faction(291,10,0); -- Merchants of Qeynos 
-		e.other:AddEXP(2000);
+		e.other:AddEXP(260);
 		e.other:GiveCash(19,0,8,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13304})) then -- Loyal Guards Bracelet (Guard Bracelet - 13304)
 		e.self:Say("You fool!!! You have slain a loyal defender of the guard!  Prepare to DIE!!!"); -- text made up

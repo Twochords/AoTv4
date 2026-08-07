@@ -29,7 +29,7 @@ function event_trade(e)   -- BASED ON TLP PROGRESSION SERVERS
 
     if item_lib.check_turn_in(e.trade, {item1 = 6876}) then -- Item: lucky skunk's foot
         e.self:QuestSay(e.other,"Nice work kid. Now I'm feelin lucky. So's ya say ya wanna learn about cards right? Lemme tell ya. Them cards are nice but lets have some REAL fun. Yer resourceful, I like that. What say we take over this joint fer ourselves? Ol' Bristle's gettin soft, ya know? Wadda ya say? [" .. eq.say_link("Man") .. "] or mouse?");
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 
     item_lib.return_items(e.self, e.other, e.trade)

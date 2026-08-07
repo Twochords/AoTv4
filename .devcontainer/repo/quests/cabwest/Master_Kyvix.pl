@@ -27,7 +27,7 @@ Sarnaks. The foot has been stolen by Gripe, in East Cabilis.");
 sub EVENT_ITEM { 
   if(plugin::check_handin(\%itemcount, 12420 => 1, 4262 => 1)) { #full component sack, apprentice skullcap - 3rd rank
     quest::say("Well done, here's your fourth rank skull cap. You can now start your [true mission].");
-    quest::exp(200);
+    quest::exp(120);
     quest::summonitem(4263); #dark binder skullcap
     quest::faction(441,20); # Faction: Legion of Cabilis
     quest::faction(443,20); # Faction: Brood of Kotiz
@@ -35,7 +35,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 55978 => 1, 4263 => 1)) { #a journal and dark binder skullcap
     quest::say("Well done, here's your fifth rank skull cap. You can now track
 down the [Kor Sha Candlestick].");
-    quest::exp(200);
+    quest::exp(120);
     quest::summonitem(4264); #occultist skullcap
     quest::faction(441,20); # Faction: Legion of Cabilis
     quest::faction(443,20); # Faction: Brood of Kotiz
@@ -45,7 +45,7 @@ down the [Kor Sha Candlestick].");
     quest::emote("grabs the candle parts and puts them in an odd pouch, then
 takes your cap which disintegrates in his palm. He hands you another cap.");
     quest::say("Welcome, Revenant $name. You have done well. The Harbinger awaits you. He seeks a [new revenant].");
-    quest::exp(200);
+    quest::exp(120);
     quest::summonitem(4265); #Revenant Skullcap
     quest::faction(441,20); # Faction: Legion of Cabilis
     quest::faction(443,20); # Faction: Brood of Kotiz

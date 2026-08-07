@@ -28,7 +28,7 @@ sub EVENT_ITEM {
       # text made up
       quest::say("Excellent, this will do nicely.  Take this sword for your efforts.");
       quest::summonitem(25083); # Item: Vehement Sword of Reivaj
-      quest::exp(1000);
+      quest::exp(200);
     }
   }
 }

@@ -27,7 +27,7 @@ function event_trade(e)
 		e.self:Say("We thank you for the return of the Code of the Whistling Fist. Take this sewing needle. You shall find it useful should you aid [Brother Zephyl] in his quest. His item, the needle, a swatch of shadow silk and a scroll containing Jonathan's Whistling Warsong. Into a sewing kit they will be going. And into the brotherhood will you. I hope you do not wish me to [return the headband]..");
 		e.other:SummonItem(12314); -- Needle of the Void
 		e.other:Ding();
-		e.other:AddEXP(2000);
+		e.other:AddEXP(260);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 12314})) then -- Needle of the Void
 		e.other:SummonItem(10114); -- Purple Headband
 		e.other:Ding();

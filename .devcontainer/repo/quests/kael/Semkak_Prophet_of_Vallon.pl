@@ -21,7 +21,7 @@ sub EVENT_ITEM {
   	quest::faction(448, 20);#Kromzek
   	quest::faction(429, 10);#King Tormax
   	quest::faction(430, -30);#Claws of Veeshan
-  	quest::exp(1750000);#1% of level 51 exp
+  	quest::exp(2420);#1% of level 51 exp
   	quest::summonitem(quest::ChooseRandom(25036, 25040, 25034, 25035));#Steel Wristband of Strategy, Shield of Battle, Circlet of Vallon, Book of Strategy
   }
   if(plugin::check_handin(\%itemcount, 24985 => 1)) {#Scroll of Scaled Tactics
@@ -30,7 +30,7 @@ sub EVENT_ITEM {
   	quest::faction(448, 20);#Kromzek
   	quest::faction(429, 10);#King Tormax
   	quest::faction(430, -30);#Claws of Veeshan
-  	quest::exp(1750000);#1% of level 51 exp
+  	quest::exp(2420);#1% of level 51 exp
   	quest::summonitem(quest::ChooseRandom(25036, 25040, 25034, 25035));#Steel Wristband of Strategy, Shield of Battle, Circlet of Vallon, Book of Strategy
   }
   plugin::return_items(\%itemcount);

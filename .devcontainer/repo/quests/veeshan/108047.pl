@@ -26,7 +26,7 @@ sub EVENT_ITEM {
 			} elsif ($class eq "Beastlord") { quest::summonitem(69387);
 			} else { quest::summonitem(69388);
 			}
-			quest::exp(10000);
+			quest::exp(440);
 		}  elsif (plugin::check_handin(\%itemcount, 69388 => 1)) {
 			quest::say("How utterly obtuse and arrogant. How about this one then?");
 			quest::summonitem(69387); # Item: Dark Cloak of the Whelp

@@ -40,7 +40,7 @@ sub EVENT_ITEM {
 		quest::setglobal("Shar_Vahl_Cit",1,5,"F");
 		quest::summonitem(2873); # Application for Citizenship
 		quest::ding();
-		quest::exp(20);
+		quest::exp(60);
 	}
 	elsif (plugin::check_handin(\%itemcount, 2897 => 1)) {
 		quest::say("This item. by itself. means nothing to me.");
@@ -52,7 +52,7 @@ sub EVENT_ITEM {
 	} 
 	elsif(plugin::check_handin(\%itemcount, 3920=>1)){
 		quest::say("These are finely crafted indeed, $name. Merchant Fahaar told me you were quite the prodigy, but don't tell him I told you that. Take this receipt and show it to Fahaar and tell him the king is quite pleased with both your work, and his teaching!");
-		quest::exp(1000);
+		quest::exp(200);
 		quest::ding();
 		quest::summonitem(3921); # Item: Order Receipt
 	} 

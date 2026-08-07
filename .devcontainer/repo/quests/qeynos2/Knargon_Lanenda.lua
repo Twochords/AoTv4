@@ -48,7 +48,7 @@ function event_trade(e)
 		e.other:Faction(273,5,0); -- Kane Bayle
 		e.other:Faction(291,-10,0); -- Merchants of Qeynos
 		e.other:Faction(262,-10,0); -- Guards of Qeynos
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

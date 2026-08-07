@@ -42,7 +42,7 @@ function event_trade(e)
 		e.other:Faction(219, 1, 0); -- Faction: Antonius Bayle
 		e.other:Faction(229, 1, 0); -- Faction: Coalition of Tradefolk
 		e.other:Faction(262, 1, 0); -- Faction: Guards of Qeynos
-		e.other:AddEXP(3000);
+		e.other:AddEXP(300);
 		e.other:GiveCash(0, 10, 0, 0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

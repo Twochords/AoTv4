@@ -12,6 +12,6 @@ sub EVENT_ITEM {
   if($item1=="10262"){
     quest::summonitem(10263); # Item: Empty Infectious Vial
     quest::emote("injests the virulent substance and becomes ill.");
-    quest::exp(200);
+    quest::exp(120);
   }
 }

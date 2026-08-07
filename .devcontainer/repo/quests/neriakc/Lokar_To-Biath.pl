@@ -54,7 +54,7 @@ sub EVENT_ITEM {
 			quest::faction(334, 1);			#:: + Dreadguard Outer
 			quest::faction(370, 1);			#:: + Dreadguard Inner
 			#:: Grant a small amount of experience
-			quest::exp(150);
+			quest::exp(120);
 		}
 		else {
 			quest::say("Leave my sight at once! You are no friend to the Dark Bargainers.");

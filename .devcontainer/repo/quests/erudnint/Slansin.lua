@@ -18,7 +18,7 @@ function event_trade(e)
 			e.other:Faction(266,-5,0); -- Faction: High Council of Erudin
 			e.other:Faction(265,1,0); -- Faction: Heretics
 			e.other:Faction(267,-5,0); -- Faction: High Guard of Erudin
-			e.other:AddEXP(300);
+			e.other:AddEXP(140);
 			eq.depop();
 		elseif(e.self:GetClass() == Class.ENCHANTER) then
 			e.self:Say("Ha!! What a fool!! I have stolen another potion to add to the crate. I shall make a fortune!! The real Slansin is in back. Now it is time for me to leave.");
@@ -27,7 +27,7 @@ function event_trade(e)
 			e.other:Faction(329,5,0); -- +Carson McCabe
 			e.other:Faction(230,5,0); -- +Corrupt Qeynos Guards
 			e.other:Faction(330,5,0); -- +Freeport Militia
-			e.other:AddEXP(300);
+			e.other:AddEXP(140);
 		end
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

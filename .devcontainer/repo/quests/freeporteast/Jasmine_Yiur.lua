@@ -17,7 +17,7 @@ function event_trade(e)
 		e.self:Say("'I am so happy to see that you have returned, and with the mail! You are truly a hero. I will make certain that the other members of the League hear about you. You didn't find the missing ship you say? Guard Bribbely will not be pleased, but you did all that you could. Please take this for payment of your brave deeds. May we meet again.");
 		e.other:SummonItem(55027); -- Seawind Necklace
 		e.other:Ding();
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

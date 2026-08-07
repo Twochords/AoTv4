@@ -37,7 +37,7 @@ sub EVENT_ITEM{
 		quest::faction(1499,-10); #Citizens of Seru
 		quest::faction(1483,-10); #Seru 
 		quest::faction(1487,-10); #Shoulders of Seru
-		quest::exp(1000);
+		quest::exp(200);
 	}
 	elsif(plugin::check_handin(\%itemcount, 10674 => 1, 10675 => 1, 10676 => 1, 10677 => 1)) {
 		quest::say("I require the Ancient Ornate Combine Dagger, Talikar Family Signet Ring, Faded Portrait of a Lady, and the Antique Platinum Medal that were stolen from Raien Talikars crypt.");
@@ -51,7 +51,7 @@ sub EVENT_ITEM{
 		quest::faction(1499,-10); #Citizens of Seru
 		quest::faction(1483,-10); #Seru 
 		quest::faction(1487,-10); #Shoulders of Seru
-		quest::exp(1000);
+		quest::exp(200);
 	}
 	elsif(plugin::check_handin(\%itemcount, 10678 => 1, 10679 => 1, 10680 => 1, 10681 => 1)) {
 		quest::say("I require the Gold Embroidered Kilt, Silver Embroidered Tabard, Ancient Ceremonial Varhammer, and Old Sealed Medicine Pouch that were stolen from Shoeon Malicus' crypt.");
@@ -65,7 +65,7 @@ sub EVENT_ITEM{
 		quest::faction(1499,-10); #Citizens of Seru
 		quest::faction(1483,-10); #Seru 
 		quest::faction(1487,-10); #Shoulders of Seru
-		quest::exp(1000);
+		quest::exp(200);
 	}
   plugin::return_items(\%itemcount);
 }

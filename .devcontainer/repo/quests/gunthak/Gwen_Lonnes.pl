@@ -27,13 +27,13 @@ sub EVENT_ITEM {
     quest::emote("stops her practice cold as you show her the torn robe. She seems to be fairly impressed, but her words convey a different message. 'Where did you get this? You're trying to tell me you took it from a Luggald yourself? What, did you find one on a rotting corpse somewhere? Bah, whatever the method it is still somewhat useful. Not exactly a prime specimen, but it will do.' She takes the glass shard and begins to cut long sections of fabric from the robe. She takes several strands and begins to weave them into a sort of braid. She hands it to you when she's made a sizeable length of cord.");
     quest::say("Here, place this around your neck and it should offer you some small bit of protection. As long as you're interested in scavenging, you might try to find a few [other things] for me as well.");
     quest::summonitem(59057);#Dark Cord of Broken Skull
-    quest::exp(1750000);#1% of level 51 xp
+    quest::exp(2420);#1% of level 51 xp
     quest::setglobal("GwenLonnesA",1,0,"F");
   }	
   elsif(plugin::check_handin(\%itemcount, 59058 => 1, 59059 => 1) && defined($qglobals{GwenLonnesA}) && ($qglobals{GwenLonnesA} == 1)){ #A Jar of Broken Skull Clan Ink, A Dark Ore Amulet
     quest::emote("takes the stone from you and dips her finger in the jar of ink. She then begins to mark runes all across the surface of the stone. She then takes the stone and hangs it from your dark cord and hands it back to you. 'I find it hard to believe you managed to do this $name, but I have kept my promise. I have either vastly overestimated the Luggalds or I have considerably understestimated you.'");
     quest::summonitem(59060);#Amulet of Dark Waters
-    quest::exp(1750000);#1% of level 51 xp
+    quest::exp(2420);#1% of level 51 xp
     quest::delglobal("GwenLonnesA");
   }	
   plugin::return_items(\%itemcount);

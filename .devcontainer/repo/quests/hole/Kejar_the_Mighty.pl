@@ -12,7 +12,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount,  1360=> 1)) {
     quest::say("You found it, I am so pleased! Here is your reward");
     quest::summonitem(quest::ChooseRandom(8960, 8961)); # Item(s): Shiny Robe of the Underfoot (8960)
-    quest::exp(5000);
+    quest::exp(360);
   }
   plugin::return_items(\%itemcount);
 }

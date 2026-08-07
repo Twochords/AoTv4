@@ -29,7 +29,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 28053 => 1)) {
     quest::say("I say, this is indeed a challenge. This is written in what I'm sure is the language of the High Priesthood of Innoruuk. I've often wished I could read this, but I have never had the key to unlock the language. Take this for now.");
     quest::ding();
-    quest::exp(500);
+    quest::exp(160);
     quest::summonitem(28055); # Item: Tattered Parchment
   }
   elsif(plugin::check_handin(\%itemcount, 28055 => 1, 28016=> 1)) {

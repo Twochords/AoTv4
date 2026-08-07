@@ -12,7 +12,7 @@ sub EVENT_ITEM {
 	if(plugin::takeGold(1000)) {
 		quest::say("Here it is, I am sure you will be very satisfied with this purchase!");
 		quest::ding();
-		quest::exp(1000);
+		quest::exp(200);
 		quest::summonitem(10671); # Sealed Golden Scroll Tube
 	}
 	else {

@@ -27,7 +27,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 4762 => 1) && defined($qglobals{swordhilt}) && ($qglobals{swordhilt} == 2)) { #Gemmed Sword Hilt
     quest::say("Fantastic work, $name. It would seem that this hilt is fit to be attached to a blade and distributed amongst my guards. I have many other hilts that I need delivered to Yaeorat should you choose to courier another in the future. Until then good luck to you.");
-    quest::exp(1000);
+    quest::exp(200);
     quest::faction(1510,10); #house of fordel
     quest::faction(1509,10); #haven defenders
     quest::faction(1508,10); #traders of the haven

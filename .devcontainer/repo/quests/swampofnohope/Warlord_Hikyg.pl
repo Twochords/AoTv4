@@ -28,13 +28,13 @@ sub EVENT_ITEM {
    quest::faction( 445,2); # Faction: Scaled Mystics
    quest::faction( 444,2); # Faction: Swift Tails
    quest::faction( 442,2); # Faction: Crusaders of Greenmist
-   quest::exp(1200);
+   quest::exp(220);
    quest::ding();
   }
   if (plugin::check_handin(\%itemcount, 12913 =>1 )) {
     quest::say("What?!! You crushed all the shields!! You croak-faced skulking brute!! You don't deserve to be in my garrison!! I am going to recommend you for a promotion in hopes that you will be sent to hunt dragons and meet your end!");
     quest::summonitem(18073); # Item: Legionnaire Recommendation
-    quest::exp(2000);
+    quest::exp(260);
     quest::ding();
     quest::faction( 440,2); # Faction: Cabilis Residents
    quest::faction( 441,2); # Faction: Legion of Cabilis

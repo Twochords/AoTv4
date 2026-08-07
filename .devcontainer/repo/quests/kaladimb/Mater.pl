@@ -61,7 +61,7 @@ sub EVENT_ITEM {
     quest::faction(379, -10); # Butcherblock Bandits
     quest::faction(241, 10);  # Deeppockets
     quest::faction(244, -10); # Ebon Mask
-    quest::exp(5000);
+    quest::exp(360);
     quest::summonitem(12161); # Mining Pick 628
   }
   elsif (quest::handin({18767 => 1})) { #Small, Folded Note

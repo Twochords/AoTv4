@@ -16,7 +16,7 @@ function event_trade(e)
 	-- Fire Goblin Skin
 	if(item_lib.check_turn_in(e.trade, {item1 = 2361})) then
 		e.self:Say("Well, arent you full of surprises! I appreciate you retrieving this for me, as I cant really leave my shop here for very long, the services I provide are nearly irreplacable. As promised, here is your mold! Good luck!");
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:SummonItem(51114); -- Shield Frame Mold
 	end
 	

@@ -44,7 +44,7 @@ if (plugin::check_handin(\%itemcount, 25128 => 1, 25129 => 1, 25127 => 1)) { # B
 	quest::faction(419,5); # Kromrif
 	quest::faction(429,5); # King Tormax
 	quest::faction(430,-10); # Claws of Veeshan
-	quest::exp(40000);
+	quest::exp(700);
 	quest::summonitem(25078); # Silver Steel Gauntlets	
 	}
 

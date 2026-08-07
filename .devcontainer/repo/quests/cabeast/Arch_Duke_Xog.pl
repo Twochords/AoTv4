@@ -49,7 +49,7 @@ sub EVENT_ITEM {
 		quest::say("A legible tome of the scrolls of Vok Na Zov! What a find this is!! May the unholy curses of Cazic flow through you. Please accept the weapon of a Lord of Pain. To abandon it is to abandon our ways and earn yourself the hatred of our order.");
 		quest::summonitem(5128); #Lord of Pain's Khukri
 		quest::givecash(0,0,0,4); 
-		quest::exp(4000);
+		quest::exp(320);
 		quest::ding();
 		quest::faction(442,20); # Faction: Crusaders of Greenmist
 		quest::faction(441,10); # Faction: Legion of Cabilis
@@ -60,7 +60,7 @@ sub EVENT_ITEM {
 	elsif (plugin::check_handin(\%itemcount, 14807 => 1, 10034 => 2)) { #Trooper Scale Bracers quest
 		quest::say("Thanks for resolving this issue. Here is your reward");
 		quest::summonitem(14808); #Xog's Reference: Bracer
-		quest::exp(10000);
+		quest::exp(440);
 		quest::ding();
 	}
 	elsif (plugin::check_handin(\%itemcount, 14792 => 1)) { #Trooper Scale Gauntlets quest
@@ -70,7 +70,7 @@ sub EVENT_ITEM {
 		quest::say("Well done, $name.");
 		quest::summonitem(14809); #Xog's Reference: Gauntlet
 		quest::ding();
-		quest::exp(10000);
+		quest::exp(440);
 	}
 	else {
 		plugin::try_tome_handins(\%itemcount, $class, 'Shadowknight');

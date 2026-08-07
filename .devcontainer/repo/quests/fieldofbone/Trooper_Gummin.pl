@@ -17,7 +17,7 @@ sub EVENT_ITEM {
     quest::faction(445,5); #Scaled Mystics
     quest::faction(442,5); #Crusaders of Greenmist
     quest::faction(444,5); #Swift Tails
-    quest::exp(500);
+    quest::exp(160);
   }
   elsif (plugin::check_handin(\%itemcount, 18242 => 1)) {
     quest::say("What?! I need the Legion Lager and the legion order.");

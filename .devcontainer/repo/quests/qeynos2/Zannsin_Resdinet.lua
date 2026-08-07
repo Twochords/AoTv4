@@ -32,7 +32,7 @@ function event_trade(e)
 		e.self:Say("You have proven yourself to be very valuable "..e.other:GetName()..". For helping us out please accept this Cloak of the Unseen Hands!");
 		e.other:SummonItem(1048); -- Item: Black Leather Cloak
 		e.other:Ding();
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

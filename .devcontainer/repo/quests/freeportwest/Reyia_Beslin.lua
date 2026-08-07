@@ -34,7 +34,7 @@ function event_trade(e)
 		e.other:Faction(361,3,0); -- Ashen Order
 		e.other:Faction(281,3,0); -- Knights of Truth
 		e.other:Faction(309,3,0); -- Silent Fist Clan
-		e.other:AddEXP(300);
+		e.other:AddEXP(140);
 	--  Blackened Wand ID-13237 - Blackened Sapphire ID-13238 - Orange Sash of Order ID-10132
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13237,item2 = 13238,item3 = 10132})) then
 		e.other:Ding();
@@ -43,7 +43,7 @@ function event_trade(e)
 		e.other:Faction(361,4,0); -- Ashen Order
 		e.other:Faction(281,4,0); -- Knights of Truth
 		e.other:Faction(309,4,0); -- Silent Fist Clan
-		e.other:AddEXP(400);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

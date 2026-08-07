@@ -27,7 +27,7 @@ sub EVENT_ITEM {
 are joyful, Neb is joyful! Misu na tona Vaniki esa Zlandicar, no re Paebala soka mora Chetari, ika tu. With the death of Vaniki and Zlandicar, the Paebala can conquer the Chetari, and rule! Mika na so kaka rika, ug boro Neb`ri, ek val Vaniki ushta. Take this, it is Neb's fighting bone, and here, this key I took from Vaniki.");
     quest::summonitem(26040); # Item: Neb's Warbone
     quest::summonitem(28060); # Item: Jaled Dar's Tomb Key
-    quest::exp(250000);
+    quest::exp(1260);
     quest::faction(463,100); #paebala
     quest::faction(462,-10); #chetari
     quest::faction(464,-10); #zlandicar
@@ -35,7 +35,7 @@ are joyful, Neb is joyful! Misu na tona Vaniki esa Zlandicar, no re Paebala soka
   if (plugin::check_handin(\%itemcount, 69341 => 1)) {
   quest::say("Ika vora isa, viia solta ian raka. Thank you for this concoction. Loka vula riluua zlandicar. We will use this on Zlandicar's allies. Wurna so vi re drikinavi wo isa maka. This will aide us greatly in our struggle against them. Wula vaa ria muta nish ala aknila nexona. Here is a sealed note to give to Nexona as proof of this delivery. Val na vi paebala yi no sa saka! All of the paebala thank you, tallone!"); #For Assist Nexona Quest
   quest::summonitem(69344); # Item: Neb's Note
-  quest::exp(10000);    
+  quest::exp(440);    
   }
   plugin::return_items(\%itemcount);
 }

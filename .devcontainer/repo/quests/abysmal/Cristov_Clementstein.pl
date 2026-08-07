@@ -20,20 +20,20 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 55579 => 1)) { # Cristov's Red Wine
     quest::say("Thank you! This wine will hit the spot. Here are the schematics I made. It looke like we are business partners! I trust you have some knowledge of blacksmithing so you can build my device. Oh, don't worry, you will be compensated for your efforts. Hand me the device if you are able to construct it.");
     quest::summonitem(55582); # Cristov's Schematics
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (plugin::check_handin(\%itemcount, 55584 => 1)) { # Grape crushing device
     quest::say("Outstanding! Nice work, my friend. Now we need to see if it works. I have come up with a new recipe I would like to try out. I believe you can just purchase most of the items for the recipe, but the Talomba Berries are something that can only be found on this continent. An adventurer once gave me some and mentioned that he found them somewhere near the city on the continent. See if you can find them. Hand the completed wine to me when you are done.");
     quest::summonitem(55584); # Grape crushing device
     quest::summonitem(55583); # Cristov's New Wine Recipe
     quest::setglobal("chrisredwinea",2,5,"F");
-    quest::exp(2000);
+    quest::exp(260);
   }
   elsif (defined($qglobals{chrisredwinea}) && ($qglobals{chrisredwinea} == 2) && plugin::check_handin(\%itemcount, 55580 => 1)) { # Cristov's Finest Red Wine
     quest::emote("takes a sip of the newly created Wine");
     quest::say("Truly Magical! The best I have ever tasted! I cannot believe it! Thank you so much, my friend! Take this as your reward!");
     quest::summonitem(55581); # Cristov's Corker
-    quest::exp(5000);
+    quest::exp(360);
   }
   plugin::return_items(\%itemcount);
 }

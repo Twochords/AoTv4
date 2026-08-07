@@ -33,7 +33,7 @@ sub EVENT_ITEM {
 		quest::faction(302,+30); # protectors of the pine
 		quest::faction(272,+30); # jaggedpine treefolk
 		quest::faction(324,-60); # unkempt druids
-		quest::exp(10000);		
+		quest::exp(440);		
     } 
 	if(plugin::check_handin(\%itemcount, 10566 => 1, 10570 => 1, 10034 => 1)) { # helm
 		quest::summonitem("3181");
@@ -43,7 +43,7 @@ sub EVENT_ITEM {
 		quest::faction(302,+30); # protectors of the pine
 		quest::faction(272,+30); # jaggedpine treefolk
 		quest::faction(324,-60); # unkempt druids
-		quest::exp(10000);
+		quest::exp(440);
     } 
 	if(plugin::check_handin(\%itemcount, 10548 => 1, 10568 => 1, 10032 => 2)) { # sleeves
 		quest::summonitem("3188");
@@ -53,7 +53,7 @@ sub EVENT_ITEM {
 		quest::faction(302,+30); # protectors of the pine
 		quest::faction(272,+30); # jaggedpine treefolk
 		quest::faction(324,-60); # unkempt druids
-		quest::exp(10000);		
+		quest::exp(440);		
     }
 	if(plugin::check_handin(\%itemcount, 10571 => 1, 10567 => 1, 10035 => 2)) { # tunic
 		quest::summonitem("3184");
@@ -63,7 +63,7 @@ sub EVENT_ITEM {
 		quest::faction(302,+30); # protectors of the pine
 		quest::faction(272,+30); # jaggedpine treefolk
 		quest::faction(324,-60); # unkempt druids
-		quest::exp(10000);
+		quest::exp(440);
     } 
 	plugin::return_items(\%itemcount);
 }

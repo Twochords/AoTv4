@@ -49,7 +49,7 @@ sub EVENT_ITEM {
    quest::say("Very good work. Here is the Cudgel, use it well!");
    quest::summonitem(20417); # Item: Templar of Fright Cudgel
    quest::faction(265,10); # Faction: Heretics
-   quest::exp(500);
+   quest::exp(160);
    }
    plugin::return_items(\%itemcount);
 }

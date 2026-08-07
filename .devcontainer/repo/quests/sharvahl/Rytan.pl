@@ -45,7 +45,7 @@ teeth and return the sealed bag to me. With those teeth I can make six darts and
 if(plugin::check_handin(\%itemcount,3461=>1)){
 quest::summonitem("3463", 3);
 quest::summonitem("3464");
-quest::exp(1000);
+quest::exp(200);
 quest::say("Here are the three darts I promised you and a seal of mine.
  I need more darts desperately, so show me your acrylia slate to take another bag and fill
  it as you are able. Collect four of my seals and show them to me. I will reward you by revealing
@@ -54,7 +54,7 @@ quest::say("Here are the three darts I promised you and a seal of mine.
 
 if(plugin::check_handin(\%itemcount,3464=>4)){
 quest::summonitem(3467); # Item: Xakra Dart Crafting Tool
-quest::exp(1000);
+quest::exp(200);
 quest::say("I thank you for your continued assistance, $name. Here is a fletching tool that will enable
  you to fashion xakra tooth darts. You will first need to acquire a grimling skeletal femur and place it
  in a fletching kit with the tool. This will result in three bone shafts. Place a bone shaft, a xakra tooth

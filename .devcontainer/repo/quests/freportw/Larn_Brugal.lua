@@ -21,7 +21,7 @@ function event_trade(e)
 		e.self:Say("I heard you were on your way back. Here then. Let us sharpen that blade for you. There you are. That should be much better in a fray now.");
 		e.other:SummonItem(5418); -- Groflar's Stoutbite
 		e.other:Ding();
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

@@ -20,7 +20,7 @@ sub EVENT_ITEM {
 if (plugin::check_handin(\%itemcount, 66181 => 4)) { # Sea turtle shell
 
 quest::say("Perfect, $name. Now I can crush these and have them mixed into some dyes as well as shape some patterns. Right, now for your information. One night recently, I heard Morden Rasp recount the tale of his early days as a rebellious student in the Rogues of the White Rose in Halas. They taught him all of his skills. I bet you didn't know that!"); 
-quest::exp(10000);
+quest::exp(440);
 quest::givecash(8,6,13,6);
 
 }

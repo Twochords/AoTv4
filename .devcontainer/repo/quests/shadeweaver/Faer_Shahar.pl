@@ -15,7 +15,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 30618 => 4)){
   quest::say("Thank you friend, you have done an excellent service for our city. Take this and may it help you on your endeavors.");
   quest::summonitem(17890); # Item: Scavengers Satchel
-  quest::exp(10000);
+  quest::exp(440);
   quest::givecash(7,0,0,0); 
  }
 }

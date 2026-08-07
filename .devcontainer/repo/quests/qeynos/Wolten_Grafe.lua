@@ -43,7 +43,7 @@ function event_trade(e)
 		e.other:Faction(341,1,0); -- Preists of Life
 		e.other:Faction(262,1,0); -- Guards of Qeynos
 		e.other:Faction(221,-1,0); -- Bloodsabers
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:GiveCash(0,0,8,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13396})) then -- Rat Kings Head
 		e.self:Say("So it is true, he does... or did, exist.  Well done "..e.other:GetName()..", take this for your trouble.");
@@ -53,7 +53,7 @@ function event_trade(e)
 		e.other:Faction(341,5,0); -- Preists of Life
 		e.other:Faction(262,5,0); -- Guards of Qeynos
 		e.other:Faction(221,-10,0); -- Bloodsabers
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:GiveCash(7,5,0,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

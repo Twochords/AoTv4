@@ -21,7 +21,7 @@ sub EVENT_ITEM {
 		quest::faction(254,-5); #Gate Callers
 		quest::faction(231,-5);  #Craftkeepers
 		quest::faction(233,-5);  #Crimson Hands
-                quest::exp(250);
+                quest::exp(140);
 	}
 	#do all other handins first with plugin, then let it do disciplines
 	plugin::try_tome_handins(\%itemcount, $class, 'Shadowknight');

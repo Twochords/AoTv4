@@ -35,7 +35,7 @@ sub EVENT_ITEM {
 		quest::faction( 5001, 10); # Faction: Anti-mage
 		quest::faction( 226, 10); # Faction: Clerics of Tunare
 		quest::faction( 279, 10); # Faction: King Tearis Thex
-		quest::exp(500); 
+		quest::exp(160); 
 		quest::depop();
 	}
 	else {

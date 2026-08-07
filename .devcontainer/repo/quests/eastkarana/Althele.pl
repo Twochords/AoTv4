@@ -61,7 +61,7 @@ sub EVENT_ITEM {
   }
   elsif (plugin::check_handin(\%itemcount, 20452 => 1)) {
     quest::emote("hands the book to Tholris who reads through it with lines of concern etched on his face, then whispers into her ear. 'Dire news, indeed. This cannot be allowed. I must keep this book but you, $name, must not allow Innoruuk to seed the land with his hatred and filth. You have only just begun your quest. The path you are guided upon will be difficult, if not impossible, but someone must finish it. Please, take this, read of it, follow its instructions. Tunare bless your path and Karana watch over you.");
-    quest::exp(100000);
+    quest::exp(940);
     quest::summonitem(18959); # Item: Earth Stained Note
     $depop1 = $entity_list->GetMobByNpcTypeID(15178); #despawn the druids
     $depop2 = $entity_list->GetMobByNpcTypeID(15167);

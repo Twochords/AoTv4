@@ -26,7 +26,7 @@ sub EVENT_ITEM {
     quest::summonitem("16426");
     quest::faction(443, 3); # Faction: Brood of Kotiz
     quest::faction(441, 3); # Faction: Legion of Cabilis
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 }

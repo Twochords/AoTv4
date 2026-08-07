@@ -12,7 +12,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 18243 => 1, 12425 => 1)) { #Legion Order (3 signed), Skipping Stone
     quest::say("So smooth. I shall be the skipping stone champion! Here. You may have my autograph.");
     quest::summonitem(18244); #Legion Order (4 signed)
-    quest::exp(500);
+    quest::exp(160);
     quest::givecash(7,0,0,0);
   }
   elsif (plugin::check_handin(\%itemcount, 18243 => 1)) {

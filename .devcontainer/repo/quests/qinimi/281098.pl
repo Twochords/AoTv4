@@ -62,7 +62,7 @@ if(plugin::check_handin(\%itemcount, 67411 => 1)) { # Narundel's Decision
 
       elsif ($class eq "Wizard"){quest::summonitem(67416);} # Rarundel's Faded Memories
 
-      quest::exp(25000);
+      quest::exp(600);
 
     }
 	

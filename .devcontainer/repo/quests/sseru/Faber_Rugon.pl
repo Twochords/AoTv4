@@ -15,7 +15,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 31967 => 2)) {
     quest::summonitem(29877); # Item: Lightcrawler Vambraces
   quest::say("Oh, this is a fine piece of armor I made for ya!");
-  quest::exp(25000);
+  quest::exp(600);
   }
   plugin::return_items(\%itemcount);
 }

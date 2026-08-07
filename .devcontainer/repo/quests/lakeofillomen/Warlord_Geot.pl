@@ -13,7 +13,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 12914 =>1 )) {
     quest::say("Very good. I cannot see any reason a warrior like you should waste their time on the patrols of a trooper. I shall recommend you for a promotion. I hope the War Baron agrees.");
     quest::ding();
-    quest::exp(2000);
+    quest::exp(260);
     quest::summonitem(18074); # Item: Legionnaire Recommendation
     quest::faction(441,1); # Faction: Legion of Cabilis
     quest::faction(440,1); # Faction: Cabilis Residents
@@ -24,7 +24,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 12408 =>4 )) { 
     quest::say("Bravo!! You have done well. Here is a small reward. The greater reward is service to the empire.");
     quest::ding();
-    quest::exp(3000);
+    quest::exp(300);
     quest::faction(441,1); # Faction: Legion of Cabilis
     quest::faction(440,1); # Faction: Cabilis Residents
     quest::faction(445,1); # Faction: Scaled Mystics

@@ -20,7 +20,7 @@ function event_trade(e)
 		e.other:Faction(279,3,0); -- King Tearis Thex
 		e.other:Faction(246,2,0); -- Faydark's Champions
 		e.other:Faction(239,-3,0); -- The Dead
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

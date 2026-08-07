@@ -19,7 +19,7 @@ sub EVENT_ITEM {
 # 75pp
 if ($platinum == 75) {
   quest::emote("quickly pockets the coins and says, 'Go see the Librarian, Nallar. Tell him Denouncer Ixtaz sent you. Do not return here for at least 3 days, now go, $race.");
-  quest::exp(26555);   # 0.5% @ level 30
+  quest::exp(600);   # 0.5% @ level 30
   }
 # 1890 - Vial of Noble's Blood
 elsif (plugin::check_handin(\%itemcount, 1890 => 1)) {

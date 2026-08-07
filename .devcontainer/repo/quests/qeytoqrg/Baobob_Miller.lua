@@ -49,7 +49,7 @@ function event_trade(e)
 		e.other:Faction(262,1,0); -- Guards of Qeynos
 		e.other:Faction(341,1,0); -- Priests of Life
 		e.other:Faction(280,1,0); -- Priests of Life
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13754, gold == 15})) then
 		e.self:Say("Good work! Now have you the rest of what I require?");
 		e.self:Say("They are exquisite, if I do say so myself. Hope they fit.");
@@ -59,7 +59,7 @@ function event_trade(e)
 		e.other:Faction(262,1,0); -- Guards of Qeynos
 		e.other:Faction(341,1,0); -- Priests of Life
 		e.other:Faction(280,1,0); -- Priests of Life
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13753, gold == 5})) then
 		e.self:Say("Good work! Now have you the rest of what I require?");
 		e.self:Say("I hate working with such low quality hides. They lack the sheen that makes a high quality pelt look so fine! Anyhow, here's your belt.");
@@ -69,7 +69,7 @@ function event_trade(e)
 		e.other:Faction(262,1,0); -- Guards of Qeynos
 		e.other:Faction(341,1,0); -- Priests of Life
 		e.other:Faction(280,1,0); -- Priests of Life
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

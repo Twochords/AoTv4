@@ -19,17 +19,17 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 20933, item2 = 20807, item3 = 20806})) then		--cleric test of courage using ochre tessera, silver hoop, sky emerald
 		e.other:SummonItem(14563); --truewind earring
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Wonderful! Take this as your reward!");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20808, item2 = 20939, item3 = 20809})) then --cleric test of skill using dark wood, gold disc, small shield
 		e.other:SummonItem(27716); --aegis of the wind
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Wonderful! Take this as your reward!");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20946, item2 = 20810, item3 = 20811})) then	--cleric test of protection using adumbrate globe, faintly glowing diamond, shiny pauldrons
 		e.other:SummonItem(27717); --pauldrons of piety
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Wonderful! Take this as your reward!");
 		eq.depop();
 	end

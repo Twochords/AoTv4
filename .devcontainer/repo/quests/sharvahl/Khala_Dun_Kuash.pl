@@ -15,7 +15,7 @@ sub EVENT_ITEM {
   quest::say("Well, you're beginning to scare me you're so tough! Just pullin your tail. Those were some scary beasts, eh? I thought so. I've got a dagger that helps me to deal with them. It's made in a special way to hurt the wolves more than usual. If you want one, you're going to need to make your own. I still got the molds that I used when I was craftin blades for people. If you run this status report to Bookkeeper Leaha in the Grunt Forest outpost for me, I'll go by my house and get the molds for you. Sound like a deal? I thought so.");
   quest::summonitem(6219); # Item: Daily Status Report
   quest::faction( 1513,10 ); # Faction: Guardians of Shar Vahl
-  quest::exp(1000);
+  quest::exp(200);
       }
       
       if (plugin::check_handin(\%itemcount, 6221 =>1 )) {
@@ -23,14 +23,14 @@ sub EVENT_ITEM {
        quest::summonitem(6141); # Item: Blade Mold
        quest::summonitem(6142); # Item: Claw Mold
        quest::summonitem(6148); # Item: Khala Dun Hilt Piece
-       quest::exp(1000);
+       quest::exp(200);
        quest::faction(1513,10); # Faction: Guardians of Shar Vahl
       }
   if (plugin::check_handin(\%itemcount, 5557 =>1,6158 =>1 )) {
     quest::say("You have done well #name.  Wear this cloak with pride and enjoy the benefits of being a Khala Dun Journeyman.");
     quest::summonitem(6222); # Item: Cloak of the Khala Dun Journeyman
     quest::summonitem(6158); # Item: Sonic Wolf Bane Dagger
-    quest::exp(10000);
+    quest::exp(440);
       }
       plugin::return_items(\%itemcount);
 }

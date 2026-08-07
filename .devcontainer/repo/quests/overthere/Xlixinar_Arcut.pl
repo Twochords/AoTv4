@@ -25,19 +25,19 @@ sub EVENT_ITEM {
     quest::say("Well done");
     quest::summonitem(4976); # Item: Trooper Scale Helm
     quest::ding();
-    quest::exp(10000);
+    quest::exp(440);
   }
   if (plugin::check_handin(\%itemcount, 14786 =>1, 3060 =>1 )) {
     quest::say("Well done");
     quest::summonitem(4979); # Item: Trooper Scale Vambraces
     quest::ding();
-    quest::exp(10000);
+    quest::exp(440);
   }
   if (plugin::check_handin(\%itemcount, 14783 =>1, 3056 =>1 )) {
     quest::say("Well done");
     quest::summonitem(4977); # Item: Trooper Scale Breastplate
     quest::ding();
-    quest::exp(10000);
+    quest::exp(440);
   }
   plugin::return_items(\%itemcount);
 }

@@ -28,7 +28,7 @@ sub EVENT_ITEM {
   quest::faction(442,2); # Faction: Crusaders of Greenmist
   quest::faction(444,2); # Faction: Swift Tails
   quest::ding();
-  quest::exp(350);
+  quest::exp(160);
   quest::givecash(12,0,0,0);
  }
  elsif(plugin::check_handin(\%itemcount, 18271 => 1)){ #The Penance quest

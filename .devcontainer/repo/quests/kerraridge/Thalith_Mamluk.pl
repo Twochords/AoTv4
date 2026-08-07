@@ -13,7 +13,7 @@ sub EVENT_ITEM {
     quest::say("You.. You kill the rats? Errr. Thalith thanks you. Here. Take this. It's good luck charm I've had for years.");
     quest::summonitem(1061); # Item: Fishbone Necklace
     quest::faction(382, 2); # Faction: Kerra Isle
-    quest::exp(18000);
+    quest::exp(540);
   }   
 }
 #END of FILE Zone:kerraridge  ID:74089 -- Thalith_Mamluk

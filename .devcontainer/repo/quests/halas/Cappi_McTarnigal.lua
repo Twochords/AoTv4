@@ -14,7 +14,7 @@ function event_trade(e)
 		e.self:Say("You returned? We believed the gnoll pups got you. The caravan has already left, and these do me little good now. But, as I said before, one must remain respectable. Here is what I promised.");
 		e.other:SummonItem(eq.ChooseRandom(5238,5239,5242,5236,5233,5231,5240,5241,5234,5232,5235,5237)); -- Item(s): Black Wolf Armplates (5238), Black Wolf Bracers (5239), Black Wolf Boots (5242), Black Wolf Cape (5236), Black Wolf Collar (5233), Black Wolf Crown (5231), Black Wolf Gloves (5240), Black Wolf Legplates (5241), Black Wolf Mail (5234), Black Wolf Mask (5232), Black Wolf Pauldrons (5235), Black Wolf Waistband (5237)
 		e.other:Faction(305,10,0); 																		-- 305 : Faction Rogue's of the White Rose
-		e.other:AddEXP(2500);
+		e.other:AddEXP(280);
 		e.other:Ding();
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

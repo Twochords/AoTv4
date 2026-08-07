@@ -68,7 +68,7 @@ function event_trade(e)
 			e.other:Faction(262,30,0); -- Guards of Qeynos
 			e.other:Faction(221,-55,0); -- Bloodsabers
 			e.other:Faction(219,30,0); -- Antonius Bayle
-			e.other:AddEXP(1000);
+			e.other:AddEXP(200);
 			e.other:GiveCash(0,0,0,9);
 		end
 	end

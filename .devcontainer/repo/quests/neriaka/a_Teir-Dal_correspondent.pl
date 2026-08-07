@@ -20,6 +20,6 @@ sub EVENT_ITEM {
    quest::emote("opens the bag and carefully removes three rather battered Troll heads.");
    quest::say("A bit beat up, but no true damage. You have done precisely as I have requested. Take this then, and be on your way.");
    quest::summonitem(54023); # Item: Electrum Plated Band
-   quest::exp(1000);
+   quest::exp(200);
  } 
 }

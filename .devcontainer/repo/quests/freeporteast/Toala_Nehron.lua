@@ -34,7 +34,7 @@ function event_trade(e)
 			e.self:Say("Why, that little trollop! What is she up to? Cain will never believe this! She must be in league with some faction of the dark elves, but why? Neither the Academy of Arcane Science nor Cain will believe this note. I will see what I can do. As for you, I command you to kill this Shintl and her dark elf courier Hollish!! Put their heads into this box and combine them. We shall cut the link. Bring me thier heads.");
 			e.other:SummonItem(17971); -- Toala's Box for heads
 			e.other:Ding();
-			e.other:AddEXP(500);
+			e.other:AddEXP(160);
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 12246})) then -- Box with Two Heads
 			e.self:Say("Good work!! We will soon catch Opal. I have started to formulate a plan to stop her. When I complete it, I shall notify you. Here. Take this small reward. I am sure killing Shintl was no trouble. She was just a halfling.");
 			e.other:Ding();
@@ -43,7 +43,7 @@ function event_trade(e)
 			e.other:Faction(281,2,0); -- Knights of Truth
 			e.other:Faction(230,-1,0); -- Corrupt Qeynos Guards
 			e.other:Faction(330,-1,0); -- Freeport Militia
-			e.other:AddEXP(2000);
+			e.other:AddEXP(260);
 			e.other:GiveCash(0,10,2,0);
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 13814})) then -- L.S. Pouch
 			e.self:Say("You found my pouch! Thanks kid. Let me buy you A drink and this is for the good work. Hmmmm. It looks as though they took my voucher. Darn it! Hey... It looks like they were using my bag to hold items they were stealing. Here you go. You can have it. It looks like junk.");
@@ -54,7 +54,7 @@ function event_trade(e)
 			e.other:Faction(328,2,0); -- Merchants of Halas
 			e.other:Faction(311,2,0); -- Steel Warriors
 			e.other:Faction(305,-2,0); -- Rogues of the White Rose
-			e.other:AddEXP(1000);
+			e.other:AddEXP(200);
 			e.other:GiveCash(0,2,0,0);
 		end
 	elseif(fac == 5) then

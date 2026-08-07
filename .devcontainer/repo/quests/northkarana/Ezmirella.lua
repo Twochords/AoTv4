@@ -13,7 +13,7 @@ function event_trade(e)
 		e.self:Say("I have blessed your silver wand.  To complete the enchantment, you must take the wand to Raine Beteria in the Erudin Library.  Tip her 50 golden coins, and she will help you.");
 		e.other:SummonItem(6339); -- Item: Blessed Silver Wand
 		e.other:Ding();
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

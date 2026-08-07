@@ -19,7 +19,7 @@ function event_trade(e)
 		e.other:Faction(330,-15,0); -- Faction: The Freeport Militia
 		e.other:Faction(362,10,0); -- Faction: Priests of Marr
 		e.other:Faction(311,10,0); -- Faction: Steel Warriors
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:GiveCash(9,0,0,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 18804})) then
 		e.self:Say("Thank you, defender of Karana! We have heard rumors of the followers of Bertoxxulous gaining knowledge of our knight who infiltrated the ranks of the [Militia]. They would have tried to sell the information to the Militia. We will inform our knight immediately. As for you, here is a donation to your journey's expenses. Stay clear of the Freeport Militia. There is no doubt they have learned of your alliance with us.");
@@ -30,7 +30,7 @@ function event_trade(e)
 		e.other:Faction(330,-15,0); -- Faction: The Freeport Militia
 		e.other:Faction(362,10,0); -- Faction: Priests of Marr
 		e.other:Faction(311,10,0); -- Faction: Steel Warriors
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:GiveCash(0,0,7,1);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

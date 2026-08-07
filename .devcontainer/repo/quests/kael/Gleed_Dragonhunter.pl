@@ -33,7 +33,7 @@ sub EVENT_ITEM {
     if (plugin::check_handin(\%itemcount, 25137 => 1)) {
       quest::say("My, you do have a hunters spirit! If you could track down Vluudeen and slay him without the aid of my bow, you must be worthy. Take the bow, huntsman. Use it to slay others of Vluudeen's kind.");
       quest::summonitem(25033); # Item: Bow of the Huntsman
-      quest::exp(35000);
+      quest::exp(660);
       quest::faction(419,35); #kromrif
       quest::faction(448,8); #kromzek
       quest::faction(430,-3); #CoV

@@ -38,7 +38,7 @@ sub EVENT_SIGNAL {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 52303 => 1)) { #The Gloomingdeep Jailor's Key
     quest::say("Shhh... Do you hear that commotion? It sounds like a slave revolt has broken out in the mines. That explains why we were left alone here with the jailor. Hurry, let's join the rest of the slaves!");
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 }

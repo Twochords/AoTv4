@@ -17,13 +17,13 @@ sub EVENT_ITEM {
     quest::say("Ahh, you have done well young one. Now it is time for you to create claws of your own, and those handwraps are the base. You will need a few things to complete them, however. Combine those handwraps in your stitching pack along with two sharp claws from the young rockhoppers in the pit around our city, as well as some forged fasteners.");
     quest::say("Im afraid I am unsure where you can find the fasteners, though you might ask Kagazz about them. You can find him over near the forges. Return and hand me both claws, and your cloak as proof of your deeds.");
     quest::say("Oh, and dont worry about destroying your handwraps. They are well made and though you may not be successful in making your claws, they will last. Now you best move along and get started, as we still have much to do!");
-    quest::exp(300);
+    quest::exp(140);
   }
   elsif (plugin::check_handin(\%itemcount, 3673 => 1, 3674 => 1, 2878 => 1)) { #Primary Khati Sha Recruit Claw, Secondary Khati Sha Recruit Claw, Initiate's Cloak of Shar Vahl
     quest::say("I am greatly impressed with your work here. Very few recruits can make such claws, let alone master the technique. It is with great pleasure I present you a new cloak and welcome you as a full Recruit!");
     quest::shout("Attention everyone! It is with great pride and pleasure that I welcome $name to the ranks of the Khati Sha Recruits! $name has done our great city proud, and will continue to do great things!");
     quest::say("Now that you are a full recruit, it is time for you to move on with your training. Take my seal and seek out Mahron. He is a well traveled animist and can teach you many things. He is usually over near the bank. Be safe and well done, young one!");
-    quest::exp(500);
+    quest::exp(160);
     quest::summonitem(3673); #Primary Khati Sha Recruit Claw
     quest::summonitem(3674); #Secondary Khati Sha Recruit Claw
     quest::summonitem(3675); #Cloak of the Khati Sha Recruit

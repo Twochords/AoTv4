@@ -26,7 +26,7 @@ function event_trade(e)
 		e.other:Faction(262,10,0); -- guards of qeynos
 		e.other:Faction(341,10,0); -- priests of life
 		e.other:Faction(280,10,0); -- knights of thunder
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

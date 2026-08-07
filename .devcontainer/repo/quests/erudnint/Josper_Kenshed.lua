@@ -23,7 +23,7 @@ function event_trade(e)
 		e.other:Faction(266,1,0); --faction with High Council of Erudin increased
 		e.other:Faction(265,-2,0); --faction with Heretics decreased
 		e.other:Faction(267,2,0); --faction with High Guards of Erudin increased
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:GiveCash(0,7,0,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 12207})) then -- Ilanic's Scroll
 		e.self:Say("I see you found Ilanic. How is he doing? I hope he is well. As for you, you may have the spell Ice Capa... err, I mean Column of Frost. Don't go and lose it now.");
@@ -33,7 +33,7 @@ function event_trade(e)
 		e.other:Faction(266,1,0); --faction with High Council of Erudin increased
 		e.other:Faction(265,-1,0); --faction with Heretics decreased
 		e.other:Faction(267,11,0); --faction with High Guards of Erudin increased
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:GiveCash(0,7,0,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

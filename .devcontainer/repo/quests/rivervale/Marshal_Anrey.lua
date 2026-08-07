@@ -22,7 +22,7 @@ function event_trade(e)
 		e.self:Say("Good work, "..e.other:GetName()..". You passed the first test. If you think you are one of us, return this cap to me along with a dagger from a Dark Elf for your true reward.");
 		e.other:SummonItem(13941); -- Leatherfoot Skullcap
 		e.other:Ding();
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:GiveCash(8,1,0,0);
 		e.other:Faction(263,25,0); -- Faction: Guardians of the Vale
 		e.other:Faction(286,3,0); -- Faction: Mayor Gubbin
@@ -33,7 +33,7 @@ function event_trade(e)
 		e.self:Say("Wonderful, "..e.other:GetName()..". You have proven yourself to the Leatherfoot Squad. Take this and wear it with honor.");
 		e.other:SummonItem(12259); -- Leatherfoot Raider Skullcap
 		e.other:Ding();
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 		e.other:GiveCash(7,3,2,1);
 		e.other:Faction(263,50,0); -- Faction: Guardians of the Vale
 		e.other:Faction(286,7,0); -- Faction: Mayor Gubbin

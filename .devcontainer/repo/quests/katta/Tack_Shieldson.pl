@@ -27,7 +27,7 @@ sub EVENT_SIGNAL {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 19188 => 1)) {
     quest::emote("gingerly takes the boot from you, handling it as though it were a fine porcelain. With a look of thanks to you he slowly lifts it to his lips and suddenly tips it back to empty it in one gulp, frothing his beard in the process. 'Yar! That's the ticket! Damn fine stuff that is, just like me uncle always said. A service to the Validus Custodus have ye done, my friend... And I'd be happy to assist ye in that service again sometime. HAR!'");
-    quest::exp(10000);
+    quest::exp(440);
     quest::faction(1503,10); #validus custodus
     quest::faction(1502,10); #katta castellum citizens
     quest::faction(1504,10); #magus conlegium

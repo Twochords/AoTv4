@@ -15,7 +15,7 @@ sub EVENT_ITEM {
     quest::faction(1510, 40); #House of Fordel
     quest::faction(1511, 40); #House of Midst
     quest::faction(1512, 40); #House of Stout
-    quest::exp(1000);#This quest is doable at level 1, I didn't feel comfortable giving out more xp than this per step
+    quest::exp(200);#This quest is doable at level 1, I didn't feel comfortable giving out more xp than this per step
   }
   plugin::return_items(\%itemcount);
 }

@@ -17,7 +17,7 @@ function event_trade(e)
 		e.other:Faction(230,-10,0); -- Faction: Corrupt Qeynos Guards
 		e.other:Faction(330,-10,0); -- Faction: The Freeport Militia
 		e.other:Faction(281,10,0); -- Faction: Knights of Truth
-		e.other:AddEXP(2000);
+		e.other:AddEXP(260);
 		eq.unique_spawn(15193,135,0,-5521,-1870,3,452); -- NPC: #Guard_Elias
 		e.other:GiveCash(0,0,0,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 18934})) then -- sealed letter', filename='LoveToMilea'
@@ -29,7 +29,7 @@ function event_trade(e)
 		e.other:Faction(230,-10,0); -- Faction: Corrupt Qeynos Guards
 		e.other:Faction(330,-10,0); -- Faction: The Freeport Militia
 		e.other:Faction(281,10,0); -- Faction: Knights of Truth
-		e.other:AddEXP(2000);
+		e.other:AddEXP(260);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

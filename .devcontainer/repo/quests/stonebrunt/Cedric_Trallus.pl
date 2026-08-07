@@ -44,7 +44,7 @@ sub EVENT_ITEM {
       quest::summonitem(quest::ChooseRandom(59019,59006)); # Item(s): Spell: Auspice (59019), Spell: Blood of Pain (59006)
     } 
     quest::me("As you take the scroll from him you notice a sickly burning odor in the air. You glance down at Cedric's robes and notice several holes beginning to form where the blood touches his [robes].");
-    quest::exp(300);
+    quest::exp(140);
   }
   elsif(plugin::check_handin(\%itemcount, 59050 => 1, 59036 => 1, 59051 => 1) && (defined($qglobals{luggald}) && ($qglobals{luggald} == 1))) { #Luggald bile, Luggald Blood, Luggald saliva
     quest::emote("takes the vials and holds them out in front of him. He begins to recite an incantation and the vials rise and float in the air in front of him. He continues to chant as each of the vials begins to glow and then grow dim in turn. Cedric picks up a large potion bottle and places a rolled piece of parchment inside. He then holds it before him causing it to float in the air as well. Each of the first three vials floats over the potion bottle and a distinct amount of each liquid is poured in, causing it to bubble and shake. Cedric reaches out before him and takes the bottle from the air and hands it to you.");

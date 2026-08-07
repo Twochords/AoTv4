@@ -43,7 +43,7 @@ sub EVENT_ITEM {
     quest::say("Yes! Yes! This is the greenest of gems!");
     quest::summonitem("12946");
     quest::say("Worth more to you crushed, that is! Find a spectral pestle, and crush it to dust!");
-    quest::exp("3000");
+    quest::exp("300");
     quest::settimer("cutting",4);
   }
   plugin::return_items(\%itemcount);

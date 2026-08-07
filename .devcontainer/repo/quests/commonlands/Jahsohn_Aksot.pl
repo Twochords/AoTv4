@@ -33,7 +33,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 28035 => 1)) {
     quest::say("What is this? I cannot believe you found it! Where did you get this?");
-    quest::exp(50);
+    quest::exp(80);
   }
   if (plugin::check_handin(\%itemcount, 28000 => 1, 28001 => 1, 28002 => 1)) {
     quest::say("Rykas may have been right about you, $name. Now, go find Walnan. Walnan was apprenticed to a very powerful Mage. After her apprenticeship was complete, she wished to begin teaching other beings of Norrath. Even those who knew nothing of the art! I do not believe she was successful, though. Seek her out to further your tale. Good luck in your journeys, $name!");

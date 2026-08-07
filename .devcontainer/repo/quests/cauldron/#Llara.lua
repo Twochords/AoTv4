@@ -29,7 +29,7 @@ function event_trade(e)
 	if(item_lib.check_turn_in(e.trade, {item1 = 2414})) then
 		e.self:Say("Oh my, this belongs to Amstaf! Where did you get it?");
 		e.other:Ding();
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		eq.set_global("Llara","ghoul",0,"D30");
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

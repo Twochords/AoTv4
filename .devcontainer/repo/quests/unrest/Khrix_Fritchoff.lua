@@ -14,7 +14,7 @@ function event_trade(e)
 		e.other:Faction(255,-1); -- Faction: Gem Choppers
 		e.other:Faction(240,-1); -- Faction: Deepmuses
 		eq.unique_spawn(63111,0,0,60,622,20,0); -- spawns Khrixs Abomination
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

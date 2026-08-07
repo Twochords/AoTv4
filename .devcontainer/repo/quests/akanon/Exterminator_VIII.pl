@@ -15,7 +15,7 @@ sub EVENT_ITEM {
     quest::faction(255,10); # +Gem Choppers
     quest::faction(238,-10); # -Dark Reflection
     quest::faction(287,-10); # -Meldrath
-    quest::exp(5);
+    quest::exp(40);
     quest::givecash(1,1,1,0);
   }
   plugin::return_items(\%itemcount);

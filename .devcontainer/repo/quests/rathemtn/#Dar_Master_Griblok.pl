@@ -59,7 +59,7 @@ sub EVENT_ITEM {
 if (plugin::check_handin(\%itemcount, 63088 =>1, 51038 =>1, 51019=>1  )) {
   quest::say("Congratulations $name.  You have done a great service.  Here is your reward");
   quest::summonitem(63063); # Item: Swampblade of the Dar
-  quest::exp(1000);
+  quest::exp(200);
 }
 plugin::return_items(\%itemcount);
 plugin::try_tome_handins(\%itemcount, $class, 'Warrior');

@@ -21,7 +21,7 @@ function event_trade(e)
 		e.self:Say("Ssssss. I thought I would never see these. I never thought the symbol of our people would be made whole again. I feel no rest for my sssoul though. My torment still flows as freely as when my peoples first suffered fiery death. I need this not. It is useless to me. Here, you take it. Maybe you can find some good to do with it.");
 		e.other:SummonItem(19953); -- Item: Medallion of the Obulus
 		e.other:Ding();
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

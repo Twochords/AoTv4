@@ -17,7 +17,7 @@ function event_trade(e)
 		e.other:Faction(222,5,0); -- Faction: Broken Skull Clan
 		e.other:Faction(308,-5,0); -- Faction: Shadowknights of Night Keep
 		e.other:Faction(235,-5,0); -- Faction: DaBashers
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

@@ -27,22 +27,22 @@ sub EVENT_SAY {
   if (plugin::check_handin(\%itemcount, 14813 =>1,3064 =>1 )) {
     quest::summonitem(4983); # Item: Trooper Scale Boots
     quest::ding();
-    quest::exp(10000);
+    quest::exp(440);
   }  
   if (plugin::check_handin(\%itemcount, 14808 =>1, 3061 =>1  )) {
     quest::summonitem(4980); # Item: Trooper Scale Bracers
     quest::ding();
-    quest::exp(10000);
+    quest::exp(440);
   }
   if (plugin::check_handin(\%itemcount, 14831 =>1, 3063 =>1 )) {
     quest::summonitem(4982); # Item: Trooper Scale Greaves
     quest::ding();
-    quest::exp(10000);
+    quest::exp(440);
    }
    if (plugin::check_handin(\%itemcount, 14809 =>1,3062 =>1)) {
      quest::summonitem(4981); # Item: Trooper Scale Gauntlets
      quest::ding();
-     quest::exp(10000);
+     quest::exp(440);
    }
   
   plugin::return_items(\%itemcount);

@@ -50,12 +50,12 @@ function event_trade(e)
 		e.other:Faction(245,-3,0); 	-- eldritch collective
 		e.other:Faction(255,-3,0); 	-- gem choppers
 		e.other:Faction(429,-3,0); 	-- king ak'anon
-		e.other:AddEXP(150);
+		e.other:AddEXP(120);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 10266})) then
 		e.self:Say("Ahhh good good. Thse will be put to fine use creating more disease to spread through the rodents. you have done excellent work in helping to spread the work of the Plague Bringer. Take this Symbol of Initiation as your reward.");
 		e.other:SummonItem(1390); 	-- Initiate symbol of Bertoxxulous
 		e.other:Ding();
-		e.other:AddEXP(200);
+		e.other:AddEXP(120);
 		e.other:Faction(245,-3,0); 	-- eldritch collective
 		e.other:Faction(255,-3,0); 	-- gem choppers
 		e.other:Faction(333,-3,0); 	-- king ak'anon

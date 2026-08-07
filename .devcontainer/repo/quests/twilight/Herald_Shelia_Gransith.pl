@@ -40,7 +40,7 @@ sub EVENT_ITEM {
     quest::summonitem(3909); #boots
     quest::emote("sings loudly as she hands you your reward");
     quest::say("here, you have earned this");
-    quest::exp(50000);
+    quest::exp(740);
   }
   elsif (plugin::check_handin(\%itemcount, 5346 => 1, 5345 => 1, 4491 => 1)) {
     quest::summonitem(3908); #bracer

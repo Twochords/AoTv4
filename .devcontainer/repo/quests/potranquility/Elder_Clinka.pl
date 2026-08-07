@@ -19,7 +19,7 @@ sub EVENT_ITEM {
 	quest::say("This device is called the Binden Concerrentia. Its true power will be revealed to you soon. This document describes it as a device that is meant to convert the energy that can be found in true prime elemental matter, into an entirely new form of energy. The schematic states that this energy will 'bind you in the now'. I am not sure what that means, but I believe that you will soon find out.");
 	quest::say("Take care of it and keep it with you at all times. I feel that your journey from this point will only become more dangerous. Perhaps this device will play a role in all of that. Move forward along the path of enlightenment. May the Balance guide your fate.");
    quest::summonitem(28296); # Item: The Binden Concerrentia
-   quest::exp(300000);
+   quest::exp(1340);
  }
 }
 

@@ -14,7 +14,7 @@ sub EVENT_ITEM {
     quest::say("Mmmph!!.. *Pop!!* Ouch, my thumb!! Here you are. You had a gem inside.");
     quest::ding();
     quest::summonitem(12349); # Item: Sparkling Sapphire
-    quest::exp(15000);
+    quest::exp(500);
   }
    quest::say("I need at least two of the case keys and the gem case.");
    plugin::return_items(\%itemcount);

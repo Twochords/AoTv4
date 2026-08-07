@@ -38,7 +38,7 @@ the honor that you deserve.");
   quest::faction(1484,-10); # -Hand of Seru
   quest::faction(1485,-10); # -Eye of Seru
   quest::faction(1541,-10); # -Hand Legionnaries
-  quest::exp(500);
+  quest::exp(160);
  }
   plugin::try_tome_handins(\%itemcount, $class, 'Warrior');
   plugin::return_items(\%itemcount);

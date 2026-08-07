@@ -16,7 +16,7 @@ function event_trade(e)
 		e.self:Say("A note from Chef Chowderly, eh? I haven't heard from him in some time. Hope he is doing well.' Rellix reads the note. 'I do happen to have some spare dishes. Here, take them.");
 		e.other:SummonItem(55524); -- Case of Dishes
 		e.other:Ding();
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

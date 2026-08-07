@@ -45,7 +45,7 @@ function event_trade(e)
 		e.other:Faction(304,-10,0); -- Faction: Ring of Scale
 		e.other:Faction(273,-10,0); -- Faction: Kane Bayle
 		e.other:Faction(291,10,0); -- Faction: Merchants of Qeynos
-		e.other:AddEXP(2000);
+		e.other:AddEXP(260);
 		eq.delete_global("invest_badge");
 		eq.depop_with_timer();
 	end

@@ -19,7 +19,7 @@ function event_trade(e)
 		e.other:Faction(230,10,0); -- Faction: Corrupt Qeynos Guards
 		e.other:Faction(262,-10,0); -- Faction: Guards of Qeynos
 		e.other:Faction(273,10,0); -- Faction: Kane Bayle
-		e.other:AddEXP(200);
+		e.other:AddEXP(120);
 	elseif(item_lib.check_turn_in(e.trade, {gold = 3})) then
 		e.self:Say("Thank you, kind master. I don't wish to trouble you further but I do have another [favor] to ask..");
 		e.other:Ding();
@@ -28,7 +28,7 @@ function event_trade(e)
 		e.other:Faction(230,10,0); -- Faction: Corrupt Qeynos Guards
 		e.other:Faction(262,-10,0); -- Faction: Guards of Qeynos
 		e.other:Faction(273,10,0); -- Faction: Kane Bayle
-		e.other:AddEXP(200);
+		e.other:AddEXP(120);
 	end
 	
 	item_lib.return_items(e.self, e.other, e.trade)

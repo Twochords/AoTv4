@@ -51,7 +51,7 @@ function event_trade(e)
 		e.other:Faction(311,1,0); -- Faction: Steel Warriors
 		e.other:Faction(230,-5,0); -- Faction: Corrupt Qeynos Guards
 		e.other:Faction(330,-5,0); -- Faction: The Freeport Militia
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:GiveCash(0,3,0,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13424, item2 =13424, item3 = 13424,item4 = 13424})) then
 		e.self:Say("Incredible!! Such grand tones. It shall make a fine rug. You have shown me that you cannot always judge a book by its cover. You are quite skilled. Would you like to perform a [dangerous task] for me?");
@@ -62,7 +62,7 @@ function event_trade(e)
 		e.other:Faction(311,1,0); -- Faction: Steel Warriors
 		e.other:Faction(230,-5,0); -- Faction: Corrupt Qeynos Guards
 		e.other:Faction(330,-5,0); -- Faction: The Freeport Militia
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:GiveCash(0,4,0,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

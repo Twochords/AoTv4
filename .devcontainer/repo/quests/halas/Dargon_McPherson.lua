@@ -23,7 +23,7 @@ function event_trade(e)
 	if(item_lib.check_turn_in(e.trade, {item1 = 13245})) then
 		e.self:Say("Ye've proven yerself to be a cut above the rest and aided yer fellow warriors, no matter how worthless they were. Ye may take this. It was found in the snow by one of our foraging parties. I hope it can be of use to a warrior like yerself.");
 		e.other:Ding();
-		e.other:AddEXP(125);
+		e.other:AddEXP(100);
 		e.other:GiveCash(3,0,0,0);
 		e.other:SummonItem(eq.ChooseRandom(2012,17001,10004,10017,1038,10016,13877,2135,7007,8008,10009,13007,5014,13003)); -- random low level items
 		e.other:Faction(328,10); -- 328 : Faction Merchant's of Halas

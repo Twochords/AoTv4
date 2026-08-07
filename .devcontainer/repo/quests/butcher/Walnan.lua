@@ -28,7 +28,7 @@ function event_trade(e)
 		e.self:Say("The arcane art of Summoning is derived from the power of the elements which surround us. Continue your journey across the Ocean of Tears. In a dark fortress, you should find Akksstaf lurking about. Be wary, but tell him that you seek Magi'kot. Hurry now " .. e.other:GetName() .. ", you do not wish to miss the ship!");
 		e.other:Ding();
 		e.other:SummonItem(28031); -- Item: Power of the Elements
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

@@ -42,7 +42,7 @@ sub EVENT_ITEM
 		if (defined{pop_pot_tt_hedge_bypass} && $qglobals{pop_pot_tt_hedge_bypass} == 1) {
 			quest::say("Perfect I can clean this dagger up and return it to Veriok. You were a great help to me. I'll be sure to report that to Veriok when I get back.");
 			quest::setglobal("pop_pot_tt_hedge_bypass",2,5,"F");#Second, final stage complete.  TT and Hedge will be bypassed when you hail Veriok Dreik in potranquility again.
-			quest::exp(10000);
+			quest::exp(440);
 		}
 	}
 	plugin::return_items(\%itemcount); #return items if not the ones required

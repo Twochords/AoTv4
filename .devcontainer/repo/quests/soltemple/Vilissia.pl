@@ -29,21 +29,21 @@ sub EVENT_ITEM {
     quest::summonitem(2366); # Item: Acumen Mask
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({2332 => 1, 10553 => 1, 10554 => 1, 10555 => 1})) { # Items: Lizardscale Cloak, Rune of Scale, Rune of Scale, Rune of Scale
     quest::say("Well done $name. You truly are a powerful wizard. I have crafted your cloak. Take it.");
     quest::summonitem(2364); # Item: Runescale Cloak
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({10035 => 2, 10000 => 1})) { # Items: Ruby x 2, Lambent Stone
     quest::say("Okay, here is your Lambent Ruby.");
     quest::summonitem(10118); # Item: Lambent Ruby
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({16507 => 1})) { # Item: Enchanted Platinum Bar
     quest::say("I see that Gavel has sent you to me. Very well, I have vulcanized your platinum bar - take it.");

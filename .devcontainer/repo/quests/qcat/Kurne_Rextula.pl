@@ -56,7 +56,7 @@ sub EVENT_ITEM {
 		quest::faction(341, -1);			#:: - Priests of Life
 		quest::faction(230, 1);				#:: + Corrupt Qeynos Guards
 		#:: Grant a moderate amount of experience
-		quest::exp(1000);
+		quest::exp(200);
 		#:: Create a hash for storing cash - 20 to 40cp
 		my %cash = plugin::RandomCash(20,40);
 		#:: Grant a random cash reward
@@ -78,7 +78,7 @@ sub EVENT_ITEM {
 			quest::faction(341, -2);		#:: - Priests of Life
 			quest::faction(230, 1);			#:: + Corrupt Qeynos Guards
 			#:: Grant a small amount of experience
-			quest::exp(125);
+			quest::exp(100);
 			#:: Create a hash for storing cash - 50 to 70cp
 			my %cash = plugin::RandomCash(50,70);
 			#:: Grant a random cash reward

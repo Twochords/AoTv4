@@ -22,17 +22,17 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 20934, item2 = 20850, item3 = 20849})) then 	--ranger test of body using auburn tessera, griffon talon, ysgaril root
 		e.other:SummonItem(2715); 	--griffon talon
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Good work, ranger.");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20853, item2 = 20852, item3 = 20851})) then --ranger test of defense using fine velvet cloak, harpy tongue, mithril disc
 		e.other:SummonItem(27731); 	--dark cloak of the sky
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Good work, ranger.");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20854, item2 = 20948, item3 = 20855})) then --ranger test of the element of earth using dragon-hide mantle, gridelin globe, spiroc earth totem
 		e.other:SummonItem(2714); 	--earthshaker's mantle
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Good work, ranger.");
 		eq.depop();
 	end

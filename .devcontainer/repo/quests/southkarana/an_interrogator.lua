@@ -8,7 +8,7 @@ function event_trade(e)
 
 	if(item_lib.check_turn_in(e.trade, {item1 = 18292 })) then -- Interrogator's Briefing
 		e.self:Say("I see you wish to become an interrogator. This is not a duty for the weak of heart you know. This job sometimes requires...");
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		eq.set_timer("brief",10000);
 		e.other:SummonItem(2344); -- confession document
 		name = e.other:GetName();
@@ -17,7 +17,7 @@ function event_trade(e)
 		e.self:Say("Excellent work, you did just fine today. You'll make a fine interrogator. Talk to Vegalys about advancing further.");
 		e.other:SummonItem(2387); -- Interrogator's Badge
 		e.other:Ding();
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

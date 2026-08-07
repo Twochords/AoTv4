@@ -19,7 +19,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 21964 => 1, 21962 => 1, 21968 => 1  )) { #High elf, Erudite, and Human meat(Used human parts instead)
     quest::say("MmmmMmm. Human make good meat pies. Here. A little coins for you.");
     quest::ding();
-    quest::exp(1000);
+    quest::exp(200);
     quest::faction(228,10); #Clurg
     quest::faction(232,10); #Craknek Warriors
     quest::faction(261,10); #Green Blood Knights

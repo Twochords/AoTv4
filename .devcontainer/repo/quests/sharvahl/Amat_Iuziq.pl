@@ -14,7 +14,7 @@ if (plugin::check_handin(\%itemcount, 5544 =>1, 6268 =>1 )) {
   quest::say("Well done #name!  You have proven your worth and can now be considered a Dar Khura Journeyman!");
   quest::summonitem(6268); # Item: Sonic Wolf Bane Spear
   quest::summonitem(6267); # Item: Cloak of the Dar Khura Journeyman
-  quest::exp(10000);
+  quest::exp(440);
 }
   plugin::return_items(\%itemcount);
 }

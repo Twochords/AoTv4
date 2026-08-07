@@ -32,7 +32,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 4736 => 1, 4735 => 1, 4738 => 1, 4490 => 1)) { #belt
     quest::summonitem(3721); # Item: Belt of Detonation
     quest::say("Ah! Now I can return to my studies!"); #made up
-    quest::exp(75000);
+    quest::exp(860);
   }
   elsif (plugin::check_handin(\%itemcount, 4374 => 1, 4489 => 1, 4737 => 1)) { #choker
     quest::summonitem(3720); # Item: Choker of Detonation

@@ -17,7 +17,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 18464 => 1, 22919 => 1)){
     quest::emote("smiles at your dedication to Cazic Thule and hands you a small gem.");
     quest::summonitem(7881); # Item: Mark of Clarity
-    quest::exp(20000);
+    quest::exp(560);
     quest::ding();
     quest::faction(444,20); # Faction: Swift Tails
     quest::faction(441,10); # Faction: Legion of Cabilis
@@ -25,7 +25,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 18463 => 1, 22918 => 1)){
     quest::emote("smiles at your dedication to Cazic Thule and hands you a small gem.");
     quest::summonitem(7881); # Item: Mark of Clarity
-    quest::exp(20000);
+    quest::exp(560);
     quest::ding();
     quest::faction(444,20); # Faction: Swift Tails
     quest::faction(441,10); # Faction: Legion of Cabilis
@@ -41,7 +41,7 @@ sub EVENT_ITEM {
     quest::faction(444,2); # Faction: Swift Tails
     quest::faction(442,2); # Faction: Crusaders of Greenmist
     quest::ding();
-    quest::exp(800);
+    quest::exp(200);
   }
   if (plugin::check_handin(\%itemcount, 18073 => 1, 18072 => 1, 18074 => 1, 5134 => 1)) {
    quest::emote("takes away your pike and hands you plans not for a pike head, but for the crown of another polearm.");
@@ -53,7 +53,7 @@ sub EVENT_ITEM {
    quest::faction( 444,2); # Faction: Swift Tails
    quest::faction( 442,2); # Faction: Crusaders of Greenmist
    quest::ding();
-   quest::exp(4000);
+   quest::exp(320);
   }
   #do all other handins first with plugin, then let it do disciplines
   plugin::try_tome_handins(\%itemcount, $class, 'Warrior');

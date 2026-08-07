@@ -33,7 +33,7 @@ sub EVENT_ITEM {
   elsif (plugin::check_handin(\%itemcount, 1419 => 1)) {
     quest::say("Well don, outlander! We'll make a chef of you before we're through. Next you'll need to whip up some Frost Bunny stew fer Missus Coldheart. Again, give her this napkin with her meal an' lemme know when she's been served.");
     quest::summonitem(1416); # Item: Trita's Napkin
-    quest::exp(100000);
+    quest::exp(940);
     quest::faction(406,10); #coldain
     quest::faction(405,10); #dain
     quest::faction(419,-30); #krif
@@ -42,7 +42,7 @@ sub EVENT_ITEM {
   elsif (plugin::check_handin(\%itemcount, 1423 => 1)) {
     quest::say("Now yer cookin! Letsee here... Guard Leif, check... Trita Coldheart, check... Ahh yes, next we need an Ulthork meat pie fer Brita. She's a doll, smart too, but she can be testy when she's hungry so get movin'!");
     quest::summonitem(1417); # Item: Brita's Napkin
-    quest::exp(150000);
+    quest::exp(1080);
     quest::faction(406,10); #coldain
     quest::faction(405,10); #dain
     quest::faction(419,-30); #krif
@@ -51,7 +51,7 @@ sub EVENT_ITEM {
   elsif (plugin::check_handin(\%itemcount, 1424 => 1)) {
     quest::say("More dirty dishes, eh? Well outlander, only one more meal to serve and I'll be done with ye. Make a snow griffin souffle fer the Grand Historian himself. It's his favorite.");
     quest::summonitem(1418); # Item: Thoridain's Napkin
-    quest::exp(200000);
+    quest::exp(1180);
     quest::faction(406,10); #coldain
     quest::faction(405,10); #dain
     quest::faction(419,-30); #krif

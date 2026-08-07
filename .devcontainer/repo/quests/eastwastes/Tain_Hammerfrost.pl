@@ -66,7 +66,7 @@ sub EVENT_ITEM {
     quest::faction(405, 30); # Faction: Dain Frostreaver IV
     quest::faction(419, -30); # Faction: Kromrif
     quest::faction(448, -30); # Faction: Kromzek
-    quest::exp(80000);
+    quest::exp(880);
   }
 }
 

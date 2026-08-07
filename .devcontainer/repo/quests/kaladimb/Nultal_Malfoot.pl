@@ -22,7 +22,7 @@ sub EVENT_ITEM {
     quest::faction(227,5); #Clerics of Underfoot
     quest::faction(274,5); #Kazon Stormhammer
     quest::faction(293,5); #Miners Guild 249
-    quest::exp(2000);
+    quest::exp(260);
     quest::givecash(0,5,0,0); #Silver x 5
   }
   plugin::return_items(\%itemcount);

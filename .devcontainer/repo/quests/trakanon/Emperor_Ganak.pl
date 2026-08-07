@@ -27,7 +27,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 19951 => 1, 19952 => 1)) {
     quest::say("You have returned to me two medallions of my people. In return, I give you this key to enter the ruins of Sebilis. Be wary though, for Trakanon, Scourge of the Sibilisian empire resides within. ");
     quest::summonitem(20883); # Item: Trakanon Idol
-    quest::exp(10000);
+    quest::exp(440);
     quest::set_zone_flag(89);
   }
   if (plugin::check_handin(\%itemcount, 7276 => 1, 19953 => 1, 19954 => 1, 19955 => 1)) {

@@ -34,7 +34,7 @@ function event_trade(e)
 			e.other:Faction(291,1,0); -- Faction: Merchants of Qeynos
 			e.other:Faction(230,-1,0); -- Faction: Corrupt Qeynos Guards
 			e.other:Faction(223,-1,0); -- Faction: Circle of Unseen Hands
-			e.other:AddEXP(75);
+			e.other:AddEXP(100);
 			muffin = muffin - 1;
 		until muffin == 0
 	end

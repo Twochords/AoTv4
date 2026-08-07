@@ -25,7 +25,7 @@ sub EVENT_ITEM {
  if(plugin::check_handin(\%itemcount, 12427 => 1)){
   quest::say("You have succeeded, young $name! You have proven yourself a skilled monk. You will now wear the shackle of clay. You will now be required to increase your intensity of training in hopes that you may soon be able to earn your [shackle of stone].");
   quest::summonitem(4191); # Item: Shackle of Clay
-  quest::exp(5000);
+  quest::exp(360);
   quest::ding();
   quest::faction(444,10); # Faction: Swift Tails
   quest::faction(441,2); # Faction: Legion of Cabilis
@@ -34,7 +34,7 @@ sub EVENT_ITEM {
  elsif(plugin::check_handin(\%itemcount, 4190 => 1, 4191 => 1, 12428 => 2)){
   quest::say("You have done supremely, $name. You have earned your shackle of stone. Mistress Niska will now help you on your way to earning the shackle of rock. May the elements guide you to the next rung.");
   quest::summonitem(4192); # Item: Shackle of Stone
-  quest::exp(10000);
+  quest::exp(440);
   quest::ding();
   quest::faction(444,10); # Faction: Swift Tails
   quest::faction(441,2); # Faction: Legion of Cabilis
@@ -43,7 +43,7 @@ sub EVENT_ITEM {
  elsif(plugin::check_handin(\%itemcount, 18469 => 1, 12822 => 1)){
   quest::emote("smiles at your dedication to Cazic Thule and hands you a small gem.");
   quest::summonitem(7881); # Item: Mark of Clarity
-  quest::exp(20000);
+  quest::exp(560);
   quest::ding();
   quest::faction(444,20); # Faction: Swift Tails
   quest::faction(441,10); # Faction: Legion of Cabilis
@@ -51,7 +51,7 @@ sub EVENT_ITEM {
  elsif(plugin::check_handin(\%itemcount, 18470 => 1, 22924 => 1)){
   quest::emote("smiles at your dedication to Cazic Thule and hands you a small gem.");
   quest::summonitem(7881); # Item: Mark of Clarity
-  quest::exp(20000);
+  quest::exp(560);
   quest::ding();
   quest::faction(444,20); # Faction: Swift Tails
   quest::faction(441,10); # Faction: Legion of Cabilis
@@ -59,7 +59,7 @@ sub EVENT_ITEM {
  elsif(plugin::check_handin(\%itemcount, 18232 => 1, 18233 => 1)){
   quest::say("This is all that was ever found of Gandan Tailfist. I wish you luck in your quest. May you fare better than he did."); #Unable to find the true text; made this up
   quest::summonitem(12429); # Item: Ancient Thin Flute
-  quest::exp(5000);
+  quest::exp(360);
   quest::ding();
   quest::faction(444,20); # Faction: Swift Tails
   quest::faction(441,10); # Faction: Legion of Cabilis

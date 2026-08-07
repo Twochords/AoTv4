@@ -44,7 +44,7 @@ sub EVENT_ITEM {
     elsif (($class eq "Cleric") || ($class eq "Druid")){
     	quest::summonitem(59012); # Item: Spell: Pureblood
     }
-    quest::exp(1750000);#1% of level 51 xp
+    quest::exp(2420);#1% of level 51 xp
   }
   plugin::return_items(\%itemcount);
 }#Done

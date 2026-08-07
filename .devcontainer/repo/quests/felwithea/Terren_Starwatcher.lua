@@ -45,7 +45,7 @@ function event_trade(e)
 		e.other:Faction(226,10,0); -- Faction: Clerics of Tunare
 		e.other:Faction(279,10,0); -- Faction: King Tearis Thex
 		e.other:Faction(5001,10,0); -- Faction: Anti-mage
-		e.other:AddEXP(36450);
+		e.other:AddEXP(680);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20300,item2 = 20271,item3 = 20274})) then
 		e.self:Say("Terren Starwatcher fashions a grip out of the pristine forest drakeling scales, fastens the arborean amber to the pommel, and polishes the head of the morning star with a luminescent substance. 'I grant you a Sylvan Initiate Morning Star. May it serve you well in your service to The All Mother.");
 		e.other:SummonItem(20330); -- Item: Sylvan Initiate Morningstar
@@ -53,7 +53,7 @@ function event_trade(e)
 		e.other:Faction(226,10,0); -- Faction: Clerics of Tunare
 		e.other:Faction(279,10,0); -- Faction: King Tearis Thex
 		e.other:Faction(5001,10,0); -- Faction: Anti-mage
-		e.other:AddEXP(36450);
+		e.other:AddEXP(680);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

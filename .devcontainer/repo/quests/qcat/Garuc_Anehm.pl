@@ -40,7 +40,7 @@ sub EVENT_ITEM {
 			quest::faction(341, -2);		#:: - Priests of Life
 			quest::faction(230, 1);			#:: + Corrupt Qeynos Guards
 			#:: Grant a small amount of experience
-			quest::exp(500);
+			quest::exp(160);
 		}
 		else {
 			#:: There is some evidence that nothing is said.
@@ -64,7 +64,7 @@ sub EVENT_ITEM {
 			quest::faction(341, -2);		#:: - Priests of Life
 			quest::faction(230, 1);			#:: + Corrupt Qeynos Guards
 			#:: Grant a small amount of experience
-			quest::exp(500);
+			quest::exp(160);
 		}
 		else {
 			#:: There is some evidence that nothing is said.
@@ -100,7 +100,7 @@ sub EVENT_ITEM {
 			quest::faction(341, -2);		#:: - Priests of Life
 			quest::faction(230, 1);			#:: + Corrupt Qeynos Guards
 			#:: Grant a small amount of experience
-			quest::exp(500);
+			quest::exp(160);
 		}
 		else {
 			#:: There is some evidence that nothing is said.

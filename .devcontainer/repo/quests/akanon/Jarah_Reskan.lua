@@ -25,7 +25,7 @@ function event_trade(e)
 		e.other:Faction(333,15,0); -- King Ak'Anon
 		e.other:Faction(238,-15,0); -- Dark Reflection
 		e.other:Faction(1604,-15,0); -- Clan Grikbar
-		e.other:AddEXP(6000);
+		e.other:AddEXP(380);
 		e.other:GiveCash(3,2,3,0); -- Copper x 3, Silver x 2, Gold x 3
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

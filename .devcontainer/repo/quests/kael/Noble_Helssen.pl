@@ -27,7 +27,7 @@ sub EVENT_ITEM {
 		quest::faction(419,10); # Faction: Kromrif
 		quest::faction(429,10); # Faction: King Tormax
 		quest::faction(430,-30); # Faction: Claws of Veeshan
-		quest::exp(1000);
+		quest::exp(200);
 		quest::summonitem(1710); # inscribed velium tablet
 	}
 	if(plugin::check_handin(\%itemcount, 1712 => 1, 1714 => 1)) { # Arcanum of Roth, Ancient Rusted Key *NOTE* Petcas no longer drops the key --  This might of changed with the warrior 1.5 epic prequest which involves Petcas.
@@ -37,7 +37,7 @@ sub EVENT_ITEM {
 		quest::faction(419,10); # Faction: Kromrif
 		quest::faction(429,10); # Faction: King Tormax
 		quest::faction(430,-30); # Faction: Claws of Veeshan
-		quest::exp(2000);
+		quest::exp(260);
 		quest::summonitem(1722); # Helssen's Voucher
 	}
 	if(plugin::check_handin(\%itemcount, 1722 => 1)){ #Helssen's Voucher
@@ -45,7 +45,7 @@ sub EVENT_ITEM {
 		quest::ding();
 		quest::summonitem(1720); # Helssen's Prismatic Trinket
 		quest::summonitem(1723); # Noble's Seal
-		quest::exp(2000);
+		quest::exp(260);
   }	
 	plugin::return_items(\%itemcount);
 }

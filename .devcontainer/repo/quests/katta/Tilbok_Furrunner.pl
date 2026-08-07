@@ -46,7 +46,7 @@ sub EVENT_ITEM {
     quest::faction(1484,-5); #Hand of Seru
     quest::faction(1485,-1);  #Eye of Seru
     quest::faction(1541,-1); #Hand Legionnaries
-    quest::exp(100000);
+    quest::exp(940);
   }
   elsif (plugin::check_handin(\%itemcount, 29858 => 1, 29889 => 1)) { #Etched Earring of Veracity and Full Satchel
     quest::say("According to these reports Seru resides in a building called the Arx Seru. It is the large complex in the center of the four Praesertum Consillium. We must take [action] now. Do not underestimate the power of Sanctus Seru for what they do they feel is right.");
@@ -60,7 +60,7 @@ sub EVENT_ITEM {
     quest::faction(1484,-10); #Hand of Seru
     quest::faction(1485,-2);  #Eye of Seru
     quest::faction(1541,-2); #Hand Legionnaries
-    quest::exp(1000000);
+    quest::exp(2000);
     quest::setglobal("EarringVeracity3","1",1,"Y1"); #Used with Lcea Katta
    }
   elsif (plugin::check_handin(\%itemcount, 29844 => 1)) { #Dossier: Case 3463827
@@ -75,7 +75,7 @@ sub EVENT_ITEM {
     quest::faction(1484,-1); #Hand of Seru
     quest::faction(1485,-1);  #Eye of Seru
     quest::faction(1541,-1); #Hand Legionnaries
-    quest::exp(5000);
+    quest::exp(360);
   }
   #do all other handins first with plugin, then let it do disciplines
   plugin::try_tome_handins(\%itemcount, $class, 'Rogue');

@@ -19,7 +19,7 @@ function event_trade(e)
 		e.self:Say("Unbelievable, you located the larger body of work I had been searching for! The text is scribbled in old Teir`Dal, but many of the words have been smeared and blurred. In fact, there are deep claw marks on the bindings and surface of the tome. It looks like the current owner didn't care well for it. Hmm. . . This translation of it may be spotty, but I think I'll be able to convey the general meaning for you. Ah, here you are. A duplicate copy of the writings. I'll hold on to the original as it won't be of much use to you. Many thanks, " .. e.other:GetName() .. "!");
 		e.other:Ding();
 		e.other:SummonItem(12591); -- Translated Ancient Tome
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

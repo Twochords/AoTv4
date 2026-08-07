@@ -14,13 +14,13 @@ sub EVENT_ITEM {
     quest::faction(382,20); # Faction: Kerra Isle
     quest::givecash(0,6,0,0);
     quest::summonitem(10343); # Item: Kejaar Totem
-    quest::exp(5000);
+    quest::exp(360);
   }
   if (plugin::check_handin(\%itemcount, 12438 => 1)) {
     quest::say("You have proven your self yet again! You are now a full member of our sejah because of this brave act! To show your status here is a bracer for you to wear.");
     quest::summonitem(3147); # Item: Sejah Ghulam Bracer
     quest::faction(382,30); # Faction: Kerra Isle
-    quest::exp(6500);
+    quest::exp(380);
   }
   plugin::return_items(\%itemcount);
 }

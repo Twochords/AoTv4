@@ -35,7 +35,7 @@ function event_trade(e)
 		e.other:Faction(327,5,0); -- Faction: Shamen of Justice
 		e.other:Faction(328,5,0); -- Faction: Merchants of Halas
 		e.other:Faction(311,5,0); -- Faction: Steel Warriors
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

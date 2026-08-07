@@ -22,7 +22,7 @@ function event_trade(e)
 		e.other:Faction(272,20,0);  -- Jaggedpine Treefolk
 		e.other:Faction(302,20,0);  -- Protectors of Pine
 		e.other:Faction(262,20,0);  -- Guards of Qeynos
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

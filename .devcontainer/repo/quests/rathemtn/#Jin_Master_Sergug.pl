@@ -70,7 +70,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount,  63089=>1, 51036=>2, 51019=>1  )) {
     quest::say("You have done me a great favor and shown mercy to own of our own.  Here is you reward, use it well and remember your lessons.");
     quest::summonitem(63079); # Item: Wand of the Jin
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 }

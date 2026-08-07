@@ -15,13 +15,13 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 3918 => 4)) { #Finger bones x 4
     quest::say("Thanks, here is your reward!");
     quest::summonitem(quest::ChooseRandom(7079,7074,7071,7078,7075,7072,7081,7073,7080,7076,7082,7077)); # Item(s): Hopperhide Wristbands (7079), Hopperhide Tunic (7074), Hopperhide Skullcap (7071), Hopperhide Sleeves (7078), Hopperhide Shoulderpads (7075), Hopperhide Mask (7072), Hopperhide Leggings (7081), Hopperhide Gorget (7073), Hopperhide Gloves (7080), Hopperhide Cloak (7076), Hopperhide Boots (7082), Hopperhide Belt (7077)
-    quest::exp(1000);
+    quest::exp(200);
     quest::ding();
   }
   elsif(plugin::check_handin(\%itemcount, 3812 => 4)) { #Grimling toes x 4
     quest::say("Thanks, here is your reward!");
     quest::summonitem(quest::ChooseRandom(7079,7074,7071,7078,7075,7072,7081,7073,7080,7076,7082,7077)); # Item(s): Hopperhide Wristbands (7079), Hopperhide Tunic (7074), Hopperhide Skullcap (7071), Hopperhide Sleeves (7078), Hopperhide Shoulderpads (7075), Hopperhide Mask (7072), Hopperhide Leggings (7081), Hopperhide Gorget (7073), Hopperhide Gloves (7080), Hopperhide Cloak (7076), Hopperhide Boots (7082), Hopperhide Belt (7077)
-    quest::exp(1000);
+    quest::exp(200);
     quest::ding();
   }
   elsif(plugin::check_handin(\%itemcount, 3670 => 1)) { #BL Quest #2

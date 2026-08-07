@@ -17,7 +17,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 28089 => 1)) {#Cador's Artifact
     quest::say("The spirits are restful now that this piece of legend is in safe hands. You may take this to Mirao for whatever purpose he desires it for. May your vision always be clear!");
     quest::summonitem(28090);#Black Lava Powder
-    quest::exp(250);
+    quest::exp(140);
   }
 	if((plugin::check_handin(\%itemcount, 4871 => 1)) ||
 		(plugin::check_handin(\%itemcount, 4872 => 1)) ||
@@ -29,7 +29,7 @@ sub EVENT_ITEM {
 		(plugin::check_handin(\%itemcount, 4877 => 1))) {#Rune Etched Armor
     	quest::say("Thank you, $name.");#Text made up
     	quest::summonitem(quest::ChooseRandom(10028, 10037, 22503, 15981));#Random gem: Peridot, Diamond, Blue Diamond, Raw Diamond
-    	quest::exp(698775);
+    	quest::exp(1780);
   }
   plugin::return_items(\%itemcount);
 }#END of FILE Zone:poknowledge  ID:202238 -- Oracle_Cador 

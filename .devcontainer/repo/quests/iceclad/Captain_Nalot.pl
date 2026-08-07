@@ -37,7 +37,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 30047 => 1)) {
     quest::emote("squints and then knocks hard on the metal half of his face to get his eye back in adjustment. 'Arrr. This is perfect. Har! Now we can be plannin' our pillagin' and plunderin' all proper like. Good work, $name!'");
     quest::emote("slaps you on the back and accidentally drops his eyepatch. Being a proper pirate now you conveniently forget to mention it to him.");
-    quest::exp(50000);
+    quest::exp(740);
     quest::summonitem(30008); # Item: Eyepatch of Plunder
   }
   plugin::return_items(\%itemcount);

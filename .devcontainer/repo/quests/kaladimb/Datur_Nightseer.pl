@@ -35,7 +35,7 @@ sub EVENT_ITEM {
       quest::faction(227, 25); # Faction: Clerics of Underfoot
       quest::faction(274, 25); # Faction: Kazon Stormhammer
       quest::faction(293, 25); # Faction: Miners Guild 249
-      quest::exp(250);
+      quest::exp(140);
       quest::givecash(0, 0, 0, 3);
       quest::summonitem(12281); # Item: Cape of Underfoot
    }

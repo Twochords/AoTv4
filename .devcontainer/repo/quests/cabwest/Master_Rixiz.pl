@@ -20,7 +20,7 @@ sub EVENT_ITEM {
   # preserved sarnak brain && necro skull cap 2, gives skull cap 3
   if (plugin::check_handin(\%itemcount, 12411 => 1, 4261 => 1)) { 
     quest::say("You have done well. Here is your final apprentice skullcap."); 
-    quest::exp(150); 
+    quest::exp(120); 
     quest::faction(441,20); # Faction: Legion of Cabilis
     quest::faction(443,20); # Faction: Brood of Kotiz
     quest::summonitem(4262); # Item: Apprentice Skullcap - 3rd Rank
@@ -34,7 +34,7 @@ sub EVENT_ITEM {
     quest::say("Well done, here is your reference.");
     quest::summonitem(14813); # Item: Glosk's Reference: Boots
     quest::ding();
-    quest::exp(10000);
+    quest::exp(440);
      
   }
   plugin::return_items(\%itemcount);

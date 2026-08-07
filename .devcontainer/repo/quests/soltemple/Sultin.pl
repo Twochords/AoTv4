@@ -31,27 +31,27 @@ sub EVENT_ITEM {
     quest::summonitem(6329); # Item: Rod of Insidious Glamour
     quest::faction(415,5); # Faction: Temple of Solusek Ro
     quest::faction(416,-1); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({10087 => 1, 6340 => 1})) { # Items: Glowing Glamour Stone, Glowing Silver Wand
     quest::say("I see that you are resourceful... you have earned your incandescent wand.");
     quest::summonitem(6334); # Item: Incandescent Wand
     quest::faction(415,5); # Faction: Temple of Solusek Ro
     quest::faction(416,-1); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({2353 => 1, 2354 => 1, 2355 => 1, 2356 => 1})) { # Items: Glowing Gloves, Enchanted Gloves, Gleaming Gloves, Radiant Gloves
     quest::say("Four pairs of gloves you have given me? I will give you one pair in return. We shall see who had the better deal.");
     quest::summonitem(2351); # Item: Incandescent Gloves
     quest::faction(415,5); # Faction: Temple of Solusek Ro
     quest::faction(416,-1); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({2352 => 1, 10530 => 1, 10531 => 1, 10532 => 1})) { # Items: Glowing Mask, Rune of Fortune, Rune of Fortune, Rune of Fortune
     quest::say("Fortune favors you .. as will this mask.");
     quest::summonitem(2350); # Item: Incandescent Mask
     quest::faction(415,5); # Faction: Temple of Solusek Ro
     quest::faction(416,-1); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
 }

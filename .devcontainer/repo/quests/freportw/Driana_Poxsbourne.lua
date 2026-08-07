@@ -19,7 +19,7 @@ function event_trade(e)
 		e.other:Faction(230,1,0); -- Corrupt Qeynos Guards
 		e.other:Faction(262,-1,0); -- Guards of Qeynos
 		e.other:Faction(341,-1,0); -- Priests of Life
-		e.other:AddEXP(200);
+		e.other:AddEXP(120);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

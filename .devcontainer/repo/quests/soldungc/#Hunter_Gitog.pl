@@ -19,7 +19,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 55252 => 4)) {#Brain-Scorched Goblin Heads
     quest::say("These will be no more threat.  Take this, $name.");#text made up
-    quest::exp(1750000);#1% of Level 51 xp
+    quest::exp(2420);#1% of Level 51 xp
     quest::summonitem(55240);#Enchanted Lava Spider Blood
     quest::faction(1732, 10);#Tribe Vrodak
     quest::faction(258, -30);#Goblins of Fire Peak

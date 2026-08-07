@@ -89,7 +89,7 @@ sub EVENT_ITEM {
 if ($faction == 1) {
   if (plugin::check_handin(\%itemcount, 8907 => 1)){ #Tome of Thunder from an unkempt fanatic
     quest::emote("examines the tome carefully, running his callused hands over the cover and spine and flipping through the ancient parchement within, 'Yes...nicely done, child. It is in miraculous condition for the recent fate that befell it. I am indebted to you and have the noblest intentions to repay your efforts. However, whilst you were away, my smithy was raided and most of my needed supplies to create the item I think a suitable reward for your efforts were stolen by the poachers. I will need to retrieve one of the [key materials] and take it with the Writ of Thunder to my assistant, Gurrin Nitestorm who you may find in the Surefall Glade.'");
-    quest::exp(1000);
+    quest::exp(200);
     quest::ding();
     quest::faction(1597,20);  #Residents of Jaggedpine
     quest::faction(272,20);  #Jaggedpine Treefolk
@@ -100,7 +100,7 @@ if ($faction == 1) {
    }
   if (plugin::check_handin(\%itemcount, 8915 => 1) && $qglobals{silverbladeofthunder} == 1){ # Purified Silver Blade turn in from Gurrin Nitestorm in Surefall
 	quest::emote("takes the blade and intently examines it. Satisfied with the purified quality, he nods to himself and proceeds to remove the gem from the hilt of the blade before returning it to Malvesti, 'You will need to seek out two items and return them to me. Those items are the Essence of Thunder and the Voice of Karana. The essence you will find in The Hole where one known as Ikurenm the Sly resides. Some time ago, before my initial acquisition of the blade, this imp stole the sacred rune from my mentor and only now are we able to retrieve it for its purpose has now reached its dawn. The second item, the Voice of Karana, you will find in the possession of Zrithsadioun the Tainted who wanders the planes of Southern Karana. Zrithsadioun is one of the plague worshiping gnolls of Infected Paw who is so twisted and vile that even his own people have cast him out. Very recently, one of our scouts overheard the gnolls of the shrine discussing a recent loss of their stolen bounty. One of the items that were stolen from them..."); #Final sentence incomplete from live
-	quest::exp(10000);
+	quest::exp(440);
     quest::ding();
     quest::faction(1597,20);  #Residents of Jaggedpine
     quest::faction(272,20);  #Jaggedpine Treefolk

@@ -55,7 +55,7 @@ function event_trade(e)
 		e.other:Faction(226,10,0); -- Clerics of Tunare
 		e.other:Faction(279,9,0); -- King Tearis Thex
 		e.other:Faction(5001,5001,0); -- Anti-Mage
-		e.other:AddEXP(75000); -- Give ~2 bubbles of exp at level 10
+		e.other:AddEXP(860); -- Give ~2 bubbles of exp at level 10
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

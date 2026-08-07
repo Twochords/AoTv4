@@ -36,7 +36,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 18401 => 1, 10032 => 1)) {
     quest::emote("takes the scroll and removes an ornate magnifying glass from a pocket. After some examination and many frowns along with interjections of 'Hmmm,' he hands the scroll back to you and says, 'Unlucky for you indeed. The name of the House has been removed. This can only happen when the House itself is wiped out by another House. All record of that House is destroyed if the attacking house is successful. You still have a chance though. Many House refugees find homes in other Houses. The Everliving Mayong is known to take in any Teir'Dal rabble. Try his castle.");
     quest::summonitem(18401); # Scroll of Flayed Goblin Skin - Gives it back
-    quest::exp(53110);   # 1% @ level 30
+    quest::exp(760);   # 1% @ level 30
   }
   plugin::return_items(\%itemcount);
 }

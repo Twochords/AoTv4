@@ -12,7 +12,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 18240 => 1)) { #Legion Order (0 signed)
     quest::emote("grabs the order from your hand and mumbles something unpleasant and vaguely threatening. He then hands the signed order back to you.");
     quest::summonitem(18241); #Legion Order (1 signed)
-    quest::exp(200);
+    quest::exp(120);
   }
   plugin::return_items(\%itemcount);
 }

@@ -20,7 +20,7 @@ sub EVENT_ITEM {
   elsif (plugin::check_handin(\%itemcount, 12667 => 1)) {
     quest::say("Great work!! You have saved me from disgrace. I reward you with the geozite tool. You may find its purpose within Cabils' warriors guild. A true Iksar warrior should always have one.");
     quest::summonitem(12657); # Item: Geozite Tool
-    quest::exp(1000);
+    quest::exp(200);
     quest::faction(440,2); # Faction: Cabilis Residents
     quest::faction(441,2); # Faction: Legion of Cabilis
     quest::faction(445,2); # Faction: Scaled Mystics
@@ -33,7 +33,7 @@ sub EVENT_ITEM {
     quest::say("Great job, Trooper $name. Such a warrior would serve the empire better as a legionnaire and not a trooper. I shall recommend you for the rank of legionnaire.");
     quest::summonitem(18072); # Item: Legionnaire Recommendation
     quest::ding();
-    quest::exp(2000);
+    quest::exp(260);
     quest::faction(440,2); # Faction: Cabilis Residents
     quest::faction(441,2); # Faction: Legion of Cabilis
     quest::faction(445,2); # Faction: Scaled Mystics

@@ -32,7 +32,7 @@ if(plugin::check_handin(\%itemcount,5563=>1)){
  filled this backpack, return it to me and I'll fill out a report for Ternq.");
    quest::summonitem(17607); # Item: Worn Scoutpack
    quest::ding();
-   quest::exp(1250);
+   quest::exp(220);
    quest::faction(1530,10); # Faction: Taruun
 }
 
@@ -44,7 +44,7 @@ if(plugin::check_handin(\%itemcount,5568=>1)){
  care.");
    quest::summonitem(5564); # Item: Regional Status Report
    quest::ding();
-   quest::exp(1500);
+   quest::exp(240);
    quest::faction(1530,10); # Faction: Taruun
 }
 plugin::return_items(\%itemcount);

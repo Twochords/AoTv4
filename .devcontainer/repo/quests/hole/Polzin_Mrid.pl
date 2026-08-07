@@ -32,7 +32,7 @@ sub EVENT_ITEM {
   elsif (plugin::check_handin(\%itemcount, 10638 => 1)) {
     quest::say("You have done well, take this last piece and return them to Jeb. He will be able to complete the final crafting.");
     quest::faction(404,30); # Faction: Truespirit
-    quest::exp(100000);
+    quest::exp(940);
     quest::summonitem(10613); # Item: 4th Piece of Staff
   }
   plugin::return_items(\%itemcount);

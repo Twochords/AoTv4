@@ -24,7 +24,7 @@ function event_trade(e)
 		e.other:Faction(230,2,0); -- Faction: Corrupt Qeynos Guards
 		e.other:Faction(262,-2,0); -- Faction: Guards of Qeynos
 		e.other:Faction(273,2,0); -- Faction: Kane Bayle
-		e.other:AddEXP(200);
+		e.other:AddEXP(120);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

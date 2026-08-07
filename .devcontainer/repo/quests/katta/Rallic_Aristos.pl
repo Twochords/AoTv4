@@ -39,7 +39,7 @@ quest::summonitem(31729); # Item: Rallic Pack Pattern
 quest::faction(1561,5); # Faction: Concilium Universus
 quest::faction(1483,-10); # Faction: Seru
 quest::faction(1486,-10); # Faction: Heart of Seru
-quest::exp(250);
+quest::exp(140);
 quest::ding();
  }
 

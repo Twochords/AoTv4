@@ -21,7 +21,7 @@ function event_trade(e)
 		e.other:Faction(327,1,0); -- Shaman of Justice
 		e.other:Faction(311,1,0); -- Steel Warriors
 		e.other:Faction(320,1,0); -- Wolves of the North
-		e.other:AddEXP(150);
+		e.other:AddEXP(120);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

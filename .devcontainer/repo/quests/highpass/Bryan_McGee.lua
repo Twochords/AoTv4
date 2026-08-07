@@ -21,7 +21,7 @@ function event_trade(e)
 		e.other:Faction(329,10,0); -- Carson McCabe
 		e.other:Faction(230,10,0); -- Corrupt Qeynos Guards
 		e.other:Faction(330,10,0); -- The Freeport Militia
-		e.other:AddEXP(15000);
+		e.other:AddEXP(500);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 12365})) then
 		e.self:Say("I cannot believe you actually acquired all those drinks!! You do good work, kid. Here is the gem as I promised. And a few plat for good measure. Don't let it be said that the Axe doesn't treat his friends right.");
 		e.other:SummonItem(12348); -- Item: Gem of Stamina
@@ -31,7 +31,7 @@ function event_trade(e)
 		e.other:Faction(329,10,0); -- Carson McCabe
 		e.other:Faction(230,10,0); -- Corrupt Qeynos Guards
 		e.other:Faction(330,10,0); -- The Freeport Militia
-		e.other:AddEXP(15000);
+		e.other:AddEXP(500);
 		e.other:GiveCash(0,0,0,7);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

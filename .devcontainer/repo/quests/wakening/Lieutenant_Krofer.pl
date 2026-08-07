@@ -30,7 +30,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
 	if(plugin::check_handin(\%itemcount, 1702 => 1)) { # Mercenary Assignment
 		quest::say("Drioc sent you? I suppose one can't expect much from a mercenary. Well then, $name, your first assignment will be to clear out some of this forest's annoying populace. Bring me the meat of one of the raptors, the meat of two panthers, and the remains of one of those living puddles of black sludge found in the caves. You will then have your payment.");
-		quest::exp(1000);
+		quest::exp(200);
 		quest::ding();
 		quest::setglobal("krofer_assignment", 1, 0, "F");
 	}
@@ -41,7 +41,7 @@ sub EVENT_ITEM {
 		quest::faction(419,10); # Faction: Kromrif
 		quest::faction(429,10); # Faction: King Tormax
 		quest::faction(430,-30); # Faction: Claws of Veeshan
-		quest::exp(1000);
+		quest::exp(200);
 		quest::givecash(1,7,0,12);
 		quest::delglobal("krofer_assignment");
 		quest::setglobal("tunarean_regiment", 1, 0, "F");
@@ -53,13 +53,13 @@ sub EVENT_ITEM {
 		quest::faction(419,10); # Faction: Kromrif
 		quest::faction(429,10); # Faction: King Tormax
 		quest::faction(430,-30); # Faction: Claws of Veeshan
-		quest::exp(1000);
+		quest::exp(200);
 		quest::givecash(0,5,4,11);
 		quest::summonitem(1705); # Velium Studded Cloak
 	}
 	if(plugin::check_handin(\%itemcount, 1707 => 1)) { # Signed Requisition
 		quest::emote("takes the note and looks it over, then sighs and says, 'This will have to be enough. The squad should be here shortly. When they arrive you will march with them to the staging area near the village of those insect Sifaye. When you are satisfied with the formation, give the corporal the order to attack and observe the battle. After the village is destroyed return this report to me and we'll plan our next move.'");
-		quest::exp(1000);
+		quest::exp(200);
 		quest::ding();
 		quest::summonitem(1708); # Mission Report
 		quest::spawn2(119168,0,0,-4975,-699,-182,126);  # Corporal_Hlash

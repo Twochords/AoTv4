@@ -28,27 +28,27 @@ sub EVENT_ITEM {
     quest::summonitem(4921); # Item: Boots of the Reliant
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({19007 => 1, 19008 => 1, 19049 => 1})) { # Items: Ingot of the Penitent, Icon of the Penitent, Magnetized Platinum Bar
     quest::say("Well done! Please take these greaves as your reward.");  # text made up
     quest::summonitem(4924); # Item: Greaves of the Penitent
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({19003 => 1, 19004 => 1, 19047 => 1})) { # Items: Ingot of the Ardent, Icon of the Ardent, Galvanized Platinum Bar
     quest::say("Well done! Please take these gauntlets as your reward.");  # text made up
     quest::summonitem(4922); # Item: Gauntlets of the Ardent
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({19005 => 1, 19006 => 1, 19048 => 1})) { # Items: Ingot of the Fervent, Icon of the Fervent, Vulcanized Platinum Bar
     quest::say("Well done! Please take these vambraces as your reward.");  # text made up
     quest::summonitem(4923); # Item: Vambraces of the Fervent
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
 }

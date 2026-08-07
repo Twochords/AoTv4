@@ -18,7 +18,7 @@ sub EVENT_ITEM {
     quest::say("A desciple of Cazic-Thule! Take this forged item as a gift."); #Text made up
     quest::summonitem(14108); #Terror Forged Mask
 #    quest::faction(???,??); #
-    quest::exp(10000); 
+    quest::exp(440); 
     quest::stoptimer("TerrorShouting");
     quest::stoptimer("TerrorDepop");
     quest::depop();

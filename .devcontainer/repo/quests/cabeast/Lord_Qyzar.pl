@@ -31,7 +31,7 @@ sub EVENT_ITEM {
   quest::say("At last!! The Chalp diagram. I shall see that the emperor gets this at once. You have proven yourself more than just a mere knight, you are a zealot. Being new to the temple we have need of you in a [matter of betrayal].");
   quest::summonitem(5124); #Zealot's Khukri
   quest::givecash("0","0","6","1"); 
-  quest::exp(1600);
+  quest::exp(240);
   quest::ding();
   quest::faction(442,20); # Faction: Crusaders of Greenmist
   quest::faction(441,10); # Faction: Legion of Cabilis
@@ -40,7 +40,7 @@ sub EVENT_ITEM {
   quest::say("Congratulations! You are now a true crusader, but there is no time for celebration. We have lost two of our operatives. Crusaders Golin and Fodcod were dispatched to seek out an ancient artifact, the [visceral dagger]. Where they have gone, I do not know. They have been gone far too long. Find them and return the dagger to me with your crusader khukri and you shall be a hero.");
   quest::summonitem(5125); #Crusader's Khukri
   quest::givecash("0","0","0","1"); 
-  quest::exp(2000);
+  quest::exp(260);
   quest::ding();
   quest::faction(442,20); # Faction: Crusaders of Greenmist
   quest::faction(441,10); # Faction: Legion of Cabilis
@@ -49,7 +49,7 @@ sub EVENT_ITEM {
   quest::emote("gazes in astonishment at the dagger. 'Ahhh!! You have brought the sacred visceral dagger back to the Temple of Terror. Let all be aware that the great $name has returned to Cabilis a hero!! You now wield the weapon of a hero. Hail, $name, hero of the Crusaders of Greenmist.");
   quest::summonitem(5126); #Hero's Khukri
   quest::givecash("0","0","0","3"); 
-  quest::exp(3000);
+  quest::exp(300);
   quest::ding();
   quest::faction(442,20); # Faction: Crusaders of Greenmist
   quest::faction(441,10); # Faction: Legion of Cabilis

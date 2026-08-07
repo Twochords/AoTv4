@@ -14,7 +14,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 12206 => 1, 16506 => 3 )) {
     quest::say("Excellent, now let me get to work. There we go, here is the weapon that I promised you.");
-    quest::exp(1500);
+    quest::exp(240);
     quest::summonitem(5366); # Item: Brazen Brass Kilij
     quest::faction( 326, 30); # Faction: Emerald Warriors
     quest::faction( 246, 30); # Faction: Faydarks Champions

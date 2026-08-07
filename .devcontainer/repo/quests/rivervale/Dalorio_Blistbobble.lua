@@ -43,7 +43,7 @@ function event_trade(e)
 	local item_lib = require("items");
 	if (item_lib.check_turn_in(e.trade, {item1 = 22940, item2 = 22941, item3 = 22942, item4 = 22943})) then
   		e.self:Say(string.format("Great! Now we can stop this meager attempt at an attack! Here %s, I knew you would come through for us!", e.other:GetCleanName()));
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
   		e.other:SummonItem(22945); -- Item: Edge of the Proudfoot
 	else
 		item_lib.return_items(e.self, e.other, e.trade);

@@ -25,7 +25,7 @@ function event_trade(e)
 		e.other:Faction(226,1,0); -- Clerics of Tunare
 		e.other:Faction(310,1,0); -- Soldiers of Tunare
 		e.other:Faction(234,-1,0); -- Crushbone Orcs
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

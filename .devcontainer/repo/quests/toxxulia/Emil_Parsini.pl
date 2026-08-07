@@ -12,7 +12,7 @@ sub EVENT_ITEM {
     quest::faction(289, 10); # +Merchants of Erudin
     quest::faction(266, 10); # +High Council of Erudin
     quest::faction(267, 10); # +High Guard of Erudin
-    quest::exp(2432);
+    quest::exp(280);
   }
   elsif(plugin::check_handin(\%itemcount, 13824 => 1)) { #Wooden Shards
     quest::say("Wonderful work!! These shards will work nicely. Here you are then. I found a few flasks of treant resin in the back. You can have one. Thanks again. It kept me from having to go out and hunt treants.");
@@ -20,7 +20,7 @@ sub EVENT_ITEM {
     quest::faction(289, 10); # +Merchants of Erudin
     quest::faction(266, 10); # +High Council of Erudin
     quest::faction(267, 10); # +High Guard of Erudin
-    quest::exp(2432);
+    quest::exp(280);
   }
   plugin::return_items(\%itemcount);
 }

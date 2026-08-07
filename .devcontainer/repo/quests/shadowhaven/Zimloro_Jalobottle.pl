@@ -26,7 +26,7 @@ sub EVENT_ITEM {
     quest::say("Ah of course the antidote supplies I have been waiting for from Daksins. I hope he is ok, we all told him it was not wise to go out to the cursed mountains alone. I thank you for bringing me these supplies because Daksins was unable too. There have been many reports lately of people receiving the disease carried by the beasts you encountered. Should you come across these extracts in the future bring them to me if you like. Thank you again, your actions will not go unnoticed.");
     quest::faction(1512, 25); #Faction: House of Stout
     quest::faction(1508, 2); #Faction: Traders of the Haven
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 }

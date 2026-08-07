@@ -34,7 +34,7 @@ sub EVENT_ITEM {
   }
   if (plugin::check_handin(\%itemcount, 63102 => 1)) { # Eye of the Lurker
     quest::say("Well done. You have earned a notch for your token, warrior. You are but a step away from joining our ranks. But that step is a long one. Practice your skills, for they will need to be very advanced. Then return to Sugal and give him your token.");
-    quest::exp(500);
+    quest::exp(160);
     quest::summonitem(63098); # Notched Gukta Token
   }
 }

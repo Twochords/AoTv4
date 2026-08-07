@@ -12,7 +12,7 @@ function event_trade(e)
 		e.self:Emote("scribbles out a note and says, 'Please make sure that Harkin gets this right away. If you lose it, it could mean both of our heads.'");
 		e.other:SummonItem(18016); -- Note to Harkin
 		e.other:Ding();
-		e.other:AddEXP(375);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

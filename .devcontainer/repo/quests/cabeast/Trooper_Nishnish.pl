@@ -17,7 +17,7 @@ sub EVENT_ITEM {
     quest::faction(445,5); #Scaled Mystics
     quest::faction(442,5); #Crusaders of Greenmist
     quest::faction(444,5); #Swift Tails
-    quest::exp(800);
+    quest::exp(200);
   }
   elsif (plugin::check_handin(\%itemcount, 18244 => 1)) {
     quest::say("You shall get my signature when I have the legion order and two barracuda teeth.");

@@ -19,7 +19,7 @@ sub EVENT_SAY {
 
 sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 10952 => 1)) { #Small Shipment of High Quality Ore
-    quest::exp(2000);
+    quest::exp(260);
     quest::givecash(0,0,0,8); #Platinum x 8
     quest::faction(274,5); #Kazon Stormhammer
     quest::faction(290,5); #Merchants of Kaladim
@@ -28,7 +28,7 @@ sub EVENT_ITEM {
     quest::faction(312,5); #Storm Guard
   }
   elsif(plugin::check_handin(\%itemcount, 10953 => 1)) { #Large Shipment of High Quality Ore
-    quest::exp(3500);
+    quest::exp(320);
     quest::givecash(0,0,0,14); #Platinum x 14
     quest::faction(274,5); #Kazon Stormhammer
     quest::faction(290,5); #Merchants of Kaladim

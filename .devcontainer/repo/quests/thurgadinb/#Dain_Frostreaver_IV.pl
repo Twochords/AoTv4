@@ -59,7 +59,7 @@ sub EVENT_ITEM {
     quest::faction(405,50); #Dain
     quest::faction(419,-50); #Kromrif
     quest::faction(448,-50); #Kromzek
-    quest::exp(4000000);
+    quest::exp(3180);
   }
   #Tormax's head
   elsif($faction == 1 && plugin::check_handin(\%itemcount, 30516 => 1)) {

@@ -26,20 +26,20 @@ sub EVENT_ITEM {
     quest::summonitem(6342); # Item: Staff of Temperate Flux
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({10551 => 1, 6338 => 1, 10557 => 1, 14364 => 1})) { # Items: Bloodblack Wand, Silver Wand, Twice-Woven Silk, Scepter
     quest::say("Well done, $name. Now I will craft your Weeping Wand, as promised.");
     quest::summonitem(6341); # Item: Weeping Wand
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   elsif (quest::handin({10034 => 2, 10000 => 1})) { # Items: Sapphire x 2, Lambent Stone
     quest::say("Ahh, Genni must have sent you to me.  Very well, here is your Lambent Sapphire.");
     quest::summonitem(10119); # Item: Lambent Sapphire
     quest::faction(415,15); # Faction: Temple of Solusek Ro
     quest::faction(416,-15); # Faction: Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
 }

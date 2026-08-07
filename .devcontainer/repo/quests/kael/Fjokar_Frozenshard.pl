@@ -28,7 +28,7 @@ sub EVENT_ITEM {
   	quest::faction(429, 20);#King Tormax
   	quest::faction(405, -30);#Dain Frostreaver IV
   	quest::faction(436, -30);#Yelinak
-  	quest::exp(1107392);#1% of level 45 exp
+  	quest::exp(2080);#1% of level 45 exp
   	quest::summonitem(25030);#Frozen Shard
   }
   plugin::return_items(\%itemcount);

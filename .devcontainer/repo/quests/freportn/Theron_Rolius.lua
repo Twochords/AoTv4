@@ -28,7 +28,7 @@ function event_trade(e)
 		e.other:Faction(311,10,0); -- steel warriors
 		e.other:Faction(271,-30,0); -- dismal rage
 		e.other:Faction(330,-30,0); -- freeport militia
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:GiveCash(0,0,0,3);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13873})) then
 		e.self:Say("Thanks for the hard work, here is a shield to help you in your duties.");
@@ -38,7 +38,7 @@ function event_trade(e)
 		e.other:Faction(311,10,0); -- steel warriors
 		e.other:Faction(271,-30,0); -- dismal rage
 		e.other:Faction(330,-30,0); -- freeport militia
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

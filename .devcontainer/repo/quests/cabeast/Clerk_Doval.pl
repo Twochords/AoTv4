@@ -19,7 +19,7 @@ sub EVENT_ITEM {
     quest::givecash(0,5,0,0);
     quest::faction(440,440); #Cabilis Residents
     quest::faction(441,30); #Legion of Cabilis
-    quest::exp(1200);
+    quest::exp(220);
   }
   plugin::return_items(\%itemcount);
 }

@@ -29,7 +29,7 @@ sub EVENT_ITEM {
     quest::faction(448,30); #kromzek
     quest::faction(429,30); #tormax
     quest::faction(430,-90); #CoV
-    quest::exp(10000);
+    quest::exp(440);
   }
   elsif (plugin::check_handin(\%itemcount, 25301 => 4)) {
   	quest::say("Excellent, $name. Here is the bounty as promised.");
@@ -39,7 +39,7 @@ sub EVENT_ITEM {
     quest::faction(448,30); #kromzek
     quest::faction(429,30); #tormax
     quest::faction(430,-90); #CoV	
-	quest::exp(20000);
+	quest::exp(560);
   }
   elsif (plugin::check_handin(\%itemcount, 1718 => 1)) {#Wurmscale Scroll 
   	quest::say("This indeed points to Wenglawks being a traitor. If only there were more proof I could take this to the king. Thank you, $name, you have done a great service for Kael. Take this mask as a reward for your service to this city.");
@@ -49,7 +49,7 @@ sub EVENT_ITEM {
     quest::faction(448,30); #kromzek
     quest::faction(429,30); #tormax
     quest::faction(430,-90); #CoV
-	quest::exp(20000);
+	quest::exp(560);
   }
   plugin::return_items(\%itemcount);
 }

@@ -20,7 +20,7 @@ sub EVENT_ITEM {
 	if(plugin::check_handin(\%itemcount, 2690 => 1)) {
 		quest::say("On behalf of the citizens of Katta Castellum I extend our gratitude for your assistance in our war with the Coterie of the Eternal Night!");
 		quest::summonitem(2689); #Johanius Stake of Slaying
-		quest::exp(500);
+		quest::exp(160);
 		quest::ding();
 		quest::depop();
 	}

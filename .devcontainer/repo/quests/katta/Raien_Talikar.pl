@@ -15,7 +15,7 @@ sub EVENT_ITEM{
 		quest::faction(1538,10); #Spirits of Katta Castellum
 		quest::faction(1505,-10); #Nathyn Illuminious
 		quest::faction(1502,10); #Katta Castellum Citizens
-		quest::exp(10000);
+		quest::exp(440);
 		quest::depop();
 	}
 	plugin::return_items(\%itemcount);

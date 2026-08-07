@@ -50,7 +50,7 @@ sub EVENT_ITEM {
   if ($faction == 1) { #requires ally Kromzek faction
     if (plugin::check_handin(\%itemcount, 25841 => 3, 24905 => 1)) { # cap
       quest::summonitem(25391); # Item: Templar's Crown
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -60,7 +60,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25805 => 3, 24900 => 1)) { # bp
       quest::summonitem(25392); # Item: Templar's Chestplate
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -70,7 +70,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25815 => 3, 24902 => 1)) { # sleeves
       quest::summonitem(25393); # Item: Templar's Vambraces
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -80,7 +80,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25836 => 3, 24904 => 1)) { # wrist
       quest::summonitem(25394); # Item: Templar's Bracer
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -90,7 +90,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25840 => 3, 24906 => 1)) { # gloves
       quest::summonitem(25395); # Item: Templar's Gauntlets
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -100,7 +100,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25827 => 3, 24901 => 1)) { # legs
       quest::summonitem(25396); # Item: Templar's Leggings
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan
@@ -110,7 +110,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25838 => 3, 24903 => 1)) { # boots
       quest::summonitem(25397); # Item: Templar's Boots
-      quest::exp(150000);
+      quest::exp(1080);
       quest::faction(429,20); # King Tormax
       quest::faction(448,20); # Kromzek
       quest::faction(430,-20); # Claws of Veeshan

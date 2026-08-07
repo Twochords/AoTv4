@@ -34,7 +34,7 @@ sub EVENT_ITEM {
  if(plugin::check_handin(\%itemcount, 12797 => 1, 12798 => 1, 12799 => 1)){
   quest::emote("removes a crudley hewn shackle. 'This is yours. It is one of the keys to the third rung. I see that you are truely a great monk and have studied your disciplines well. I have need of one as you. I have heard of [troubles with an outlander].'");
   quest::summonitem(4193); # Item: Shackle of Rock
-  quest::exp(20000);
+  quest::exp(560);
   quest::ding();
   quest::faction(444,10); # Faction: Swift Tails
   quest::faction(441,2); # Faction: Legion of Cabilis
@@ -43,7 +43,7 @@ sub EVENT_ITEM {
  elsif(plugin::check_handin(\%itemcount, 12821 => 1, 4192 => 1, 4193 => 1)){
   quest::say("Very good!! Here is your Shackle of Copper. The Emperor shall be pleased that I, Mistress Niska, have slain the outlander. Do you have some time? I need someone to be my [personal courier]. Will you?");
   quest::summonitem(4194); # Item: Shackle of Copper
-  quest::exp(40000);
+  quest::exp(700);
   quest::ding();
   quest::faction(444,10); # Faction: Swift Tails
   quest::faction(441,2); # Faction: Legion of Cabilis
@@ -52,7 +52,7 @@ sub EVENT_ITEM {
  elsif(plugin::check_handin(\%itemcount, 18466 => 1, 22921 => 1)){
   quest::emote("smiles at your dedication to Cazic Thule and hands you a small gem.");
   quest::summonitem(7881); # Item: Mark of Clarity
-  quest::exp(20000);
+  quest::exp(560);
   quest::ding();
   quest::faction(444,20); # Faction: Swift Tails
   quest::faction(441,10); # Faction: Legion of Cabilis
@@ -60,7 +60,7 @@ sub EVENT_ITEM {
  elsif(plugin::check_handin(\%itemcount, 18465 => 1, 22920 => 1)){
   quest::emote("smiles at your dedication to Cazic Thule and hands you a small gem.");
   quest::summonitem(7881); # Item: Mark of Clarity
-  quest::exp(20000);
+  quest::exp(560);
   quest::ding();
   quest::faction(444,20); # Faction: Swift Tails
   quest::faction(441,10); # Faction: Legion of Cabilis

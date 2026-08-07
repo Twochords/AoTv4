@@ -210,7 +210,7 @@ sub EVENT_ITEM {
   if (defined($qglobals{ikky}) && ($qglobals{ikky} == 7)) {
     if (plugin::check_handin(\%itemcount, 60162 => 1, 60163 => 1, 60164 => 1, 60165 => 1)) {
       quest::emote("grunts unhappily at the four pieces. 'I had hoped more work wouldn't be needed to uncover the clues, but it looks like there's a bit more you're going to need to do for me. Take a look at these edges. Do you see how they look really sinewy? That's because they're [" . quest::saylink("made of flesh") . "], probably that of the trusik. No doubt the Muramites have been quite cruel to them now that they are mostly used for slavery.'");
-      quest::exp(100000);
+      quest::exp(940);
       quest::summonitem(60162); # Item: Frayed Flesh Scrap
       quest::summonitem(60163); # Item: Frayed Flesh Scrap
       quest::summonitem(60164); # Item: Frayed Flesh Scrap
@@ -227,13 +227,13 @@ sub EVENT_ITEM {
   if (defined($qglobals{ikky}) && ($qglobals{ikky} == 9)) {
     if (plugin::check_handin(\%itemcount, 60167 => 1, 60168 => 1, 60169 => 1)) {
       quest::emote("stares at the three clues for a moment before speaking. 'I can't be sure, but I believe we are getting close to something big, $name. I need more time to examine these clues, but I should have something for you when you return. You've done well and I know that we wouldn't have been able to get this far without your help. Good job!'");
-      quest::exp(100000);
+      quest::exp(940);
       quest::setglobal("ikky",10,5,"F");
     }
   }
   if (plugin::check_handin(\%itemcount, 60161 => 1)) {
       quest::say("Excellent! We don't have to worry about that abomination any longer. This artifact you found on the creature is also quite unique. It will be a while before I have a chance to look it over, but it's nice to have it in our possession nonetheless. Well done once again, $name. I look forward to working with you again soon!");
-      quest::exp(100000);
+      quest::exp(940);
   }
   if (defined($qglobals{ikky}) && ($qglobals{ikky} == 13)) {
     if (plugin::check_handin(\%itemcount, 60173 => 1)) { 

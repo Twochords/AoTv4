@@ -58,7 +58,7 @@ function event_trade(e)
 		e.other:Faction(255,10,0); -- Faction: Gem Choppers
 		e.other:Faction(333,10,0); -- Faction: King Ak`Anon
 		e.other:Ding();
-		e.other:AddEXP(25);
+		e.other:AddEXP(60);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

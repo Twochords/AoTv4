@@ -40,15 +40,15 @@ function event_trade(e)
 	if(e.other:GetFaction(e.self) == 1) then
 		if(item_lib.check_turn_in(e.trade, {item1 = 5504})) then		--soulfire
 			e.other:SummonItem(18033); 									--inte's first blessing
-			e.other:AddEXP(100000);
+			e.other:AddEXP(940);
 			e.self:Say("You have chosen wisely, my friend. Take this note as a token of my blessing upon you.");
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 5403})) then 	--ghoulbane
 			e.other:SummonItem(18034); 									--inte's second blessing
-			e.other:AddEXP(100000);
+			e.other:AddEXP(940);
 			e.self:Say("You have chosen wisely, my friend. Take this note as a token of my blessing upon you.");
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 18033, item2 = 18034, item3 = 19073, item4 = 1254})) then --inte's first blessing, inte's second blessing, miragul's head, miragul's robe
 			e.other:SummonItem(11050); 									--fiery avenger
-			e.other:AddEXP(1000000);
+			e.other:AddEXP(2000);
 			e.self:Say("Long have I awaited this moment. You have done what even I thought impossible. Take this sword, the Fiery Avenger. You have earned both it and my deepest respect.");
 			eq.depop();
 		end
@@ -58,7 +58,7 @@ function event_trade(e)
 		e.other:SummonItem(69957); --token
 		e.other:SummonItem(69958); --token
 		e.other:SummonItem(69959); --scabbard
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		eq.set_global("paladin_epic","10",5,"F");
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

@@ -20,7 +20,7 @@ sub EVENT_ITEM {
 if (plugin::check_handin(\%itemcount, 66188 => 4)) { # cave frog skin
 
 quest::say("This is superb, $name! I was running low. I suppose I can tell you what my job is. I'm here to make riggings for the ship. It turns out that the cove frog skins are strong components for the riggings I'm working on. Who would've thought, huh?"); 
-quest::exp(10000);
+quest::exp(440);
 quest::givecash(5,11,8,0);
 
 }

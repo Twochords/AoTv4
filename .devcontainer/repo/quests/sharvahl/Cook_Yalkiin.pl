@@ -32,14 +32,14 @@ sub EVENT_ITEM {
     quest::emote("says, 'These look like good cuts of meat. I hope that this will suffice as payment,' as he stacks the wrapped meat on the counter.");
     quest::summonitem(quest::ChooseRandom(30580, 30577)); # Item(s): Wooden Practice Dagger (30580)
     quest::givecash(0, 0, 4, 0);
-    quest::exp(1000);
+    quest::exp(200);
     quest::ding();
   }
   if (plugin::check_handin(\%itemcount, 10391 => 1)) {
     quest::emote("tosses the bag in a pile with several others and hands you your payment.");
     quest::say("'Thank you very much,' he says. 'The more of these that I can gather, the better. I always seem to be low.");
     quest::givecash(0,0,6,0);
-    quest::exp(1000);
+    quest::exp(200);
     quest::ding();
   }
   if (plugin::check_handin(\%itemcount, 5559 => 1)) {
@@ -51,7 +51,7 @@ sub EVENT_ITEM {
     quest::say("Here you go, friend!' He says as he hands you what appears to be a lunch bag. 'Joharr should love these sandwiches! The meat that you brought us was great. If you ever need a job as a butcher, just let us know. Take care and tell Joharr I said hello.");
     quest::summonitem(5563); # Item: Bag of Food
     quest::ding();
-    quest::exp(1000);
+    quest::exp(200);
     quest::faction(1513,10); # Faction: Guardians of Shar Vahl
   }
   plugin::return_items(\%itemcount);

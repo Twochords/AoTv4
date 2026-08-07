@@ -21,7 +21,7 @@ sub EVENT_ITEM {
 		quest::faction(419,10); # Kromrif
 		quest::faction(406,-30); # Coldain
 		quest::faction(430,-30); # Claws of Veeshan
-		quest::exp(250);
+		quest::exp(140);
 		quest::summonitem(25267); # Bekerak's Letter to Svekk
 	}
 	if(plugin::check_handin(\%itemcount, 25269 =>1)) { # Large Supply Sack for Bekerak
@@ -31,7 +31,7 @@ sub EVENT_ITEM {
 		quest::faction(419,10); # Kromrif
 		quest::faction(406,-30); # Coldain
 		quest::faction(430,-30); # Claws of Veeshan
-		quest::exp(250);
+		quest::exp(140);
 		quest::summonitem(25268); # Kromrif Battle Totem
 	}
 	plugin::return_items(\%itemcount);	

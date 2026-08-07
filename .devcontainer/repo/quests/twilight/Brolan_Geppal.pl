@@ -32,7 +32,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 4494 => 1, 5393 => 1, 5394 => 1, 5395 => 1)) {
     quest::summonitem(3928); #cloak
     quest::say("Thank you. May your voice be ever true."); 
-    quest::exp(50000); #exp amount?
+    quest::exp(740); #exp amount?
   }
   elsif (plugin::check_handin(\%itemcount, 5397 => 1, 5396 => 1, 4488 => 1)) {
     quest::summonitem(3929); #gaunts 

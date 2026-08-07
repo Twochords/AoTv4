@@ -22,7 +22,7 @@ function event_trade(e)
 		e.other:Faction(329,1,0); -- Carson McCabe
 		e.other:Faction(230,1,0); -- Corrupt Qeynos Guards
 		e.other:Faction(330,1,0); -- The Freeport Militia
-		e.other:AddEXP(15000);
+		e.other:AddEXP(500);
 		
 		eq.signal(407027,3) -- NPC: Beef new highpasshold
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 12365})) then
@@ -34,7 +34,7 @@ function event_trade(e)
 		e.other:Faction(329,2,0); -- Carson McCabe
 		e.other:Faction(230,1,0); -- Corrupt Qeynos Guards
 		e.other:Faction(330,3,0); -- The Freeport Militia
-		e.other:AddEXP(15000);
+		e.other:AddEXP(500);
 		e.other:GiveCash(0,0,0,7);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

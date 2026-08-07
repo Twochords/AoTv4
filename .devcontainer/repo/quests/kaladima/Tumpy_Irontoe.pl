@@ -12,7 +12,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 13340 => 1, 13006 => 1)) { #Kiola Nut, Water Flask
     quest::say("Here you go. One Tumpy Tonic. Don't drink that too fast now.");
     quest::summonitem(12114); #Tumpy Tonic
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 }

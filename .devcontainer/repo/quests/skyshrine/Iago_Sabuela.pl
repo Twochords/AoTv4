@@ -48,7 +48,7 @@ sub EVENT_ITEM {
       quest::faction(430,5); # Faction: Claws of Veeshan
       quest::faction(436,5); # Faction: Yelinak
       quest::faction(448,-10); # Faction: Kromzek
-      quest::exp(1250)       
+      quest::exp(220)       
      } 
      elsif (plugin::check_handin(\%itemcount, 28057 => 1)) {
      quest::say("You have made good on your word, $name.  This is indeed what I have been seeking, and as promised I will keep my end of the bargain. Take this mask and wear it with pride, it is symbolic of your aid to the The Draconic Loyalist Fellowship.");
@@ -56,7 +56,7 @@ sub EVENT_ITEM {
       quest::faction(430,5); # Faction: Claws of Veeshan
       quest::faction(436,5); # Faction: Yelinak
       quest::faction(448,-10); # Faction: Kromzek
-      quest::exp(1250)       
+      quest::exp(220)       
      }   
      else {
       plugin::return_items(\%itemcount);

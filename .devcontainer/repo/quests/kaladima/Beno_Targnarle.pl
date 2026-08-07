@@ -75,7 +75,7 @@ sub EVENT_ITEM {
       quest::faction(293, 1); # Miner's Guild 249
       quest::faction(290, 1); # Merchants of Kaladim
       quest::faction(232, -1); # Craknek Warriors
-      quest::exp(500);
+      quest::exp(160);
       quest::givecash(0,3,0,0);
    }
    elsif (($faction <= 4) && (plugin::check_handin(\%itemcount, 13282 => 1))) { # Scrap Metal
@@ -86,7 +86,7 @@ sub EVENT_ITEM {
       quest::faction(293, 3); # Miner's Guild 249
       quest::faction(290, 5); # Merchants of Kaladim
       quest::faction(232, -5); # Craknek Warriors
-      quest::exp(500);
+      quest::exp(160);
       quest::givecash(4, 0, 0, 0);
       quest::summonitem(13995); # Knight (Card)
    }
@@ -98,7 +98,7 @@ sub EVENT_ITEM {
       quest::faction(293, 3); # Miner's Guild 249
       quest::faction(290, 5); # Merchants of Kaladim
       quest::faction(232, -5); # Craknek Warriors
-      quest::exp(5000);
+      quest::exp(360);
       quest::givecash(4, 0, 0, 0);
       quest::summonitem(5415); # Avenger Battle Axe
    }

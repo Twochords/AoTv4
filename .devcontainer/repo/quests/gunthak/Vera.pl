@@ -36,12 +36,12 @@ sub EVENT_ITEM {
   elsif(plugin::check_handin(\%itemcount, 58004 => 1)){#Note to Vera
     quest::say("Thank goodness my sister is feeling better. While you were gone, I was able to figure out the exact healing power of the flicker liquid. I have transcribed it on this piece of parchment. Here, memorize this and may it serve you well. Now, if I can just figure out what sustains the lava elementals of Broken Skull. If you are up to it, I could use some [more assistance].");
     quest::summonitem(59017); # Item: Spell: Primal Remedy
-    quest::exp(1750000);#1% of level 51 xp
+    quest::exp(2420);#1% of level 51 xp
   }
   elsif(plugin::check_handin(\%itemcount, 58005 => 3)){#Strength of Lava
     quest::emote("takes the components from you and again puts them in her brazier. She begins a chant and raises her arms towards the sky. As she chants, the elements in the brazier light up brightly and begin to fragment. As they drift skyward they form into patterns of archaic runes. Vera's chant forces the runes into a pattern. The pattern is burned into your vision, even when you close your eyes. Knowing that the runes will fade, you quickly pluck up a pen and parchment to jot the runes down. Vera's chant fades and the night grows dark again. She looks over your parchment and says, 'Let me translate that into something useful for you.'");
     quest::summonitem(58006);#Scribed Runes
-    quest::exp(1750000);#1% of level 51 xp
+    quest::exp(2420);#1% of level 51 xp
   }	
   elsif(plugin::check_handin(\%itemcount, 58006 => 1)){#Scribed Runes
     quest::emote("makes a copy of your parchment, adding some extra symbols at the end. 'See, I told you it would be useless to you until I translated it. I shall journey home, now, and place this new scroll within the libraries of Solusek. I thank you for your help and wish you hearty adventures.'");

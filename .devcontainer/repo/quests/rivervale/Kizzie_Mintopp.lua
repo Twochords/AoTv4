@@ -35,7 +35,7 @@ function event_trade(e)
 		e.other:Faction(263,1,0); -- Faction: Guardians of the Vale
 		e.other:Faction(286,1,0); -- Faction: Mayor Gubbin
 		e.other:Faction(336,-1,0); -- Faction: Coalition of Tradefolk Underground
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

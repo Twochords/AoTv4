@@ -74,7 +74,7 @@ sub EVENT_ITEM {
       plugin::return_items(\%itemcount);
       return 1;
     }
-    quest::exp(100000);
+    quest::exp(940);
     quest::faction(406,20); # coldain
     quest::faction(405,20); # Dain Frostreaver IV
     quest::faction(419,-60); # Kromrif

@@ -10,7 +10,7 @@ sub EVENT_ITEM {
     quest::summonitem(6220); # Item: Daily Status Report
     quest::emote("sighs");
     quest::faction( 1552,10 ); # Faction: Vah Shir Crusaders
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 }

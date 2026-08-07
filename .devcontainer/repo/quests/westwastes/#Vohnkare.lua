@@ -12,7 +12,7 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 52965}) and e.other:HasItem(52952) and not eq.get_entity_list():IsMobSpawnedByNpcTypeID(119184)) then
 		e.self:Say("This will do quite nicely. Are you aware of the properties of vampyre blood? It can make such lovely protective concoctions. Why, I once fended off . . . There I go again. Here is your crystal, make haste!");
-		e.other:AddEXP(10000);
+		e.other:AddEXP(440);
 		e.other:SummonItem(52956); -- Item: Purifying Crystal Fragment
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

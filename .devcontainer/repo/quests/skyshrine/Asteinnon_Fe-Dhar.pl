@@ -71,7 +71,7 @@ sub EVENT_ITEM {
     }
     quest::emote("smiles warmly as he hands you your reward.");
     quest::say("Well done, $name.");
-    quest::exp(175000);
+    quest::exp(1120);
     quest::faction(430,30); # CoV
     quest::faction(436,30); # Yelinak
     quest::faction(448,-60); # Kromzek

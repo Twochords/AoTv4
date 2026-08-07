@@ -48,7 +48,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 20641 => 1)) { #Head of Sir Edwin Motte
     quest::say("'Excellent!' You watch Kazen hold the head by the hair and begin to cast a spell. A flash of darkness centers around the head, and the eyes of the dead knight open, a terrible scream emanating from its lips. 'This poor fool here - I think I will keep him in my bag from now on. You have done well, my new apprentice. Take this symbol and know that you can do other tasks to advance within my apprentice ranks.'");
-    quest::exp(5000);
+    quest::exp(360);
     quest::summonitem(20642); #Symbol of the Apprentice
   }
   elsif(plugin::check_handin(\%itemcount, 20647 => 1)) { #Symbol of Testing
@@ -57,12 +57,12 @@ sub EVENT_ITEM {
   }
   elsif(plugin::check_handin(\%itemcount, 20653 => 1)) { #Prepared Reagent Box
     quest::emote("stares through you at the horizon, pausing as he reaches into his robes. Kazen pulls out a scythe with a shimmering black blade that seems too large to have been hidden there. As quickly and gracefully as it was displayed to you, it is returned to the void inside Kazen's robes. 'It is a creation of Miragul which was looted from his lair under the ice. Take this tome, it will be your final task for me as an apprentice.'");
-    quest::exp(10000);
+    quest::exp(440);
     quest::summonitem(18087); #Tome of Instruction
   }
   elsif(plugin::check_handin(\%itemcount, 20652 => 1)) { #Gkzzallk in a Box
     quest::emote("grins wildly and his eyes flare a deep red. The scythe he promised you flies through the air and into your hand. 'Enjoy your toy, I have no more need of you as a servant.'");
-    quest::exp(10000);
+    quest::exp(440);
     quest::summonitem(20544); #Scythe of the Shadowed Soul
   }
   elsif(plugin::check_handin(\%itemcount, 20612 => 1)) { #Piece of the Staff

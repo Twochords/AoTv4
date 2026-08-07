@@ -25,7 +25,7 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 20943, item2 = 20869, item3 = 20868})) then --paladin test of spirit using silvery girdle, diaphanous globe, ivory sky diamond 
 		e.other:SummonItem(2716);  --girdle of faith
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("There ya go laddie!");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {platinum = 500})) then

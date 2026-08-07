@@ -25,7 +25,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 28003 => 1, 28004 => 1, 28031 => 1)) {
     quest::say("I see that you have completed the quest I laid before you. That speaks well of your dedication, yet you do not realize your journey has just begun. Study this tome.");
     quest::summonitem(18958); # Item: Power of the Orb
-    quest::exp(2000);
+    quest::exp(260);
   }
   plugin::return_items(\%itemcount);
 }

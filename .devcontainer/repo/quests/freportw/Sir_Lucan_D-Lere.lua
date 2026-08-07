@@ -21,7 +21,7 @@ function event_trade(e)
 		e.other:Faction(336,10,0); -- Faction: Coalition of Tradefolk Underground
 		e.other:Faction(281,-20,0); -- Faction: Knights of Truth
 		e.other:Faction(362,-20,0); -- Faction: Priests of Marr
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13926})) then
 		e.self:Say("Thank you for your loyalty"); -- need live text and reward
 		e.other:Ding();
@@ -29,7 +29,7 @@ function event_trade(e)
 		e.other:Faction(336,10,0); -- Faction: Coalition of Tradefolk Underground
 		e.other:Faction(281,-40,0); -- Faction: Knights of Truth
 		e.other:Faction(362,-40,0); -- Faction: Priests of Marr
-		e.other:AddEXP(7500);
+		e.other:AddEXP(400);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

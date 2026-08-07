@@ -37,7 +37,7 @@ sub EVENT_ITEM {
     quest::givecash($copperGiven,$silverGiven,$goldGiven,0);
     quest::faction(440,10); # Faction: Cabilis Residents
     quest::faction(441,10); # Faction: Legion of Cabilis
-    quest::exp(10000);
+    quest::exp(440);
     quest::ding();
   }
   if(plugin::check_handin(\%itemcount, 12685 => 1)) { #Full Pouch of Leech Husks

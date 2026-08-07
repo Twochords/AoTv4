@@ -12,7 +12,7 @@ sub EVENT_SAY {
       quest::say("Thanks so much for your help.");
       $client->Message(4,"Dakkan is very grateful for your help as he surely could not have done it alone!");
       quest::summonitem(53483,5); #Dakkan's Tonic x 5
-      quest::exp(500);
+      quest::exp(160);
       ding();
     }
     else {

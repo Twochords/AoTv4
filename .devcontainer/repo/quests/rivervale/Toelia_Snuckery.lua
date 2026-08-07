@@ -24,7 +24,7 @@ function event_trade(e)
 		e.other:Faction(292,-5,0); -- Faction: Merchants of Rivervale
 		e.other:Faction(336,5,0); -- Faction: Coalition of Tradefolk Underground
 		e.other:Faction(329,5,0); -- Faction: Carson McCabe
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:GiveCash(2,0,0,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13786})) then
 		e.self:Say("You found it!  Heh.  Good thing you brought it back bub.  This thing isn't priceless, its worthless but at least you proved you are loyal.  Poor ol' Chomper..");
@@ -34,7 +34,7 @@ function event_trade(e)
 		e.other:Faction(292,-10,0); -- Faction: Merchants of Rivervale
 		e.other:Faction(336,10,0); -- Faction: Coalition of Tradefolk Underground
 		e.other:Faction(329,10,0); -- Faction: Carson McCabe
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

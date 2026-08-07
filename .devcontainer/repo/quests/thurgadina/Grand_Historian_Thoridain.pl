@@ -75,7 +75,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 1418 => 1, 1428 => 1)) {
     quest::say("My compliments, $name, what a wonderful dish! Please accept my personal Seal as a token of my appreciation. May it give you power over your adversaries.");
     quest::summonitem(1422); # Item: Seal of Thoridain
-    quest::exp(200000);
+    quest::exp(1180);
     quest::faction(406,10); #coldain
     quest::faction(405,10); #dain
     quest::faction(419,-30); #krif
@@ -83,7 +83,7 @@ sub EVENT_ITEM {
   }
   elsif (plugin::check_handin(\%itemcount, 1428 => 1)) {
     quest::say("My compliments, $name, what a wonderful dish!");
-    quest::exp(5000);
+    quest::exp(360);
     quest::faction(406,10); #coldain
     quest::faction(405,10); #dain
     quest::faction(419,-30); #krif

@@ -76,7 +76,7 @@ sub EVENT_ITEM {
          quest::faction(272,5); #Jaggedpine Treefolk
          quest::faction(302,5); #Protectors of Pine
          quest::faction(262,1); #Guards of Qeynos
-         quest::exp(1000);
+         quest::exp(200);
    }
    if (plugin::check_handin(\%itemcount, 8952 => 1)) {
       quest::emote("gives a warm, gentle smile and a deep bow of respect to $name as she extends a white steel crown ornamented with a single blue gem.");
@@ -86,7 +86,7 @@ sub EVENT_ITEM {
       quest::faction(272,7); #Jaggedpine Treefolk
       quest::faction(302,7); #Protectors of Pine
       quest::faction(262,1); #Guards of Qeynos
-      quest::exp(2000);
+      quest::exp(260);
    }
   }
    plugin::return_items(\%itemcount);

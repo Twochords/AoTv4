@@ -59,7 +59,7 @@ function event_trade(e)
 		e.other:Faction(288,15,0); 	-- Merchants of Ak'Anon better
 		e.other:Faction(333,15,0); 	-- King Ak'Anon better
 		e.other:Faction(238,-15,0); 	-- Dark Reflection worse
-		e.other:AddEXP(10000);
+		e.other:AddEXP(440);
 		e.other:Ding();
 		e.other:SummonItem(12379);	-- Watchman Boots
 		e.other:GiveCash(0,0,0,4);

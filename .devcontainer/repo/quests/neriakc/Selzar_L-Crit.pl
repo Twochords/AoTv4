@@ -25,7 +25,7 @@ sub EVENT_SAY {
 
 sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 19578 => 1, 19577 => 1, 13060 => 1)) {
-    quest::exp(150);
+    quest::exp(120);
     quest::summonitem(19608); # Item: Scaled Bone Rapier
     quest::say("You have slain enemies of our order. Carry your weapon with pride.");
   }

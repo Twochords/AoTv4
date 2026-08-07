@@ -33,7 +33,7 @@ sub EVENT_ITEM {
     return 1;
   }
   quest::say("Oh! Thank you so much! You have saved much time and trouble! Now if only those tinkerers in the Illuminarium Industria could figure out how to get that artificial light working!"); #using reward text from the rare plants quest for both quests
-  quest::exp(5000);
+  quest::exp(360);
   quest::faction(1561,10); #concillium universus
   quest::faction(1486,-30); #heart of seru
   quest::faction(1483,-30); #seru

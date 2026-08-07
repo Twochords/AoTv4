@@ -39,7 +39,7 @@ sub EVENT_ITEM {
       quest::faction(226, -60); #Clerics of Tunare
       quest::faction(341, -60); #Priests of Life
       quest::faction(1522, -60); #Primordial Malice
-      quest::exp(132775);   # 2.5% @ level 30
+      quest::exp(1040);   # 2.5% @ level 30
       quest::depop_withtimer();
     }
   }

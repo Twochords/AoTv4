@@ -49,11 +49,11 @@ sub EVENT_ITEM {
  
   if(plugin::check_handin(\%itemcount, 20281 => 1)) {
     quest::summonitem(20294); # Item: Dull Emerald Novice Sword
-    quest::exp(200);
+    quest::exp(120);
   }
   if(plugin::check_handin(\%itemcount, 20298 => 1, 20274 => 1, 20271 => 1)) {
     quest::summonitem(20331); # Item: Emerald Novice Long Sword
-    quest::exp(300);    
+    quest::exp(140);    
   }
   #do all other handins first with plugin, then let it do disciplines
   plugin::try_tome_handins(\%itemcount, $class, 'Warrior');

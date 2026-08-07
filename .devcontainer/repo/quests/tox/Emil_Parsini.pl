@@ -21,7 +21,7 @@ quest::faction("266","10"); # +High Council of Erudin
 
 quest::faction("267","10"); # +High Guard of Erudin
 
-quest::exp(2432);
+quest::exp(280);
 
 }
 
@@ -37,7 +37,7 @@ quest::faction("266","10"); # +High Council of Erudin
 
 quest::faction("267","10"); # +High Guard of Erudin
 
-quest::exp(2432);
+quest::exp(280);
 
 }
 

@@ -23,7 +23,7 @@ sub EVENT_ITEM {
 
 if (plugin::check_handin(\%itemcount, 48044 => 1, 4267 => 1)) {
 quest::say("I see now that I lack the skill necessary to control the Dark Arts. Maybe it would be wiser to allow another such as yourself to continue forward. Please accept this token as a reward in your mastering of the Dark Arts.");
-      quest::exp(20000);
+      quest::exp(560);
       quest::summonitem(48043); # Item: Demi Lich Skullcap
 }
 if (plugin::check_handin(\%itemcount, 4267 => 1)) {

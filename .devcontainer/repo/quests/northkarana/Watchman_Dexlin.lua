@@ -23,7 +23,7 @@ function event_trade(e)
 		e.other:Faction(288,15,0); -- Merchants of Ak'Anon
 		e.other:Faction(333,15,0); -- King Ak'Anon
 		e.other:Faction(238,-15,0); -- Dark Reflection
-		e.other:AddEXP(10000);
+		e.other:AddEXP(440);
 		eq.depop_with_timer();
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

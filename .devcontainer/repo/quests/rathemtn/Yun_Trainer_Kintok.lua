@@ -68,13 +68,13 @@ function event_trade(e)
 	-- Stretched Kobold Leather, Bundle of Thicket Twigs, Bundle of Faydark Twigs, Leathery Twine
 	if (item_lib.check_turn_in(e.trade, {item1 = 51101, item2 = 51104, item3 = 51105, item4 = 51106})) then
 		e.self:Emote("begins working furiously with the items you acquired, weaving the twine between the various twigs faster than your eyes can track, 'This is an old family tradition, you know. My parents showed me this skill many years ago. Ah, there we are. One final tie and it is finished. A fine shield, if I may say so. This should keep you protected for years to come. If you ever find that it is not serving up to your standards, see me again, and I shall see what I can do to improve it for you.'");
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:SummonItem(51107); -- Guktan Initiate's Shield
 		e.other:SetGlobal("guktan_shield", "1", 0, "F");
 	-- Guktan Initiate's Shield, Chunk of Prismatic Metal, Shield Frame Mold, Chunk of Refined Metal
 	elseif (item_lib.check_turn_in(e.trade, {item1 = 51107, item2 = 51113, item3 = 51114, item4 = 51115})) then
 		e.self:Say("You have proven to be quite a resourceful young initiate! I had not expected to see you again for quite some time. This was definitely not an easy task to complete, by any means' he says, as he begins working on the shield. A few hammer swings, and a jug of water later, he holds the new shield up for inspection.' Here you are, you've earned it! I replaced the old wooden shield frame with a metal one, it should increase the durability of the shield ten fold. May it serve you well!");
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:SummonItem(51108); -- Guktan Apprentice's Shield
 		e.other:SetGlobal("guktan_shield", "2", 0, "F");
 	-- Guktan Apprentice's Shield, Note to Kintok

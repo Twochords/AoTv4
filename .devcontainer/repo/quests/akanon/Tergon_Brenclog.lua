@@ -37,7 +37,7 @@ function event_trade(e)
 		e.other:Faction(255,3,0); -- Faction: Gem Choppers
 		e.other:Faction(333,3,0); -- Faction: King Ak`Anon
 		e.other:Ding();
-		e.other:AddEXP(150);
+		e.other:AddEXP(120);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13387})) then
 		e.self:Say("Thank you " .. e.other:GetName() .. ". I had no doubt you would fulfill my will and return my spellbook.. here is your reward for such effort. Now I have news of a larger matter. It has to do with a [defector].");
 		e.other:Faction(245,3,0); -- Faction: Eldritch Collective
@@ -46,7 +46,7 @@ function event_trade(e)
 		e.other:Faction(255,3,0); -- Faction: Gem Choppers
 		e.other:Faction(333,3,0); -- Faction: King Ak`Anon
 		e.other:Ding();
-		e.other:AddEXP(150);
+		e.other:AddEXP(120);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13388})) then
 		e.self:Say("Excellent work, " .. e.other:GetName() .. ". It's unfortunate this had to be done, but we cannot allow our secrets to fall into the hands of others.");
 		e.other:SummonItem(17502); -- elemental grimoire
@@ -56,7 +56,7 @@ function event_trade(e)
 		e.other:Faction(255,3,0); -- Faction: Gem Choppers
 		e.other:Faction(333,3,0); -- Faction: King Ak`Anon
 		e.other:Ding();
-		e.other:AddEXP(300);
+		e.other:AddEXP(140);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

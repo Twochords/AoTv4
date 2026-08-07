@@ -15,7 +15,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount,  62080=> 3, 62081=> 1)) { #Death Mark of Nurga (3) and Silver Bracelet of Crizz
     quest::say("This is exactly what I wanted. Vengeance is mine! Take this small token as a reward.");
     quest::summonitem(62196); #Hideous Coif of Woe
-    quest::exp(5000);
+    quest::exp(360);
   }
   else {
     quest::say("I have no need for this, $name.");

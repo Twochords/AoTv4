@@ -17,7 +17,7 @@ sub EVENT_ITEM {
     quest::faction(445,5); #Scaled Mystics
     quest::faction(442,5); #Crusaders of Greenmist
     quest::faction(444,5); #Swift Tails
-    quest::exp(200);
+    quest::exp(120);
   }
   plugin::return_items(\%itemcount);
 }

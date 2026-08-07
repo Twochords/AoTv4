@@ -48,7 +48,7 @@ sub EVENT_ITEM {
   if ($faction <= 3) {
     if (plugin::check_handin(\%itemcount, 25831 => 3, 24933 => 1)) { # cap
       quest::summonitem(31021); # Item: Runed Protector's Helm
-      quest::exp(100000);
+      quest::exp(940);
       quest::faction(406,20); # coldain
       quest::faction(405,20); # Dain Frostreaver IV
       quest::faction(419,-60); # Kromrif
@@ -58,7 +58,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25814 => 3, 24928 => 1)) { # bp
       quest::summonitem(31022); # Item: Runed Protector's Breastplate
-      quest::exp(100000);
+      quest::exp(940);
       quest::faction(406,20); # coldain
       quest::faction(405,20); # Dain Frostreaver IV
       quest::faction(419,-60); # Kromrif
@@ -68,7 +68,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25821 => 3, 24930 => 1)) { # sleeves
       quest::summonitem(31023); # Item: Runed Protector's Vambraces
-      quest::exp(100000);
+      quest::exp(940);
       quest::faction(406,20); # coldain
       quest::faction(405,20); # Dain Frostreaver IV
       quest::faction(419,-60); # Kromrif
@@ -78,7 +78,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25838 => 3, 24932 => 1)) { # wrist
       quest::summonitem(31024); # Item: Runed Protector's Bracer
-      quest::exp(100000);
+      quest::exp(940);
       quest::faction(406,20); # coldain
       quest::faction(405,20); # Dain Frostreaver IV
       quest::faction(419,-60); # Kromrif
@@ -88,7 +88,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25832 => 3, 24934 => 1)) { # gloves
       quest::summonitem(31025); # Item: Runed Protector's Gauntlets
-      quest::exp(100000);
+      quest::exp(940);
       quest::faction(406,20); # coldain
       quest::faction(405,20); # Dain Frostreaver IV
       quest::faction(419,-60); # Kromrif
@@ -98,7 +98,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25825 => 3, 24929 => 1)) { # legs
       quest::summonitem(31026); # Item: Runed Protector's Greaves
-      quest::exp(100000);
+      quest::exp(940);
       quest::faction(406,20); # coldain
       quest::faction(405,20); # Dain Frostreaver IV
       quest::faction(419,-60); # Kromrif
@@ -108,7 +108,7 @@ sub EVENT_ITEM {
     }
     elsif (plugin::check_handin(\%itemcount, 25833 => 3, 24931 => 1)) { # boots
       quest::summonitem(31027); # Item: Runed Protector's Boots
-      quest::exp(100000);
+      quest::exp(940);
       quest::faction(406,20); # coldain
       quest::faction(405,20); # Dain Frostreaver IV
       quest::faction(419,-60); # Kromrif

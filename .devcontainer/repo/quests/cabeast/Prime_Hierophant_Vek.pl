@@ -32,12 +32,12 @@ sub EVENT_ITEM {
 		quest::ding();
 		quest::faction(445,100); #Scaled Mystics
 		quest::faction(441,25); #Legion of Cabilis
-		quest::exp(500);
+		quest::exp(160);
 	}
 	elsif(plugin::check_handin(\%itemcount, 18462 => 1, 22917 => 1)){
 		quest::emote("smiles at your dedication to Cazic Thule and hands you a small gem.");
 		quest::summonitem(7881); # Item: Mark of Clarity
-		quest::exp(20000);
+		quest::exp(560);
 		quest::ding();
 		quest::faction(444,20); # Faction: Swift Tails
 		quest::faction(441,10); # Faction: Legion of Cabilis
@@ -45,7 +45,7 @@ sub EVENT_ITEM {
 	elsif(plugin::check_handin(\%itemcount, 18359 => 1, 22916 => 1)){
 		quest::emote("smiles at your dedication to Cazic Thule and hands you a small gem.");
 		quest::summonitem(7881); # Item: Mark of Clarity
-		quest::exp(20000);
+		quest::exp(560);
 		quest::ding();
 		quest::faction(444,20); # Faction: Swift Tails
 		quest::faction(441,10); # Faction: Legion of Cabilis
@@ -59,7 +59,7 @@ sub EVENT_ITEM {
 		quest::say("Well done");
 		quest::ding();
 		quest::summonitem(14786); # Item: Vek's Reference: Vambraces
-		quest::exp(10000);
+		quest::exp(440);
 	}
   plugin::return_items(\%itemcount);
 }

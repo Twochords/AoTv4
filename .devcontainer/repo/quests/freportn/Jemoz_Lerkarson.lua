@@ -35,7 +35,7 @@ function event_trade(e)
 		e.other:Faction(336,-10,0); -- Faction: Coalition of Tradefolk Underground
 		e.other:Faction(330,-10,0); -- Faction: The Freeport Militia
 		e.other:Faction(311,10,0); -- Faction: Steel Warriors
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 12142})) then
 		e.self:Say("We heard of your assault. We even attempted to slay Lucan. Alas, we failed. You have done your part and as such have earned our thanks. Beware of the Freeport Militia. They will no doubt be on the lookout for you. May Marr protect you. Perhaps you should speak with Valeron Dushire, paladin of the Knights of Truth. He seeks other to slay the fallen knight.");
 		e.other:SummonItem(eq.ChooseRandom(15560,15230,15219,15229,15222,15012)); -- Item(s): Spell: Furor (15560), Spell: Root (15230), Spell: Center (15219), Spell: Fear (15229), Spell: Invigor (15222), Spell: Healing (15012)
@@ -45,7 +45,7 @@ function event_trade(e)
 		e.other:Faction(336,-10,0); -- Faction: Coalition of Tradefolk Underground
 		e.other:Faction(330,-10,0); -- Faction: The Freeport Militia
 		e.other:Faction(311,10,0); -- Faction: Steel Warriors
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

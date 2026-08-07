@@ -21,7 +21,7 @@ sub EVENT_ITEM {
     quest::say("Fine work. We are very grateful. Take this Scout Cape. May you use it to serve Kelethin.");
     quest::summonitem(2914); # Item: Scouts Cape
     quest::faction(316,10); # Faction: Tunare's Scouts
-    quest::exp(5000);
+    quest::exp(360);
     quest::ding();
   }
   #do all other handins first with plugin, then let it do disciplines

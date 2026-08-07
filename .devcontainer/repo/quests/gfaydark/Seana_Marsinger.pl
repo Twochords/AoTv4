@@ -45,40 +45,40 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 54062 => 1, 10053 => 1, 54048 => 1)) { #melee 1
     quest::summonitem(54033); #gem of war
     quest::say("Wonderful! I also have some more [work] for you to do in the plane of hatred if you wish."); #need real text
-    quest::exp(60000);
+    quest::exp(800);
   }
   if (plugin::check_handin(\%itemcount, 54050 => 1, 54049 => 1, 54033 => 1)) { #melee 2
     quest::summonitem(54034); #gem of contention
     quest::say("Splendid work! Should you venture to the Plane of Hatred again, I have a [final task] that needs to be completed."); #need real text
-    quest::exp(60000);
+    quest::exp(800);
   }
   if (plugin::check_handin(\%itemcount, 54051 => 1, 54034 => 1)) { #melee 3
     quest::summonitem(54035); #gem of victory
     quest::say("You are a far greater person than I. I must contact the League at once."); #need real text
-    quest::exp(60000);
+    quest::exp(800);
   }
   if (plugin::check_handin(\%itemcount, 54040 => 1, 16537 => 1, 10037 => 1)) { #priest 1
     quest::summonitem(54027); #gem of faith
     quest::say("Wonderful! I also have some more [work] for you to do in the plane of hatred if you wish."); #need real text
-    quest::exp(60000);
+    quest::exp(800);
   }
   if (plugin::check_handin(\%itemcount, 54042 => 1, 54041 => 1, 54027 => 1)) { #priest 2
     quest::summonitem(54028); #gem of piety
     quest::say("Splendid work! Should you venture to the Plane of Hatred again, I have a [final task] that needs to be completed."); #need real text
-    quest::exp(60000);
+    quest::exp(800);
   }
   if (plugin::check_handin(\%itemcount, 54043 => 1, 54028 => 1)) { #priest 3
     quest::summonitem(54029); #gem of transcendence
     quest::say("You are a far greater person than I. I must contact the League at once."); #need real text
-    quest::exp(60000);
+    quest::exp(800);
   }
   if (plugin::check_handin(\%itemcount, 54035 => 1, 54058 => 1, 54060 => 1, 54056 => 1)) { #melee 4
     quest::summonitem(54039); # Item: Marsinger's Glimmering Gem
-    quest::exp(60000);
+    quest::exp(800);
   }
   if (plugin::check_handin(\%itemcount, 54029 => 1, 54059 => 1, 54061 => 1, 54057 => 1)) { #priest 4
     quest::summonitem(54039); # Item: Marsinger's Glimmering Gem
-    quest::exp(60000);
+    quest::exp(800);
   }
   if (plugin::check_handin(\%itemcount, 9590 => 1)) {
     quest::emote("accepts the note and begins to read");

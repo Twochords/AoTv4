@@ -47,7 +47,7 @@ sub EVENT_ITEM {
 			} elsif ($class eq "Warrior" || $class eq "Paladin" || $class eq "Ranger" || $class eq "Shadowknight" || $class eq "Monk" || $class eq "Bard" || $class eq "Rogue" || $class eq "Beastlord" || $class eq "Berserker") { #Melee/Hybrid
 				quest::summonitem(69389); #Ring of the Azure Sky
 			}
-			quest::exp(50000);
+			quest::exp(740);
 		} elsif (plugin::check_handin(\%itemcount, 27261 => 1)) { #Shroud of the Dar Brood
 			quest::say("I can hardly believe my tired eyes. You have returned the shroud! Wait, could this mean...? Is Fraka, my brother, dead? No. I cannot believe this -- it cannot be possible. And yet it has to be for you have acquired the shroud so hastily. What a sad day. Here is what I want you to do now, and you must. I want you to seek out those who assisted in this slaying of my brother and bring me proof the he is avenged. I will not rest until I see proof. Return to me only when you have the shroud and all the proof in hand. Now leave me be!");
 			quest::summonitem(69315); #Box of Phara Dar (Empty)

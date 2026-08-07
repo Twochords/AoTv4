@@ -28,7 +28,7 @@ sub EVENT_ITEM {
   if ($faction <= 2 && $makepoison >= 278 && plugin::check_handin(\%itemcount, 24072 => 1)) {
       quest::say("Great! Looks like everything is here! Hopefully Master Hanns won't send me to Steamfront now, I have a really bad feeling about that assignment. Here take this Seal, it was dropped by that dark stranger. It glows with a dark power I just don't understand. Be wary of further sightings of that dark assassin.");
       quest::summonitem(24073); # Item: Grandmaster Assassin's Seal
-      quest::exp(200000);
+      quest::exp(1180);
       quest::faction(223,20); # Circle Of Unseen Hands
       quest::faction(291,-20); # Merchants of Qeynos
       quest::faction(230,20); # Corrupt Qeynos Guards

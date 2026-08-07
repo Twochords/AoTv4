@@ -26,7 +26,7 @@ sub EVENT_ITEM {
     quest::say("By now you must realize that we need to avoid the question because of whom we are. Seru is not the Noble Paladin this city would have you believe. You see they teach that Katta feared Seru and that he had faked his own poisoning so they could pin the blame on Seru. The next thing that I ask of you, I ask because you can travel without question from one city to another. Go to Katta and give this report to Tilbok Furrunner. Tell him we are successfully rooted within Sanctus Seru and await any commands.");
     quest::summonitem(29858); # 29858  Etched Earring of Veracity
     quest::summonitem(29891); # 29891  Report to Tilbok
-    quest::exp(30000);
+    quest::exp(640);
     quest::faction(1485,-1); # Eye of Seru
     quest::faction(1484,-7); # Hand of Seru
     quest::faction(1483,-1); # Seru

@@ -20,7 +20,7 @@ sub EVENT_ITEM {
 if (plugin::check_handin(\%itemcount, 66189 => 4)) { # cove frog eye
 
 quest::say("Great, I'm working my way through a batch of glue. I keep it hidden so no one is tempted to steal it or play a practical joke on our friends. Here is your reward. I'll also tell you that I used to be a common thief, but not in the way you think. I had to steal a few supplies now and then when I lived on the lands as an exile. But then Morden Rasp found me and I haven't stolen a thing since."); 
-quest::exp(10000);
+quest::exp(440);
 quest::givecash(7,7,9,6);
 
 }

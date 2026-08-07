@@ -29,7 +29,7 @@ sub EVENT_SIGNAL {
 sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 19967 => 1)) {
     quest::emote("takes a wee sip and smacks his lips together, proclaiming, 'Ahhh, a finer stout has never passed my lips, ' before draining the mug in one gulp. 'Yer a saint amongst us, I say. Feel free to keep 'em coming, $name!'");
-    quest::exp(10000);
+    quest::exp(440);
     quest::faction(1503,10); #validus custodus
     quest::faction(1502,10); #katta castellum citizens
     quest::faction(1504,10); #magus conlegium

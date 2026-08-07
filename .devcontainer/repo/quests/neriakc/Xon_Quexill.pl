@@ -38,7 +38,7 @@ sub EVENT_ITEM {
 		quest::faction(275,-1); # Faction: Keepers of the Art
 		quest::faction(245,-1); # Faction: Eldritch Collective
 		quest::faction(1522,-10); # Faction: Primordial Malice
-		quest::exp(6400);
+		quest::exp(380);
 		quest::ding();
 		quest::givecash(0,8,0,0);
 	}
@@ -51,7 +51,7 @@ sub EVENT_ITEM {
 		quest::faction(275,-1); # Faction: Keepers of the Art
 		quest::faction(245,-1); # Faction: Eldritch Collective
 		quest::faction(1522,-10); # Faction: Primordial Malice
-		quest::exp(6400);
+		quest::exp(380);
 		quest::ding();
 	}
 	elsif(plugin::check_handin(\%itemcount,18758 => 1)){ #Tattered Note

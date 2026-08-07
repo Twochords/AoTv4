@@ -50,7 +50,7 @@ sub EVENT_ITEM {
     plugin::return_items(\%itemcount);
     return 1;
   }
-  quest::exp(10000);
+  quest::exp(440);
   quest::ding();
 }
 

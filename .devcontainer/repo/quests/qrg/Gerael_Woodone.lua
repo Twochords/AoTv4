@@ -27,7 +27,7 @@ function event_trade(e)
 		e.other:Faction(343,10,0); -- Faction: Surefall Protected Animals
 		e.other:Faction(324,-30,0); -- Faction: Unkempt Druids
 		e.other:Faction(262,10,0); -- Faction: Guards of Qeynos
-		e.other:AddEXP(200);
+		e.other:AddEXP(120);
 		e.other:GiveCash(random_copper,random_silver,random_gold,random_planinum);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 12141})) then
 		e.self:Say("So the Unkempt Druids are alive and well.  We shall keep a watchful eye out as should you.  Take this for your bravery and defense of the Jaggedpine.");
@@ -37,7 +37,7 @@ function event_trade(e)
 		e.other:Faction(343,10,0); -- Faction: Surefall Protected Animals
 		e.other:Faction(324,-30,0); -- Faction: Unkempt Druids
 		e.other:Faction(262,10,0); -- Faction: Guards of Qeynos
-		e.other:AddEXP(200);
+		e.other:AddEXP(120);
 		e.other:GiveCash(random_copper,random_silver,random_gold,random_planinum);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

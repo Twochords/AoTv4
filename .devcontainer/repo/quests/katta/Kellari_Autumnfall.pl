@@ -24,7 +24,7 @@ sub EVENT_ITEM {
     quest::emote("looks at the various trays in the kit and turns pale, even for her normal complexion.  She looks at you and says, 'This is much worse than we thought.  We assumed that this was caused by someone from within our ranks, but I would never have thought that Colain was involved");
     quest::ding();
 	quest::summonitem('3872');  # note from kellari
-    quest::exp(1000);
+    quest::exp(200);
 	quest::givecash(7,12,13,5);
   }
   plugin::return_items(\%itemcount);

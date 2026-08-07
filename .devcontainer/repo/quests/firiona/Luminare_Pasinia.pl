@@ -25,7 +25,7 @@ sub EVENT_ITEM {
    quest::faction(312,10);  # +Storm Guard
    quest::faction(441,-10); # -Legion of Cabilis
    quest::faction(313,-10); # -Pirates of Gunthak    
-   quest::exp(250);
+   quest::exp(140);
    #Summon: Vision of Sebilite
    quest::summonitem(12949); # Item: Vision of Sebilite
   }

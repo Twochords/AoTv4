@@ -55,7 +55,7 @@ sub EVENT_ITEM {
   elsif (plugin::check_handin(\%itemcount, 13270 => 4)) {
     quest::say("Well done, go now and continue your contemplations of fear. Keep up with your [duties] and you will soon be reaping the rewards granted by our Lord Cazic-Thule!!");
     quest::summonitem(1437); #Initiate Symbol of Cazic Thule
-    quest::exp(200);
+    quest::exp(120);
     quest::faction(265, 10); # Faction: Heretics
     quest::faction(231, -30); # Faction: Craftkeepers
     quest::faction(233, -30); # Faction: Crimson Hands
@@ -65,7 +65,7 @@ sub EVENT_ITEM {
   elsif (plugin::check_handin(\%itemcount, 13074 => 1, 16990 => 1, 14102 => 1, 14103 => 1)) {
     quest::say("Excellent job, $name. These components will help with our research immeasurably. You will soon be reaping the rewards granted by our Lord Cazic-Thule!! If you want to further assist our research effots, talk to Atdehim Sqonci.");
     quest::summonitem(14100); #Fright Forged Helm
-    quest::exp(1000);
+    quest::exp(200);
     quest::faction(265, 150); # Faction: Heretics
     quest::faction(231, -30); # Faction: Craftkeepers
     quest::faction(233, -30); # Faction: Crimson Hands

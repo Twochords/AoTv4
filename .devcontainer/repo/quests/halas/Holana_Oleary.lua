@@ -14,7 +14,7 @@ function event_trade(e)
 		e.self:Say("We can now rest assured that justice has been served. Ye'll be a valuable asset to our court.");
 		local rewardr = math.random(10);
 		e.other:GiveCash(math.random(99),math.random(99),math.random(99),0);
-		e.other:AddEXP(1600);
+		e.other:AddEXP(240);
 		e.other:Ding();
 		e.other:Faction(328,2); 								--Merchants of Halas
 		e.other:Faction(327,2); 								--Shamen of Justice

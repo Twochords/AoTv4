@@ -28,7 +28,7 @@ sub EVENT_ITEM {
       quest::faction(436,12); # Yelinak
       quest::faction(430,50); # Claws of Veeshan
       quest::faction(448,-25); # Kromzek
-      quest::exp(50000);
+      quest::exp(740);
     }
   }
   plugin::return_items(\%itemcount); # return unused items

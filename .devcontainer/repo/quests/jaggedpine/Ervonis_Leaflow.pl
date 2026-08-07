@@ -22,14 +22,14 @@ if (plugin::check_handin(\%itemcount, 55558 => 1)) { # Note to Ervonis
 
 quest::say("Germand needs some more lumber? Well I would be happy to chop some for you, but unfortunately I [lost] my axe. It was my favorite axe so I will not be chopping any more wood until I get it back."); 
 quest::setglobal("germand",1,5,"F");
-quest::exp(1000);
+quest::exp(200);
 
 }
 
 if (plugin::check_handin(\%itemcount, 55522 => 1 && $germand == 1)) { # Ervonis's Axe
 
 quest::say("I cannot tell you how thankful I am. Just a moment and I will get you some wood.' Ervonis chops some wood for you and ties it into a neat bundle. 'It is a bit heavy, but I think you can handle it. Thanks again!"); 
-quest::exp(2000);
+quest::exp(260);
 quest::summonitem(55536); # Bundle of Wood
 }
 }

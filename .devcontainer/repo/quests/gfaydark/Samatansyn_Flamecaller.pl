@@ -58,7 +58,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 27539 => 1, 13266 => 2)) {#Faydark Champions Long Sword, from Cb Cell Key
     quest::say("Well done, $name! Now we will be able to free more of our brothers and sisters from the orcs! Take this, as promised, a fine weapon with which to slay more orcs!!");
     quest::summonitem(27532); # Item: Faydark Champions Long Sword
-    quest::exp(7000);
+    quest::exp(400);
     quest::ding();
   }
   #do all other handins first with plugin, then let it do disciplines

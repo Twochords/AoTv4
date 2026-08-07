@@ -12,7 +12,7 @@ sub EVENT_ITEM {
 	if(plugin::takeGold(1000)) {
 		quest::say("Here it is. I am sure you will be quite happy with your purchase, it is quite an interesting old bag it is.");
 		quest::ding();
-		quest::exp(1000);
+		quest::exp(200);
 		quest::summonitem(10681); # Old Sealed Medicine Pouch
 	}
 	else {

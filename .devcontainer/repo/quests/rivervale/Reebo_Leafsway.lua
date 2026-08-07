@@ -33,7 +33,7 @@ function event_trade(e)
 		e.self:Say("Very good. Very good indeed. Karana does not need the blind obedience that so many deities require. Trust your instincts, they are more often right than not. Here, take this to Blinza. Hurry, she is expecting them. You may keep the donation she gives you in return.");
 		e.other:SummonItem(13957); -- Item: Crate of Fine Carrots
 		e.other:Ding();
-		e.other:AddEXP(5);
+		e.other:AddEXP(40);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13972})) then
 		e.self:Say("These carrots are rotten. They were rotten when I gave them to you. Why would you waste time and energy on such a fool's errand? Because I asked you to? Many, even those you trust will ask you to do things which you should not. Use the common sense that Karana has blessed you with to know which tasks can benefit our people and which could harm them. Learn this lesson well. You will need it if you plan to adventure beyond the vale. Now take these fresh carrots to Blinza and apologize for your error. You may keep the donation she gives you as payment.");
 		e.other:SummonItem(13958); -- Item: Crate of Carrots
@@ -42,7 +42,7 @@ function event_trade(e)
 		e.self:Say("Excellent!!  You must have taught ol' Nillipuss a great deal!  But he never seems to learn..  Oh well.  The Stormreapers and all of Rivervale owe you a debt of gratitude.  Please accept this token of our appreciation.");
 		e.other:SummonItem(eq.ChooseRandom(10308,8303,8304,10302,10303,10304,10305,10306,10309,17302,12001,10301,17301,17300,12002)); -- Item(s): Anti-Poison Amulet (10308), Arrow of Contagion (8303), Arrow of Frost (8304), Earring of Disease Reflection (10302), Earring of Fire Reflection (10303), Earring of Frost Reflection (10304), Earring of Magic Reflection (10305), Earring of Poison Reflection (10306), Eye of Disvan (10309), Pierce's Pouch of Storing (17302), Rod of Identification (12001), Runners Ring (10301), Travelers Pack (17301), Travelers Pouch (17300), Wand of Frost Bolts (12002)
 		e.other:Ding();
-		e.other:AddEXP(27440);
+		e.other:AddEXP(620);
 		e.other:GiveCash(0,4,6,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13974,item2 = 13974,item3 = 13974}) or item_lib.check_turn_in(e.trade, {item1 = 13974,item2 = 13974}) or item_lib.check_turn_in(e.trade, {item1 = 13974})) then
 		e.self:Say("Oh good! I see you have taugh that nasty Nillipuss a thing or two! Good. But it seems to me that he has stolen more jumjum than this. Perhaps he needs another lesson?");

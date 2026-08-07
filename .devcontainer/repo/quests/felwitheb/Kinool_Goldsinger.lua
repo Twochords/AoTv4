@@ -50,7 +50,7 @@ function event_trade(e)
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 12333,item2 = 12334,item3 = 8401, gold = 3000})) then
   		e.self:Say("Fine work!! I now reward you with The Rain Caller.");
 		e.other:Ding();
-  		e.other:AddEXP(5000);
+  		e.other:AddEXP(360);
   		e.other:SummonItem(8402); -- Item: Rain Caller
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

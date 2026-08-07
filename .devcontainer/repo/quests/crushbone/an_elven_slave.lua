@@ -22,14 +22,14 @@ function event_trade(e)
 			e.other:Faction(279,1,0); -- Faction: King Tearis Thex
 			e.other:Faction(246,1,0); -- Faction: Faydarks Champions
 			e.other:Faction(239,-1,0); -- Faction: The Dead
-			e.other:AddEXP(800);
+			e.other:AddEXP(200);
 			e.other:GiveCash(0,7,3,0);
 			eq.depop_with_timer();
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 10351})) then
 			e.self:Say("You killed the taskmaster?!  Absolutely amazing! The orcs will be fighting among themselves for power now and I can disappear in the commotion. Thanks, friend! Take this for your deeds!");
 			e.other:Ding();
 			e.other:SummonItem(18901); -- Item: Ragged Cloth Note
-			e.other:AddEXP(5000);
+			e.other:AddEXP(360);
 			eq.depop_with_timer();		
 		end
 	elseif(e.self:GetRace() == 5 and e.self:GetGender() == 1) then -- female high elf slave
@@ -42,14 +42,14 @@ function event_trade(e)
 			e.other:Faction(279,1,0); -- Faction: King Tearis Thex
 			e.other:Faction(246,1,0); -- Faction: Faydarks Champions
 			e.other:Faction(239,-1,0); -- Faction: The Dead
-			e.other:AddEXP(800);
+			e.other:AddEXP(200);
 			e.other:GiveCash(0,7,3,0);
 			eq.depop_with_timer();
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 10351})) then
 			e.self:Say("You killed the taskmaster?!  Absolutely amazing! The orcs will be fighting among themselves for power now and I can disappear in the commotion. Thanks, friend! Take this for your deeds!");
 			e.other:Ding();
 			e.other:SummonItem(18902); -- Item: Torn Drawing
-			e.other:AddEXP(5000);
+			e.other:AddEXP(360);
 			eq.depop_with_timer();		
 		end
 	elseif(e.self:GetRace() == 4 and e.self:GetGender() == 0) then -- male wood elf slave
@@ -62,14 +62,14 @@ function event_trade(e)
 			e.other:Faction(270,-1,0); -- Faction: Indigo Brotherhood
 			e.other:Faction(325,1,0); -- Faction: Merchants of Felwithe
 			e.other:Faction(276,1,0); -- Faction: Kelethin Merchants
-			e.other:AddEXP(800);
+			e.other:AddEXP(200);
 			e.other:GiveCash(0,7,3,0);
 			eq.depop_with_timer();
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 10351})) then
 			e.self:Say("You killed the taskmaster?!  Absolutely amazing! The orcs will be fighting among themselves for power now and I can disappear in the commotion. Thanks, friend! Take this for your deeds!");
 			e.other:Ding();
 			e.other:SummonItem(18903); -- Item: Tattered Cloth Note
-			e.other:AddEXP(5000);
+			e.other:AddEXP(360);
 			eq.depop_with_timer();		
 		end
 	elseif(e.self:GetRace() == 4 and e.self:GetGender() == 1) then -- female wood elf slave
@@ -82,14 +82,14 @@ function event_trade(e)
 			e.other:Faction(270,-1,0); -- Faction: Indigo Brotherhood
 			e.other:Faction(325,1,0); -- Faction: Merchants of Felwithe
 			e.other:Faction(276,1,0); -- Faction: Kelethin Merchants
-			e.other:AddEXP(800);
+			e.other:AddEXP(200);
 			e.other:GiveCash(0,7,3,0);
 			eq.depop_with_timer();
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 10351})) then
 			e.self:Say("You killed the taskmaster?!  Absolutely amazing! The orcs will be fighting among themselves for power now and I can disappear in the commotion. Thanks, friend! Take this for your deeds!");
 			e.other:Ding();
 			e.other:SummonItem(18904); -- Item: Faded Wedding Cloth
-			e.other:AddEXP(5000);
+			e.other:AddEXP(360);
 			eq.depop_with_timer();		
 		end
 	end

@@ -48,7 +48,7 @@ sub EVENT_ITEM {
     quest::faction(227, 20); # Clerics of Underfoot
     quest::faction(274, 20); #Kazon Stormhammer
     quest::faction(293, 15); #Miner's guild 249
-    quest::exp(100000);
+    quest::exp(940);
   }
   plugin::return_items(\%itemcount);
 }

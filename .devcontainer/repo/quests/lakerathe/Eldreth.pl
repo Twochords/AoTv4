@@ -23,7 +23,7 @@ sub EVENT_ITEM {
   if (quest::handin({13087 => 2, 28012 => 1, "platinum" => 100})) { #Bottle of Milk x 2, Combined Parchment , Platinum x 100
     quest::say("Hmm, interesting. This document is not only encoded, but written in a very obscure language. From what I can gather, it's a variant of elder Teir'Dal, but not one I've encountered. I can not fully translate this, but I know one who can. Find Yendar and give him this.");
     quest::ding();
-    quest::exp(500);
+    quest::exp(160);
     quest::summonitem(28053); # Item: Scribbled Parchment
     quest::faction(342,20);#Order of Three
     quest::faction(221,-10);#Bloood Sabers

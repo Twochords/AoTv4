@@ -35,7 +35,7 @@ sub EVENT_ITEM {
     plugin::return_items(\%itemcount);
     return 1;
   }
-  quest::exp(2500);
+  quest::exp(280);
   quest::faction(1512,10); #house of stout
   quest::faction(1508,10); #traders of the haven
 }

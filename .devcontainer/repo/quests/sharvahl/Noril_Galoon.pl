@@ -24,7 +24,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 5549 =>1 )) {
     quest::say("Great work $name.  Thanks for the tools to finish your upgrade.  Here is your new shield.  Take your buckler, cloak and sword back to Armsman Khaigesh and show him the progress you have made.");
     quest::summonitem(5550); # Item: Horn Covered Buckler
-    quest::exp(2000);
+    quest::exp(260);
     quest::faction( 1513,10 ); # Faction: Guardians of Shar Vahl
   }
   plugin::return_items(\%itemcount);

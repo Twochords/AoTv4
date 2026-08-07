@@ -55,7 +55,7 @@ sub EVENT_ITEM {
   elsif(plugin::check_handin(\%itemcount, 20474 => 1)){
     # Toolset Delivery (kael)[End]
     quest::say("I assume the delivery went well? You can have these as payment. One of my customers just decided he does not wish to buy them. They are rather sturdy! I do have another task available if you wish to [undertake] it.");
-    quest::exp(1000);
+    quest::exp(200);
     # Summon: Engraved Bone Pauldrons
     quest::summonitem(25062); # Item: Engraved Bone Pauldrons
    }
@@ -63,7 +63,7 @@ sub EVENT_ITEM {
   elsif(plugin::check_handin(\%itemcount, 25130 => 1)){
     # Spear Delivery (kael)[End]
     quest::say("He has reconsidered the offer, you say? This is most excellent! I hope this will be acceptable payment for your troubles, $name. My cash situation is not the best at this point in time. I do have a [third client] who needs delivery...");
-    quest::exp(1500);
+    quest::exp(240);
     # Summon: Bracer of Midnight
     quest::summonitem(25061); # Item: Bracer of Midnight
    }
@@ -71,7 +71,7 @@ sub EVENT_ITEM {
   elsif(plugin::check_handin(\%itemcount, 25110 => 1)){
     # Mechanical Net Delivery (kael)[End]
     quest::say("It is truly a sight to behold. This is the most fashionable cloak I have yet to see. Even King Tormax will be green with envy. This old bag has served me well, I hope you find it to your liking.");
-    quest::exp(2000);
+    quest::exp(260);
     # Summon: Wenglawks Manly Purse
     quest::summonitem(17049); # Item: Wenglawks Manly Purse
   }
@@ -87,7 +87,7 @@ sub EVENT_ITEM {
 	quest::ding();
 	quest::summonitem(1719); # Girdle of Reflection
 	quest::summonitem(1723); # Noble's Seal
-	quest::exp(2000);
+	quest::exp(260);
   }
   plugin::return_items(\%itemcount);
 }

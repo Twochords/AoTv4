@@ -26,12 +26,12 @@ sub EVENT_ITEM {
     if (($class eq "bard") || ($class eq "beastlord") || ($class eq "paladin") || ($class eq "ranger") || ($class eq "rogue") || ($class eq "shadowknight") || ($class eq "warrior")){
     		quest::say("Apparently our ignorance exceeded our luck. Ah well, I'm sure the Prince of Hate will find some other punishment for our folly. Well, since you too chance his anger I suppose you deserve a reward. Here, take this...though I'm not sure how much use it will be against a god."); 
     		quest::summonitem(63052); # Item: Heartspike
-		quest::exp(5000);
+		quest::exp(360);
     }
 	else{
 		quest::say("Apparently our ignorance exceeded our luck. Ah well, I'm sure the Prince of Hate will find some other punishment for our folly. Well, since you too chance his anger I suppose you deserve a reward. Here, take this...though I'm not sure how much use it will be against a god."); 
     		quest::summonitem(63053); # Item: Fleshweaver's Mark
-		quest::exp(5000);
+		quest::exp(360);
 
   }
   }

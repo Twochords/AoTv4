@@ -74,7 +74,7 @@ sub EVENT_ITEM {
       quest::faction(379, -10); # Butcherblock Bandits
       quest::faction(241, 10);  # Deeppockets
       quest::faction(244, -10); # Ebon Mask
-      quest::exp(5000);
+      quest::exp(360);
       quest::summonitem(quest::ChooseRandom(2108,2124,2118,2116,2120,2123)); # Item(s): Patchwork Sleeves (2108), Small Patchwork Boots (2124), Small Patchwork Cloak (2118), Small Patchwork Tunic (2116), Small Patchwork Sleeves (2120), Small Patchwork Pants (2123)
      }
    elsif (($faction <= 4) && (plugin::check_handin(\%itemcount, 13282 => 1))) { # Scrap Metal
@@ -84,7 +84,7 @@ sub EVENT_ITEM {
       quest::faction(379, -10); # Butcherblock Bandits
       quest::faction(241, 10);  # Deeppockets
       quest::faction(244, -10); # Ebon Mask
-      quest::exp(5000);
+      quest::exp(360);
       quest::summonitem(12165); # Miners Cap 628
    }
    elsif (($faction <= 4) && (plugin::check_handin(\%itemcount, 12167 => 1))) { # Gnome Take (Bad)
@@ -94,7 +94,7 @@ sub EVENT_ITEM {
       quest::faction(379, -10); # Butcherblock Bandits
       quest::faction(241, 10);  # Deeppockets
       quest::faction(244, -10); # Ebon Mask
-      quest::exp(5000);
+      quest::exp(360);
       quest::givecash(0, 2, 0, 0);
       quest::summonitem(quest::ChooseRandom(10009, 10015, 10500)); # Item(s): Bead Necklace (10009)
    }
@@ -105,7 +105,7 @@ sub EVENT_ITEM {
       quest::faction(379, -10); # Butcherblock Bandits
       quest::faction(241, 10);  # Deeppockets
       quest::faction(244, -10); # Ebon Mask
-      quest::exp(5000);
+      quest::exp(360);
       quest::summonitem(10005); # Item: Silver Stud
    }
    

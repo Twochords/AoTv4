@@ -21,14 +21,14 @@ function event_trade(e)
 			e.other:Faction(274,2,0); -- Faction: Kazon Stormhammer
 			e.other:Faction(293,1,0); -- Miners Guild 249 (293)
 			e.other:Faction(227,2,0); -- Clerics of Underfoot (227)
-			e.other:AddEXP(800);
+			e.other:AddEXP(200);
 			e.other:GiveCash(0,7,3,0);
 			eq.depop_with_timer();
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 10351})) then
 			e.self:Say("You killed the taskmaster?!  Absolutely amazing! The orcs will be fighting among themselves for power now and I can disappear in the commotion. Thanks, friend! Take this for your deeds!");
 			e.other:Ding();
 			e.other:SummonItem(18905); -- Item: Worn Rune
-			e.other:AddEXP(5000);
+			e.other:AddEXP(360);
 			eq.depop_with_timer();		
 		end
 	elseif(e.self:GetRace() == 8 and e.self:GetGender() == 1) then -- female dwarven slave
@@ -42,14 +42,14 @@ function event_trade(e)
 			e.other:Faction(293,1,0); -- Miners Guild 249 (293)
 			e.other:Faction(290,1,0); -- Faction: Merchants of Kaladim
 			e.other:Faction(232,-1,0); -- Faction: Craknek Warriors
-			e.other:AddEXP(800);
+			e.other:AddEXP(200);
 			e.other:GiveCash(0,7,3,0);
 			eq.depop_with_timer();
 		elseif(item_lib.check_turn_in(e.trade, {item1 = 10351})) then
 			e.self:Say("You killed the taskmaster?!  Absolutely amazing! The orcs will be fighting among themselves for power now and I can disappear in the commotion. Thanks, friend! Take this for your deeds!");
 			e.other:Ding();
 			e.other:SummonItem(18906); -- Item: Small Wood Carving
-			e.other:AddEXP(5000);
+			e.other:AddEXP(360);
 			eq.depop_with_timer();		
 		end
 	end

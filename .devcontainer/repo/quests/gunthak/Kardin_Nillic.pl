@@ -27,7 +27,7 @@ sub EVENT_ITEM{
  }
   if(plugin::check_handin(\%itemcount, 59024 => 1)) {
     quest::say("You have done well $name, my friend will now be saved, let me share my song with you.");
-    quest::exp(1000);
+    quest::exp(200);
     quest::summonitem(59002); # Item: Song: Aria of Asceticism
   }
   plugin::return_items(\%itemcount);

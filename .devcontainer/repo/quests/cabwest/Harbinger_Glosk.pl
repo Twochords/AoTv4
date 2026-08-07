@@ -39,7 +39,7 @@ sub EVENT_ITEM {
 		quest::ding();
 		quest::faction(443,100); #Brood of Kotiz
 		quest::faction(441,25); #Legion of Cabilis		
-		quest::exp(500);
+		quest::exp(160);
 	}
 	elsif(plugin::check_handin(\%itemcount, 12874 => 1, 4265 => 1)){
 		quest::emote("presents to you a glowing skullcap.");
@@ -47,7 +47,7 @@ sub EVENT_ITEM {
 		quest::summonitem(4266); # Item: Sorcerer Skullcap
 		quest::faction(441,20); # Faction: Legion of Cabilis
 		quest::faction(443,20); # Faction: Brood of Kotiz
-		quest::exp(10000);
+		quest::exp(440);
 		quest::givecash(0,0,0,2);
 	}
 	elsif (plugin::check_handin(\%itemcount, 48037 => 1)) {

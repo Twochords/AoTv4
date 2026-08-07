@@ -13,7 +13,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 12739 => 1, 12659 => 1, 12426 => 1)) {
     quest::say("Good Work $name. This will surely hold back those vile creatures for some time. Here is your spell.");
     quest::summonitem($spellnum);
-    quest::exp(10);
+    quest::exp(60);
   }
   plugin::return_items(\%itemcount);
 }

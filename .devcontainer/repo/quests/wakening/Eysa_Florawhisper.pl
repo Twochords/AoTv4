@@ -25,7 +25,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 24863 => 1)) {
     quest::say("Ohhhh! You're the sweetest, $name. The nymphs of the Tunarean Court recognize you as a friend of our kind and our botanical brethren.");
     quest::faction(449, 30); # Faction: Tunarean Court
-    quest::exp(5000);
+    quest::exp(360);
     quest::summonitem(24864); # Item: Crest of the Wood Nymphs
   }
   plugin::return_items(\%itemcount);

@@ -42,7 +42,7 @@ sub EVENT_ITEM {
   }
 
   quest::say("Ah, excellent! Guess standin out here in the cold proved worthwhile for me after all. You take that weapon and enjoy it, I know I`ll be getting some use of this one. Safe travel to ya, friend!");
-  quest::exp(1000);
+  quest::exp(200);
 }
 
 # Quest by mystic414

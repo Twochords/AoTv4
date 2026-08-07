@@ -59,13 +59,13 @@ sub EVENT_ITEM {
    }
    elsif(plugin::check_handin(\%itemcount,10194=>1)) {
      quest::emote("laughs heartily and whispers to you, 'Well done, worm, your servitude to my will has now expired...'");
-     quest::exp(25000);
+     quest::exp(600);
      quest::unique_spawn(50335,0,0,$x,$y,$z); #spawn a_monstrous_zombie
    }
    elsif(plugin::check_handin(\%itemcount,10197=>1)) {
      quest::say("Oh! Umm... Well, I was just playing with you. Certainly you know I was joking! We had a deal and I will abide by the terms of our agreement. Here is my payment for your services. Bye..");
      quest::summonitem(15692); # Item: Spell: Life Leech
-     quest::exp(25000);
+     quest::exp(600);
    }
    plugin::return_items(\%itemcount);
 }

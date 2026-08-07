@@ -44,7 +44,7 @@ function event_trade(e)
 		e.other:Faction(221,-10,0); -- Bloodsabers
 		e.other:Faction(341,5,0); -- Priest of Life
 		e.other:Faction(262,5,0); -- Guards of Qeynos
-		e.other:AddEXP(200);		
+		e.other:AddEXP(120);		
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13289})) then -- Chest of Faith (closed)
 		e.self:Say("You have done supremely well, my young acolyte of Thunder. For your great service to the Temple of Thunder. Now go and cast the storm into the populace of Antonica.");
 		e.other:Ding();
@@ -53,7 +53,7 @@ function event_trade(e)
 		e.other:Faction(221,-10,0); -- Bloodsabers
 		e.other:Faction(341,5,0); -- Priest of Life
 		e.other:Faction(262,5,0); -- Guards of Qeynos
-		e.other:AddEXP(200);	
+		e.other:AddEXP(120);	
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

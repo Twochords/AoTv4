@@ -12,7 +12,7 @@ function event_trade(e)
 		e.self:Emote("snatches the note from your hand and rips it open with his large hands. 'You take dis to Kargek. He want!'");
 		e.other:SummonItem(20674); -- Tiny Lute
 		e.other:Ding();
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

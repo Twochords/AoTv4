@@ -29,7 +29,7 @@ function event_trade(e)
 		e.other:Faction(262,-10,0); -- guard of qeynos
 		e.other:Faction(272,-10,0); -- jaggedpine treefolks
 		e.other:Faction(343,10,0); -- qrg Protected animal
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13913})) then -- barbarian head (Talym's Head)
 		e.self:Say("What fine work you do! In the name of all Norrath's beasts and of the Unkempt Druids, I thank you. No longer will there be senseless slaughter. Here is the flute.");
 		e.other:SummonItem(13310); -- A cracked Flute
@@ -38,7 +38,7 @@ function event_trade(e)
 		e.other:Faction(262,-10,0); -- guard of qeynos
 		e.other:Faction(272,-10,0); -- jaggedpine treefolks
 		e.other:Faction(343,10,0); -- qrg Protected animal
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

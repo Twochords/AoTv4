@@ -123,7 +123,7 @@ function event_trade(e)
       e.other:Message(MT.NPCQuestSay, ("Kenra Kalekkio says, 'I am astounded that you have completed the trial so easily! You have gone above and beyond our expectations and are ready to continue beyond mere trials! Congratulations, %s! At this time, you should return to Kevren so he can guide you on your way from here on out.'"):format(e.other:GetCleanName()))
       if not finished_third_trial then
         eq.set_global("ikky", "4", 5, "F");
-        e.other:AddEXP(1)
+        e.other:AddEXP(20)
       end
     end
   end

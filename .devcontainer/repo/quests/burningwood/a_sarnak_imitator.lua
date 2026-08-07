@@ -43,11 +43,11 @@ function event_trade(e)
     e.self:Say("I see that you have what I was waiting for. Stofo does do excellent work. It seems that you are to start on a long journey. Take this seal and it will guide you on your next step. Seek out the masters of enchantment. In time we will craft the Serpent for you. When you have collected the four parts of the staff, you must combine them in a bundle and return them to me.");
     e.other:SummonItem(10604); -- Item: Jeb's Seal
     e.self:Say("Take this seal. You will need to show my seal to the other masters so that they may grant you the tools to complete your next tasks. When you have collected the four parts of the staff, you must combine them in a bundle for me. The other masters can provide the means to bundle them. Good luck and safe travels.");
-    e.other:AddEXP(5000);
+    e.other:AddEXP(360);
   elseif(item_lib.check_turn_in(e.trade, {item1 = 10639})) then
     e.self:Say("The path you trod was long and hard. Now you are worthy to bear the Serpent. Use it well.");
     e.other:Faction(404,30); -- Faction: Truespirit
-    e.other:AddEXP(1500000);
+    e.other:AddEXP(2300);
     e.other:SummonItem(10650); -- Item: Staff of the Serpent
   elseif(item_lib.check_turn_in(e.trade, {item1 = 54267})) then
     e.self:Say("As I suspected, this is something extraordinary. You must go speak to Maelin at once. It has been many moons since I have entered the Plane of Knowledge. He may well have some new information for me. Go at once and tell him I sent you.");

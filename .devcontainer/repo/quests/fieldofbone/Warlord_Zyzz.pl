@@ -20,7 +20,7 @@ sub EVENT_ITEM {
    quest::faction(442,1);   # +Crusaders of Greenmist
    quest::faction(444,1);  # +Swifttails
    quest::givecash(4,2,0,0);
-   quest::exp(2500);  
+   quest::exp(280);  
   }
   
   if (plugin::check_handin(\%itemcount, 18213 =>1 )) {

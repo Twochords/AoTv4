@@ -28,7 +28,7 @@ function event_trade(e)
 		e.self:Say("Thank You. This is most interesting. I must study it immediatly"); -- text made up
 		e.other:SummonItem(8732); -- Item: Medallion of the Arcane Scientists
 		e.other:Ding();
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

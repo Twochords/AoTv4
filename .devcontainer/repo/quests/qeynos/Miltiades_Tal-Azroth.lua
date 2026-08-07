@@ -44,7 +44,7 @@ function event_trade(e)
 		e.self:Say("Good! Now the Bloodsabers know that Karana will not allow them to live forever! Here, take this to aid you.");
 		e.other:SummonItem(27488); -- Item: Rainkeepers Defender Blade
 		e.other:Ding();
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

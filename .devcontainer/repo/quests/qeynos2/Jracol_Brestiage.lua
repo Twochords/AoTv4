@@ -26,7 +26,7 @@ function event_trade(e)
 		e.other:Faction(304,-10,0); -- Ring of Scale
 		e.other:Faction(332,5,0); -- Highpass Guards
 		e.other:Faction(331,5,0); -- Merchants of Highpass
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

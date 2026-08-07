@@ -17,7 +17,7 @@ sub EVENT_ITEM {
     quest::faction(445,5); #Scaled Mystics
     quest::faction(442,5); #Crusaders of Greenmist
     quest::faction(444,5); #Swift Tails
-    quest::exp(800);
+    quest::exp(200);
   }
   elsif (plugin::check_handin(\%itemcount, 18246 => 1)) {
     quest::say("I told you that I need two sabertooth kitten canines and the legion order.");

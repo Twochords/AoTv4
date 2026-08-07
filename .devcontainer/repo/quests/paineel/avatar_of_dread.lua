@@ -31,7 +31,7 @@ function event_trade(e)
 		e.other:Faction(254,-50,0); -- Faction: Gate Callers
 		e.other:Faction(231,-50,0); -- Faction: Craftkeepers
 		e.other:Faction(233,-50,0); -- Faction: Crimson Hands
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		eq.depop();
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

@@ -55,7 +55,7 @@ function event_trade(e)
 		e.other:Faction(309,75,0); -- Silent Fist Clan
 		e.other:Faction(262,11,0); -- Guards of Qeynos
 		e.other:Faction(361,5,0); -- Ashen Order
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	-- Red Headband, Skull of Jhen`Tra, Dagger of Marnek, Zaharn's Coronet
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 10113, item2 =13168, item3 = 13169, item4 = 3000})) then
 		e.self:Say("In honor of your recent acts of courage and dedication, I reward you, " .. e.other:GetName() .. ", with the purple headband of the Silent Fist Clan.");
@@ -64,7 +64,7 @@ function event_trade(e)
 		e.other:Faction(309,100,0); -- Silent Fist Clan
 		e.other:Faction(262,15,0); -- Guards of Qeynos
 		e.other:Faction(361,5,0); -- Ashen Order
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

@@ -18,7 +18,7 @@ function event_trade(e)
     e.other:Faction(230,-1,0); -- Corrupt Qeynos Guards
     e.other:Faction(223,-1,0); -- CIrcle of Unseen Hands
     e.other:Faction(291,1,0); -- Merchants of Qeynos
-    e.other:AddEXP(27440);
+    e.other:AddEXP(620);
   end
   item_lib.return_items(e.self, e.other, e.trade)
 end

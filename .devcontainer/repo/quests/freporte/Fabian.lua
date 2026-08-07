@@ -31,7 +31,7 @@ function event_trade(e)
 		e.other:Faction(262, 1,0); -- Faction: Guards of Qeynos
 		e.other:Faction(304, -1,0); -- Faction: Ring of Scale
 		e.other:Faction(285, -1,0); -- Faction: Mayong Mistmoore
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 		e.other:GiveCash(0,20,10,1);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13710})) then -- Etched Silver Coin
 		e.self:Say("'My lucky coin! How did it get in there? Well, never mind that. You are an honest person and although honesty is its own reward, I feel obligated to return the favor. Take this to Dionna if you enjoy music. Farewell friend!");
@@ -42,7 +42,7 @@ function event_trade(e)
 		e.other:Faction(262, 1,0); -- Faction: Guards of Qeynos
 		e.other:Faction(304, -1,0); -- Faction: Ring of Scale
 		e.other:Faction(285, -1,0); -- Faction: Mayong Mistmoore
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

@@ -61,7 +61,7 @@ sub EVENT_ITEM
 			quest::say("So you have succeeded where others have failed. You show promise. Take this then. You shall be a valuable asset to the Dead and soon this shall be of value to one so great. This will help you on your way. Are you still interested in my [appointed tasks]?");
 			quest::summonitem(2317);#Cloak of the Undead Eye
 			quest::givecash(0,0,5,1);#5 gold, 1 platinum
-			quest::exp(33750);#1% level 16 exp
+			quest::exp(660);#1% level 16 exp
 			quest::ding();
 			#Factions verified per ZAM
 			quest::faction(239, 25); #The Dead
@@ -76,7 +76,7 @@ sub EVENT_ITEM
 			{
 			quest::say("Oh how grand it is!! Look at it!! I feel the power trembling within. Who would have thought such an item would be abandoned? You have performed supremely. Queen Cristanos shall reward me greatly and I shall reward you greatly. Here is my weapon from years past.. the Reaper of the Dead. I believe it has one soul still trapped within.");
 			quest::summonitem(5374);#Reaper of the Dead
-			quest::exp(33750);#1% level 16 exp
+			quest::exp(660);#1% level 16 exp
 			quest::ding();
 			#Faction verified per ZAM
 			quest::faction(239, 100); #The Dead

@@ -76,7 +76,7 @@ sub EVENT_ITEM {
       quest::faction(379, -10); # Butcherblock Bandits
       quest::faction(241, 10);  # Deeppockets
       quest::faction(244, -10); # Ebon Mask
-      quest::exp(5000);
+      quest::exp(360);
       quest::givecash(0, 4, 0, 0);
       quest::summonitem(quest::ChooseRandom(7007,7008,7009,7010)); # Item(s): Rusty Dagger (7007), Rusty Rapier (7008), Rusty Spear (7009), Rusty Shortened Spear (7010)
    }
@@ -87,7 +87,7 @@ sub EVENT_ITEM {
       quest::faction(379, -10); # Butcherblock Bandits
       quest::faction(241, 10);  # Deeppockets
       quest::faction(244, -10); # Ebon Mask
-      quest::exp(5000);
+      quest::exp(360);
       quest::summonitem(12166); # Parrying Pick 628
    }
    elsif ($client->GetGlobal("Fatestealer") ==1 and plugin::check_handin(\%itemcount, 9813 => 1)) { # Rogue Epic 1.5

@@ -42,7 +42,7 @@ function event_trade(e)
 		e.other:Faction(272,20,0);  -- Jaggedpine Treefolk
 		e.other:Faction(302,20,0);  -- Protectors of Pine
 		e.other:Faction(262,20,0);  -- Guards of Qeynos
-		e.other:AddEXP(2000);
+		e.other:AddEXP(260);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 8884,item2 = 8885})) then -- blackened mithril chain & shadowjade weave
 		e.self:Say("Excellent, my friend! Well done indeed. These are exactly what I needed to make the circlet. Go now, my friend. Cheyloh awaits and I am sure that he will be most impressed with your success thus far.");  -- text made up/adapted from the tunic reward
 		e.other:SummonItem(8883); -- shadowjade circlet
@@ -51,7 +51,7 @@ function event_trade(e)
 		e.other:Faction(272,20,0);  -- Jaggedpine Treefolk
 		e.other:Faction(302,20,0);  -- Protectors of Pine
 		e.other:Faction(262,20,0);  -- Guards of Qeynos
-		e.other:AddEXP(2000);
+		e.other:AddEXP(260);
 
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

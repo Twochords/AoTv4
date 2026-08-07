@@ -80,7 +80,7 @@ sub EVENT_ITEM {
     #Quest: Darkened Jawbones (End)
     quest::say("I can see that you have a brave heart. You have rescued many of the fallen spirits with little regard to your own welfare. Such selfless acts should not go unrewarded. Please take these gloves and wear them with pride. It is a symbol of [rebirth].");
     quest::faction(1513,10); # +Guardians of Shar Vahl
-    quest::exp(1000);
+    quest::exp(200);
     quest::ding();
     #Rebirth Leather Gloves
     quest::summonitem(30879); # Item: Rebirth Leather Gloves
@@ -95,7 +95,7 @@ deeply.");
     #Rebirth Leather Sleeves
     quest::summonitem(30877); # Item: Rebirth Leather Sleeves
     quest::faction(1513,10); # +Guardians of Shar Vahl
-    quest::exp(1000);
+    quest::exp(200);
     quest::ding();
    }
   plugin::return_items(\%itemcount);

@@ -19,17 +19,17 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 20725, item2 = 20964, item3 = 20726, item4 = 20727})) then 		--paladin test of compassion using efreeti zweihander, dulcet nectar, golden hilt, large sky diamond
 		e.other:SummonItem(11682); --Truvinan, the divine wind
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20950, item2 = 20721, item3 = 20722})) then 	--paladin test of sacrifice using griffon statuette, spiroc peace totem, bixie sword blade
 		e.other:SummonItem(27708); --Aldryn, blade of the ocean
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20957, item2 = 20723, item3 = 20724})) then 	--paladin test of love using dark spiroc feather, ethereal topaz, sphinx claw
 		e.other:SummonItem(11681); --Zephyrwind
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("");
 		eq.depop();
 	end

@@ -16,7 +16,7 @@ local item_lib = require("items");
 		e.other:Faction(355, 1); -- Faction: Storm Reapers
 		e.other:Faction(292, 1); -- Faction: Merchants of Rivervale
 		e.other:Faction(334, -1); -- Faction: Dreadguard Outer
-		e.other:AddEXP(10); 
+		e.other:AddEXP(60); 
 	else
 		item_lib.return_items(e.self, e.other, e.trade);
 	end

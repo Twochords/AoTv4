@@ -20,7 +20,7 @@ function event_trade(e)
 		e.other:Faction(271,1,0); --Dismal Rage
 		e.other:Faction(296,1,0); --Opal Dark Briar
 		e.other:Faction(281,-1,0); --Knights of Truth
-		e.other:AddEXP(200);
+		e.other:AddEXP(120);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

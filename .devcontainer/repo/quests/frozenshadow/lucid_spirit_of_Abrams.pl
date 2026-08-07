@@ -11,7 +11,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
 	if(plugin::check_handin(\%itemcount, 1711 => 1)) { # Lock of Dwarven Hair
 		quest::ding();
-		quest::exp(1000);
+		quest::exp(200);
 		quest::summonitem(1712); # Arcanum of Roth
 	}
 	plugin::return_items(\%itemcount);

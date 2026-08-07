@@ -26,7 +26,7 @@ sub EVENT_ITEM {
     quest::summonitem(30052); # Item: Rune Shafted Harpoon
     quest::faction(439, 30); # Faction: Snowfang Gnolls
     quest::faction(431, -30); # Faction: Ulthork
-    quest::exp(1000);
+    quest::exp(200);
   }
 }
 

@@ -15,7 +15,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 28188 => 1)) {#History of Evils: The Age of Scale
     quest::emote("eyes go wide with surprise as you hand over the book. 'Very impressive for one of your abilities. Here, take this note to Caden. He is absolved of his debt to me at this time.'");
     quest::summonitem(28084);#Note to Caden
-    quest::exp(250);
+    quest::exp(140);
   }
   plugin::return_items(\%itemcount);
 }

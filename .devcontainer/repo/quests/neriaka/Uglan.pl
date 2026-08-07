@@ -26,7 +26,7 @@ sub EVENT_ITEM {
 			quest::faction(245, -1);		#:: - Eldritch Collective
 			quest::faction(1522,-10);		#:: - Primordial Malice
 			#:: Grant a small amount of experience
-			quest::exp(500);
+			quest::exp(160);
 		}
 		#:: Match if the player is any other race besides Ogre
 		else {
@@ -38,7 +38,7 @@ sub EVENT_ITEM {
 			quest::faction(232, 10);		#:: + Craknek Warriors
 			quest::faction(261, -10);		#:: - Green Blood Knights
 			#:: Grant a small amount of experience
-			quest::exp(500);
+			quest::exp(160);
 		}
 	}
 	#:: Return unused items

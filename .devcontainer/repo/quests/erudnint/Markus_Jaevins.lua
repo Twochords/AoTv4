@@ -46,7 +46,7 @@ function event_trade(e)
 		e.other:Faction(267,10,0); -- high guard of erudin
 		e.other:Faction(266,10,0); -- high council of erudin
 		e.other:Faction(265,-30,0); -- heretics
-		e.other:AddEXP(2500);
+		e.other:AddEXP(280);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);
 end

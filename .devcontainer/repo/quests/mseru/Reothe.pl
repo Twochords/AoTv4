@@ -18,7 +18,7 @@ sub EVENT_ITEM{
   # Bark potion x2, spring crystal x1, harvest crystal x1
   if (plugin::check_handin(\%itemcount,14519=>2,14512=>1,14511=>1)) {
     quest::say("This is great! We can treat our injured and have something to eat for weeks. I can vaguely recall Bregun heading towards the Lair of the Netherbians. You might ask a guard there if they have seen him.");
-    quest::exp(40000);
+    quest::exp(700);
   }
   
   plugin::return_items(\%itemcount);

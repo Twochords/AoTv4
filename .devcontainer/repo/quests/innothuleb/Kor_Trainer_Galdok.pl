@@ -25,7 +25,7 @@ sub EVENT_ITEM {
     quest::say("Here you go $name!");
     quest::summonitem(51116); # Item: Leathery Girdle
     quest::ding();
-    quest::exp(10000);
+    quest::exp(440);
   }
   if (plugin::check_handin(\%itemcount, 1594 =>1, 2283 =>1, 51119 =>1, 51116 =>1 )) {
     quest::say("Let's get to work. First, we'll cure the belt in a paste made from the goblin's dust. While that does its magic, I will work arced slices of the bone into your leathery girdle. Ah, there we go. Lastly we weave the cured belt in, and it is complete!");

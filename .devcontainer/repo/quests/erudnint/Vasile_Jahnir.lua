@@ -23,7 +23,7 @@ function event_trade(e)
 		e.other:Faction(266,10,0); --faction with High Council of Erudin increased
 		e.other:Faction(267,10,0); --faction with High Guards of Erudin increased
 		e.other:Faction(265,-30,0); --faction with Heretics decreased
-		e.other:AddEXP(175);
+		e.other:AddEXP(120);
 		e.other:GiveCash(0,0,5,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13895})) then -- Rungupp
 		e.other:SummonItem(15313); -- Item: Spell: Fire Flux
@@ -33,7 +33,7 @@ function event_trade(e)
 		e.other:Faction(266,10,0); --faction with High Council of Erudin increased
 		e.other:Faction(267,10,0); --faction with High Guards of Erudin increased
 		e.other:Faction(265,-30,0); --faction with Heretics decreased
-		e.other:AddEXP(250);
+		e.other:AddEXP(140);
 		e.other:GiveCash(0,10,0,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

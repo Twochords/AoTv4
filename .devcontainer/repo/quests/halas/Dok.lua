@@ -26,7 +26,7 @@ function event_trade(e)
 		e.self:Say("Great work!! Now I can make more candles! Here ye are, me fri. I call this the Everburn Candle. It has a wee bit o' magic in it. I hope ye like it.");
 		e.other:SummonItem(12220); -- Item: Everburn Candle
 		e.other:GiveCash(0,0,0,1);
-		e.other:AddEXP(250);
+		e.other:AddEXP(140);
 		e.other:Ding();
 		e.other:Faction( 328,3); -- Faction: Merchants of Halas
 		e.other:Faction( 320,3); -- Faction: Wolves of the North
@@ -36,7 +36,7 @@ function event_trade(e)
 		e.other:Faction(328,25); -- Faction: Merchants of Halas
 		e.other:Faction(320,25); -- Faction: Wolves of the North
 		e.other:Faction(327,25); -- Faction: Shamen of Justice
-		e.other:AddEXP(50000);
+		e.other:AddEXP(740);
 		e.other:SummonItem(12277); -- Item: Candle of Bravery
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

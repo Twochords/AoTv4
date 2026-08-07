@@ -24,7 +24,7 @@ function event_trade(e)
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13131})) then -- Case of Blackburrow Stout
 		e.self:Say("Ahhh, that hit the spot! Nice work, "..e.other:GetName()..". Take this as a reward.");
 		e.other:Ding();
-		e.other:AddEXP(5000);
+		e.other:AddEXP(360);
 		e.other:GiveCash(5,1,1,2);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

@@ -24,7 +24,7 @@ sub EVENT_SAY {
          elsif ($class eq 'Enchanter' || $class eq 'Magician' || $class eq 'Wizard' || $class eq 'Necromancer') {
             quest::summonitem(82951); # Item: Gloomsilk Robe
          }
-         quest::exp(75000);
+         quest::exp(860);
          quest::givecash(0,0,0,5); # 5 plat
          quest::ding();
       }
@@ -32,7 +32,7 @@ sub EVENT_SAY {
          quest::say("Excellent work, my friend. Take this potion brewed from Queen Gloomfang's chitin. May it make you strong enough to avenge the many slaves the kobolds have fed her.");
          quest::updatetaskactivity(1394,1);
          quest::summonitem(77780,4); # Item: Distillate of Celestial Healing II
-         quest::exp(25000);
+         quest::exp(600);
          quest::ding();
       }
       elsif (quest::istaskactivityactive(5102,4)) {
@@ -50,7 +50,7 @@ sub EVENT_SAY {
          elsif ($class eq 'Enchanter' || $class eq 'Magician' || $class eq 'Wizard' || $class eq 'Necromancer') {
             quest::summonitem(82950); # Item: Gloomsilk Pantaloons
          }
-         quest::exp(25000);
+         quest::exp(600);
          quest::ding();
       }
       else {

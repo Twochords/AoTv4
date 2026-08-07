@@ -29,7 +29,7 @@ function event_trade(e)
 		e.other:Faction(230,-20,0); -- Faction: Corrupt Qeynos Guards
 		e.other:Faction(262,20,0); -- Faction: Guards of Qeynos
 		e.other:Faction(273,-20,0); -- Faction: Kane Bayle
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:SummonItem(13123); -- Item: Label of Erud's Tonic
 	end
 	

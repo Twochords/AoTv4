@@ -16,7 +16,7 @@ function event_trade(e)
 		e.other:Faction(330,1,0); -- Faction: The Freeport Militia
 		e.other:Faction(281,-1,0); -- Faction: Knights of Truth
 		e.other:Faction(362,-1,0); -- Faction: Priests of Marr
-		e.other:AddEXP(50);
+		e.other:AddEXP(80);
 		e.other:GiveCash(1,2,1,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

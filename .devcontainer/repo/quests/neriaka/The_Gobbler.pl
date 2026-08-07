@@ -38,7 +38,7 @@ sub EVENT_ITEM {
 			#:: Set faction
 			quest::faction(353, 5);		#:: + Neriak Ogre
 			#:: Grant a small amount of experience
-			quest::exp(150);
+			quest::exp(120);
 			#:: Create a hash for storing cash - 100 to 350cp
 			my %cash = plugin::RandomCash(100,350);
 			#:: Grant a random cash reward
@@ -52,7 +52,7 @@ sub EVENT_ITEM {
 			#:: Set faction
 			quest::faction(353, 5);		#:: + Neriak Ogre
 			#:: Grant a small amount of experience
-			quest::exp(150);
+			quest::exp(120);
 			#:: Create a hash for storing cash - 100 to 350cp
 			my %cash = plugin::RandomCash(100,350);
 			#:: Grant a random cash reward
@@ -66,7 +66,7 @@ sub EVENT_ITEM {
 			#:: Set faction
 			quest::faction(353, 5);		#:: + Neriak Ogre
 			#:: Grant a small amount of experience
-			quest::exp(150);
+			quest::exp(120);
 			#:: Create a hash for storing cash - 100 to 350cp
 			my %cash = plugin::RandomCash(100,350);
 			#:: Grant a random cash reward
@@ -78,7 +78,7 @@ sub EVENT_ITEM {
 			#:: Set faction
 			quest::faction(353, 5);		#:: + Neriak Ogre
 			#:: Grant a small amount of experience
-			quest::exp(150);
+			quest::exp(120);
 			#:: Create a hash for storing cash - 100 to 350cp
 			my %cash = plugin::RandomCash(100,350);
 			#:: Grant a random cash reward

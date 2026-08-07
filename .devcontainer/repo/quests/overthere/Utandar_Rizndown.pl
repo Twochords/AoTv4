@@ -22,7 +22,7 @@ sub EVENT_ITEM {
   #tokyo2001 & Allakhazam don't have any text for the rewards, so i kept the text from FV's NPC.
     quest::say("Here is the scroll that I promised. We have both gained much knowledge today. I hope to do business with you again soon. Farewell!");      
     quest::summonitem(quest::ChooseRandom(19329,19320,19324,19317)); # Item(s): Spell: Tears of Solusek (19329), Spell: Abscond (19320), Spell: Thunderbolt (19324), Spell: Tishan`s Discord (19317)
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 }

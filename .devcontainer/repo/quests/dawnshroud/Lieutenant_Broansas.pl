@@ -12,7 +12,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 4760 => 1)) {
     quest::say("You are sent from Lady Mistala I see? Ah of course she needs my reports. I trust you will return these documents to Mistala at once. Here you are, and thank you for your help. I shall have more reports soon.");
     quest::summonitem(4761); # Item: Journal of Broansas
-    quest::exp(2500);
+    quest::exp(280);
     quest::faction(1510,10); #house of fordel
     quest::faction(1509,10); #haven defenders
     quest::faction(1508,10); #traders of the haven

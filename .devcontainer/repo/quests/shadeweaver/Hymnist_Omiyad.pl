@@ -23,7 +23,7 @@ sub EVENT_ITEM {
     #Talisman of the Flame
     quest::summonitem(7498); # Item: Talisman of the Flame
     quest::faction(1513,10); # +Guardians of Shar Vahl
-    quest::exp(250);
+    quest::exp(140);
     quest::ding();
     }
     #do all other handins first with plugin, then let it do disciplines

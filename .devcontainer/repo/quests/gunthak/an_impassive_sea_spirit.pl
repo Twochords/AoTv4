@@ -19,7 +19,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM{
   if(plugin::check_handin(\%itemcount, 58010 => 1)) {
     quest::say("Well done, strange one. Your perception is admirable.' The spirit hands you an incredibly heavy rock. 'Can you, $name, be as [impassive as the sea]?");
-    quest::exp(1000);
+    quest::exp(200);
     quest::summonitem(58013); # Item: Large Rock
   }
   elsif(plugin::check_handin(\%itemcount, 58013 => 1)) {

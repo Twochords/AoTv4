@@ -27,11 +27,11 @@ function event_trade(e)
 	if(item_lib.check_turn_in(e.trade, {item1 = 31424,item2 = 31425,item3 = 31426,item4 = 31423}) and e.other:GetLevel() >= 55) then
 		e.self:Say("You have done well, " .. e.other:GetCleanName() .. ".  Here, take this item and use it well! Your efforts will not be forgotten.");
 		e.other:SummonItem(1208); -- Gloves of Earthcrafting
-    e.other:AddEXP(2500);
+    e.other:AddEXP(280);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 31419,item2 = 31420,item3 = 31421,item4 = 31422}) and e.other:GetLevel() >= 55) then
 		e.self:Say("You have done well, " .. e.other:GetCleanName() .. ".  Here, take this item and use it well! Your efforts will not be forgotten.");
 		e.other:SummonItem(1207); -- Helm of the Tracker
-    e.other:AddEXP(2500);
+    e.other:AddEXP(280);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

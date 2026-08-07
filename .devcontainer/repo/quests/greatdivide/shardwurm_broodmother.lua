@@ -5,7 +5,7 @@ function event_trade(e)
 	if(item_lib.check_turn_in(e.trade, {item1 = 30272})) then -- Harness of Control
 		e.self:Emote("reels in pain as the harness snaps around its neck tightly. A strange gleam enters its eyes as it slowly begins to shamble towards the exit and the giants fortress.");
 		e.other:Ding();
-		e.other:AddEXP(20000);
+		e.other:AddEXP(560);
 		-- start gridid 57
 		eq.start(57);
 	end

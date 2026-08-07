@@ -54,7 +54,7 @@ sub EVENT_ITEM {
 		quest::faction(311,-5); #Steel Warriors
 		quest::faction(1522,-5); #Primordial Malice
 		quest::ding();
-		quest::exp("250");
+		quest::exp("140");
 	}
 	#do all other handins first with plugin, then let it do disciplines
 	plugin::try_tome_handins(\%itemcount, $class, 'Warrior');

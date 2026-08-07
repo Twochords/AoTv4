@@ -31,7 +31,7 @@ function event_trade(e)
 		e.other:Faction(229,-30);													--faction with Coalition of Tradefolk decreased
 		e.other:Faction(244,-30);													--faction with Ebon Mask decreased
 		e.other:GiveCash(0,0,4,0);
-		e.other:AddEXP(50);
+		e.other:AddEXP(80);
 		e.other:Ding();
 	elseif(item_lib.check_turn_in(e.trade, {gold = 10})) then
 		e.self:Say("The scales have been balanced and the Tribunal has spoken. Yer body shall be saved.");

@@ -35,7 +35,7 @@ sub EVENT_ITEM {
   quest::say("You have done as instructed. You are wise to hand this tome to me. It could bring you nothing more than insanity. As your reward, you shall have the squire's khukri. Soon you shall wield the knight's khukri, but that is for another Lord of Pain to decide.");
   quest::summonitem(5122); #Squire's Khukri
   quest::givecash("0","0","3","0"); 
-  quest::exp(300);
+  quest::exp(140);
   quest::ding();
   quest::faction(442,20); # Faction: Crusaders of Greenmist
   quest::faction(441,10); # Faction: Legion of Cabilis

@@ -21,7 +21,7 @@ sub EVENT_ITEM {
   quest::say("Excellent work! You are no squire. You are now a knight of the crusaders. Your next step shall be zealot. And every zealot wields a magical khukri.");
   quest::summonitem(5123); #Knight's Khukri
   quest::givecash("0","0","15","0"); 
-  quest::exp(1500);
+  quest::exp(240);
   quest::ding();
   quest::faction(442,20); # Faction: Crusaders of Greenmist
   quest::faction(441,10); # Faction: Legion of Cabilis

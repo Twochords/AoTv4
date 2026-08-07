@@ -27,21 +27,21 @@ sub EVENT_ITEM {
     quest::summonitem(11635); # Item: Emerald Dragonscale Tunic
     quest::faction(432, 30); # Faction: Othmir
     quest::faction(431, -60); # Faction: Ulthork
-    quest::exp(10000);
+    quest::exp(440);
   }
   elsif (plugin::check_handin(\%itemcount, 22814 => 1, 28515 => 1, 21009 => 1)) {
     quest::emote("skillfully crafts the Sea Dragon Scales into a bracer, hands it to $name, and claps enthusiastically.");
     quest::summonitem(11589); # Item: Sea Dragonscale Bracer
     quest::faction(432, 30); # Faction: Othmir
     quest::faction(431, -60); # Faction: Ulthork
-    quest::exp(10000);
+    quest::exp(440);
   }
   elsif (plugin::check_handin(\%itemcount, 30059 => 2)) {
     quest::emote("claps enthusiastically and hands you your reward"); # Text made up
     quest::summonitem(30060); # Item: Bladder of Acidic Ooze
     quest::faction(432, 30); # Faction: Othmir
     quest::faction(431, -60); # Faction: Ulthork
-    quest::exp(10000);
+    quest::exp(440);
   }
   plugin::return_items(\%itemcount);
 }

@@ -59,7 +59,7 @@ function event_trade(e)
 		e.other:Faction(221,-1,0); -- Bloodsabers
 		e.other:Faction(280,1,0); -- Knights of Thunder
 		e.other:Faction(341,5,0); -- Priests of Life
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 		e.other:GiveCash(0,0,6,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

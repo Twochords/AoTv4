@@ -23,7 +23,7 @@ sub EVENT_ITEM {
   if (($faction != 6) && ($faction != 7)) {
     if (plugin::check_handin(\%itemcount, 30081 => 1)) {
       quest::say("Very good, $name. Slay more of the beasts and your name will be known by all of the Kromrif!");
-      quest::exp(5000);
+      quest::exp(360);
       quest::faction(419,10); #kromrif
       quest::faction(448,10); #kromzek
       quest::faction(430,-30); #CoV

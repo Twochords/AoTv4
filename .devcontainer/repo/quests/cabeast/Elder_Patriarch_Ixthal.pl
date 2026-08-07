@@ -28,29 +28,29 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 12844 => 1, 12845 => 1, 12633 => 1, 48045 => 1)) {
    quest::say("You have returned unharmed with the items I asked for. Here is your reward now. If you wish to [continue training] please let me know.");
    quest::summonitem(48046); # Item: Claw of the Scout
-   quest::exp(1000);
+   quest::exp(200);
    quest::ding();
   }
   elsif (plugin::check_handin(\%itemcount, 48051 => 1, 48046 => 1)) {
     quest::say("Because of you, we now know that Welgaz is safe and will be returning to us shortly. Take this to represent our appreciation for your deeds completed here today. Please return soon once you have decided to [aid the cause].");
     quest::summonitem(48047); # Item: Claw of the Apprentice
-    quest::exp(2000);
+    quest::exp(260);
     quest::ding();
   }
   elsif (plugin::check_handin(\%itemcount, 48061 => 1, 48047 => 1)) {
     quest::say("I see you have returned with the information asked. Hmm . . . this doesn't bode well. I will need some time to think about the situation now. Take this and wear it proudly. You are a Young Patriarch now.");
-    quest::exp(4000);
+    quest::exp(320);
     quest::summonitem(48048); # Item: Claw of the Young Patriarch
     quest::ding();
   }
   elsif (plugin::check_handin(\%itemcount, 48064 => 1)) {
     quest::say("I can't believe this! We have a traitor in our midst after all... Thanks to you, Young Patriarch, we seem to have a headstart. You should go find rankings from three close to the traitor so that they may reveal his location. Bring me the proof about the location of the trader and you shall be rewarded.");
-    quest::exp(10000);
+    quest::exp(440);
   }
   elsif (plugin::check_handin(\%itemcount, 48065 => 1, 48066 => 1, 48067 => 1, 48048 => 1)) { #Symbol of Lativ (Burning Woods, Dreadlands, Frontier Mountains), Claw of the Young Patriarch
     quest::say("Excellent work, $name. You have proven yourself well. I hope you did not show them any mercy... I think you have matured and you deserve to be recognized for your bravery.");
     quest::summonitem(48049); #Claw of the Mature Patriarch
-    quest::exp(25000);
+    quest::exp(600);
   }
   plugin::return_items(\%itemcount);
 }

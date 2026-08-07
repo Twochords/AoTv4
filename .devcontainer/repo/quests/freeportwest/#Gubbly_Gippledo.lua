@@ -26,7 +26,7 @@ function event_trade(e)
 		e.other:Faction(1716,2,0); -- Faction: High Council of Gukta
 		e.other:Faction(1717,2,0); -- Faction: Lorekeepers of Gukta
 		e.other:Faction(1709,2,0); -- Faction: Protectors of Gukta
-		e.other:AddEXP(4000);
+		e.other:AddEXP(320);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

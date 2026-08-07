@@ -51,7 +51,7 @@ function event_trade(e)
 		e.other:Faction(280,10,0); -- Faction: Knights of Thunder
 		e.other:Faction(221,-10,0); -- Faction: Bloodsabers
 		e.other:Faction(262,10,0); -- Faction: Guards of Qeynos
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 	end
 	
 	item_lib.return_items(e.self, e.other, e.trade)

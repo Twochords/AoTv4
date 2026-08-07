@@ -20,7 +20,7 @@ function event_trade(e)
 		e.other:Faction(330,-3,0); -- Faction: The Freeport Militia
 		e.other:Faction(362,1,0); -- Faction: Priests of Marr
 		e.other:Faction(311,1,0); -- Faction: Steel Warriors
-		e.other:AddEXP(6400);
+		e.other:AddEXP(380);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 18474})) then
 		e.self:Say("By Marr, what is this? .. Burning Dead .. .. Marnek! By my blade this must be stopped! Where did you find this?");
 		e.other:Ding();
@@ -29,7 +29,7 @@ function event_trade(e)
 		e.other:Faction(330,-3,0); -- Faction: The Freeport Militia
 		e.other:Faction(362,1,0); -- Faction: Priests of Marr
 		e.other:Faction(311,1,0); -- Faction: Steel Warriors
-		e.other:AddEXP(6400);
+		e.other:AddEXP(380);
 		e.other:GiveCash(10,6,0,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

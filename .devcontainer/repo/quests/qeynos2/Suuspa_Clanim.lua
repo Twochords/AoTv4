@@ -22,7 +22,7 @@ function event_trade(e)
 		e.other:Faction(341,5,0); -- Priests of Life
 		e.other:Faction(280,5,0); -- Knights of Thunder
 		e.other:Faction(221,-5,0); -- Bloodsabers
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:GiveCash(math.random(20),math.random(20),0,0); -- Random from 20cp20sp
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13908})) then
 		e.self:Say("This is not good. Hmph. It appears they are shattered. For the first time one of our members has been swayed. I reward you for your deed. Also, if you have found anything upon Trintle, let me know.");
@@ -32,7 +32,7 @@ function event_trade(e)
 		e.other:Faction(341,5,0); -- Priests of Life
 		e.other:Faction(280,5,0); -- Knights of Thunder
 		e.other:Faction(221,-5,0); -- Bloodsabers
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:GiveCash(math.random(20),math.random(20),0,0); -- Random from 20cp20sp
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

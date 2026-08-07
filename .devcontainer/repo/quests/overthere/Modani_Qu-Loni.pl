@@ -33,7 +33,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 10635 => 1)) {
     quest::say("Excellent, you have done well. Here is the first piece of the staff. Now you must go seek out the second master; he will clear the path for you.");
     quest::faction(404,30); # Faction: Truespirit
-    quest::exp(100000);
+    quest::exp(940);
     quest::summonitem(10610); # Item: 1st Piece of Staff
   }
   plugin::return_items(\%itemcount);

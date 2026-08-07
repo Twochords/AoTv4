@@ -183,7 +183,7 @@ function event_combine_success(e)
 		e.self:Message(MT.Default, "Success");
 	--cleric 1.5
 	elseif(e.recipe_id == 19460) then
-		e.self:AddEXP(25000);
+		e.self:AddEXP(600);
 		e.self:AddAAPoints(5);
 		e.self:Ding();
 		e.self:Message(MT.Yellow,'You have gained 5 ability points!');
@@ -206,7 +206,7 @@ function event_combine_success(e)
 		end
 	--ranger 1.5 final
 	elseif(e.recipe_id ==13413) then
-		e.self:AddEXP(25000);
+		e.self:AddEXP(600);
 		e.self:AddAAPoints(5);
 		e.self:Ding();
 		e.self:Message(MT.Yellow,'You have gained 5 ability points!');
@@ -223,7 +223,7 @@ function event_combine_success(e)
 		end
 	-- paladin 1.5 final
 	elseif(e.recipe_id ==19880) then
-		e.self:AddEXP(25000);
+		e.self:AddEXP(600);
 		e.self:AddAAPoints(5);
 		e.self:Ding();
 		e.self:Message(MT.Yellow,'You have gained 5 ability points!');	
@@ -231,7 +231,7 @@ function event_combine_success(e)
 		e.self:Message(MT.Gray,"As the four soulstones come together, a soft blue light eminates around the dark sword. The soulstones find themselves at home within the sword. A flash occurs and four voices in unison speak in your mind, 'Thank you for saving us and giving us a purpose again. You are truly our savior and our redeemer, and we shall serve you from now on. Thank you, noble knight!")
 	--bard 1.5 final	
 	elseif(e.recipe_id == 19882) then
-		e.self:AddEXP(25000);
+		e.self:AddEXP(600);
 		e.self:AddAAPoints(5);
 		e.self:Ding();
 		e.self:Message(MT.Yellow,'You have gained 5 ability points!');	
@@ -268,7 +268,7 @@ function event_combine_success(e)
 		end
 	--druid 2.0 final
 	elseif(e.recipe_id ==19909) then	
-		e.self:AddEXP(50000);
+		e.self:AddEXP(740);
 		e.self:AddAAPoints(10);
 		e.self:Ding();
 		e.self:Message(MT.Yellow,'You have gained 10 ability points!');	
@@ -276,7 +276,7 @@ function event_combine_success(e)
 		--e.self:SendMarqueeMessage(MT.Yellow, 510, 1, 100, 10000, "You plant the Mind Crystal and the Seed of Living Brambles in the pot. The pot grows warm and immediately you see a vine sprouting from the soil. The vine continues to grow at a tremendous rate. Brambles grow into the heart of the crystal where the core impurity is and split it. They continue to grow at an astounding speed and soon burst the pot and form the Staff of Living Brambles");
 	--warrior 2.0
 	elseif(e.recipe_id ==19902) then	
-		e.self:AddEXP(50000);
+		e.self:AddEXP(740);
 		e.self:AddAAPoints(10);
 		e.self:Ding();
 		e.self:Message(MT.Yellow,'You have gained 10 ability points!');	
@@ -291,7 +291,7 @@ function event_combine_success(e)
 	--ench 2.0 final
 	elseif (e.recipe_id == 19920) then
 		e.self:Message(MT.Yellow,"The discordant energy shoots through the staff, sending a shower of sparks through the air. The crystal shatters before you, and as the sparks fade away you notice the changes in your staff.");
-		e.self:AddEXP(50000);
+		e.self:AddEXP(740);
 		e.self:AddAAPoints(10);
 		e.self:Ding();
 		e.self:Message(MT.Yellow,'You have gained 10 ability points!');
@@ -299,7 +299,7 @@ function event_combine_success(e)
 	--pal 2.0 final
 	elseif (e.recipe_id == 19925) then
 		e.self:Message(MT.Yellow,"As you combine all six tokens in the scabbard with Redemption, you feel a tugging at your soul. An energy flows through you as you feel the virtues of your inner self being tugged and tempered into the weapon. For a second you feel drained, but now that feeling has subsided. A final flash of light occurs and a new sword is tempered; Nightbane, Sword of the Valiant");
-		e.self:AddEXP(50000);
+		e.self:AddEXP(740);
 		e.self:AddAAPoints(10);
 		e.self:Ding();
 		e.self:Message(MT.Yellow,'You have gained 10 ability points!');

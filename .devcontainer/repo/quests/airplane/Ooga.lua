@@ -19,19 +19,19 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 20845, item2 = 20955, item3 = 20842, item4 = 20841})) then 		--shaman test of shrink using efreeti war club, djinni statuette, corrosive venom, wooden bands
 		e.other:SummonItem(27729); --warhammer of the wind
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Take dis.");
 		eq.depop();
 
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20962, item2 = 20843, item3 = 20844})) then 	--shaman test of the snake using emerald spiroc feather, bixie essence, spiritualist's ring
 		e.other:SummonItem(27730); --vermilion sky ring
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Take dis.");
 		eq.depop();
 
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20846, item2 = 20969, item3 = 20848, item4 = 20847})) then 	--shaman test of the witch doctor using efreeti war maul, thickened nectar, fire sky ruby, symbol of veeshan
 		e.other:SummonItem(11694); --garduk
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("Take dis.");
 		eq.depop();
 	end

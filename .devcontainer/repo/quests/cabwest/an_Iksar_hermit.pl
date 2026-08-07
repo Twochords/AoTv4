@@ -28,7 +28,7 @@ sub EVENT_ITEM {
     quest::summonitem(4267); # Item: Necromancer Skullcap
     quest::faction(441, 20); # Faction: Legion of Cabilis
     quest::faction(443, 20); # Faction: Brood of Kotiz
-    quest::exp(10000);
+    quest::exp(440);
   }
   else {
     quest::say("All is not complete. A cap and the rest, which was asked for, is required.");

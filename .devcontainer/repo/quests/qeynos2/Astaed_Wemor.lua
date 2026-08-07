@@ -37,7 +37,7 @@ function event_trade(e)
 			e.other:Faction(262,1,0); -- Faction: Guards of Qeynos
 			e.other:Faction(221,-1,0); -- Faction: Bloodsabers
 			e.other:Faction(219,1,0); -- Faction: Antonius Bayle
-			e.other:AddEXP(4000);
+			e.other:AddEXP(320);
 			e.other:GiveCash(0,7,12,0);
 		end
 	 elseif(item_lib.check_turn_in(e.trade, {item1 = 13952})) then
@@ -49,7 +49,7 @@ function event_trade(e)
 		e.other:Faction(262,10,0); -- Faction: Guards of Qeynos
 		e.other:Faction(221,-10,0); -- Faction: Bloodsabers
 		e.other:Faction(219,10,0); -- Faction: Antonius Bayle
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:GiveCash(0,5,0,0);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 13970})) then
 		e.self:Say("It is good to know that we saved Lempeck. He has given us his scythe as a donation to the temple. We shall find a use for it. As for your fine work at preserving the life of another, I reward you with the Shining Star of Life. Should you ever desire more strength in battle, call upon it to give you strength, but let it be known that at battle's end, you shall feel weaker than before you called upon the power. Just for a short time. When the power is drained, go to our temple storehouse and ask Whysia to [recharge the Shining Star of Life]. Go and serve life.");
@@ -60,7 +60,7 @@ function event_trade(e)
 		e.other:Faction(262,10,0); -- Faction: Guards of Qeynos
 		e.other:Faction(221,-10,0); -- Faction: Bloodsabers
 		e.other:Faction(219,10,0); -- Faction: Antonius Bayle
-		e.other:AddEXP(1000);
+		e.other:AddEXP(200);
 		e.other:GiveCash(0,11,8,0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

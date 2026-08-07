@@ -93,7 +93,7 @@ sub EVENT_ITEM
    # Primordial Malice
    quest::faction("1522","-10");
    #Approx half a blue at level 31
-   quest::exp(62000);
+   quest::exp(800);
 
  }
   #Words of Rupturing
@@ -114,7 +114,7 @@ sub EVENT_ITEM
    # Primordial Malice
    quest::faction("1522","-10");
    #Approx half a blue at level 31
-   quest::exp(62000);
+   quest::exp(800);
 
  }
   #Words of Requisition
@@ -135,7 +135,7 @@ sub EVENT_ITEM
    # Primordial Malice
    quest::faction("1522","-10");
    #Approx half a blue at level 31
-   quest::exp(62000);
+   quest::exp(800);
  }
    #Words of the Suffering
    #Requires: 1 Globe of Fear, 1 Star Rose Quartz, 2 Iced Boned Chips
@@ -155,7 +155,7 @@ sub EVENT_ITEM
    # Primordial Malice
    quest::faction("1522","-10");
    #Approx half a blue at level 31
-   quest::exp(62000);
+   quest::exp(800);
  }
   plugin::return_items(\%itemcount);
 }

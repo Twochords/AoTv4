@@ -54,7 +54,7 @@ sub EVENT_ITEM {
     quest::faction(1716, 25); # High Council of Gukta
     quest::faction(1717, 25); # Lorekeepers of Gukta
     quest::faction(1718, 25); # Guktan Elders
-    quest::exp(200000);
+    quest::exp(1180);
     quest::ding;
     }
 
@@ -67,7 +67,7 @@ sub EVENT_ITEM {
     quest::faction(1716, 25); # High Council of Gukta
     quest::faction(1717, 25); # Lorekeepers of Gukta
     quest::faction(1718, 25); # Guktan Elders
-    quest::exp(400000);
+    quest::exp(1480);
     quest::ding;
     }
 
@@ -80,7 +80,7 @@ sub EVENT_ITEM {
     quest::faction(1716, 25); # High Council of Gukta
     quest::faction(1717, 25); # Lorekeepers of Gukta
     quest::faction(1718, 25); # Guktan Elders
-    quest::exp(1200000); # Poor amount for a hard quest, but that was live for you, you will bask instead in your reward, damn you!
+    quest::exp(2140); # Poor amount for a hard quest, but that was live for you, you will bask instead in your reward, damn you!
     quest::spawn2(50328,0,0,$x,$y+8,$z,$h); # spawn the 'Memory of Chalex' for completeness
     quest::ding;
     }

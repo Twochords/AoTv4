@@ -105,7 +105,7 @@ if(plugin::check_handin(\%itemcount,30660=>4)){
 	quest::say("Congratulations, $name!  You are truly on your way to being a legendary berzerker.  Use
 this axe wisely in your coming adventures.");   #adlib text
 	quest::ding();
-	quest::exp(1000);
+	quest::exp(200);
 	quest::summonitem(55423);	#savageclaw axe
 }
 plugin::return_items(\%itemcount);

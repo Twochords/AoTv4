@@ -17,7 +17,7 @@ function event_trade(e)
 		e.other:Faction(309,5,0); -- Silent Fist Clan
 		e.other:Faction(262,1,0); -- Guards of Qeynos
 		e.other:Faction(361,1,0); -- Ashen Order
-		e.other:AddEXP(1500);
+		e.other:AddEXP(240);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

@@ -11,7 +11,7 @@ sub EVENT_SAY {
 sub EVENT_ITEM {
 #  if (plugin::check_handin(\%itemcount, XXXX => 1, XXXX => 1)) { #Lord Gossimerwind Loot, Lord Prismwing Loot
 #    quest::say("REWARD TEXT HERE");
-#    quest::exp(25000);
+#    quest::exp(600);
 #    quest::summonitem(24887); #Holgresh Mojo Stick (Holgresh Air Wand)
 #    quest::faction(448,10); #Kromzek
 #    quest::faction(419,10); #Kromrif

@@ -29,7 +29,7 @@ function event_trade(e)
 		e.self:Say("Oh excellent, you have done what is required. Here take this part, and seek the third master, you are well on your way.");
 		e.other:Ding();
 		e.other:Faction(404,30,0); -- Faction: Truespirit
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.other:SummonItem(10611); -- Item: 2nd Piece of Staff
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

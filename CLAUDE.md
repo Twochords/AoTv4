@@ -2262,6 +2262,43 @@ the 33 LDoN ones into line.
 - ⚠️ Region 0 is "Always Available" and `RegionManager::CanEnterZone` treats an unmapped zone
   (`region_id 0`) as unrestricted by design, so this is the same state as "no region".
 
+#### ⚠️⚠️ THERE ARE **TWO** GATES ON A DELVE MAP, AND v27 ONLY OPENED ONE (v37, 2026-08-07)
+The region lock above is ours. The **second** gate is stock EQEmu, checked separately in
+`Client::ZonePC` (`zone/zoning.cpp:367`):
+```
+if (CurrentExpansion >= Classic && !GetGM()) {
+    if (z->expansion <= CurrentExpansion || z->bypass_expansion_check) { ...ok... }
+}
+```
+The LDoN delve zones are `zone.expansion` **6** and this server runs Classic
+(`Expansion:CurrentExpansion = 0`), so entry was refused with *"The zone that you are attempting to
+enter is part of an expansion that you do not yet own."* — **all 35 even rungs, half the ladder.**
+- ⚠️⚠️ **NOTE THE `!GetGM()` — THIS IS THE SECOND TIME IT HAS HIDDEN THIS EXACT BUG.** The GM flag
+  skips the check entirely (*"Bypassing zone expansion checks because GM flag is set"*), so it works
+  for every test character and fails for every player. The identical trap is written up in
+  `custom/sql/aotv4_delve_zone_access.sql`, which fixed the **DoN six** on 2026-08-02 — the LDoN
+  dungeons simply joined the ladder afterwards and were never added to that list.
+  📌 It presents as **"the delve opened and then threw me out"**: the run bucket, the task and the
+  instance are all created *before* the move, so the refusal lands after the setup succeeded.
+- ⚠️⚠️ **`bypass_expansion_check`, NOT `expansion = 0`.** `expansion` is real metadata — content
+  filtering, zone listings and the era system (§12) all read it — so rewriting it would make LDoN
+  zones claim to be **Classic** content everywhere else in the server. The bypass flag exempts **only
+  the entry gate** and leaves the zone honest about what it is. This is why delve zones stay
+  expansion-tagged and that is correct, not leftover.
+- ⚠️ Applied to **every version row**, not just version 0 — the check reads version 0 via
+  `GetZoneWithFallback`, but leaving the others at 0 is a trap for whoever changes version resolution.
+- ⚠️ **`veksar` is absent here exactly as it is from v27**, and the two lists must stay in step.
+  📌 It already carries `bypass_expansion_check = 1` from stock/region data — which is fine, because
+  the gate that actually guards it is the **region** lock (it is assigned to Cabilis), not this one.
+- ⚠️ v37 folds the **DoN six** in as well. They were only ever fixed by that hand-run `custom/sql`
+  script, which is **not in the manifest** and therefore never applies itself — on live, or on any
+  freshly imported database, they would be blocked the same way. Re-stating them is idempotent.
+  📌 Its other fix — `thenest` `min_level 66`, a **third** gate again (`Client::CanEnterZone`) — is
+  carried over for the same reason. No LDoN delve zone carries `min_level`, `min_status` or
+  `flag_needed`, so those 33 need nothing beyond the bypass.
+- ⚠️ The `zone` table is **not** shared memory, but it is read at boot by **world AND zone** — restart
+  both, no `./shared_memory`.
+
 #### ⚠️⚠️ THE JOURNAL NAMED THE WRONG DUNGEON — 234 tasks now, one per (dungeon, mode) (v36, 2026-08-07)
 The 36 task rows were authored when the delve was **DoN-only**: six zones × six modes, one task per
 zone, so a zone name in the title was correct. Adding 33 LDoN dungeons made them **round-robin the
@@ -3217,9 +3254,11 @@ build, but nobody has performed the action:
   2000306 / 2000338 / 2000346 / 2000538). Enter a **Deepest Guk** rung and confirm the journal names
   Deepest Guk, then enter it on **Hard** and confirm the title carries `(Hard)` — the mode offsets
   widened 10 → 40 and a mismatch there resolves to the wrong mode silently.
-- **The LDoN region unlock (§24, v27)** — the whole LDoN half of the ladder was unenterable
-  (*"You have not yet unlocked Unused."*). Enter any even rung. ⚠️ Also confirm `veksar` is still
-  **refused** by region locking — it was excluded on purpose.
+- ⚠️⚠️ **The LDoN half of the ladder (§24, v27 + v37)** — it was blocked by **two** independent gates
+  and both are now open: region 99 "Unused" (v27) and the stock expansion check (v37). **Test as a
+  NON-GM character** — the GM flag skips the expansion check and has hidden this bug twice. Enter any
+  even rung and confirm no *"part of an expansion that you do not yet own"*. ⚠️ Also confirm `veksar`
+  is still **refused** by region locking — it was excluded on purpose.
 - **The Zone XP tab (§3, v33)** — 63 rows seeded. Open `/allaclone` → **Zone XP** with an empty box
   and confirm it browses rather than saying "type something first", that region headers and city
   labels render, and that clicking a row does **nothing** (every row is id 0).

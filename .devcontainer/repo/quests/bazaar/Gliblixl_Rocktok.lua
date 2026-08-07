@@ -30,7 +30,7 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 10953})) then
 		e.self:Say("Thank you " .. e.other:GetName() .. "! I will prepare the ore for sale and be open for business again momentarily. Here is your payment for your services.");
-		e.other:AddEXP(250);
+		e.other:AddEXP(140);
 		e.other:Faction(1510, 10); -- Faction: House of Fordel
 		e.other:Faction(1511, 10); -- Faction: House of Midst
 		e.other:Faction(1512, 10); -- Faction: House of Stout
@@ -44,7 +44,7 @@ function event_trade(e)
 		eq.depop_with_timer();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 10952})) then
 		e.self:Say("Thank you " .. e.other:GetName() .. "! I will prepare the ore for sale and be open for business again momentarily. Here is your payment for your services.");
-		e.other:AddEXP(250);
+		e.other:AddEXP(140);
 		e.other:Faction(1510, 10); -- Faction: House of Fordel
 		e.other:Faction(1511, 10); -- Faction: House of Midst
 		e.other:Faction(1512, 10); -- Faction: House of Stout

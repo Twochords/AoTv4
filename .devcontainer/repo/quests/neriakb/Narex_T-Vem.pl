@@ -33,7 +33,7 @@ sub EVENT_ITEM {
   	quest::faction(326,-5); #Emerald Warriors
   	quest::faction(311,-5); #Steel Warriors
   	quest::faction(1522,-5); #Primordial Malice
-  	quest::exp(17150);#5% of level 8 experience, quest is for levels 8+  
+  	quest::exp(520);#5% of level 8 experience, quest is for levels 8+  
   }
   if(plugin::check_handin(\%itemcount, 13113 => 4)) { #Leatherfoot Raider Skullcap
   	quest::say("Yes, you have done well. Take this, and slay more!"); #text made up
@@ -43,7 +43,7 @@ sub EVENT_ITEM {
   	quest::faction(326,-5); #Emerald Warriors
   	quest::faction(311,-5); #Steel Warriors
   	quest::faction(1522,-5); #Primordial Malice
-  	quest::exp(250);#5% of level 2 experience, quest is for levels 2+
+  	quest::exp(140);#5% of level 2 experience, quest is for levels 2+
   }
   plugin::try_tome_handins(\%itemcount, $class, 'Warrior');
   plugin::return_items(\%itemcount);

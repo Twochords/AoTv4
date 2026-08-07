@@ -30,7 +30,7 @@ sub EVENT_ITEM {
     quest::say("Congratulations #name.  You have successful navigated to the status of Journeyman.  Take your dagger and this cloak, wear it with pride.");
     quest::summonitem(6158); # Item: Sonic Wolf Bane Dagger
     quest::summonitem(6159); # Item: Cloak of the Jharin Journeyman
-    quest::exp(10000);
+    quest::exp(440);
   }
   plugin::return_items(\%itemcount);
 }

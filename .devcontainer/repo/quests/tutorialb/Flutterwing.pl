@@ -13,7 +13,7 @@ sub EVENT_ITEM {
   if(plugin::check_handin(\%itemcount, 54603 => 1)) { #Flutterwing's Unhatched Sibling
     quest::emote("beams with glee.");
     quest::say("Oh, $name, how can I ever repay such kindness. I will not be alone in this dreadful place after all. Please accept this small token.");
-    quest::exp(500);
+    quest::exp(160);
     quest::ding();
     if($class eq 'Warrior'){quest::summonitem(38005);}
     elsif($class eq 'Cleric'){quest::summonitem(38173);}
@@ -34,7 +34,7 @@ sub EVENT_ITEM {
   }
   if(plugin::check_handin(\%itemcount, 13014 => 1)) { #Muffin
     quest::emote("snatches the muffin from you as you barely manage to keep your fingers.");
-    quest::exp(25);
+    quest::exp(60);
   }
   plugin::return_items(\%itemcount);
 }

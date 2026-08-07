@@ -25,7 +25,7 @@ function event_trade(e)
 		e.other:Faction(275,10,0); -- Faction: Keepers of the Art
 		e.other:Faction(279,10,0); -- Faction: King Tearis Thex
 		e.other:Faction(239,-30,0); -- Faction: The Dead
-		e.other:AddEXP(1500);
+		e.other:AddEXP(240);
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 1056})) then --Faded Cloak
 		e.self:Say("Oh my lord Tunare! I did not know my daughter was in trouble. I thank you for saving her. Here, I have returned the once lost power to this cloak. Wear it with my humblest gratitude.");
 		e.other:SummonItem(1057); --Mystic Cloak

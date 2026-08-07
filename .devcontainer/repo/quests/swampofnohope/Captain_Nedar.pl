@@ -15,7 +15,7 @@ sub EVENT_ITEM {
   quest::faction(442,5); # +Crusaders of Greenmist
   quest::faction(444,5); # +Swifttails
   quest::givecash(6,0,0,0);
-  quest::exp(10);  
+  quest::exp(60);  
  }
   plugin::return_items(\%itemcount);
 }

@@ -19,17 +19,17 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 20739, item2 = 20738, item3 = 20965, item4 = 20740})) then 		--druid test of nature using efreeti scimitar, fire sky ruby, lush nectar, storm sky opal
 		e.other:SummonItem(11683); 	--espri
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("You have done well, young one.");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20735, item2 = 20951, item3 = 20734})) then 	--druid test of the bee using divine honeycomb, efreeti statuette, wilder's girdle
 		e.other:SummonItem(11684); 	--honeycomb belt
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("You have done well, young one.");
 		eq.depop();
 	elseif(item_lib.check_turn_in(e.trade, {item1 = 20736, item2 = 20737, item3 = 20867, item4 = 20958})) then 	--druid test of the eagle using acidic venom, ethereal ruby, spiroc elder's totem, white-tipped spiroc feather
 		e.other:SummonItem(14555);	--spiroc banisher focus
-		e.other:AddEXP(100000);
+		e.other:AddEXP(940);
 		e.self:Say("You have done well, young one.");
 		eq.depop();
 	end

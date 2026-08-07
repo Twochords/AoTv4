@@ -22,7 +22,7 @@ function event_trade(e)
 		e.other:Faction(266,5,0); -- High Council of Erudin
 		e.other:Faction(265,-5,0);-- Heretics
 		e.other:Faction(242,5,0);  -- Deepwater Knights
-		e.other:AddEXP(2000);
+		e.other:AddEXP(260);
 		e.other:GiveCash(12,14,5,0); -- Copper x 12, Silver x 14, Gold x 5
 	end
 	item_lib.return_items(e.self, e.other, e.trade);

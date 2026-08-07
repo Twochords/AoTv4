@@ -26,7 +26,7 @@ sub EVENT_ITEM {
   if (plugin::check_handin(\%itemcount, 12430 => 1, 5131 => 1)) {
     quest::say("Kyg knew you could do it. You will make a fine legionnaire some day but, for now, you shall be a footman. Take the footman pike head plans. Forge the footman's pike. Do so, and then you may have an audience with the War Baron on the subject of his [Memory of Sebilis].");
     quest::summonitem(12475); # Item: Footman Head Plans
-    quest::exp(500);
+    quest::exp(160);
     quest::faction( 440,2); # Faction: Cabilis Residents
     quest::faction( 441,2); # Faction: Legion of Cabilis
     quest::faction( 445,2); # Faction: Scaled Mystics

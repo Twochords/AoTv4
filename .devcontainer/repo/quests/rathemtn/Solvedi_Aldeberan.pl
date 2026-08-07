@@ -27,7 +27,7 @@ sub EVENT_ITEM {
    if(plugin::check_handin(\%itemcount,9352=>1,17350=>1)) {
      quest::say("You have done well. Here, take my blade as promised");
      quest::summonitem(5378); # Item: Solvedi Scimitar
-     quest::exp(25000);
+     quest::exp(600);
    }
   plugin::return_items(\%itemcount);
 }

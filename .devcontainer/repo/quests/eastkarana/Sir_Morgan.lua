@@ -38,7 +38,7 @@ function event_trade(e)
 		e.other:Faction(345,1,0); -- Karana Residents
 		e.other:Faction(341,1,0); -- Priests of Life
 		e.other:Faction(280,1,0); -- Knights of Thunder
-		e.other:AddEXP(500);
+		e.other:AddEXP(160);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)
 end

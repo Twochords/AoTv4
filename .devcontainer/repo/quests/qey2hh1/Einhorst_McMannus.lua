@@ -33,7 +33,7 @@ function event_trade(e)
 		e.other:Faction(328,2,0); -- Merchants of Halas
 		e.other:Faction(311,2,0); -- Steel Warriors
 		e.other:Faction(305,-3,0); -- Rogues of the White Rose
-		e.other:AddEXP(1600);
+		e.other:AddEXP(240);
 		e.other:GiveCash(math.random(99),math.random(99),eq.ChooseRandom(3,4,5),0);
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

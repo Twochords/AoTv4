@@ -24,7 +24,7 @@ function event_trade(e)
 	--I changed this statement to use the plugin now.  Maybe I shouldn't have, but I wanted things to be uniform. -Kilelen
 	if(item_lib.check_turn_in(e.trade, {item1 = 1330}) and e.other:GetFaction(e.self) < 6) then	-- Patched Gnoll Fur Bundle
 		e.self:Say("You have done well. Here is a small reward for your effort.");
-		e.other:AddEXP(125);
+		e.other:AddEXP(100);
 		e.other:Ding();
 		e.other:GiveCash(0,2,2,1);
 		e.other:Faction(305,10);						-- 305 : Faction Rogue's of the White Rose

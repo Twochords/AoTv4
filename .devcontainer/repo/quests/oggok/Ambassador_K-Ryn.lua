@@ -9,7 +9,7 @@ function event_trade(e)
 	local item_lib = require("items");
 	if(item_lib.check_turn_in(e.trade, {item1 = 18842})) then -- Sealed Letter (Letter To Krynn)
 		e.self:Say("Another young warrior. I pray you shall not meet the fate of the last twelve. Here then. Take this report to Mistress Seloxia at once. And stay clear of the Froglok lair called Gukk.");
-		e.other:AddEXP(250);--5% of level 2 experience, quest is for levels 2+
+		e.other:AddEXP(140);--5% of level 2 experience, quest is for levels 2+
 		e.other:SummonItem("18843"); -- Sealed Letter (Letter To Seloxia)
 		e.other:Ding();
 	end

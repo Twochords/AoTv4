@@ -19,7 +19,7 @@ sub EVENT_ITEM {
     quest::summonitem(14364); #Scepter
     quest::faction(415,15);  #Temple of Solusek Ro
     quest::faction(416,-15); #Shadowed Men
-    quest::exp(1000);
+    quest::exp(200);
   }
   plugin::return_items(\%itemcount);
 }

@@ -2,7 +2,7 @@
 sub EVENT_ITEM{
   if($item1 == 18904){
     quest::say("The slaves...thank you! Here, this will help defend you against those vile orcs.");
-    quest::exp(30000);
+    quest::exp(640);
     quest::ding();
     my $random = int(rand(5));
     if($random == 0){

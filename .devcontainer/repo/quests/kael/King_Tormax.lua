@@ -23,7 +23,7 @@ function event_trade(e)
 			e.other:Faction(405,-250,0); 	--dain
 			e.other:Faction(448,500,0);	--zek
 			e.other:Faction(429,500,0); 	--tormax
-			e.other:AddEXP(250000);
+			e.other:AddEXP(1260);
 		elseif (item_lib.check_turn_in(e.trade, {item1 = 24984})) then -- yelinak head
 			e.other:Ding();
 			e.other:SummonItem(25857);	-- gauntlets of dragon slaying
@@ -31,7 +31,7 @@ function event_trade(e)
 			e.other:Faction(405,-250,0); 	--dain
 			e.other:Faction(448,500,0);	--zek
 			e.other:Faction(429,500,0); 	--tormax
-			e.other:AddEXP(250000);
+			e.other:AddEXP(1260);
 		end
 	end
 	item_lib.return_items(e.self, e.other, e.trade)

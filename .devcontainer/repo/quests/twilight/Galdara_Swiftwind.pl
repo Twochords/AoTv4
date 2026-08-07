@@ -54,7 +54,7 @@ sub EVENT_ITEM {
 
     quest::summonitem(3690); # Item: Sandals of Matter
 
-    quest::exp(10000);   
+    quest::exp(440);   
 
   }
 
@@ -62,7 +62,7 @@ sub EVENT_ITEM {
 
     quest::summonitem(3691); # Item: Veil of Matter
 
-    quest::exp(10000);   
+    quest::exp(440);   
 
   }
 
@@ -70,7 +70,7 @@ sub EVENT_ITEM {
 
     quest::summonitem(3692); # Item: Cloak of Matter
 
-    quest::exp(10000);   
+    quest::exp(440);   
 
   }
 
@@ -78,7 +78,7 @@ sub EVENT_ITEM {
 
     quest::summonitem(3693); # Item: Gloves of Matter
 
-    quest::exp(10000);   
+    quest::exp(440);   
 
   }
 
@@ -86,7 +86,7 @@ sub EVENT_ITEM {
 
     quest::summonitem(3694); # Item: Choker of Matter
 
-    quest::exp(10000);   
+    quest::exp(440);   
 
   }
 
@@ -94,7 +94,7 @@ sub EVENT_ITEM {
 
     quest::summonitem(3695); # Item: Belt of Matter
 
-    quest::exp(10000);   
+    quest::exp(440);   
 
   }
 
@@ -102,7 +102,7 @@ sub EVENT_ITEM {
 
     quest::summonitem(3696); # Item: Staff of Matter
 
-    quest::exp(10000);   
+    quest::exp(440);   
 
   }
 

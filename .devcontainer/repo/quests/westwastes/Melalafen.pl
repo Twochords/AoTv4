@@ -25,7 +25,7 @@ sub EVENT_ITEM {
   if ($faction <= 5) {
     if (plugin::check_handin(\%itemcount, 27329 => 1, 27265 => 1)) {
       quest::say("Thank you for returning this to us. Here is your reward, imbued with the essence of a fool who held one of the keys to our Masters prison. If you are unhappy with your reward, return it to us and perhaps we can give you something more appropriate.");
-      quest::exp(5000000);
+      quest::exp(3420);
       quest::faction(1623,10);   #Disciples of Kerafyrm
       quest::faction(430,10);   #Claws of Veeshan
       quest::faction(304,10);  #Ring of Scale
