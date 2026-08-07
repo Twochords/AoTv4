@@ -2123,10 +2123,19 @@ void Client::SetSkill(EQ::skills::SkillType skillid, uint16 value) {
 	auto outapp = new EQApplicationPacket(OP_SkillUpdate, sizeof(SkillUpdate_Struct));
 	SkillUpdate_Struct* skill = (SkillUpdate_Struct*)outapp->pBuffer;
 	skill->skillId=skillid;
-	skill->value=value;
+	// ⚠️⚠️ RAW `value`, and it MUST stay raw. The RoF2 client applies an equipped item's SkillModValue
+	// to the displayed skill ITSELF -- sending an already-modified number here makes it apply the
+	// percentage a SECOND time. Measured: raw 300 with a 5 percent item sent as GetSkill() = 315
+	// arrived and rendered as 330 (315 * 1.05). This was briefly changed to GetSkill() on 2026-08-06 to
+	// make a tradeskill bonus visible; the bonus was invisible because it was paid in C++ and was not
+	// on the item at all. Once it became a real item skillmod the client displayed it with no server
+	// change needed. Do not "fix" the display here.
+	skill->value = value;
 	QueuePacket(outapp);
 	safe_delete(outapp);
 
+	// ⚠️ RAW `value`, never GetSkill(). The tradeskill achievement ladders (section 32) must measure
+	// earned skill -- crediting the item bonus would let a player wear their way to the next rung.
 	achievement_manager.ProcessSkill(this, skillid, value);
 
 	// AoTv4: gaining or losing a skill clears its autoskill setting -- see the function's own note.

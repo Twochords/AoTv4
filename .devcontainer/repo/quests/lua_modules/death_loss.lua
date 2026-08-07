@@ -36,9 +36,9 @@ end
 -- protecting the next one. It also keeps death_loss from having to require the dungeon module, which
 -- would drag the whole delve system into the death path.
 -- ⚠️ Epics are already exempt separately, above; this is an additional rule, not a replacement.
--- ⚠️⚠️ THE TRADESKILL TOOLS AND MASKS SURVIVE TOO, FOR THE SAME REASON EVOLVING ITEMS DO.
--- They are the rewards for tradeskill skill 100 and 200 -- and tradeskill skill is explicitly the ONE
--- thing this server does not reset on death (global_player.max_skills_for_level skips tradeskills).
+-- ⚠️⚠️ THE TRADESKILL TOOLS, MASKS AND HAND PIECES SURVIVE TOO, FOR THE SAME REASON EVOLVING ITEMS DO.
+-- They are the rewards for tradeskill skill 100, 200 and 300 -- and tradeskill skill is explicitly the
+-- ONE thing this server does not reset on death (global_player.max_skills_for_level skips tradeskills).
 -- Destroying the reward for permanent progression on a death that does not touch that progression is
 -- incoherent, and it is worse than it looks: the achievements grant them with claim_once = 1, so they
 -- would NEVER be re-granted. One death would cost you the tool and the mask permanently, with no way
@@ -46,7 +46,7 @@ end
 -- ⚠️ A BAND, not a property test, because there is no property that distinguishes them -- and the band
 -- is mirrored from AOTV4_TS_TOOL_BASE / the mask band in zone/tradeskills.cpp. Keep them in step:
 -- widening the reserved range there without widening it here silently makes the new items destructible.
-local TS_ITEM_FIRST, TS_ITEM_LAST = 147930, 147953   -- 12 tools + 12 masks
+local TS_ITEM_FIRST, TS_ITEM_LAST = 147930, 147965   -- 12 head + 12 face + 12 hands
 
 function M.is_kept(inv, slot)
 	if not inv then return false end

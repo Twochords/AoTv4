@@ -3967,7 +3967,7 @@
 1366^4^Your devotion to Norrath's Keepers grants you increased statistics.^0
 1366^6^Summons down the rage of a stormy sky, causing between #1 and @1 damage to your target.^0
 1367^1^Bulwark Within^0
-1367^4^Your devotion to Norrath's Keepers grants you increased hit points, mana, and endurance.^0
+1367^4^Your devotion to Norrath's Keepers grants 300 hit points and 300 endurance. Spellcasting classes also gain 300 mana; Warriors, Monks, Rogues and Berserkers draw on endurance instead.^0
 1367^6^Envelops your body in an aura of blessed fire, increasing your regeneration rate, and causing harm to anyone who attacks you.^0
 1368^1^Open Vessel^0
 1368^4^Your devotion to Norrath's Keepers increases the number of mystical effects that can affect you at once.^0

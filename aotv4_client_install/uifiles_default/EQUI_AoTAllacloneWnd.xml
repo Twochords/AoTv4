@@ -81,6 +81,19 @@
 		<Template>BDT_Normal</Template>
 	</Button>
 
+	<!-- Zone XP: a BROWSE mode, not a search. Its rows are region headers plus zones with their level
+	     ranges, all carrying id 0, so nothing in the list opens a detail page. Sits in the free grid
+	     cell at X 240, Y 30, between Tracked and Track. -->
+	<Button item="ACW_KindZoneXp">
+		<ScreenID>ACW_KindZoneXp</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>240</X><Y>30</Y></Location>
+		<Size><CX>112</CX><CY>24</CY></Size>
+		<Text>Zone XP</Text>
+		<TextColor><R>255</R><G>230</G><B>140</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+
 	<!-- Shown only in the two quest modes; the dll hides it elsewhere via CXWnd::Show, because no
 	     address-mapped "enable" setter exists on this build. Its label flips to Untrack in the
 	     Tracked mode. -->
@@ -212,6 +225,7 @@
 		<Pieces>ACW_KindRecipe</Pieces>
 		<Pieces>ACW_KindQuest</Pieces>
 		<Pieces>ACW_KindTracked</Pieces>
+		<Pieces>ACW_KindZoneXp</Pieces>
 		<Pieces>ACW_Track</Pieces>
 		<Pieces>ACW_Term</Pieces>
 		<Pieces>ACW_Go</Pieces>

@@ -249,8 +249,9 @@ its own; our `dsp_chat` calls `SpellChoiceParseTransport`. Wire format is **unch
   `g_searchEnabled` stays false, which makes the old overlay's thread/paint/chat handler unreachable
   without deleting them yet.
   - ⚠️ **NO `TabBox` here, deliberately.** Native tabs are the right widget when each page owns its
-    contents; the four kinds (item/npc/spell/recipe) share ONE search box, ONE list and ONE detail
-    pane, so tabs would mean four copies of each. They are **mode buttons**, and the active one is
+    contents; the kinds (item/npc/spell/recipe, later quest/tracked/zxp) share ONE search box, ONE
+    list and ONE detail pane, so tabs would mean a copy of each per kind. They are **mode buttons**,
+    and the active one is
     shown by rewriting its LABEL (`> Items <`) because no latched button state can be set reliably
     from code on this build.
   - ⚠️ **Enter is POLLED, not hooked.** An `Editbox` gives no usable "text committed" notification
@@ -259,6 +260,44 @@ its own; our `dsp_chat` calls `SpellChoiceParseTransport`. Wire format is **unch
     searched term or the poll re-fires every frame forever.
   - ⚠️ `SRCHDET` lines are escaped into STML (`<` `>` `&`) before display — an item name containing
     `<` would otherwise swallow the rest of the panel.
+  - ✅ **A seventh mode, "Zone XP" (`zxp`), is a BROWSE list rather than a search** (2026-08-07,
+    migration **v33**). It answers "where should I be hunting", by region: region headers interleaved
+    with zones and their level ranges. Server side is `Client::SearchList` in `zone/trading.cpp`,
+    which builds its own string instead of falling through to the generic loop; client side is
+    `AC_KIND_ZONEXP` in `core_allaclone.cpp` plus the `ACW_KindZoneXp` button.
+    - ⚠️⚠️ **IT IS THE ONLY KIND THAT IS MEANINGFUL WITH AN EMPTY TERM**, so it deliberately skips the
+      "type something first" guard and asks for the unfiltered list. Typing still works and filters by
+      zone name. ⚠️ It sends **`/say srch zxp *`**, not an empty argument — the say command is split on
+      whitespace, so a trailing nothing arrives as a *missing* parameter. The server sanitizes the term
+      to alphanumerics, so `*` reduces to empty and matches all.
+    - ⚠️⚠️ **EVERY ROW CARRIES id 0, HEADERS AND ZONES ALIKE**, because nothing in this list opens a
+      detail page. `OpenDetail` must refuse in this mode — `srchdet zxp 0` is a lookup the server does
+      not implement, so it would answer nothing and the detail pane would sit on whatever the previous
+      kind left there. Same "a row index is not a data index" trap as the Death Book and the spell
+      Known/Pool tabs.
+    - ⚠️⚠️ **THE LEVEL RANGES ARE AUTHORED, NOT DERIVED, AND LIVE IN `aotv4_zone_xp`** so they can be
+      edited without a rebuild. A computed range was built first (percentile 10-90 of spawned mob
+      levels, excluding merchants, bankers, GM trainers, LDoN chests and anything on a town faction)
+      and it disagreed with the owner's list substantially — Blackburrow computed 4-8 against an
+      authored 2-15, Cabilis West computed 1-1 against 30-35. **Neither is wrong**: the computed figure
+      is "where the bulk of the spawns sit", the authored one is "what you might meet". The authored
+      list ships. 📌 It is **not derivable from this database at all** — its upper bound is sometimes
+      *above* our raw maximum (Misty Thicket 25 against a real 14) and sometimes far below it
+      (Crushbone 14 against 65), so no percentile reproduces it and there is no formula to extend.
+      Butcherblock (68) and Kaesora (88) were absent from the owner's list and *were* derived here.
+    - ⚠️⚠️ **THE PRIMARY KEY IS `zone_id` ALONE, WHICH IS WHAT PINS A ZONE TO ONE REGION.**
+      `zone_regions` is many-to-many — The Swamp of No Hope (83) is legitimately reachable from **both**
+      Firiona Vie and Cabilis — so a naive join lists it twice under two headers. The single-column key
+      makes that a **data** decision instead of something the query keeps re-deciding. Any future zone
+      in two regions must likewise pick one.
+    - ⚠️ **`label` overrides the numeric range**: the ten city zones carry `'City'`. Once civic NPCs are
+      filtered out a city has almost nothing huntable left (North Freeport: **five** spawns), so a
+      percentile there is noise dressed as data. Cities also sort **last** within their region, because
+      a level-ordered list has nowhere sensible to put one.
+    - ⚠️⚠️ **DELVE ZONES ARE DELIBERATELY ABSENT and must stay so.** Region 0 "Always Available" holds
+      40 zones, 39 of them the LDoN/DoN delve maps unlocked by v27/v31; delve creatures are **scaled to
+      the player** (§24), so a fixed range would be actively misleading. Nothing in the query filters
+      them — the table simply does not seed them. **Do not "fix" that by adding region 0.**
   - Install: `aotv4_client_install/ALLACLONE_WINDOW_INSTALL.md`.
 - 📌 **TODO — the Portal window is still a GDI overlay** and should get the same treatment for the
   same reasons: self-drawn chrome never matches EQ, it can't scale with the UI, and it only works
@@ -1998,8 +2037,11 @@ no C++ server change at all**, because all four primitives are already native an
   version. ⚠️ It **started at 50** originally, which meant a new character could not reach the first
   delve at all and clearing it jumped straight to 55 — the top of a ladder with no ladder under it.
 - ⚠️ Six zones over fifteen rungs means a zone is **reused at several difficulties**, which is why the
-  tasks are per **ZONE** (six of them) with **no level in the title** and `min_level 1`: a title of
-  "[50]" would be wrong on 11 of the 15 rungs. The authoritative rung table is `M.LAYERS`.
+  tasks carry **no level in the title** and `min_level 1`: a title of "[50]" would be wrong on 11 of
+  the 15 rungs. The authoritative rung table is `M.LAYERS`.
+  📌 They were originally per **ZONE** (six rows). They are now per **(dungeon, mode)** — 234 rows —
+  because 33 LDoN dungeons round-robining six task families made the journal name the wrong dungeon.
+  See the v36 subsection below.
 
 - ⚠️⚠️ **DoN is the ONLY expansion past OoW with instanced content.** `dynamic_zone_templates` holds
   215 rows: Classic 6, LDoN 24 (14 zones), GoD 16 (9), OoW 28 (16), **DoN 141 (6 zones)** — and
@@ -2159,8 +2201,10 @@ no C++ server change at all**, because all four primitives are already native an
 rungs are LDoN, each family cycling independently: **35 / 35**.
 
 - ⚠️⚠️ **ALTERNATING IS WHAT MAKES IT 50/50 — CONCATENATING THE POOLS DOES NOT.** DoN has 6 dungeons
-  and LDoN has 34, so a single combined cycle delivers six DoN rungs and then thirty-four LDoN ones:
+  and LDoN has 33, so a single combined cycle delivers six DoN rungs and then thirty-three LDoN ones:
   the ladder arrives in two long blocks instead of a mix.
+  📌 The LDoN pool was **34** until `veksar` was removed on 2026-08-06 (it is a real Kunark world zone
+  with `zone_points` — see the v27 subsection), so **39 dungeons total**: 6 + 33.
 - ⚠️⚠️ **A RANDOM DRAW AT ENTRY WAS TRIED AND REVERTED THE SAME DAY.** Knowing the map matters for
   planning a run and for knowing what the kill-credit rewards will be, and a map you cannot see until
   you are standing in it tells you neither. It also made the window's dungeon column **unfillable**
@@ -2176,7 +2220,7 @@ rungs are LDoN, each family cycling independently: **35 / 35**.
   even after a pool edit. Appended after `bands` so pre-2026-08-06 rows still parse (`bands` is comma
   separated and never contains a `|`); a row without it reads "unknown" and cannot be backfilled.
 
-#### LDoN — 34 zones, and it needed ZERO new task rows
+#### LDoN — 33 zones, and it needed ZERO new task rows (until the journal started lying — see below)
 `lua_modules/aotv4_dungeon_ldon.lua` is **generated**: every LDoN zone with >= 60 spawn points and a
 real safe point, each carrying its list of populated layouts (up to 21). The rung picks one layout
 deterministically, so a repeated dungeon is not a repeated map.
@@ -2190,11 +2234,60 @@ deterministically, so a repeated dungeon is not a repeated map.
 - ⚠️⚠️ **Migration v22 clears `task_activities.zones` on the delve band (2000300-2000399).**
   `TaskActivity::CheckZone` (`common/tasks.h`) opens with `if (zone_ids.empty()) return true;`, so an
   empty list credits **anywhere** — the same mechanism as the empty `npc_match_list` above. Without
-  it, LDoN would have needed 34 zones x 6 modes of new task rows. `zones` is `varchar(64)` (~15 zone
+  it, LDoN would have needed 33 zones x 6 modes of new task rows. `zones` is `varchar(64)` (~15 zone
   ids), so listing them explicitly was never an option.
+  📌 v36 later created those 234 rows anyway — but **for the TITLE, not for the zone scoping**, and it
+  leaves `zones` empty exactly as v22 did. The band it clears (2000300-2000399) predates the widened
+  2000300-**2000538** band; the v36 rows are simply written empty at insert.
   ⚠️ **This is a real widening, accepted knowingly.** The only thing keeping a delve kill inside the
   dungeon is now `M.on_enter_zone`, which fails the run the moment you are outside your instance. The
   second, independent guard the zone column provided is gone.
+
+#### ⚠️⚠️ THE LDoN MAPS WERE UNENTERABLE — THEY SAT IN REGION 99 "Unused" (v27, 2026-08-06)
+Entering one answered *"You have not yet unlocked Unused."*, so **the whole LDoN half of the ladder
+could not be played**. The six DoN delve zones were already in region 0 "Always Available"; v27 brings
+the 33 LDoN ones into line.
+- ⚠️⚠️ **ONLY ZONES WITH NO ZONE LINES ARE UNLOCKED, AND THAT IS THE ENTIRE SAFETY ARGUMENT.** Every
+  zone in that list has **zero rows in `zone_points`** targeting it — there is no way to *walk* into
+  one — so making it Always Available grants **no world access at all**. It is reachable only as a
+  private delve instance, which the delve's own unlock ladder already gates.
+- ⚠️⚠️ **`veksar` IS DELIBERATELY EXCLUDED AND WAS REMOVED FROM THE DELVE POOL.** It is LDoN *by
+  expansion* but a **real Kunark world zone**: 2 `zone_points` lead to it and it is legitimately
+  assigned to the Cabilis region. Unlocking it would have opened Kunark travel to anyone who had not
+  earned Cabilis — a genuine hole in region locking, in exchange for one map out of 34. If it is ever
+  wanted back, exempt **instanced** moves from the gate (`Client::ProcessMovePC`) instead of unlocking
+  the zone. That is why the LDoN pool is **33**, not 34.
+- 📌 **Test this before adding any future delve map**: a zone with `zone_points` is world content, and
+  unlocking it is a **travel** change, not a delve change.
+- ⚠️ Region 0 is "Always Available" and `RegionManager::CanEnterZone` treats an unmapped zone
+  (`region_id 0`) as unrestricted by design, so this is the same state as "no region".
+
+#### ⚠️⚠️ THE JOURNAL NAMED THE WRONG DUNGEON — 234 tasks now, one per (dungeon, mode) (v36, 2026-08-07)
+The 36 task rows were authored when the delve was **DoN-only**: six zones × six modes, one task per
+zone, so a zone name in the title was correct. Adding 33 LDoN dungeons made them **round-robin the
+same six task families**, so a Deepest Guk run was handed *"Delve: Tirranun's Delve"* — wrong roughly
+**85 percent** of the time. Reported from play.
+- 📌 **It was never a FUNCTIONAL bug**, which is exactly why nothing errored and it survived: v22
+  cleared `task_activities.zones`, so `CheckZone` returns true on an empty list and kills credit in
+  whatever zone you are in. **Only the label lied.**
+- Now **39 dungeons × 6 modes = 234 tasks**, built as 39 explicit dungeon rows `CROSS JOIN`ed with the
+  6 modes rather than 234 hand-written INSERTs — same deterministic result, a tenth of the size, and
+  adding a dungeon is one row.
+- ⚠️⚠️ **THE MODE OFFSETS HAD TO WIDEN FROM 10 TO 40, AND `aotv4_dungeon.lua` MUST MATCH.**
+  `M.MODES.taskoff` was `0/10/20/30/40/50`, which leaves room for only **ten** dungeons per mode; with
+  39 the families overlap and a Hard run collects a Standard task. They are now
+  **`0/40/80/120/160/200`**, so the band runs **2000300-2000538**. Change one side without the other
+  and tasks silently resolve to the wrong mode.
+- ⚠️ **Base ids**: DoN keeps **2000300-2000305** (unchanged, so its hand-written flavour text
+  survives); LDoN takes **2000306-2000338** in `aotv4_dungeon_ldon.lua`'s own **file order**. That
+  order **IS** the mapping — regenerating that file without reassigning ids reintroduces this bug.
+- ⚠️ `zones` stays **empty** on every activity, exactly as v22 left it. Populating it would scope a
+  task to one zone again and break the 33 LDoN dungeons that share a rung's task family.
+- ⚠️ Gauntlet is the odd mode: **10 trash and THREE wardens**, not a multiple of the base goal.
+  `max_level` is 200 and duration 21600 / code 3, copied from the original rows — **not** defaults.
+- ⚠️ The migration is keyed on the **highest new id** (`2000538` = Fragile + dungeon 38), which cannot
+  exist under the old 6-zone scheme whose band stopped at 2000355. Testing for a wrong **title**
+  instead would also match the mode variants of the correct task and re-run forever.
 
 #### ⚠️⚠️ THE GEAR BUMP CLAMP WAS FLAT AND PUT LEVEL 21 MOBS IN A LEVEL 1 DELVE (fixed 2026-08-06)
 Reported from play: *"someone joined a level 1 and the mobs were level 21"* — which is exactly rung 1
@@ -3113,6 +3206,26 @@ and so nobody reads "done" as "proven".
   checking only ours proves nothing). Also confirm both were paid coin **without opening anything**,
   and that a GM `#peekloot` shows the corpse holding both rolls.
 
+### Added 2026-08-07 — verified in the DATABASE, not yet in play
+Each of these was confirmed by query (migrations applied, rows present, counts correct) and by a
+build, but nobody has performed the action:
+- **The tradeskill gear rework (§32, v29/v30)** — no character has worn a piece. The sharp test is the
+  **Skills window**: raw 300 with the hand piece must read **345**, not 300 and not 396 (the
+  double-application this deliberately avoids). Also click a mask and confirm the illusion lasts
+  **30 minutes**, not 3, and that it fires at all (`maxcharges` was 0).
+- **The per-dungeon delve journal (§24, v36)** — 234 tasks exist with correct titles (spot-checked
+  2000306 / 2000338 / 2000346 / 2000538). Enter a **Deepest Guk** rung and confirm the journal names
+  Deepest Guk, then enter it on **Hard** and confirm the title carries `(Hard)` — the mode offsets
+  widened 10 → 40 and a mismatch there resolves to the wrong mode silently.
+- **The LDoN region unlock (§24, v27)** — the whole LDoN half of the ladder was unenterable
+  (*"You have not yet unlocked Unused."*). Enter any even rung. ⚠️ Also confirm `veksar` is still
+  **refused** by region locking — it was excluded on purpose.
+- **The Zone XP tab (§3, v33)** — 63 rows seeded. Open `/allaclone` → **Zone XP** with an empty box
+  and confirm it browses rather than saying "type something first", that region headers and city
+  labels render, and that clicking a row does **nothing** (every row is id 0).
+- **The recipe era unlock (§32, v31)** — 388 recipes became findable. Search Pottery in the recipe
+  window and confirm PoP armour appears.
+
 ## 31. Individual loot — everybody gets their own roll — 2026-08-01
 
 The loot table is rolled **once per eligible player** and each roll belongs to that player alone, so a
@@ -3223,7 +3336,12 @@ were reachable; the shared helper is **`AdvLootOwnedByOther`** (`client_packet.c
   on `(corpse_id, lootslot)`**, which now aliases between players, so any roll it did start would
   resolve against the wrong item.
 
-## 32. Tradeskills are worth doing — sockets, skill-scaled tiers, tools, AA ladders — 2026-08-04
+## 32. Tradeskills are worth doing — sockets, skill-scaled tiers, gear, AA ladders — 2026-08-04
+> 📌 **Substantially revised 2026-08-06/07** (migrations v28-v32): the flat +20/+30 gear bonus became
+> native `skillmod` percentages on **three** worn pieces, the Mythic ceiling moved 350 → **345**, the
+> reward rows' `chance` was fixed from 1 percent to 100, the mask illusions' duration was fixed, and
+> 388 era-gated recipes were made findable. Sections below that say "+20 / +30" or "the tool and the
+> mask" are **historical** — read the gear subsection first.
 
 A single pass to make crafting matter. Five parts, all interlocking; the through-line is that
 **tradeskill SKILL now decides what you get**, where before it decided nothing.
@@ -3259,9 +3377,14 @@ A single pass to make crafting matter. Five parts, all interlocking; the through
 | effective skill | Mythic | Hallowed |
 |---|---|---|
 | 100 | 0% | 33% |
-| 200 | 25% | 75% |
-| 300 | 75% | 25% |
-| 350 | 100% | — |
+| 200 | 27% | 100% |
+| 300 | 77% | 100% |
+| 345 | 100% | — |
+- ⚠️⚠️ **THE MYTHIC CEILING IS 345, NOT 350, AND IT IS DERIVED FROM THE GEAR — do not round it back
+  up.** The cap is the best effective skill anyone can reach: **300 raw × 115/100 = 345** with the
+  hand piece. It was 350 while the gear paid a flat +20/+30 (300 + 50). Set the ceiling above what
+  the gear can actually deliver and guaranteed Mythic becomes **unreachable**, with nothing on screen
+  to indicate why. **Retune it the moment the top piece's percentage changes.**
 - ⚠️ **Mythic is rolled FIRST and returns immediately** — these are bands of one decision. Testing
   Hallowed first swallows the Mythic band entirely (the same trap already recorded for loot tiers).
 - ⚠️ **Only a recipe whose output is a BASE id is rolled.** The old code normalised through
@@ -3271,47 +3394,114 @@ A single pass to make crafting matter. Five parts, all interlocking; the through
 - 📌 This is a deliberate **nerf** to the previous unconditional Mythic. It is also what makes the
   §26 quest-turn-in normalisation less load-bearing, since base items are craftable again.
 
-### ⚠️⚠️ A FLAT TRADESKILL BONUS CANNOT BE EXPRESSED NATIVELY — hence one choke point
+### The gear bonus is NATIVE `skillmod` — three worn pieces, 5 / 10 / 15 percent — 2026-08-06 (v29)
+> ⚠️⚠️ **THIS REPLACED A FLAT +20 / +30 PAID IN `AoTv4TradeskillSkill`, AND THE OLD SHAPE IS RECORDED
+> BELOW BECAUSE THE REASONING THAT PRODUCED IT IS STILL SOUND — it was simply beaten by a fact nobody
+> had checked.** Applying migration **v29** against a zone binary that still has the flat adders
+> **DOUBLE-COUNTS every piece**; they are removed in the same commit.
+
+| piece | ids | slot | bonus | earned at |
+|---|---|---|---|---|
+| head tool | 147930-147941 | HEAD (4) | **+5 percent** | tradeskill skill 100 |
+| face mask | 147942-147953 | FACE (8) | **+10 percent** | skill 200 |
+| hand piece | 147954-147965 | HANDS (4096) | **+15 percent** | skill 300 |
+
+- ⚠️⚠️ **THE FLAT BONUS WAS INVISIBLE, AND THAT IS THE WHOLE REASON IT CHANGED.** Paying it inside
+  `AoTv4TradeskillSkill` meant it never reached `Client::GetSkill`, while the client's Skills window
+  renders the **raw** `m_pp.skills` — so wearing the tool changed every combine roll and every tier
+  roll and **displayed nothing**. Reported from play as *"this is not working or it would reflect on
+  my skill sheet"*. It worked perfectly and was visible nowhere.
+- ⚠️⚠️ **`skillmod` DOES NOT STACK — `bonuses.cpp:451` keeps only the HIGHEST value per skill.** The
+  three pieces are a **progression, not an accumulation**: wearing all three is 15 percent, exactly
+  the same as wearing the hand piece alone. **Do not "fix" this by raising the numbers so they sum to
+  something** — the ladder is the reward, and 345 (§ the tier table above) comes from the *best*
+  piece, never from 5 + 10 + 15.
+- ⚠️⚠️ **THE MASK HAD TO BECOME WEARABLE.** It was `slots = 0`, an inventory clicky, and
+  `AddItemBonuses` only ever walks **EQUIPPED** slots — a `skillmod` on an unworn item contributes
+  exactly nothing. It moved to **FACE**, deliberately not head, because the head slot is the tool's
+  and two pieces competing for one slot is the thing that made the original clicky design necessary.
+- ⚠️ `skillmodmax` is forced to **0**. `GetSkill` treats a non-zero max as a **FLAT cap**
+  (`min(raw + max, raw * (100 + mod) / 100)`), which would silently truncate the percentage.
+- ⚠️ **`AoTv4TradeskillSkill` still exists and is still the one definition** — it is now just
+  `GetSkill()`. Kept as a named function because the success roll and the tier roll must agree, and
+  because a future **non-item** source would go there rather than into `GetSkill`.
+- ⚠️ **It still cannot shortcut the achievement ladders.** `Client::SetSkill` feeds `ProcessSkill`
+  the **stored** value, so gear cannot buy a rung. Earned, not worn.
+- ⚠️ `Skills:TradeSkillClamp` is **0** here, which disables the clamp at `tradeskills.cpp:1197`. Set
+  it non-zero and the bonus is silently truncated away.
+- ⚠️⚠️ **THE STRAY AUGMENT SOCKETS WERE CLEARED (v29).** Every row in the band carried `augslot1type`
+  7 (General: Group) and `augslot2type` 21 (Special Ornamentation), inherited from whatever stock item
+  the original SQL cloned — the same class of bug as §5's "cloning a stock spell inherits its damage
+  formula". The tell was that the **masks** had them too, and a `slots = 0` inventory clicky can never
+  be ornamented. Cleared **before** the hand pieces are cloned, so they are not inherited again.
+- 📌 `skillmodtype` is derived with `ELT` over `((id - 147930) MOD 12)`, reproducing the exact index
+  order of `AOTV4_TS_SKILLS`. Keep the two in step — reordering silently gives blacksmiths the fishing
+  bonus with no error anywhere.
+- ⚠️ The v29 rewards target achievement ids **arithmetically** (`400000 + skill*1000 + 300`, i.e.
+  455300..469300), never a `SELECT` on (skill, required_count) — that also matches the Master Artisan
+  aggregate (470000-470999) and would land all twelve rewards on one achievement (§ below).
+
+#### ⚠️⚠️ THE CLIENT APPLIES `skillmod` ITSELF — NEVER SEND A PRE-MODIFIED SKILL VALUE
+The RoF2 client takes the raw skill off the wire and applies the equipped item's `SkillModValue` to
+the **displayed** number on its own. Sending an already-modified value makes it apply the percentage
+a **second time**: measured, raw 300 with a 5 percent item sent as `GetSkill()` = 315 **rendered as
+330** (315 × 1.05).
+- Both packets must carry the **raw** `m_pp.skills` value: `OP_SkillUpdate` in `Client::SetSkill`
+  (`zone/client.cpp`) and the player profile in `Handle_Connect_OP_ZoneEntry`
+  (`zone/client_packet.cpp`). Both were briefly changed to `GetSkill()` on 2026-08-06 to make the
+  bonus visible, and both are reverted with a comment saying why.
+- 📌 **The bonus was invisible because it was paid in C++ and was not on the item at all.** Once it
+  became a real item `skillmod`, the client displayed it with **no server change needed** — the
+  packet work was solving a problem that the data fix dissolved.
+
+#### ⚠️ Why a flat bonus could not have been expressed natively (the original finding, still true)
 `Client::GetSkill` (`client.cpp:13090`) applies an item's `skillmod` as a **PERCENTAGE**
 (`skill * (100 + mod) / 100`) and reads **item bonuses only** — `spellbonuses.skillmod` is never
 consulted, and `bonuses.cpp:451` only ever populates `skillmod` from items. There is **no flat skill
 increase SPA**: the near misses are `RaiseSkillCap` (247, raises the CAP), `ReduceSkill` (122, a
 percentage reduction) and `TradeSkillMastery` (263). **So a spell or illusion cannot raise a
-tradeskill at all through any stock path.**
-- Both bonuses are therefore paid by **`AoTv4TradeskillSkill`** (`zone/tradeskills.cpp`), which is
-  the single place tradeskill skill is read — by the success roll *and* the tier roll, so the
-  bonuses help you succeed as well as tier up.
-- ⚠️ Deliberately **not** folded into `Client::GetSkill`: that is read for every combat skill in the
-  game and a flat adder there would leak into melee, defense and casting.
-- ⚠️ **The bonuses cannot shortcut the achievement ladders.** `Client::SetSkill` feeds
-  `ProcessSkill` the **stored** value, so the ladders measure raw skill. Earned, not buffed.
-- ⚠️ `Skills:TradeSkillClamp` is **0** here, which disables the clamp at `tradeskills.cpp:1197`. Set
-  it non-zero and the bonuses are silently truncated away.
-- **The tool** (worn, `147930+idx`) is +20; **the mask** (clicky, `147942+idx`) casts an illusion
-  (`44400+idx`) worth +30. They **stack** — separate sources — so 300 base skill reaches ~350, which
-  is the "put in the work and everything you make is Mythic" end state.
+tradeskill at all through any stock path** — which is why the bonus was paid in `tradeskills.cpp`
+for as long as it wanted to be flat, and why going native meant giving up "flat" rather than
+finding a better place to put it.
+- ⚠️ Still deliberately **not** folded into `Client::GetSkill` by hand: that is read for every combat
+  skill in the game, and an adder there would leak into melee, defense and casting. The native
+  `skillmod` path is per-skill by construction, which is what makes it safe.
 - ⚠️⚠️ **THE ID ORDER IS LOAD BEARING.** Both bands are indexed off `AOTV4_TS_SKILLS`
   (55,56,57,58,59,60,61,63,64,65,68,69), so 147930 and 44400 must both be Fishing. Reordering the
   SQL silently gives blacksmiths the fishing bonus and nothing reports an error.
 - ⚠️⚠️ **THE MASK'S `clicktype` MUST BE 1 (`ItemEffectClick`), NOT 4.** Type 4 is
   `ItemEffectEquipClick`, and `zone/spells.cpp:7529` refuses it unless the item is in an **equipment**
-  slot — but the masks are `slots = 0` and can never be equipped, so a type-4 mask is **silently
-  unusable by everyone**. It shipped as 4 for a day.
-- ⚠️⚠️ **AND THE MASK MUST NOT BE HEAD SLOT.** Making it wearable would put it in the *same slot as
-  the tool*, so +20 and +30 could never be worn together — which destroys the entire reason they
-  stack to +50 and reach the ~350 Mythic threshold. The inventory clicky is not a shortcut; it is
-  what makes the design work.
-- ⚠️ All 24 items are `classes=65535 races=65535 reqlevel=0 reclevel=0 deity=0` — every class, every
+  slot — the masks shipped `slots = 0` and could never be equipped, so a type-4 mask was **silently
+  unusable by everyone**. It shipped as 4 for a day. ⚠️ The mask is FACE-slot now (v29), so type 4
+  would technically resolve — **it stays 1 anyway**, because 1 works from bag or slot and nothing is
+  gained by tying the click to being worn.
+- ⚠️⚠️ **THE MASK MUST NOT BE HEAD SLOT.** That is the tool's slot, and two pieces competing for one
+  slot is what made the original inventory-clicky design necessary in the first place. FACE was
+  chosen for that reason alone.
+- ⚠️⚠️ **AN UNLIMITED CLICKY IS `maxcharges = -1`, NOT 0** (v30). The masks shipped **0**, which the
+  engine reads as a **spent consumable** — *"Item is out of charges."* — so the illusion never fired
+  once. 538 stock items use -1 (Journeyman's Boots, Traveler's Boots, Bracer of Hammerfal). **0 is
+  the one value that makes a clicky permanently dead while the row still looks correctly
+  configured**: `clickeffect` set, `clicktype` 1, nothing reads as broken.
+  📌 That is the **third** polarity/sentinel trap on these same items (`nodrop = 0` = No Drop,
+  `clicktype 4` = equip-only, `maxcharges 0` = dead). **Check the sense of every flag on an item row
+  rather than assuming 0/1 means off/on.**
+- ⚠️ **All 36 shared `icon 639`** and rendered as cloth hats regardless of slot (v30) — reported as
+  *"the icons aren't matching the items, all of the items look like cloth hats"*. Now head **625**,
+  face **770**, hands **531**, the most common stock icon per slot. 📌 `idfile` stays IT63, which
+  stock head items also use (Chromatic Helm), so only the inventory icon was ever wrong.
+- ⚠️ All 36 items are `classes=65535 races=65535 reqlevel=0 reclevel=0 deity=0` — every class, every
   race, no level gate. The gate is the achievement, nothing on the item.
-- ⚠️⚠️ **THEY SURVIVE THE ROGUELITE DEATH — `death_loss.M.is_kept` spares 147930-147953.** Without it
+- ⚠️⚠️ **THEY SURVIVE THE ROGUELITE DEATH — `death_loss.M.is_kept` spares 147930-147965.** Without it
   the wipe destroys them like any other carried gear, **and the achievements grant them with
-  `claim_once = 1`, so they would never be re-granted**: one death would cost the tool and the mask
-  permanently, with no way back short of a GM. The justification is the same one that protects
-  evolving items — tradeskill skill is explicitly the one thing death does **not** reset
+  `claim_once = 1`, so they would never be re-granted**: one death would cost the tool, the mask and
+  the hand piece permanently, with no way back short of a GM. The justification is the same one that
+  protects evolving items — tradeskill skill is explicitly the one thing death does **not** reset
   (`max_skills_for_level` skips tradeskills), so destroying the reward for it is incoherent.
-  ⚠️ It is an id **band**, not a property test, and it is mirrored from `AOTV4_TS_TOOL_BASE` in
-  `zone/tradeskills.cpp` — widening the reserved range there without widening it in `death_loss.lua`
-  silently makes the new items destructible.
+  ⚠️ It is an id **band**, not a property test, and it is mirrored from `AOTV4_TS_TOOL_BASE` /
+  `AOTV4_TS_MASK_BASE` / `AOTV4_TS_HANDS_BASE` in `zone/tradeskills.cpp` — widening the reserved
+  range there without widening it in `death_loss.lua` silently makes the new items destructible. It
+  was widened 147930-147953 → **147930-147965** when the hand pieces landed.
 - ⚠️⚠️ **`nodrop = 0` MEANS "NO DROP" — THE FLAG IS INVERTED** (`client_packet.cpp:10755`: *"No Drop
   items have no vendor value"* tests `NoDrop == 0`). These shipped as `nodrop = 1` for a day, which
   made an **earned** tool tradeable to somebody who had not earned it. `norent = 1` is the opposite
@@ -3319,6 +3509,45 @@ tradeskill at all through any stock path.**
 - ⚠️⚠️ **THE ILLUSIONS ARE AT 44400, NOT 436xx.** The obvious-looking 43600 sits **inside the
   spell-rank band 43576-44327** and would have overwritten twelve rank rows. Check the §20 band map
   before reserving anything in 43xxx/44xxx; 44400 is clear and still under RoF2's 45000 ceiling.
+  📌 Since v29 they are **purely cosmetic** — the skill bonus moved onto the item when the mask became
+  wearable. The spells still exist and the masks still click them.
+
+#### ⚠️⚠️ A LEVEL-SCALED BUFF FORMULA IS WRONG FOR AN ITEM CLICKY WITH A FIXED CAST LEVEL (v32)
+The mask illusions lasted **three minutes, not the intended thirty**, and the spell row read as
+correct: `buffdurationformula = 3` (`30 × level`) with `buffduration = 360` as the cap, i.e. "36
+minutes, capped". **The cause is the ITEM, not the spell** — the masks click at `clicklevel2 = 1`, so
+the formula yields `30 × 1 = 30 ticks` = exactly the 3 minutes observed, and the 360 cap never came
+near binding.
+- Fixed with a **level-independent** duration rather than by raising `clicklevel2`. The default branch
+  of the formula switch (`zone/spells.cpp`) is `if (formula < 200) return 0; temp = formula;` — so a
+  formula of **300 is literally 300 ticks**, whatever level it is cast at. 300 × 6 s = 30 minutes.
+- ⚠️ `buffduration` stays **300**: the tail of that function caps with
+  `if (duration && duration < temp) temp = duration`, so setting it lower silently wins over the
+  formula.
+- 📌 `clicklevel2 = 10` would also give 300 via formula 3, but it ties the duration to a field that
+  exists for a different purpose and breaks again if the item is ever re-cloned.
+- ⚠️ These sit inside the **43000-44999 band that `Mob::CalcBuffDuration` excludes** from the §36
+  three-day self-buff floor, so the native duration is authoritative. Without that exclusion the whole
+  change would be moot — they would already have been lasting days.
+
+#### ⚠️⚠️ TRADESKILL RECIPES ARE ERA-GATED SEPARATELY FROM ZONES (v31)
+`tradeskill_recipe` carries its **own** `min_expansion`/`max_expansion`, and the recipe **search**
+(`Handle_OP_RecipesSearch`) ends with `ContentFilterCriteria::apply()`. At
+`Expansion:CurrentExpansion = 0` that hid **388 enabled recipes** — 385 Pottery, 3 Blacksmithing,
+almost all PoP armour. Clearing the gate on the **recipe rows** unlocks them while `CurrentExpansion`
+stays 0, so zones, doors, spawns and item filtering are untouched. Raising `CurrentExpansion` instead
+would open Kunark..PoP wholesale and defeat region locking — exactly what §35 records a dump doing
+silently.
+- ⚠️⚠️ **THEY WERE ALWAYS CRAFTABLE, ONLY UNFINDABLE.** The combine path
+  (`ZoneDatabase::GetTradeRecipe`, `tradeskills.cpp:1633`) filters on `tr.enabled` **only** and has no
+  content filter, so anyone who knew the component set could already make them. The gate was purely on
+  **discovery** — the worst of both worlds: no protection, just a hidden recipe.
+- ⚠️ **Scoped to `enabled = 1`.** The other 3,296 gated rows are min_expansion 9 (DoN) **and** already
+  `enabled = 0` — deliberately off, consistent with the era system capping at OoW (§12). Enabling
+  those is a separate content decision. `content_flags` is left alone (one recipe is `peq_halloween`
+  and must stay seasonal).
+- 📌 Some need components from zones the server has not unlocked, so they show in search and still
+  cannot be made. That is "needs a rare component", not a regression.
 
 ### Achievements can grant AA — the `grant_aa` reward type
 The one architectural addition, mirroring the custom `scribe_spell`. `reward_id` = `aa_ability.id`,
@@ -3331,16 +3560,38 @@ The one architectural addition, mirroring the custom `scribe_spell`. `reward_id`
 - ⚠️⚠️ **`aa_ability.enabled = 0` MEANS THE AA DOES NOT EXIST AT RUNTIME** — `zone/aa.cpp:1823` loads
   only enabled rows, so `grant_aa` fails with "not loaded". Most tradeskill masteries ship disabled
   and v12 switches them on.
+- ⚠️⚠️ **`custom_achievement_rewards`.`chance` IS IN BASIS POINTS (0-10000), NOT PERCENT — and BOTH
+  AoTv4 reward wirings shipped it as `100`, i.e. ONE PERCENT** (found 2026-08-06, migration **v28**).
+  `QueueAchievementRewards` gates on `(r.chance >= 10000 OR FLOOR(RAND() * 10000) < r.chance)`
+  (`achievement_manager.cpp:1499`), so the reward was simply not queued on 99 completions out of 100.
+  Every stock reward type ships **10000**; the 36 `grant_aa` rows (the mastery ladders) and the 24
+  `item` rows (the tools 147930+ and masks 147942+) shipped 100 and were near-dead from the day they
+  landed. Reported from play as *"some of our tradeskill achievements are not giving the AAs"*.
+  - ⚠️⚠️ **IT IS INVISIBLE FROM EVERY DIRECTION THAT MATTERS.** The achievement completes, the window
+    shows it **Done**, and the detail pane still reads *"Auto — Fletching Mastery rank 1"* — because
+    that text comes from the **definition**, which is perfectly valid. Nothing is logged and
+    **`#ach rewards` shows nothing to explain**, since there is no refusal to report.
+  - 📌 **Diagnose by the ABSENCE of a `custom_character_achievement_rewards` row, not by reading
+    `result_text`.** A queued-and-refused reward and a never-queued one are identical in game and
+    completely different in the database — the first has a row with a reason, the second has no row.
+    Chasing the AA config (expansion gate, `level_req`, prereqs, `grant_only`) all checked out fine
+    and cost the whole investigation; the reward had never reached that code.
+  - ⚠️ v28 also **backfills** anyone already affected, as `status 0` pending rows.
+    `ClaimPendingRewards(client, 0, true)` sweeps every pending auto-claim row on the **next**
+    completion (not just that achievement's), and `#ach claim` forces it immediately.
+  - ⚠️ Scope any such fix to `reward_type IN ('grant_aa','item')`, never to "any `chance = 100`" — a
+    genuine 1 percent reward chance is a legitimate value in this column.
 
 ### ⚠️ THE TOOLS AND MASKS ARE ACHIEVEMENT REWARDS, NOT CRAFTED — and the recipes were REMOVED
 They were briefly craftable (recipes 470100-470111, trivial 200). That was dropped on 2026-08-04 for
 one reason: **a recipe nobody is told about is not a reward.** A player has no way to know a new
 recipe exists, and neither `skillneeded` nor the in-game recipe search fixes "I did not know to
 look". The achievement window does — it **lists a reward before you earn it**, so a crafter at skill
-40 can already see what waits at 100 and 200.
-- **Tool (+20)** → the existing skill **100** achievement. **Mask (+30)** → the existing skill **200**
-  achievement. Both as `item` rewards (`SummonItem`), on the per-skill rows that already existed.
-- ⚠️ **All twelve tradeskills get both items**, Fishing and Research included. They are excluded from
+40 can already see what waits at 100, 200 and 300.
+- **Tool (+5 percent)** → the existing skill **100** achievement. **Mask (+10)** → skill **200**.
+  **Hand piece (+15)** → skill **300** (added with v29). All as `item` rewards (`SummonItem`), on the
+  per-skill rows that already existed.
+- ⚠️ **All twelve tradeskills get all three items**, Fishing and Research included. They are excluded from
   the AA ladders only because neither has a Mastery AA to grant; the skill bonus is paid by
   `AoTv4TradeskillSkill` for all twelve, so there is no reason to exclude them here.
 - ⚠️⚠️ **SELECTING AN ACHIEVEMENT BY (skill, required_count) MATCHES THE AGGREGATE TOO.** The Master
@@ -3374,9 +3625,12 @@ look". The achievement window does — it **lists a reward before you earn it**,
 ⚠️ `items` and `spells_new` are **shared memory**: a migration applying at world boot is **not
 enough** — stop the stack, run `./shared_memory`, restart. The AA and achievement halves need only a
 zone restart.
-📌 Both items are obtainable: tool at skill 100, mask at skill 200, from the per-skill achievements.
-Nothing in this section is placed by drop, vendor or quest — the achievement ladder is the only
-acquisition path, deliberately, because it is the only one that advertises itself.
+📌 All three items are obtainable: tool at skill 100, mask at 200, hand piece at 300, from the
+per-skill achievements. Nothing in this section is placed by drop, vendor or quest — the achievement
+ladder is the only acquisition path, deliberately, because it is the only one that advertises itself.
+⚠️⚠️ **AND THE REWARD ROWS THEMSELVES MUST CARRY `chance = 10000`** — see the basis-points trap in
+the `grant_aa` subsection above. Both AoTv4 wirings shipped `100` (one percent) and were near-dead
+from the day they landed; v28 fixes and backfills them.
 
 ## 33. The starter weapon follows the CLASS — 2026-08-04
 
@@ -3745,6 +3999,31 @@ broken — it is **stock**, and the cap is what breaks it. The AA mixes effect K
 - ⚠️ Scoped to the **three enabled** AAs (rank ids 279, 423, 1367). **17 rows use SPA 214 in total**;
   the other 14 sit on disabled AAs and will need the same treatment if they are ever switched on.
   Converting all 17 would silently rebalance AAs nobody can currently train.
+
+#### ⚠️⚠️ AND THEN "Bulwark within is not giving mana" — MANA IS CLASS-BRANCHED (v34 / v35, 2026-08-07)
+v34 matched the amounts (HP 300 but mana 200 / endurance 200 → **300 / 300 / 300**) so the AA reads as
+one coherent grant. The follow-up report was that the mana still did nothing, and **that is not this
+AA**:
+- ⚠️⚠️ **`Client::CalcMaxMana` (`zone/client_mods.cpp`) BRANCHES ON CLASS.** Caster classes get
+  `CalcBaseMana()` + item + spell + AA bonuses; **Warrior, Monk, Rogue and Berserker get a flat
+  `GetLevel() * 40` with NO bonus terms at all.** That is deliberate — §14 records that the dll
+  computes the mana **gauge** itself from `level * AOTV4_MELEE_MANA_PER_LEVEL` using only
+  `SPAWNINFO->Level`, so the server must produce the identical number or the bar misreports.
+- ⚠️⚠️ **THE CONSEQUENCE IS FAR WIDER THAN ONE AA: 40,103 wearable mana items and 65 mana-granting AAs
+  are ALL INERT for those four classes**, and mana is the one stat they cannot improve. On a server
+  where every class casts (§14), that is a standing design hole, not a bug in Bulwark Within.
+  📌 Fixing it is **one line** (add the three bonus terms to the melee branch) **plus a dll change** so
+  the gauge agrees. Deliberately **not** done — it is a balance decision, not a bug fix.
+- ⚠️ **Endurance is fine on every class**: `CalcMaxEndurance` has no class branch and already sums
+  spell, item and AA bonuses. **Only mana is special-cased.**
+- v35 therefore changes the **description**, not the grant: the engine already splits it the way it
+  should (everyone banks HP and endurance, only casters bank mana), so the text now says so instead of
+  promising all three to all.
+  ⚠️⚠️ **The client resolves that string from its own `dbstr_us.txt`, NOT from this database** (§6) —
+  writing `db_str` changes nothing in game until `./export_client_files` runs and the regenerated file
+  ships to players. ⚠️ No literal `%`: the description path is printf-style and eats it as a format
+  token. ⚠️ Only **type 4** is written; §6 records that *renaming* an AA means writing types 1/2/3 as
+  well, but this is a description change and they are correctly left alone.
 
 ### A zone's experience multiplier is stock data, not something we set (migration v16)
 Reported as *"blues in delves were giving 4-5% exp, while yellows in LOIO were giving 2%"*. Nothing in

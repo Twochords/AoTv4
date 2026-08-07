@@ -1133,6 +1133,65 @@ std::string Client::SearchList(std::string kind, std::string term)
 	}
 	// trim trailing spaces
 	while (!t.empty() && t.back() == ' ') t.pop_back();
+
+	// AoTv4 "Zone XP" -- a BROWSE list, not a search, so it is handled before the empty-term guard
+	// below and returns everything when no filter is typed. Rows are region headers interleaved with
+	// zones, which is why it builds its own string instead of falling through to the generic loop.
+	//
+	// ⚠️⚠️ A HEADER ROW IS SENT AS id 0. The window's list is a flat listbox, so the client MUST NOT
+	// treat a row index as a data index -- the same trap already recorded for the Death Book and the
+	// spell Known/Pool tabs. id 0 is the marker that a row is not clickable.
+	// ⚠️ The level range is READ from aotv4_zone_xp, never computed. It is an authored list (see the
+	// migration): a derived percentile range disagreed with it substantially and both were defensible,
+	// so the authored numbers are the product decision and live in a table that can be edited without
+	// a rebuild.
+	// ⚠️ Delve zones are absent because the table does not seed them -- their creatures scale to the
+	// player, so a fixed range would be a lie. Nothing here filters them; do not "fix" that by adding
+	// region 0, which is almost entirely delve maps.
+	if (kind == "zxp") {
+		std::string where = "WHERE 1=1";
+		if (!t.empty()) {
+			where += fmt::format(" AND z.long_name LIKE '%{}%'", t);
+		}
+
+		// ⚠️ `label` overrides the numeric range when set -- the ten city zones carry 'City'. Once the
+		// civic NPCs are filtered out a city has almost nothing huntable left (North Freeport: FIVE
+		// spawns), so a percentile there is noise dressed up as data. Cities also sort LAST within
+		// their region, because a level-ordered list has nowhere sensible to put one.
+		auto rows = database.QueryDatabase(fmt::format(
+			"SELECT r.id, r.name, z.long_name, x.lo, x.hi, IFNULL(x.label, '') "
+			"FROM aotv4_zone_xp x "
+			"JOIN zone z ON z.zoneidnumber = x.zone_id AND z.version = 0 "
+			"JOIN regions r ON r.id = x.region_id {} "
+			"ORDER BY r.id, (x.label IS NOT NULL), x.lo, x.hi, z.long_name", where));
+		if (!rows.Success()) return "";
+
+		std::string out;
+		int last_region = -1;
+		for (auto row : rows) {
+			const int region_id = row[0] ? Strings::ToInt(row[0]) : -1;
+			std::string region_name = row[1] ? row[1] : "";
+			std::string zone_name   = row[2] ? row[2] : "";
+			for (auto &ch : region_name) { if (ch == '|' || ch == '^' || ch == '~') ch = ' '; }
+			for (auto &ch : zone_name)   { if (ch == '|' || ch == '^' || ch == '~') ch = ' '; }
+
+			if (region_id != last_region) {
+				last_region = region_id;
+				out += fmt::format("0|== {} ==^", region_name);
+			}
+
+			std::string label = row[5] ? row[5] : "";
+			for (auto &ch : label) { if (ch == '|' || ch == '^' || ch == '~') ch = ' '; }
+
+			if (!label.empty()) {
+				out += fmt::format("0|   {}  ({})^", zone_name, label);
+			} else {
+				out += fmt::format("0|   {}  ({}-{})^", zone_name, row[3] ? row[3] : "?", row[4] ? row[4] : "?");
+			}
+		}
+		return out;
+	}
+
 	if (t.empty()) return "";
 
 	std::string query;

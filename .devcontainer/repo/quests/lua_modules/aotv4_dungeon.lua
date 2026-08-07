@@ -278,26 +278,26 @@ M.MODES = {
       hp = 1.00, dmg = 1.00, lvl = 0, swarm = 0, bosses = 1, score = 1.00,
       desc = "The delve as intended. Clear the dungeon, then kill what comes for you at the end." },
 
-    { id = "hard", name = "Hard", taskoff = 10, goalmul = 1,
+    { id = "hard", name = "Hard", taskoff = 40, goalmul = 1,
       hp = 2.00, dmg = 2.00, lvl = 0, swarm = 0, bosses = 1, score = 2.00,
       desc = "Everything hits twice as hard and takes twice as long to kill. Same numbers, twice the fight." },
 
-    { id = "swarm", name = "Swarm", taskoff = 20, goalmul = 3,
+    { id = "swarm", name = "Swarm", taskoff = 80, goalmul = 3,
       hp = 0.50, dmg = 0.75, lvl = 0, swarm = 3, bosses = 1, score = 1.50,
       desc = "Every kill splits into three more. Individually weaker, endlessly many: ninety of them before the boss." },
 
     -- ⚠️ `thin` DEPOPULATES the dungeon; goalmul only lowers the KILL GOAL. Gauntlet needs both, and
     -- shipping it with goalmul alone was a real bug: the kill target dropped to 10 but all ~150 mobs
     -- were still standing there, so the mode looked and played exactly like Standard.
-    { id = "gauntlet", name = "Gauntlet", taskoff = 30, goalmul = 0.34, thin = 0.75,
+    { id = "gauntlet", name = "Gauntlet", taskoff = 120, goalmul = 0.34, thin = 0.75,
       hp = 1.00, dmg = 1.00, lvl = 0, swarm = 0, bosses = 3, score = 1.75,
       desc = "Barely any trash, but three bosses instead, one after another, each angrier than the last." },
 
-    { id = "onslaught", name = "Onslaught", taskoff = 40, goalmul = 1,
+    { id = "onslaught", name = "Onslaught", taskoff = 160, goalmul = 1,
       hp = 1.00, dmg = 1.00, lvl = 0, swarm = 0, bosses = 1, score = 1.50,
       desc = "The same delve against a clock. Run out of time and the run is failed where it stands." },
 
-    { id = "fragile", name = "Fragile", taskoff = 50, goalmul = 1,
+    { id = "fragile", name = "Fragile", taskoff = 200, goalmul = 1,
       hp = 0.50, dmg = 2.00, lvl = 0, swarm = 0, bosses = 1, score = 1.50,
       desc = "Everything dies in half the time and kills you in half the time. Win the trade or lose the run." },
 }

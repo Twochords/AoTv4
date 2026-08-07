@@ -281,29 +281,37 @@ static bool AoTv4IsEpicItem(uint32 id);   // defined below; used to keep epics o
 // ============================================================================================
 // AoTv4 tradeskill skill, and the skill-scaled tier roll
 // ============================================================================================
-// ⚠️⚠️ THE FLAT TRADESKILL BONUSES CANNOT BE EXPRESSED NATIVELY, WHICH IS WHY THEY ARE PAID HERE.
-// Client::GetSkill applies an item's skillmod as a PERCENTAGE (skill * (100 + mod) / 100) and reads
-// itembonuses ONLY -- spellbonuses.skillmod is never consulted, and bonuses.cpp only ever populates
-// skillmod from items. There is also no flat "skill increase" SPA: the near misses are RaiseSkillCap
-// (247, raises the CAP), ReduceSkill (122, a percentage reduction) and TradeSkillMastery (263).
-// So a spell/illusion cannot raise a tradeskill at all through any stock path.
+// ⚠️⚠️ THE TRADESKILL GEAR BONUS IS NOW NATIVE `skillmod`, PAID BY Client::GetSkill -- NOT ADDED HERE.
+// It used to be a flat +20 (worn tool) / +30 (illusion buff) applied in this function, because
+// Client::GetSkill treats an item's skillmod as a PERCENTAGE (skill * (100 + mod) / 100) and there is
+// no flat "skill increase" SPA (the near misses are RaiseSkillCap 247 which raises the CAP,
+// ReduceSkill 122 which is a percentage reduction, and TradeSkillMastery 263).
 //
-// ⚠️ Deliberately NOT folded into Client::GetSkill: that is read for every combat skill in the game,
-// and a flat adder there would leak into melee, defense and casting. This is the tradeskill choke
-// point instead -- every read of "how good am I at this tradeskill" goes through here.
-// ⚠️ It is NOT what the achievement ladders measure. Client::SetSkill feeds ProcessSkill the STORED
-// value, so the tool and the illusion cannot shortcut the mastery/Salvage achievements. Earned, not
-// buffed -- and that separation is intentional.
-// 📌 The two reserved bands below are indexed by the same order as AOTV4_TS_SKILLS.
+// ⚠️⚠️ THE FLAT VERSION WAS INVISIBLE, AND THAT IS WHY IT CHANGED (2026-08-06). Paying it here meant
+// it never reached Client::GetSkill, so the client's Skills window -- which renders the raw
+// m_pp.skills -- kept showing the unmodified number. Reported from play as "this is not working or it
+// would reflect on my skill sheet": it worked for combines and for the tier roll, and was visible
+// nowhere. Native skillmod plus the OP_SkillUpdate change in Client::SetSkill makes the sheet honest.
+//
+// ⚠️⚠️ SO DO NOT RE-ADD A BONUS HERE. GetSkill already includes the gear percentage; adding the old
+// flat amounts on top would DOUBLE-COUNT every piece.
+// ⚠️ `skillmod` does NOT stack across items -- bonuses.cpp keeps only the HIGHEST value for a given
+// skill. The three pieces are therefore a progression (5 -> 10 -> 15 percent), not additive: wearing
+// all three is worth 15 percent, the same as wearing only the best one.
+// ⚠️ It is still NOT what the achievement ladders measure. Client::SetSkill feeds ProcessSkill the
+// STORED value, so gear cannot shortcut the mastery/Salvage achievements. Earned, not worn.
+// 📌 The reserved bands are indexed by the same order as AOTV4_TS_SKILLS -- see the migration.
 static const uint16 AOTV4_TS_SKILLS[] = { 55, 56, 57, 58, 59, 60, 61, 63, 64, 65, 68, 69 };
-static const uint32 AOTV4_TS_TOOL_BASE     = 147930;   // 12 wearable tools, +20 to their own skill
+static const uint32 AOTV4_TS_TOOL_BASE  = 147930;   // 12 head tools,   +5 percent
+static const uint32 AOTV4_TS_MASK_BASE  = 147942;   // 12 face masks,  +10 percent
+static const uint32 AOTV4_TS_HANDS_BASE = 147954;   // 12 hand pieces, +15 percent
 // ⚠️⚠️ 44400, NOT 43600. The obvious-looking 436xx is INSIDE the spell-rank band 43576-44327 (752
 // rows), and reserving it there would have silently overwritten twelve of them. 44400-44411 is clear
 // of every band in use and still under RoF2's 45000 spell-id ceiling, past which links and the
 // spellbook packet break. Check the band map before reserving anything in 43xxx/44xxx.
-static const uint16 AOTV4_TS_ILLUSION_BASE = 44400;    // 12 illusion buffs, +30 to their own skill
-static const int    AOTV4_TS_TOOL_BONUS     = 20;
-static const int    AOTV4_TS_ILLUSION_BONUS = 30;
+// 📌 The illusion spells still exist and are still clickable from the masks, but they are now purely
+// COSMETIC -- the skill bonus moved onto the item itself when the mask became wearable.
+static const uint16 AOTV4_TS_ILLUSION_BASE = 44400;
 
 static int AoTv4TradeskillIndex(uint16 tradeskill)
 {
@@ -315,33 +323,16 @@ static int AoTv4TradeskillIndex(uint16 tradeskill)
 	return -1;
 }
 
-// The effective tradeskill skill: the native value (raw + any item percentage mod) plus our flat
-// tool and illusion bonuses, which STACK because they come from two different sources.
+// The effective tradeskill skill. This is now just GetSkill() -- the gear percentage is applied there
+// from itembonuses.skillmod. Kept as a named function because the success roll and the tier roll must
+// agree on one definition, and because a future non-item source would go here rather than in GetSkill.
 static int AoTv4TradeskillSkill(Client *c, uint16 tradeskill)
 {
 	if (!c) {
 		return 0;
 	}
 
-	int value = c->GetSkill(static_cast<EQ::skills::SkillType>(tradeskill));
-
-	const int idx = AoTv4TradeskillIndex(tradeskill);
-	if (idx < 0) {
-		return value;   // not one of ours (skill 75 and friends) -- native value only
-	}
-
-	// worn tool: +20. HasItem with invWhereWorn only matches an EQUIPPED copy, so carrying twelve
-	// of them in a bag does nothing -- you have to actually be wearing the right one.
-	if (c->GetInv().HasItem(AOTV4_TS_TOOL_BASE + idx, 1, invWhereWorn) != INVALID_INDEX) {
-		value += AOTV4_TS_TOOL_BONUS;
-	}
-
-	// illusion buff: +30, and it stacks with the tool by construction -- separate sources, added.
-	if (c->FindBuff(AOTV4_TS_ILLUSION_BASE + idx)) {
-		value += AOTV4_TS_ILLUSION_BONUS;
-	}
-
-	return value;
+	return c->GetSkill(static_cast<EQ::skills::SkillType>(tradeskill));
 }
 
 // Which tier a successful combine produces: 0 = base, 1 = Hallowed, 2 = Mythic.
@@ -349,10 +340,17 @@ static int AoTv4TradeskillSkill(Client *c, uint16 tradeskill)
 // ⚠️⚠️ THIS REPLACES "EVERY COMBINE IS MYTHIC". Crafting used to hand out a Mythic unconditionally,
 // which made tradeskill output entirely independent of tradeskill SKILL -- the thing the system is
 // supposed to be about. Now the tier is earned:
-//     effective skill  100 -> 0% Mythic / 33% Hallowed      200 -> 25% / 75%
-//                      300 -> 75% / 25%                     350 -> 100% Mythic
-// 350 is reachable at 300 skill with the +20 tool and the +30 illusion, which is the intended
-// "put in the work and everything you make is Mythic" end state.
+//     effective skill  100 -> 0% Mythic / 33% Hallowed      200 -> 27% / 100%
+//                      300 -> 77% / 100%                    345 -> 100% Mythic
+//
+// ⚠️⚠️ THE MYTHIC CEILING IS 345, NOT 350, AND IT IS DERIVED -- DO NOT ROUND IT BACK UP.
+// The cap is the best effective skill anyone can reach: 300 raw with the +15 percent hand piece is
+// 300 * 115 / 100 = 345. It was 350 while the gear paid a flat +20 and +30 (300 + 50). Set the
+// ceiling above what the gear can actually deliver and guaranteed Mythic becomes unreachable -- the
+// "put in the work and everything you make is Mythic" end state simply never arrives, with nothing to
+// indicate why. Retune this the moment the top piece's percentage changes.
+// ⚠️ The three pieces do NOT stack (skillmod keeps only the highest), so 345 comes from the BEST
+// piece alone, not from 5 + 10 + 15.
 //
 // ⚠️ Mythic is rolled FIRST and returns immediately -- these are bands of one decision, not two
 // independent rolls. Testing Hallowed first would swallow the Mythic band entirely, the same trap
@@ -366,7 +364,7 @@ static int AoTv4RollCraftTier(Client *c, uint16 tradeskill)
 
 	const int skill = AoTv4TradeskillSkill(c, tradeskill);
 
-	int mythic_pct   = ((skill - 150) * 100) / 200;   // 0 at 150, 100 at 350
+	int mythic_pct   = ((skill - 145) * 100) / 200;   // 0 at 145, 100 at 345
 	int hallowed_pct = ((skill - 50) * 100) / 150;    // 0 at  50, 100 at 200
 
 	if (mythic_pct   < 0)   { mythic_pct   = 0;   }

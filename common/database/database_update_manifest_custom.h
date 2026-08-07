@@ -3342,6 +3342,556 @@ DELETE FROM lootdrop_entries WHERE item_id = 147921;
 )",
 		.content_schema_update = false,
 	},
+
+	ManifestEntry{
+		.version     = 27,
+		.description = "2026_08_06_aotv4_unlock_ldon_delve_zones",
+		// The 33 LDoN dungeons used as delve maps sat in region 99 "Unused", so entering one answered
+		// "You have not yet unlocked Unused." and the whole LDoN half of the ladder was unenterable.
+		// The six DoN delve zones were already in region 0 "Always Available"; this brings the LDoN
+		// ones into line.
+		//
+		// ⚠️⚠️ ONLY ZONES WITH NO ZONE LINES ARE UNLOCKED, AND THAT IS THE SAFETY ARGUMENT.
+		// Every zone listed here has ZERO rows in zone_points targeting it -- there is no way to walk
+		// into one, so making it "Always Available" grants no world access at all. It is reachable
+		// only as a private delve instance, which the delve's own unlock ladder already gates.
+		// ⚠️⚠️ **veksar IS DELIBERATELY EXCLUDED AND WAS REMOVED FROM THE DELVE POOL.** It is LDoN by
+		// expansion but a REAL Kunark world zone: 2 zone_points lead to it and it is legitimately
+		// assigned to the Cabilis region. Unlocking it would have opened Kunark travel to anyone who
+		// had not earned Cabilis -- a genuine hole in region locking, in exchange for one more map out
+		// of 34. If it is ever wanted back, exempt instanced moves from the gate instead
+		// (Client::ProcessMovePC) rather than unlocking the zone.
+		// 📌 Test before adding any future delve map: a zone with zone_points is world content, and
+		// unlocking it is a travel change, not a delve change.
+		//
+		// ⚠️ Region 0 is "Always Available" and RegionManager::CanEnterZone treats an unmapped zone
+		// (region_id 0) as unrestricted by design, so this is the same state as "no region".
+		.check       = "SELECT zr.zone_id FROM zone_regions zr JOIN zone z ON z.zoneidnumber = zr.zone_id WHERE z.short_name IN ('guka','gukc','guke','gukf','gukh','mira','mirb','mirc','mird','mirg','mirj','mmca','mmcb','mmcc','mmcd','mmce','mmcf','mmcg','mmch','mmci','mmcj','ruja','rujd','rujf','rujg','ruji','rujj','taka','takb','takc','takd','take','takg') AND zr.region_id <> 0 LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE zone_regions zr
+  JOIN zone z ON z.zoneidnumber = zr.zone_id
+   SET zr.region_id = 0
+ WHERE z.short_name IN ('guka','gukc','guke','gukf','gukh','mira','mirb','mirc','mird','mirg','mirj','mmca','mmcb','mmcc','mmcd','mmce','mmcf','mmcg','mmch','mmci','mmcj','ruja','rujd','rujf','rujg','ruji','rujj','taka','takb','takc','takd','take','takg');
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 28,
+		.description = "2026_08_06_aotv4_fix_reward_chance_basis_points",
+		// ⚠️⚠️ `custom_achievement_rewards`.`chance` IS IN BASIS POINTS (0-10000), NOT PERCENT.
+		// QueueAchievementRewards gates on
+		//     (r.chance >= 10000 OR FLOOR(RAND() * 10000) < r.chance)
+		// (achievement_manager.cpp), so a row written as `chance = 100` meaning "100 percent" is read
+		// as 100/10000 = **ONE PERCENT** and the reward is simply never queued on 99 completions out
+		// of 100. Every stock reward type ships 10000; the two AoTv4 additions (section 32) shipped
+		// 100 and were therefore near-dead from the day they landed:
+		//   grant_aa 36 rows -- the tradeskill mastery AA ladders
+		//   item     24 rows -- the tradeskill tools (147930+) and masks (147942+)
+		//
+		// ⚠️⚠️ THE FAILURE IS INVISIBLE FROM EVERY DIRECTION THAT MATTERS. The achievement completes,
+		// the window shows it Done, and the detail pane still renders "Auto -- Fletching Mastery
+		// rank 1" because that text comes from the DEFINITION, which is perfectly valid. Nothing is
+		// logged, no reward row is written, and `#ach rewards` shows nothing to explain -- there is no
+		// refusal to report because the reward was never queued in the first place. Reported from play
+		// as "some of our tradeskill achievements are not giving the AAs".
+		// 📌 Diagnose this class of bug by checking for the absence of a `custom_character_achievement_rewards`
+		// ROW, not by reading result_text -- a queued-and-refused reward and a never-queued one look
+		// identical in game and completely different in the database.
+		//
+		// ⚠️ The second statement BACKFILLS anyone who already completed one of these and got nothing.
+		// Rows go in as status 0 (pending); `ClaimPendingRewards(client, 0, true)` sweeps every pending
+		// auto-claim row on the next completion, and `#ach claim` forces it immediately. INSERT IGNORE
+		// leans on uk_character_reward so it can never double-grant.
+		// ⚠️ Scoped to reward_type IN ('grant_aa','item') -- those are exactly the AoTv4 rows. Do not
+		// widen it to "any chance = 100": a genuine 1 percent drop chance is a legitimate value here.
+		.check       = "SELECT id FROM custom_achievement_rewards WHERE chance = 100 AND reward_type IN ('grant_aa', 'item') LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE custom_achievement_rewards
+   SET chance = 10000
+ WHERE chance = 100 AND reward_type IN ('grant_aa', 'item');
+
+INSERT IGNORE INTO custom_character_achievement_rewards
+  (character_id, achievement_id, reward_definition_id, reward_type, reward_id,
+   amount, auto_claim, tier, preview_text, data_text, status, completion_count, created_at)
+SELECT ca.character_id, r.achievement_id, r.id, r.reward_type, r.reward_id,
+       GREATEST(r.amount, 1), r.auto_claim, r.tier, r.preview_text, r.data_text, 0,
+       ca.completion_count, UNIX_TIMESTAMP()
+  FROM custom_achievement_rewards r
+  JOIN custom_character_achievements ca ON ca.achievement_id = r.achievement_id
+ WHERE r.enabled = 1 AND r.reward_type IN ('grant_aa', 'item');
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 29,
+		.description = "2026_08_06_aotv4_tradeskill_gear_percentages",
+		// The tradeskill gear bonus becomes NATIVE `skillmod` (a percentage) instead of the flat
+		// +20/+30 paid inside AoTv4TradeskillSkill, and gains a third piece:
+		//     head  147930-147941   +5 percent   (skill 100 achievement)
+		//     face  147942-147953  +10 percent   (skill 200)
+		//     hands 147954-147965  +15 percent   (skill 300, NEW)
+		//
+		// ⚠️⚠️ THE FLAT BONUS WAS INVISIBLE, WHICH IS THE WHOLE REASON FOR THIS. It was paid in
+		// tradeskills.cpp and so never reached Client::GetSkill, while the client's Skills window
+		// renders the raw m_pp.skills -- so wearing the tool changed every combine roll and displayed
+		// nothing. Reported from play as "this is not working or it would reflect on my skill sheet".
+		// Native skillmod plus the OP_SkillUpdate change in Client::SetSkill makes the sheet honest.
+		// ⚠️⚠️ THE C++ FLAT BONUSES ARE REMOVED IN THE SAME COMMIT. Applying this SQL against an older
+		// zone binary DOUBLE-COUNTS every piece (native percentage plus the flat adder).
+		//
+		// ⚠️⚠️ THE MASK HAD TO BECOME WEARABLE. It was `slots = 0`, an inventory clicky, and
+		// `AddItemBonuses` only ever walks EQUIPPED slots -- a skillmod on an unworn item contributes
+		// exactly nothing. It moves to FACE (8), deliberately not head: section 32 records that the
+		// head slot is the tool's, and two pieces competing for one slot is the thing that made the
+		// original clicky design necessary. Its illusion click (44400+idx) is untouched and is now
+		// purely cosmetic.
+		//
+		// ⚠️⚠️ `skillmod` DOES NOT STACK -- bonuses.cpp:451 keeps only the HIGHEST value per skill. The
+		// three pieces are a progression, not an accumulation: all three worn is 15 percent, the same
+		// as the hand piece alone. Do not "fix" this by raising the numbers to sum to something.
+		// ⚠️ `skillmodmax` is forced to 0. GetSkill treats a non-zero max as a FLAT cap
+		// (min(raw + max, raw * (100 + mod) / 100)), which would silently truncate the percentage.
+		//
+		// ⚠️⚠️ THE STRAY AUGMENT SOCKETS ARE CLEARED. Every row in the band carried
+		// augslot1type 7 (General: Group) and augslot2type 21 (Special Ornamentation), inherited from
+		// whatever stock item the original SQL cloned -- the same class as section 5's "cloning a stock
+		// spell inherits its damage formula". The tell was that the MASKS had them too, and a slots=0
+		// inventory clicky can never be ornamented. Cleared BEFORE the hand pieces are cloned so they
+		// are not inherited again.
+		//
+		// 📌 `skillmodtype` is derived with ELT over ((id - 147930) MOD 12), which reproduces the exact
+		// index order of AOTV4_TS_SKILLS in tradeskills.cpp. Keep the two in step -- section 32 records
+		// that reordering silently gives blacksmiths the fishing bonus with no error anywhere.
+		// ⚠️ The new rewards target achievement ids ARITHMETICALLY (400000 + skill * 1000 + 300, i.e.
+		// 455300..469300), never a SELECT on (skill, required_count). That is deliberate: section 32
+		// records that keying on skill+threshold also matches the Master Artisan aggregate
+		// (470000-470999), which would land all twelve rewards on one achievement.
+		// 📌 preview_text says "percent", not "%". A literal % is eaten as a printf token by the
+		// Client::Message path (sections 5 and 14), rendering as garbage.
+		// ⚠️ `items` is SHARED MEMORY: world down, ./shared_memory, restart. A migration alone is not
+		// enough for any of this to be visible.
+		.check       = "SELECT id FROM items WHERE id BETWEEN 147930 AND 147941 AND skillmodvalue = 0 LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM items WHERE id BETWEEN 147954 AND 147965;
+
+UPDATE items
+   SET augslot1type = 0, augslot1visible = 0, augslot1unk2 = 0,
+       augslot2type = 0, augslot2visible = 0, augslot2unk2 = 0,
+       augslot3type = 0, augslot3visible = 0, augslot3unk2 = 0,
+       augslot4type = 0, augslot4visible = 0, augslot4unk2 = 0,
+       augslot5type = 0, augslot5visible = 0, augslot5unk2 = 0,
+       augslot6type = 0, augslot6visible = 0, augslot6unk2 = 0
+ WHERE id BETWEEN 147930 AND 147953;
+
+UPDATE items SET slots = 8 WHERE id BETWEEN 147942 AND 147953;
+
+CREATE TEMPORARY TABLE aotv4_ts_hands LIKE items;
+INSERT INTO aotv4_ts_hands SELECT * FROM items WHERE id BETWEEN 147930 AND 147941;
+UPDATE aotv4_ts_hands SET id = id + 24, slots = 4096, clickeffect = -1, clicktype = 0, clicklevel = 0, clicklevel2 = 0;
+INSERT INTO items SELECT * FROM aotv4_ts_hands;
+DROP TEMPORARY TABLE aotv4_ts_hands;
+
+UPDATE items SET Name = 'Netmender''s Gloves'      WHERE id = 147954;
+UPDATE items SET Name = 'Envenomer''s Gloves'      WHERE id = 147955;
+UPDATE items SET Name = 'Machinist''s Gauntlets'   WHERE id = 147956;
+UPDATE items SET Name = 'Archivist''s Gloves'      WHERE id = 147957;
+UPDATE items SET Name = 'Distiller''s Gloves'      WHERE id = 147958;
+UPDATE items SET Name = 'Kneader''s Mitts'         WHERE id = 147959;
+UPDATE items SET Name = 'Stitcher''s Gloves'       WHERE id = 147960;
+UPDATE items SET Name = 'Hammerhand Gauntlets'     WHERE id = 147961;
+UPDATE items SET Name = 'Bowyer''s Gloves'         WHERE id = 147962;
+UPDATE items SET Name = 'Masher''s Gloves'         WHERE id = 147963;
+UPDATE items SET Name = 'Setter''s Gloves'         WHERE id = 147964;
+UPDATE items SET Name = 'Thrower''s Gloves'        WHERE id = 147965;
+
+UPDATE items
+   SET skillmodtype = ELT(((id - 147930) MOD 12) + 1, 55, 56, 57, 58, 59, 60, 61, 63, 64, 65, 68, 69),
+       skillmodmax  = 0
+ WHERE id BETWEEN 147930 AND 147965;
+
+UPDATE items SET skillmodvalue =  5 WHERE id BETWEEN 147930 AND 147941;
+UPDATE items SET skillmodvalue = 10 WHERE id BETWEEN 147942 AND 147953;
+UPDATE items SET skillmodvalue = 15 WHERE id BETWEEN 147954 AND 147965;
+
+DELETE FROM custom_achievement_rewards WHERE reward_type = 'item' AND reward_id BETWEEN 147954 AND 147965;
+
+INSERT INTO custom_achievement_rewards
+  (achievement_id, reward_type, reward_id, amount, chance, tier, claim_once, auto_claim,
+   preview_text, data_text, enabled, sort_order, created_at)
+SELECT 400000 + ELT(((i.id - 147930) MOD 12) + 1, 55, 56, 57, 58, 59, 60, 61, 63, 64, 65, 68, 69) * 1000 + 300,
+       'item', i.id, 1, 10000, '', 1, 1, '', '', 1, 30, UNIX_TIMESTAMP()
+  FROM items i WHERE i.id BETWEEN 147954 AND 147965;
+
+UPDATE custom_achievement_rewards r
+  JOIN items i ON i.id = r.reward_id
+   SET r.preview_text = CONCAT(
+         i.Name, ' (+', i.skillmodvalue, ' percent ',
+         ELT(((i.id - 147930) MOD 12) + 1, 'Fishing', 'Make Poison', 'Tinkering', 'Research',
+             'Alchemy', 'Baking', 'Tailoring', 'Blacksmithing', 'Fletching', 'Brewing',
+             'Jewelcrafting', 'Pottery'), ')')
+ WHERE r.reward_type = 'item' AND r.reward_id BETWEEN 147930 AND 147965;
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 30,
+		.description = "2026_08_07_aotv4_tradeskill_gear_charges_and_icons",
+		// Two faults reported from play on the tradeskill gear, both cosmetic-looking and one fatal:
+		//
+		// ⚠️⚠️ THE MASKS COULD NOT BE CLICKED AT ALL -- "Item is out of charges." They shipped with
+		// `maxcharges = 0`, which the engine reads as a spent consumable, so the illusion never fired
+		// once. An UNLIMITED clicky is **-1**, not 0 and not a big number: 538 stock items use -1
+		// (Journeyman's Boots, Traveler's Boots, Bracer of Hammerfal). 0 is the one value that makes a
+		// clicky item permanently dead while still looking correctly configured -- clickeffect is set,
+		// clicktype is 1, and nothing about the row reads as broken.
+		// 📌 This is the second polarity trap on these same items: section 32 already records
+		// `nodrop = 0` meaning No Drop, and `clicktype 4` meaning equip-only. Check the sense of every
+		// flag on an item row rather than assuming 0/1 means off/on.
+		//
+		// ⚠️ ALL 36 SHARED `icon 639`, so the hand pieces and the masks both rendered as cloth hats --
+		// reported as "the icons aren't matching the items, all of the items look like cloth hats".
+		// The icons are now slot-appropriate, taken from the most common stock icon for each slot:
+		// head 625, face 770, hands 531.
+		// 📌 `idfile` is left at IT63, which stock head items also use (Chromatic Helm), so the worn
+		// model is fine and only the inventory icon was wrong.
+		//
+		// ⚠️ `items` is SHARED MEMORY: world down, ./shared_memory, restart. The migration alone
+		// changes nothing a player can see.
+		.check       = "SELECT id FROM items WHERE id BETWEEN 147942 AND 147953 AND maxcharges = 0 LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE items SET maxcharges = -1 WHERE id BETWEEN 147942 AND 147953;
+
+UPDATE items SET icon = 625 WHERE id BETWEEN 147930 AND 147941;
+UPDATE items SET icon = 770 WHERE id BETWEEN 147942 AND 147953;
+UPDATE items SET icon = 531 WHERE id BETWEEN 147954 AND 147965;
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 31,
+		.description = "2026_08_07_aotv4_unlock_tradeskill_recipe_eras",
+		// ⚠️⚠️ TRADESKILL RECIPES ARE ERA-GATED SEPARATELY FROM ZONES, AND THAT IS WHY THIS IS SAFE.
+		// `tradeskill_recipe` carries its own `min_expansion`/`max_expansion`, and the recipe SEARCH
+		// query in Handle_OP_RecipesSearch (client_packet.cpp) ends with ContentFilterCriteria::apply().
+		// With Expansion:CurrentExpansion = 0 (Classic) that hid 388 ENABLED recipes -- 385 Pottery,
+		// 3 Blacksmithing, almost all Planes of Power armour (Ashen Bone Mail, Armguards of the
+		// Pestilence Priest, ...). Clearing the gate on the RECIPE ROWS unlocks them while
+		// CurrentExpansion stays 0, so zones, doors, spawns and item content filtering are untouched.
+		// Raising CurrentExpansion instead would have opened Kunark..PoP wholesale and defeated region
+		// locking -- the exact thing section 35 records as dangerous when a dump did it silently.
+		//
+		// ⚠️⚠️ THEY WERE ALWAYS CRAFTABLE, ONLY UNFINDABLE. The combine path
+		// (ZoneDatabase::GetTradeRecipe, tradeskills.cpp:1633) filters on `tr.enabled` ONLY and has no
+		// content filter, so anyone who knew the component set could already make these. The gate was
+		// purely on discovery, which is the worst of both worlds: no protection, just a hidden recipe.
+		//
+		// ⚠️ SCOPED TO `enabled = 1`. The other 3,296 gated rows are min_expansion 9 (Dragons of
+		// Norrath) AND already `enabled = 0` -- deliberately off, consistent with the era system
+		// capping at OoW (section 12). Enabling those is a separate content decision and is NOT done
+		// here; this migration only removes an era gate from recipes that were already switched on.
+		// ⚠️ `content_flags` is left alone -- one recipe carries `peq_halloween` and must stay seasonal.
+		// 📌 Some of these need components that only drop in zones the server has not unlocked, so they
+		// will show in the search and still not be makeable. That is ordinary "needs a rare component",
+		// not a regression.
+		.check       = "SELECT id FROM tradeskill_recipe WHERE enabled = 1 AND (min_expansion > -1 OR max_expansion > -1) LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE tradeskill_recipe
+   SET min_expansion = -1, max_expansion = -1
+ WHERE enabled = 1 AND (min_expansion > -1 OR max_expansion > -1);
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 32,
+		.description = "2026_08_07_aotv4_tradeskill_mask_illusion_30_minutes",
+		// The tradeskill mask illusions (44400-44411) lasted THREE minutes, not the intended thirty.
+		//
+		// ⚠️⚠️ THE CAUSE IS THE ITEM'S CAST LEVEL, NOT THE SPELL'S DURATION FIELD. They shipped
+		// `buffdurationformula = 3` (= 30 * level, CalcBuffDuration_formula in zone/spells.cpp) with
+		// `buffduration = 360` as the cap -- which reads as "36 minutes, capped" until you notice the
+		// masks click at `clicklevel2 = 1`. At cast level 1 the formula yields 30 * 1 = 30 ticks =
+		// exactly the 3 minutes observed. The 360 cap never came near binding.
+		// 📌 A level-scaled formula is simply wrong for an item clicky with a FIXED cast level: the
+		// duration is then pinned to that constant, and raising the cap does nothing.
+		//
+		// ⚠️ Fixed with a LEVEL-INDEPENDENT duration instead of by raising clicklevel2. The default
+		// branch of the formula switch (spells.cpp) is:
+		//     if (formula < 200) return 0;  temp = formula;
+		// so a formula of **300 is literally 300 ticks**, whatever level it is cast at. 300 ticks x 6
+		// seconds = 1800s = 30 minutes. `buffduration` stays 300 because the tail of that function
+		// caps with `if (duration && duration < temp) temp = duration` -- set it lower and it silently
+		// wins over the formula.
+		// 📌 Raising clicklevel2 to 10 would also give 300 via formula 3, but it ties the duration to
+		// a field that exists for a different purpose and breaks again if the item is ever re-cloned.
+		//
+		// ⚠️ These are inside the 43000-44999 band that Mob::CalcBuffDuration excludes from the
+		// self-buff 3-day floor (spells.cpp:3194), so this native duration is authoritative. Without
+		// that exclusion the whole change would be moot -- they would already be lasting days.
+		// ⚠️ `spells_new` is SHARED MEMORY: world down, ./shared_memory, restart.
+		.check       = "SELECT id FROM spells_new WHERE id BETWEEN 44400 AND 44411 AND buffdurationformula <> 300 LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE spells_new
+   SET buffdurationformula = 300, buffduration = 300
+ WHERE id BETWEEN 44400 AND 44411;
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 33,
+		.description = "2026_08_07_aotv4_zone_xp_table",
+		// The Zone XP tab in the Allaclone window: which zones are worth hunting, by region.
+		//
+		// ⚠️⚠️ THESE RANGES ARE AUTHORED, NOT DERIVED, AND THAT IS DELIBERATE. A computed range was
+		// built first (percentile 10-90 of spawned mob levels, excluding merchants, bankers, GM
+		// trainers, LDoN treasure chests and anything on a town faction) and it disagreed with the
+		// owner's list -- Blackburrow computed 4-8 against an authored 2-15, Cabilis West computed 1-1
+		// against 30-35. Neither is wrong: the computed figure is "where the bulk of the spawns sit"
+		// and the authored one is "what you might meet". The authored list is what ships, so it lives
+		// in a table that can be edited without a rebuild rather than being recomputed on the fly.
+		//
+		// ⚠️⚠️ THE PRIMARY KEY IS zone_id ALONE, WHICH IS WHAT PINS A ZONE TO ONE REGION.
+		// `zone_regions` is many-to-many: The Swamp of No Hope (83) is legitimately reachable from
+		// BOTH Firiona Vie and Cabilis, so a naive join lists it twice under two headers. The owner
+		// chose Cabilis, and the single-column key makes that a data decision instead of something the
+		// query has to keep re-deciding. Any future zone in two regions must likewise pick one.
+		//
+		// ⚠️ DELVE ZONES ARE DELIBERATELY ABSENT. Region 0 "Always Available" holds 40 zones and 39 of
+		// them are the LDoN/DoN maps unlocked by v27/v31 (Deepest Guk, Miragul's, Rujarkian,
+		// Takish-Hiz, Mistmoore's Catacombs...). A fixed level range for those is meaningless because
+		// delve creatures are SCALED to the player at spawn (section 24), so publishing one would be
+		// actively misleading. The 40th is The Resplendent Temple, the hub.
+		// 📌 Butcherblock Mountains (68) and Kaesora (88) were NOT in the owner's list and their ranges
+		// were derived here from the spawn data, because the authored list turned out not to be
+		// derivable from this database at all -- its upper bound is sometimes ABOVE our raw maximum
+		// (Misty Thicket 25 against a real 14) and sometimes far below it (Crushbone 14 against 65), so
+		// no percentile reproduces it and there was no formula to extend.
+		//   Butcherblock 1-20: 399 of its 448 spawns are level 1-10, only 13 are above 20 and the
+		//     single level-40 is one mob. Calling it 1-35 like the other hub zones would advertise
+		//     content that is one spawn.
+		//   Kaesora 28-35: nothing below 21, 242 of 295 spawns in the 31-40 band, minimum 28, capped at
+		//     35 like every other high-end Cabilis zone.
+		.check       = "SHOW TABLES LIKE 'aotv4_zone_xp'",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+CREATE TABLE IF NOT EXISTS aotv4_zone_xp (
+  zone_id   INT NOT NULL,
+  region_id INT NOT NULL,
+  lo        INT NOT NULL,
+  hi        INT NOT NULL,
+  label     VARCHAR(16) NULL,
+  PRIMARY KEY (zone_id),
+  KEY idx_region (region_id)
+);
+
+REPLACE INTO aotv4_zone_xp (zone_id, region_id, lo, hi, label) VALUES
+  (54,1,1,6,NULL), (68,1,1,14,NULL), (58,1,2,8,NULL), (57,1,5,11,NULL), (70,1,9,15,NULL), 
+  (63,1,13,16,NULL), (59,1,15,31,NULL), (64,1,25,34,NULL), (22,2,1,5,NULL), (34,2,1,5,NULL), 
+  (69,2,1,29,NULL), (21,2,5,10,NULL), (36,2,6,10,NULL), (33,2,9,12,NULL), (37,2,9,20,NULL), 
+  (20,2,9,21,NULL), (35,2,14,16,NULL), (11,2,23,32,NULL), (16,2,25,28,NULL), 
+  (186,2,27,33,NULL), (10,2,1,3,'City'), (9,2,1,5,'City'), (19,2,1,19,'City'), 
+  (8,2,1,29,'City'), (118,3,2,6,NULL), (110,3,9,19,NULL), (116,3,9,19,NULL), 
+  (121,3,11,19,NULL), (111,3,13,20,NULL), (112,3,17,26,NULL), (129,3,26,29,NULL), 
+  (128,3,30,34,NULL), (115,3,30,34,'City'), (84,4,1,4,NULL), (86,4,5,24,NULL), 
+  (92,4,7,19,NULL), (107,4,16,19,NULL), (81,4,16,26,NULL), (96,4,17,31,NULL), 
+  (102,4,24,30,NULL), (45,5,1,3,NULL), (4,5,1,9,NULL), (12,5,2,7,NULL), (17,5,2,9,NULL), 
+  (13,5,3,11,NULL), (50,5,5,15,NULL), (14,5,8,19,NULL), (51,5,9,16,NULL), (15,5,10,13,NULL), 
+  (18,5,25,34,NULL), (2,5,1,3,'City'), (3,5,1,6,'City'), (1,5,1,31,'City'), (78,6,1,5,NULL), 
+  (79,6,1,7,NULL), (83,6,1,7,NULL), (85,6,1,10,NULL), (97,6,4,13,NULL), (104,6,16,24,NULL), 
+  (109,6,23,32,NULL), (88,6,28,35,NULL), (82,6,1,1,'City'), (106,6,30,30,'City');)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 34,
+		.description = "2026_08_07_aotv4_bulwark_within_match_hp",
+		// Bulwark Within (rank 1367) granted HP 300 but mana 200 and endurance 200, while its
+		// description promises "increased hit points, mana, and endurance" without saying the amounts
+		// differ. All three are now a flat 300 so the AA reads as one coherent grant.
+		//
+		// ⚠️⚠️ THE MANA STILL DOES NOTHING FOR WARRIOR, MONK, ROGUE AND BERSERKER, AND THAT IS NOT
+		// FIXED HERE. Client::CalcMaxMana (zone/client_mods.cpp) branches: caster classes get
+		// CalcBaseMana() + item + spell + AA bonuses, while the four pure-melee classes get a flat
+		// GetLevel() * 40 with NO bonus terms at all. That is deliberate -- section 14 records that the
+		// dll computes the mana GAUGE itself from level * AOTV4_MELEE_MANA_PER_LEVEL using only
+		// SPAWNINFO->Level, so the server must produce the identical number or the bar misreports.
+		// The consequence is far wider than this AA: 40,103 wearable mana items and 65 mana-granting
+		// AAs are all inert for those four classes, and mana is the one stat they cannot improve.
+		// 📌 Fixing it is one line (add the three bonus terms to the melee branch) plus a dll change so
+		// the gauge agrees. Deliberately NOT done here -- it is a balance decision, not a bug fix.
+		//
+		// ⚠️ Endurance is fine on every class: CalcMaxEndurance has no class branch and already sums
+		// spell, item and AA bonuses. Only mana is special-cased.
+		.check       = "SELECT rank_id FROM aa_rank_effects WHERE rank_id = 1367 AND effect_id IN (97, 190) AND base1 <> 300 LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE aa_rank_effects SET base1 = 300 WHERE rank_id = 1367 AND effect_id IN (97, 190);
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 35,
+		.description = "2026_08_07_aotv4_bulwark_within_description",
+		// Bulwark Within's description promised "hit points, mana, and endurance" to everyone, and for
+		// Warrior, Monk, Rogue and Berserker the mana half is silently discarded -- Client::CalcMaxMana
+		// gives those four a flat GetLevel() * 40 with no bonus terms (section 14: the dll computes the
+		// gauge from level alone, so the server must match it exactly). Reported from play as "Bulwark
+		// within is not giving mana".
+		//
+		// The grant is left as-is (300 / 300 / 300 from v34) because the engine already splits it the
+		// way it should: EVERY class banks the hit points and the endurance, and only spellcasters can
+		// bank the mana. The description now says so instead of implying all three land for all.
+		//
+		// ⚠️⚠️ THE CLIENT RESOLVES THIS STRING FROM ITS OWN dbstr_us.txt, NOT FROM THIS DATABASE
+		// (section 6). Writing db_str changes nothing in game on its own -- it needs
+		// `./export_client_files` and the regenerated dbstr_us.txt shipped to players. Until then the
+		// old wording stays on screen even though the row here is correct.
+		// ⚠️ No literal percent sign: the description path is printf-style and eats it as a format
+		// token, rendering as garbage (sections 5 and 14). Amounts are spelled out.
+		// 📌 type 4 is the description. type 1 is the window title and types 2/3 are the two halves of
+		// the hotkey label -- section 6 records that renaming an AA means writing ALL of them, but this
+		// migration only changes the description, so 1/2/3 are correctly left alone.
+		.check       = "SELECT id FROM db_str WHERE id = 1367 AND type = 4 AND value LIKE '%increased hit points, mana, and endurance%'",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE db_str SET value = 'Your devotion to Norrath''s Keepers grants 300 hit points and 300 endurance. Spellcasting classes also gain 300 mana; Warriors, Monks, Rogues and Berserkers draw on endurance instead.'
+ WHERE id = 1367 AND type = 4;
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 36,
+		.description = "2026_08_07_aotv4_delve_tasks_per_dungeon",
+		// ⚠️⚠️ THE DELVE JOURNAL NAMED THE WRONG DUNGEON, AND HAD SINCE LDoN LANDED. The 36 task rows
+		// were authored when the delve was DoN-only: six zones x six modes, one task per zone, so a
+		// zone name in the title was correct. Adding 33 LDoN dungeons made them ROUND-ROBIN the same
+		// six task families (aotv4_dungeon_ldon.lua), so a Deepest Guk run was handed
+		// "Delve: Tirranun's Delve" -- wrong roughly 85 percent of the time. Reported from play.
+		// 📌 It was never a FUNCTIONAL bug: migration v22 cleared task_activities.zones, so CheckZone
+		// returns true on an empty zone list and the kills credit in whatever zone you are in. Only the
+		// label lied, which is exactly why nothing errored and it survived this long.
+		//
+		// Now 39 dungeons x 6 modes = 234 tasks, one per (dungeon, mode), built here as 39 explicit
+		// dungeon rows CROSS JOINed with the 6 modes rather than 234 hand-written INSERTs -- same
+		// deterministic result, a tenth of the size, and adding a dungeon is one row.
+		//
+		// ⚠️⚠️ THE MODE OFFSETS HAD TO WIDEN FROM 10 TO 40 AND aotv4_dungeon.lua MUST MATCH.
+		// M.MODES.taskoff was 0/10/20/30/40/50, which only leaves room for TEN dungeons per mode; with
+		// 39 the families would overlap and a Hard run would collect a Standard task. They are now
+		// 0/40/80/120/160/200, so the band runs 2000300-2000538. Change one side without the other and
+		// tasks silently resolve to the wrong mode.
+		// ⚠️ Base ids: DoN keeps 2000300-2000305 (unchanged, so its hand-written flavour survives),
+		// LDoN takes 2000306-2000338 in aotv4_dungeon_ldon.lua's own file order. That order IS the
+		// mapping -- regenerating that file without reassigning ids reintroduces this bug.
+		//
+		// ⚠️ `zones` stays EMPTY on every activity, exactly as v22 left it. Populating it would scope a
+		// task to one zone again and break the 33 LDoN dungeons that share a rung's task family.
+		// ⚠️ Gauntlet is the odd mode: 10 trash and THREE wardens, not a multiple of the base goal.
+		// ⚠️ max_level is 200 and duration 21600/code 3, copied from the original rows -- not defaults.
+		// ⚠️ Keyed on the HIGHEST new id (2000538 = Fragile + dungeon 38), which cannot exist under the
+		// old 6-zone scheme whose band stopped at 2000355. Testing for a wrong TITLE instead would
+		// match the mode variants of the correct task too and re-run forever.
+		.check       = "SELECT id FROM tasks WHERE id = 2000538",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DROP TEMPORARY TABLE IF EXISTS aotv4_delve_d;
+CREATE TEMPORARY TABLE aotv4_delve_d (idx INT, name VARCHAR(64), goal INT, target VARCHAR(64), descr TEXT, emote TEXT);
+INSERT INTO aotv4_delve_d (idx,name,goal,target,descr,emote) VALUES
+  (0,'Lavaspinner''s Lair',30,'the lair''s defenders','The lavaspinners have overrun the lair. Cut them down, then face what they were guarding.','The lair falls silent. Something glitters where the last of them dropped.'),
+  (1,'Tirranun''s Delve',35,'Tirranun''s brood','Tirranun''s brood has grown bold in the deep. Thin them out, then face what they answer to.','The delve goes quiet. Something glitters where the last of them dropped.'),
+  (2,'Stillmoon Temple',40,'the temple guardians','The temple guardians no longer answer to anyone. Put them down, then face their keeper.','The temple stills. Something glitters where the last of them dropped.'),
+  (3,'Stillmoon Ascent',45,'the ascent''s wardens','Cut a path up the ascent, then face what waits at the top of it.','The ascent falls quiet. Something glitters where the last of them dropped.'),
+  (4,'Thundercrest Isles',50,'the storm drakes','The storm drakes rule the isles unchallenged. Break them, then face the one that leads them.','The storm passes. Something glitters where the last of them dropped.'),
+  (5,'The Nest',60,'the brood of the Nest','The Nest is thick with brood. Clear it out, then face what has been feeding them.','The Nest goes still. Something glitters where the last of them dropped.'),
+  (6,'Deepest Guk - Cauldron of Lost Souls',30,'the denizens within','Deepest Guk - Cauldron of Lost Souls runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (7,'Deepest Guk - Ancient Aqueducts',30,'the denizens within','Deepest Guk - Ancient Aqueducts runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (8,'Deepest Guk - The Curse Reborn',30,'the denizens within','Deepest Guk - The Curse Reborn runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (9,'Deepest Guk - Chapel of the Witnesses',30,'the denizens within','Deepest Guk - Chapel of the Witnesses runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (10,'Deepest Guk - Accursed Sanctuary',30,'the denizens within','Deepest Guk - Accursed Sanctuary runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (11,'Miragul''s Menagerie - Silent Gallery',30,'the denizens within','Miragul''s Menagerie - Silent Gallery runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (12,'Miragul''s Menagerie - Frozen Nightmare',30,'the denizens within','Miragul''s Menagerie - Frozen Nightmare runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (13,'Miragul''s Menagerie - Spider Den',30,'the denizens within','Miragul''s Menagerie - Spider Den runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (14,'Miragul''s Menagerie - Hushed Banquet',30,'the denizens within','Miragul''s Menagerie - Hushed Banquet runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (15,'Miragul''s Menagerie - Heart of the Menagerie',30,'the denizens within','Miragul''s Menagerie - Heart of the Menagerie runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (16,'Miragul''s Menagerie - Grand Library',30,'the denizens within','Miragul''s Menagerie - Grand Library runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (17,'Mistmoore''s Catacombs - Forlorn Caverns',30,'the denizens within','Mistmoore''s Catacombs - Forlorn Caverns runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (18,'Mistmoore''s Catacombs - Dreary Grotto',30,'the denizens within','Mistmoore''s Catacombs - Dreary Grotto runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (19,'Mistmoore''s Catacombs - Struggles within the Progeny',30,'the denizens within','Mistmoore''s Catacombs - Struggles within the Progeny runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (20,'Mistmoore''s Catacombs - Chambers of Eternal Affliction',30,'the denizens within','Mistmoore''s Catacombs - Chambers of Eternal Affliction runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (21,'Mistmoore''s Catacombs - Sepulcher of the Damned',30,'the denizens within','Mistmoore''s Catacombs - Sepulcher of the Damned runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (22,'Mistmoore''s Catacombs - Scion Lair of Fury',30,'the denizens within','Mistmoore''s Catacombs - Scion Lair of Fury runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (23,'Mistmoore''s Catacombs - Cesspits of Putrescence',30,'the denizens within','Mistmoore''s Catacombs - Cesspits of Putrescence runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (24,'Mistmoore''s Catacombs - Aisles of Blood',30,'the denizens within','Mistmoore''s Catacombs - Aisles of Blood runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (25,'Mistmoore''s Catacombs - Halls of Sanguinary Rites',30,'the denizens within','Mistmoore''s Catacombs - Halls of Sanguinary Rites runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (26,'Mistmoore''s Catacombs - Infernal Sanctuary',30,'the denizens within','Mistmoore''s Catacombs - Infernal Sanctuary runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (27,'The Rujarkian Hills - Bloodied Quarries',30,'the denizens within','The Rujarkian Hills - Bloodied Quarries runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (28,'The Rujarkian Hills - Prison Break',30,'the denizens within','The Rujarkian Hills - Prison Break runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (29,'The Rujarkian Hills - Fortified Lair of the Taskmasters',30,'the denizens within','The Rujarkian Hills - Fortified Lair of the Taskmasters runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (30,'The Rujarkian Hills - Hidden Vale of Deceit',30,'the denizens within','The Rujarkian Hills - Hidden Vale of Deceit runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (31,'The Rujarkian Hills - Arena of Chance',30,'the denizens within','The Rujarkian Hills - Arena of Chance runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (32,'The Rujarkian Hills - Barracks of War',30,'the denizens within','The Rujarkian Hills - Barracks of War runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (33,'Takish-Hiz - Sunken Library',30,'the denizens within','Takish-Hiz - Sunken Library runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (34,'Takish-Hiz - Shifting Tower',30,'the denizens within','Takish-Hiz - Shifting Tower runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (35,'Takish-Hiz - Within the Compact',30,'the denizens within','Takish-Hiz - Within the Compact runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (36,'Takish-Hiz - Royal Observatory',30,'the denizens within','Takish-Hiz - Royal Observatory runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (37,'Takish-Hiz - River of Recollection',30,'the denizens within','Takish-Hiz - River of Recollection runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.'),
+  (38,'Takish-Hiz - Balancing Chamber',30,'the denizens within','Takish-Hiz - Balancing Chamber runs deep and no longer answers to anyone. Thin out what lives there, then face what waits at the end.','The dungeon falls silent. Something glitters where the last of them dropped.');
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_delve_m;
+CREATE TEMPORARY TABLE aotv4_delve_m (suffix VARCHAR(16), taskoff INT, goalmul DECIMAL(4,2), fixedgoal INT, wardens INT, wname VARCHAR(32));
+INSERT INTO aotv4_delve_m VALUES
+  ('',0,1,0,1,'the delve warden'), (' (Hard)',40,1,0,1,'the delve warden'),
+  (' (Swarm)',80,3,0,1,'the delve warden'), (' (Gauntlet)',120,0,10,3,'the delve wardens'),
+  (' (Onslaught)',160,1,0,1,'the delve warden'), (' (Fragile)',200,1,0,1,'the delve warden');
+
+DELETE FROM task_activities WHERE taskid BETWEEN 2000300 AND 2000599;
+DELETE FROM tasks WHERE id BETWEEN 2000300 AND 2000599;
+
+INSERT INTO tasks (id,type,duration,duration_code,title,description,reward_text,reward_id_list,cash_reward,exp_reward,reward_method,reward_points,reward_point_type,min_level,max_level,level_spread,min_players,max_players,repeatable,faction_reward,completion_emote,replay_timer_group,replay_timer_seconds,request_timer_group,request_timer_seconds,dz_template_id,lock_activity_id,faction_amount,enabled)
+SELECT 2000300 + d.idx + m.taskoff, 0, 21600, 3,
+       CONCAT('Delve: ', d.name, m.suffix), d.descr,
+       'A reward chest, and a Delver''s Sigil for your first delve', '', 0, 0, 0, 0, 0,
+       1, 200, 0, 1, 6, 1, 0, d.emote, 0, 0, 0, 0, 0, -1, 0, 1
+  FROM aotv4_delve_d d CROSS JOIN aotv4_delve_m m;
+
+INSERT INTO task_activities (taskid,activityid,req_activity_id,step,activitytype,target_name,goalmethod,goalcount,description_override,npc_match_list,item_id_list,item_list,dz_switch_id,min_x,min_y,min_z,max_x,max_y,max_z,skill_list,spell_list,zones,zone_version,optional,list_group)
+SELECT 2000300 + d.idx + m.taskoff, 0, -1, 1, 2, d.target, 0,
+       IF(m.fixedgoal > 0, m.fixedgoal, FLOOR(d.goal * m.goalmul)),
+       '', '', '', '', 0, 0,0,0, 0,0,0, -1, 0, '', -1, 0, 0
+  FROM aotv4_delve_d d CROSS JOIN aotv4_delve_m m
+UNION ALL
+SELECT 2000300 + d.idx + m.taskoff, 1, -1, 2, 2, m.wname, 0, m.wardens,
+       '', '', '', '', 0, 0,0,0, 0,0,0, -1, 0, '', -1, 0, 0
+  FROM aotv4_delve_d d CROSS JOIN aotv4_delve_m m;
+
+DROP TEMPORARY TABLE aotv4_delve_d;
+DROP TEMPORARY TABLE aotv4_delve_m;
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

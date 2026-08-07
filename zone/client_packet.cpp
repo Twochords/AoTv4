@@ -1724,6 +1724,11 @@ void Client::Handle_Connect_OP_ZoneEntry(const EQApplicationPacket *app)
 	/* The entityid field in the Player Profile is used by the Client in relation to Group Leadership AA */
 	m_pp.entityid = GetID();
 	memcpy(outapp->pBuffer, &m_pp, outapp->size);
+
+	// ⚠️⚠️ AoTv4: do NOT overwrite the profile's skills with GetSkill() here. The RoF2 client applies
+	// an equipped item's SkillModValue to the displayed skill itself, so sending a pre-modified value
+	// makes it apply the percentage TWICE (measured: a 5 percent item on raw 300 rendered as 330, i.e.
+	// 315 * 1.05). This was tried on 2026-08-06 and reverted the same day. See Client::SetSkill.
 	outapp->priority = 6;
 	FastQueuePacket(&outapp);
 
