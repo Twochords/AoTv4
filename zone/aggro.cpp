@@ -1531,8 +1531,15 @@ int32 Mob::CheckAggroAmount(uint16 spell_id, Mob *target, bool is_proc)
 	if (dispel && spells[spell_id].hate_added > 0 && !on_hatelist) {
 		aggro_amount -= 100;
 	}
+	// AoTv4 Carolus: Agro for shields
+	int shield_mult = 0;
+	if (IsClient())
+	{
+		if (CastToClient()->HasShieldEquipped())
+			shield_mult = 50;
+	}
 
-	return aggro_amount + spells[spell_id].bonus_hate + non_modified_aggro;
+	return aggro_amount + spells[spell_id].bonus_hate + non_modified_aggro * (100 + shield_mult) / 100;
 }
 
 //healing and buffing aggro

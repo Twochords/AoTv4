@@ -1869,11 +1869,18 @@ bool Mob::Attack(Mob* other, int Hand, bool bRiposte, bool IsStrikethrough, bool
 		int hit_chance_bonus = 0;
 		my_hit.offense = offense(my_hit.skill); // we need this a few times
 		my_hit.hand = Hand;
+		// AoTv4 Carolus: Agro for shields
+		int shield_mult = 0;
+		if (IsClient())
+		{
+			if (CastToClient()->HasShieldEquipped())
+				shield_mult = 50;
+		}
 
 		if (opts) {
 			my_hit.base_damage *= opts->damage_percent;
 			my_hit.base_damage += opts->damage_flat;
-			hate *= opts->hate_percent;
+			hate *= opts->hate_percent * (100 + shield_mult) / 100;
 			hate += opts->hate_flat;
 			hit_chance_bonus += opts->hit_chance;
 		}
