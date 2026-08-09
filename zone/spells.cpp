@@ -1560,8 +1560,8 @@ void Mob::CastedSpellFinished(uint16 spell_id, uint32 target_id, CastingSlot slo
 						spellbonuses.ChannelChanceItems + itembonuses.ChannelChanceItems + aabonuses.ChannelChanceItems :
 						spellbonuses.ChannelChanceSpells + itembonuses.ChannelChanceSpells + aabonuses.ChannelChanceSpells;
 				// max 93% chance at 252 skill
-				channelchance = 30 + GetSkill(EQ::skills::SkillChanneling) / 400.0f * 100;
-				channelchance -= attacked_count * 2;
+				channelchance = 50 + GetSkill(EQ::skills::SkillChanneling) / 400.0f * 100;
+				// channelchance -= attacked_count * 2;
 				channelchance += channelchance * channelbonuses / 100.0f;
 
 				// AoTv4 Unbroken Concentration rank 5 (ranged tree): no roll at all. SPA 235 above can
@@ -1586,9 +1586,9 @@ void Mob::CastedSpellFinished(uint16 spell_id, uint32 target_id, CastingSlot slo
 				{
 					//avoid the square root...
 					distance_moved = d_x * d_x + d_y * d_y;
-					// if you moved 1 unit, that's 25% off your chance to regain.
-					// if you moved 2, you lose 100% off your chance
-					distancemod = distance_moved * 25;
+					// if you moved 1 unit, that's 1% off your chance to regain.
+					// if you moved 10, you lose 100% off your chance
+					distancemod = distance_moved * 1;
 					channelchance -= distancemod;
 				}
 				else
