@@ -705,34 +705,29 @@ void Object::HandleCombine(Client* user, const NewCombine_Struct* in_combine, Ob
 		return;
 	}
 
-	//changing from a switch to string of if's since we don't need to iterate through all of the skills in the SkillType enum
+	// ⚠️⚠️ AoTv4: THE ALCHEMY / TINKERING / MAKE POISON CLASS AND RACE GATES ARE REMOVED ENTIRELY.
+	// Stock restricts them to Shaman / Gnome / Rogue. They were first opened in the Bard-only era as
+	// `!= Shaman && != Bard`, which was correct while EVERY character was forced to Bard -- and the
+	// all-classes pivot (section 14) silently turned it back into a restriction: only Shamans and
+	// Bards could do Alchemy, only Gnomes and Bards could tinker. Reported from play as "non shamans
+	// cant alchemy now, and they should be able to. We fixed that a long time ago" -- and it HAD been
+	// fixed; the fix just said "or Bard" in a world where that meant everyone.
+	// 📌 This is the exact failure mode section 14 warns about: any `|| Bard` written before the pivot
+	// is now a narrow special case rather than a universal one. Grep for `Class::Bard` before trusting
+	// that something is open to everybody.
+	// ⚠️ `skill_caps` is already open -- all 16 classes carry Alchemy at cap 300 -- so the DB half was
+	// never the problem and re-running the skill SQL would have found nothing wrong.
+	// ⚠️ The gate exists in TWO places in this file, this one keyed on `user_pp` and the other on
+	// `user->` (the Client path). Both must stay in step; fixing one leaves the other refusing.
+	// 📌 The stock MIN_LEVEL_ALCHEMY level gate stays removed, as before.
 	if (spec.tradeskill == EQ::skills::SkillAlchemy) {
-		if (user_pp.class_ != Class::Shaman && user_pp.class_ != Class::Bard) {   // AoTv4: Bards can do Alchemy (everyone is a Bard)
-			user->Message(Chat::Red, "This tradeskill can only be performed by a shaman.");
-			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
-			user->QueuePacket(outapp);
-			safe_delete(outapp);
-			return;
-		}
-		// AoTv4: no level requirement for Alchemy (stock MIN_LEVEL_ALCHEMY gate removed).
+		// no class gate
 	}
 	else if (spec.tradeskill == EQ::skills::SkillTinkering) {
-		if (user_pp.race != Race::Gnome && user_pp.class_ != Class::Bard) {   // AoTv4: Bards can Tinker (everyone is a Bard)
-			user->Message(Chat::Red, "Only gnomes can tinker.");
-			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
-			user->QueuePacket(outapp);
-			safe_delete(outapp);
-			return;
-		}
+		// no race gate
 	}
 	else if (spec.tradeskill == EQ::skills::SkillMakePoison) {
-		if (user_pp.class_ != Class::Rogue && user_pp.class_ != Class::Bard) {   // AoTv4: Bards can make poison (everyone is a Bard)
-			user->Message(Chat::Red, "Only rogues can mix poisons.");
-			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
-			user->QueuePacket(outapp);
-			safe_delete(outapp);
-			return;
-		}
+		// no class gate
 	}
 
 	// Check if Combine would result in Lore conflict
@@ -877,33 +872,17 @@ void Object::HandleAutoCombine(Client* user, const RecipeAutoCombine_Struct* rac
 		return;
 	}
 
+	// ⚠️⚠️ AoTv4: SECOND COPY OF THE ALCHEMY / TINKERING / MAKE POISON GATE -- see the long note on the
+	// `user_pp` copy earlier in this file. Both are open to every class and race; keep them in step,
+	// because fixing only one leaves the other refusing the combine with no clue why.
 	if (spec.tradeskill == EQ::skills::SkillAlchemy) {
-		if (user->GetClass() != Class::Shaman && user->GetClass() != Class::Bard) {   // AoTv4: Bards can do Alchemy (everyone is a Bard)
-			user->Message(Chat::Red, "This tradeskill can only be performed by a shaman.");
-			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
-			user->QueuePacket(outapp);
-			safe_delete(outapp);
-			return;
-		}
-		// AoTv4: no level requirement for Alchemy (stock MIN_LEVEL_ALCHEMY gate removed).
+		// no class gate
 	}
 	else if (spec.tradeskill == EQ::skills::SkillTinkering) {
-		if (user->GetRace() != Race::Gnome && user->GetClass() != Class::Bard) {   // AoTv4: Bards can Tinker (everyone is a Bard)
-			user->Message(Chat::Red, "Only gnomes can tinker.");
-			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
-			user->QueuePacket(outapp);
-			safe_delete(outapp);
-			return;
-		}
+		// no race gate
 	}
 	else if (spec.tradeskill == EQ::skills::SkillMakePoison) {
-		if (user->GetClass() != Class::Rogue && user->GetClass() != Class::Bard) {   // AoTv4: Bards can make poison (everyone is a Bard)
-			user->Message(Chat::Red, "Only rogues can mix poisons.");
-			auto outapp = new EQApplicationPacket(OP_TradeSkillCombine, 0);
-			user->QueuePacket(outapp);
-			safe_delete(outapp);
-			return;
-		}
+		// no class gate
 	}
 
     //pull the list of components

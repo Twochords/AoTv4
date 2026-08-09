@@ -73,6 +73,30 @@ void Mob::CheckFlee()
 		return;
 	}
 
+	// ⚠️⚠️ AoTv4: NOTHING FLEES FROM LOW HEALTH -- everything fights to the death.
+	// A fleeing mob drags its aggro across the zone, pulls whatever it runs past, and turns the end of
+	// every fight into a chase. On a server where creatures are scaled to the player (section 24) and
+	// specials cost endurance (section 22), that chase is pure tax: you have already won, and the
+	// runner just makes winning slower and riskier.
+	//
+	// ⚠️ PLACED HERE, NOT AT THE TOP OF THE FUNCTION, AND THAT MATTERS. The block immediately above
+	// handles a mob that is ALREADY fleeing and only updates its speed -- which is the path a FEARED
+	// mob uses. Returning before it would freeze feared mobs in place and quietly break every fear
+	// spell in the game. Fear enters through StartFleeing directly, not through this function's
+	// low-health logic, so it is untouched by this guard.
+	//
+	// ⚠️ This is deliberately BEFORE GetFleeRatio(), because a rule-only fix would not have worked:
+	// GetFleeRatio reads `SpecialAbility::FleePercent` FIRST (fearpath.cpp:29) and only falls back to
+	// Combat:FleeHPRatio / FleeGrayHPRatio when that is absent -- so any NPC carrying that special
+	// ability would keep running no matter what the rules said. Guarding the whole decision covers
+	// both, and covers both callers (Mob::Damage and the spell-effect path).
+	// 📌 SpecialAbility::FleeingImmunity and spellbonuses.ImmuneToFlee below become redundant while
+	// this is on; they are left alone so the stock behaviour returns intact if it is switched off.
+	if (RuleB(AoT, NPCsNeverFlee)) {
+		LogFlee("Mob [{}] would flee but AoT:NPCsNeverFlee is set", GetCleanName());
+		return;
+	}
+
 	//dont bother if we are immune to fleeing
 	if (GetSpecialAbility(SpecialAbility::FleeingImmunity) || spellbonuses.ImmuneToFlee) {
 		LogFlee("Mob [{}] is immune to fleeing via special ability or spell bonus", GetCleanName());

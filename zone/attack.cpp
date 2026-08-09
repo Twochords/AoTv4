@@ -1869,20 +1869,31 @@ bool Mob::Attack(Mob* other, int Hand, bool bRiposte, bool IsStrikethrough, bool
 		int hit_chance_bonus = 0;
 		my_hit.offense = offense(my_hit.skill); // we need this a few times
 		my_hit.hand = Hand;
-		// AoTv4 Carolus: Agro for shields
-		int shield_mult = 0;
-		if (IsClient())
-		{
-			if (CastToClient()->HasShieldEquipped())
-				shield_mult = 50;
-		}
-
 		if (opts) {
 			my_hit.base_damage *= opts->damage_percent;
 			my_hit.base_damage += opts->damage_flat;
-			hate *= opts->hate_percent * (100 + shield_mult) / 100;
+			hate *= opts->hate_percent;
 			hate += opts->hate_flat;
 			hit_chance_bonus += opts->hit_chance;
+		}
+
+		// ⚠️⚠️ AoTv4 (Carolus, corrected): CARRYING A SHIELD RAISES THE HATE OF EVERY SWING.
+		// ⚠️ THIS WAS ORIGINALLY INSIDE THE `if (opts)` BLOCK ABOVE, WHICH MADE IT NEARLY DEAD.
+		// Mob::Attack declares `ExtraAttackOptions *opts = nullptr` (zone/mob.h:241), so an ordinary
+		// auto-attack passes nothing and that block is skipped entirely -- only procs and a few
+		// scripted hits construct an opts. The intent was a hate bonus on NORMAL SWINGS, which is
+		// exactly the case that never reached it, so it has to sit outside.
+		// 📌 The arithmetic in the original was fine -- `hate_percent` is a float(1.0f), so
+		// `1.0f * 150 / 100` promotes to 1.5 with no integer truncation. It worked; it just never ran.
+		// ⚠️ Applied AFTER the opts block so it multiplies the finished hate, including opts->hate_flat.
+		// ⚠️ This is the ordinary-swing bonus only. Bash has its own multiplier
+		// (AoT:BashThreatMultiplier, in Mob::DoSpecialAttackDamage) and does not pass through here, so
+		// the two do not silently compound on a bash.
+		if (IsClient() && CastToClient()->HasShieldEquipped()) {
+			const int shield_hate_pct = RuleI(AoT, ShieldMeleeHatePct);
+			if (shield_hate_pct) {
+				hate = hate * (100 + shield_hate_pct) / 100;
+			}
 		}
 
 		my_hit.tohit = GetTotalToHit(my_hit.skill, hit_chance_bonus);
@@ -2870,6 +2881,32 @@ bool NPC::Death(Mob* killer_mob, int64 damage, uint16 spell, EQ::skills::SkillTy
 
 	int player_count = 0; // QueryServ Player Counting
 
+	// ⚠️⚠️ AoTv4: CREDIT REQUIRES THE KILLING BLOW, NOT THE MOST DAMAGE.
+	// Stock picks `give_exp` from GetDamageTopOnHateList, so whoever dealt the most damage is paid no
+	// matter who actually finished the mob. Reported from play: beat something to 49 percent, let a
+	// GUARD kill it, collect full experience. The killing blow was never consulted anywhere.
+	// This resolves the ACTUAL killer through pets, charms and swarm pets -- GetUltimateOwner returns
+	// the mob itself when it has no owner, so a player killing directly passes, a player's pet or
+	// charmed mob passes through its owner, and a guard or any other NPC does not.
+	// ⚠️ It forfeits EVERYTHING, deliberately: nulling give_exp takes experience, task credit and
+	// faction hits with it (all three are gated on give_exp_client below), and with no killer of ours
+	// the AllowPlayerLoot block never runs so there are no loot rights either.
+	// ⚠️⚠️ THE LOOT ROLL HAS TO BE SUPPRESSED SEPARATELY -- see aotv4_player_killed at the individual
+	// loot block. Section 31's "nobody has kill credit" fallback rolls ONE SHARED table and
+	// Corpse::CanPlayerLoot returns true when the looter list is empty, so without that guard a
+	// guard-killed corpse would become a free-for-all with loot on it: the opposite of forfeiting.
+	// 📌 killer_mob is null for environmental deaths (falling, drowning) and for a DoT ticking after
+	// the caster left, so those forfeit too -- which is the same answer stock gives them today via an
+	// empty hate list, just reached deliberately.
+	bool aotv4_player_killed = false;
+	if (killer_mob) {
+		Mob *aotv4_ult = killer_mob->GetUltimateOwner();
+		aotv4_player_killed = (aotv4_ult && aotv4_ult->IsClient());
+	}
+	if (!aotv4_player_killed) {
+		give_exp = nullptr;
+	}
+
 	Client* give_exp_client = nullptr;
 	if (give_exp && give_exp->IsClient()) {
 		give_exp_client = give_exp->CastToClient();
@@ -3259,7 +3296,15 @@ bool NPC::Death(Mob* killer_mob, int64 damage, uint16 spell, EQ::skills::SkillTy
 			// so it always had loot; rolling only per eligible player would silently hand back an
 			// empty corpse that everyone can open. Owner stays 0, so the drop is shared, which is
 			// exactly right for a corpse with no owner.
-			if (rolled_for == 0) {
+			// ⚠️⚠️ AoTv4: ...UNLESS AN NPC LANDED THE KILLING BLOW, in which case the corpse gets
+			// NOTHING. A guard kill forfeits experience, task credit, faction AND loot (see
+			// aotv4_player_killed above) -- and without this test the fallback directly below would
+			// hand it a shared roll that ANYONE can loot, since CanPlayerLoot returns true on an empty
+			// looter list. That would make letting a guard finish your mob *better* than killing it
+			// yourself, which is precisely the exploit being closed.
+			// 📌 The fallback still fires for a player-killed corpse that somehow rolled for nobody,
+			// which is the case it was written for.
+			if (rolled_for == 0 && aotv4_player_killed) {
 				npc_self->AddLootTable(npc_self->GetLoottableID());
 				corpse->AoTv4AbsorbOwnedLoot(npc_self);
 				// No one to pay directly, so the coin goes on the corpse and is collected the stock

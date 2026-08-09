@@ -1668,9 +1668,18 @@ void Client::OPGMTraining(const EQApplicationPacket *app)
 //#pragma GCC push_options
 //#pragma GCC optimize ("O0")
 	for (int sk = EQ::skills::Skill1HBlunt; sk <= EQ::skills::HIGHEST_SKILL; ++sk) {
-		if (sk == EQ::skills::SkillTinkering && GetRace() != Race::Gnome && GetClass() != Class::Bard) {
-			gmtrain->skills[sk] = 0; //Non gnomes can't tinker! (AoTv4: except Bards -- everyone is a Bard)
-		} else {
+		// ⚠️⚠️ AoTv4: THE GNOME-ONLY TINKERING GATE IS REMOVED HERE TOO -- THIS IS THE **TRAINER**
+		// COPY, and it is the one that hides. The combine gates live in zone/tradeskills.cpp; this one
+		// decides what the GM trainer will teach you, and stock zeroes Tinkering for non-Gnomes. It
+		// was opened in the Bard-only era as `!= Gnome && != Bard`, which meant everyone at the time,
+		// and the all-classes pivot (section 14) silently narrowed it back to Gnomes and Bards.
+		// ⚠️ Fixing only the combine gates is NOT enough and produces a confusing half-state: the
+		// combine succeeds, but the trainer refuses to raise the skill, so a non-Gnome is stuck at
+		// whatever Tinkering they were granted and can never train it up. That is why this was worth
+		// hunting for after tradeskills.cpp already looked fixed.
+		// 📌 There is no equivalent trainer gate for Alchemy or Make Poison -- stock only special-cases
+		// Tinkering here -- so this is the complete set: two combine gates plus this one.
+		{
 			gmtrain->skills[sk] = GetMaxSkillAfterSpecializationRules((EQ::skills::SkillType)sk, MaxSkill((EQ::skills::SkillType)sk, GetClass(), RuleI(Character, MaxLevel)));
 			//this is the highest level that the trainer can train you to, this is enforced clientside so we can't just
 			//Set it to 1 with CanHaveSkill or you wont be able to train past 1.
