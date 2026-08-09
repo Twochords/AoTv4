@@ -1999,6 +1999,30 @@ void Mob::StartEnrage()
 	if(!GetSpecialAbility(SpecialAbility::Enrage))
 		return;
 
+	// ⚠️⚠️ AoTv4: NOTHING ENRAGES. Enrage makes a mob riposte EVERY frontal melee attack
+	// (zone/attack.cpp:492), which turns the end of a fight into "stop attacking and walk away" --
+	// and 404 npc_types carry the ability.
+	//
+	// ⚠️⚠️ THIS DELIBERATELY DOES NOT RELY ON `NPC:LiveLikeEnrage`, WHICH IS HOW IT CAME BACK.
+	// That stock rule was set to true by migration v18 and genuinely works -- but it is a DATABASE
+	// row, and two things make a database row the wrong place for this:
+	//   1. Its header DEFAULT is `false`, i.e. ENRAGE ON. Any server that has not run v18 -- or whose
+	//      rule_values predates it -- enrages normally, with nothing to indicate why. That is exactly
+	//      what happened: The Brood Mother in Velketor's was reported enraging while this test server
+	//      had the rule set correctly the whole time.
+	//   2. Section 35 records a single content dump silently rewriting 64 rule_values rows. A stock
+	//      rule is precisely the kind of thing such a dump overwrites, and nothing would flag it.
+	// A code guard whose rule DEFAULTS to the behaviour we want survives both: a missing row, and a
+	// dump that clears one.
+	// ⚠️ Checked BEFORE the LiveLikeEnrage block below so it does not matter what that rule says, and
+	// before the timers so an enrage is never even scheduled.
+	// 📌 `NPC:LiveLikeEnrage` is left alone rather than reverted -- it is stock, it is harmless, and it
+	// still does the right thing on any server that has it.
+	// 📌 RAMPAGE (SpecialAbility::Rampage) is a SEPARATE ability and is deliberately untouched.
+	if (RuleB(AoT, NPCsNeverEnrage)) {
+		return;
+	}
+
 	int hp_ratio = GetSpecialAbilityParam(SpecialAbility::Enrage, 0);
 	hp_ratio = hp_ratio > 0 ? hp_ratio : RuleI(NPC, StartEnrageValue);
 	if(GetHPRatio() > static_cast<float>(hp_ratio)) {

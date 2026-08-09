@@ -4,6 +4,7 @@
 --
 -- travel       170  ports, gates, binds, evacs, summons -- they also defeat region locking
 -- enchant       20  tradeskill material conversion, useless as a reward
+-- fear          40  fear -- mobs running is the behaviour AoT:NPCsNeverFlee exists to remove
 -- rez           15  resurrection
 -- discipline   157  disciplines -- they train to Combat Abilities, not the spellbook
 -- sense          3  sense dead, summoned, animals -- a detector and nothing else
@@ -28,6 +29,7 @@ return {
 	[53]=true,  -- summonitem
 	[55]=true,  -- summonitem
 	[56]=true,  -- summonitem
+	[59]=true,  -- fear
 	[79]=true,  -- vision
 	[80]=true,  -- vision
 	[90]=true,  -- vision
@@ -37,19 +39,26 @@ return {
 	[103]=true,  -- summonitem
 	[104]=true,  -- summonitem
 	[105]=true,  -- summonitem
+	[126]=true,  -- fear
+	[127]=true,  -- fear
+	[128]=true,  -- fear
 	[205]=true,  -- truenorth
+	[209]=true,  -- fear
 	[211]=true,  -- summonitem
 	[221]=true,  -- sense
 	[223]=true,  -- summonitem
+	[229]=true,  -- fear
 	[232]=true,  -- sense
 	[234]=true,  -- summonitem
 	[237]=true,  -- summonitem
 	[238]=true,  -- sense
+	[241]=true,  -- fear
 	[243]=true,  -- illusion
 	[257]=true,  -- summonitem
 	[272]=true,  -- summonitem
 	[276]=true,  -- vision
 	[287]=true,  -- rootform
+	[304]=true,  -- fear
 	[311]=true,  -- summonitem
 	[318]=true,  -- summonitem
 	[319]=true,  -- summonitem
@@ -64,6 +73,7 @@ return {
 	[391]=true,  -- rez
 	[392]=true,  -- rez
 	[439]=true,  -- summonitem
+	[514]=true,  -- fear
 	[529]=true,  -- vision
 	[530]=true,  -- travel
 	[531]=true,  -- travel
@@ -144,6 +154,7 @@ return {
 	[679]=true,  -- vision
 	[695]=true,  -- summonitem
 	[696]=true,  -- summonitem
+	[706]=true,  -- fear
 	[735]=true,  -- vision
 	[1325]=true,  -- travel
 	[1326]=true,  -- travel
@@ -178,6 +189,9 @@ return {
 	[1516]=true,  -- travel
 	[1517]=true,  -- travel
 	[1524]=true,  -- rez
+	[1527]=true,  -- fear
+	[1532]=true,  -- fear
+	[1550]=true,  -- fear
 	[1566]=true,  -- travel
 	[1567]=true,  -- travel
 	[1575]=true,  -- vision
@@ -196,6 +210,7 @@ return {
 	[1737]=true,  -- travel
 	[1738]=true,  -- travel
 	[1739]=true,  -- travel
+	[1756]=true,  -- fear
 	[1771]=true,  -- travel
 	[1773]=true,  -- corpse
 	[1797]=true,  -- enchant
@@ -577,6 +592,32 @@ return {
 	[6751]=true,  -- discipline
 	[6752]=true,  -- discipline
 	[6754]=true,  -- discipline
+	[6977]=true,  -- fear
+	[6978]=true,  -- fear
+	[6979]=true,  -- fear
+	[6980]=true,  -- fear
+	[6981]=true,  -- fear
+	[6982]=true,  -- fear
+	[6983]=true,  -- fear
+	[6984]=true,  -- fear
+	[6985]=true,  -- fear
+	[6986]=true,  -- fear
+	[6987]=true,  -- fear
+	[6988]=true,  -- fear
+	[6989]=true,  -- fear
+	[6990]=true,  -- fear
+	[6991]=true,  -- fear
+	[6992]=true,  -- fear
+	[6993]=true,  -- fear
+	[6994]=true,  -- fear
+	[6995]=true,  -- fear
+	[6996]=true,  -- fear
+	[6997]=true,  -- fear
+	[6998]=true,  -- fear
+	[6999]=true,  -- fear
+	[7000]=true,  -- fear
+	[7001]=true,  -- fear
+	[7002]=true,  -- fear
 	[7004]=true,  -- discipline
 	[7005]=true,  -- discipline
 	[7674]=true,  -- summonitem

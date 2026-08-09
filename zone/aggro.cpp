@@ -1531,15 +1531,27 @@ int32 Mob::CheckAggroAmount(uint16 spell_id, Mob *target, bool is_proc)
 	if (dispel && spells[spell_id].hate_added > 0 && !on_hatelist) {
 		aggro_amount -= 100;
 	}
-	// AoTv4 Carolus: Agro for shields
-	int shield_mult = 0;
-	if (IsClient())
-	{
-		if (CastToClient()->HasShieldEquipped())
-			shield_mult = 50;
+	// ⚠️⚠️ AoTv4 (Carolus, corrected): CARRYING A SHIELD RAISES SPELL AGGRO TOO.
+	// ⚠️ THE ORIGINAL MULTIPLIED `non_modified_aggro` ALONE, WHICH IS ZERO FOR ALMOST EVERY SPELL.
+	// That variable is assigned in exactly one place -- the SpellEffect::ReduceHate /
+	// SpellEffect::InstantHate case around line 1501 -- so for any spell that is not explicitly
+	// manipulating hate it stays 0, and `0 * 150 / 100` is still 0. The real aggro is `aggro_amount`,
+	// which the multiplier never touched. C++ precedence made it look like the whole sum was scaled.
+	// ⚠️ Now applied to the FINISHED total, so a shielded tank's nukes, debuffs and heals-in-combat all
+	// carry the bonus, not just Taunt-style hate spells.
+	// 📌 Shares AoT:ShieldMeleeHatePct with the melee path in Mob::Attack so "wearing a shield is worth
+	// N percent more threat" is one number in one place, rather than a hardcoded 50 in two files that
+	// drift the first time either is retuned.
+	int64 total_aggro = aggro_amount + spells[spell_id].bonus_hate + non_modified_aggro;
+
+	if (IsClient() && CastToClient()->HasShieldEquipped()) {
+		const int shield_hate_pct = RuleI(AoT, ShieldMeleeHatePct);
+		if (shield_hate_pct) {
+			total_aggro = total_aggro * (100 + shield_hate_pct) / 100;
+		}
 	}
 
-	return aggro_amount + spells[spell_id].bonus_hate + non_modified_aggro * (100 + shield_mult) / 100;
+	return total_aggro;
 }
 
 //healing and buffing aggro

@@ -3968,6 +3968,1059 @@ UPDATE zone
 )",
 		.content_schema_update = false,
 	},
+
+	ManifestEntry{
+		.version     = 38,
+		.description = "2026_08_08_aotv4_class_aura_rework",
+		// ⚠️⚠️ THE PROBLEM WAS NOT TUNING, IT WAS THAT EIGHT OF THE SIXTEEN AURAS WERE **FLAT**.
+		// Reported as "some of our auras feel really strong and some don't". Of the 16 class auras
+		// (section 15), eight were percentages -- which keep their value forever -- and eight were fixed
+		// numbers: damage shields of 2-3, weapon procs for 6-7 damage, a 10 point heal, 4 mana, and 15
+		// mana on a kill. Those were small at launch and are noise now, and they get worse every time
+		// gear or mob damage moves. This converts the eight flat ones to effects that scale, and gives
+		// each a distinct ROLE so a group running several auras gets a kit instead of duplicates.
+		// 📌 Each character has ONE aura slot but auras are group-shared (aura_type 1), so a six-class
+		// group can have six of these up at once. They are deliberately different in KIND.
+		//
+		// ⚠️⚠️ EVERY SPA BELOW WAS CHECKED IN `Mob::ApplySpellsBonuses`, NOT ASSUMED FROM THE HEADER.
+		// spdat.h tags PetMaxHP/PetAvoidance/PetCriticalHit/PetMeleeMitigation as "[AA]", which reads
+		// like they only work from AA -- they do NOT, all four have cases in ApplySpellsBonuses. That
+		// tag is descriptive of typical live usage. The inverse trap is already recorded in
+		// zone/aotv4_tank_aa.cpp (ApplyAABonuses has no case for MitigateMeleeDamage), so check the
+		// function you actually need rather than trusting the comment.
+		//
+		//   43551 Cleric      SPA 125 ImprovedHeal 20      heals cast by the group land 20 pct harder
+		//   43552 Paladin     SPA 111 ResistAll 15         group resistances (NOT physical -- see header)
+		//   43553 Ranger      SPA 216 Accuracy 15 (lim -1) = stock "Accuracy I", -1 = all skills
+		//   43555 Druid       SPA 3 MovementSpeed 25       + SPA 0 CurrentHP 5 = 5 hp per tic regen
+		//   43557 Bard        SPA 189 CurrentEndurance 5   + SPA 15 CurrentMana 3, both per tic
+		//   43560 Necro       (unchanged trigger) retunes 43575 Soul Siphon to a PERCENTAGE
+		//   43562 Magician    SPA 218/215/397              pet crit, avoidance and mitigation
+		//   43564 Beastlord   SPA 119 AttackSpeed3 10      OVERHASTE -- see the note below
+		//
+		// ⚠️⚠️ BEASTLORD IS SPA **119**, NOT 98, AND THAT DISTINCTION IS THE WHOLE FEATURE.
+		// `Client::CalcHaste` (zone/client_mods.cpp) applies the main haste cap and THEN adds
+		// hastetype3, so 119 is the only thing that goes past the cap -- real overhaste.
+		//   * SPA 98 (AttackSpeed2, "Melody of Ervaj") is gated on `level > 49`. At our cap of 30
+		//     (era_system.M.HARD_CAP) it does NOTHING -- it applies, shows in the buff window, and
+		//     contributes zero. It is the one that LOOKS like the obvious haste-2 choice.
+		//   * The two take their base differently: 98 is `effect_value - 100` (110 = +10 pct) while
+		//     119 is used DIRECTLY (10 = +10 pct). Writing 110 on a 119 row asks for +110 pct.
+		//   * At level <= 50 the v3 contribution is HARDCODED to a maximum of 10 -- `Character:Hastev3Cap`
+		//     (25) only applies at 51+. So 10 is the engine ceiling here, not a tuning choice. To exceed
+		//     it: either `Character:IgnoreLevelBasedHasteCaps = true` (⚠️ which ALSO removes the main
+		//     level+25 haste cap and the item haste cap -- a server-wide melee change, not a knob), or a
+		//     one-line change so the 1-50 branch reads the rule instead of the literal 10.
+		//   * It is worth having anyway: of 168 spells carrying SPA 119, **ZERO** are learnable at level
+		//     30 or below, so this aura is the only source of over-cap attack speed on the server.
+		//
+		// ⚠️ Numbers are calibrated against STOCK spells read out of the DB, not from memory:
+		//   * endurance regen 5 = "Aura of the Chameleon Effect", itself a stock aura (stock duration
+		//     buffs run 2/3/5). 10 would be double the strongest stock precedent.
+		//   * accuracy 15 = stock "Accuracy I" (the line runs 15/30/45, limit -1 = all skills).
+		//   * movement 25 is about half a SoW, appropriate for a permanent group aura.
+		//   * the pet SPAs have NO stock spell rows at all (they are AA-only on live), so those three
+		//     are deliberately conservative and are the ones most likely to need a second pass.
+		//
+		// ⚠️⚠️ PetMaxHP (213) IS DELIBERATELY NOT USED. `Mob::MakePet` reads it at SUMMON TIME
+		// (zone/pets.cpp:140), so it only applies to a pet summoned while the aura is already up and
+		// does nothing for a pet you already have. PetCriticalHit, PetAvoidance and PetMeleeMitigation
+		// are all read LIVE off the owner during combat (attack.cpp:320, :5794), which is why the
+		// Magician aura uses those three.
+		//
+		// ⚠️ `formula` 100 / `max` 0 on every slot: static values. Section 5 records that a level-scaled
+		// formula is read against the CASTER's level, and the caster here is the aura NPC, not the
+		// player -- so a scaling formula would key off the wrong thing entirely.
+		// ⚠️ Focus effects (125) take the HIGHEST value rather than stacking, so two Clerics in a group
+		// is not 40 percent. That is stock focus behaviour, not a bug.
+		// 📌 43570 Reprisal and 43573 Spirit Chill: 43570 is left ORPHANED (the Cleric aura no longer
+		// procs it) and 43573 is untouched and still used by the Shaman aura, which was already a
+		// percentage and is not part of this rework.
+		//
+		// ⚠️⚠️ `spells_new` IS SHARED MEMORY. This migration applying at world boot is NOT enough:
+		// stop the stack, run ./shared_memory, restart. Until then nothing changes in game.
+		// 📌 The aura DESCRIPTIONS are not updated here -- the client resolves those from its own
+		// spells_us.txt / dbstr_us.txt (section 6), so they need an ./export_client_files and a client
+		// file ship regardless of what this writes.
+		.check       = "SELECT id FROM spells_new WHERE id = 43564 AND effectid1 <> 119",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+-- Cleric: heals cast by anyone in the aura land harder.
+UPDATE spells_new SET effectid1 = 125, effect_base_value1 = 20, effect_limit_value1 = 0, formula1 = 100, max1 = 0
+ WHERE id = 43551;
+
+-- Paladin: group resistances.
+UPDATE spells_new SET effectid1 = 111, effect_base_value1 = 15, effect_limit_value1 = 0, formula1 = 100, max1 = 0
+ WHERE id = 43552;
+
+-- Ranger: group accuracy. limit -1 = all skills, matching stock Accuracy I.
+UPDATE spells_new SET effectid1 = 216, effect_base_value1 = 15, effect_limit_value1 = -1, formula1 = 100, max1 = 0
+ WHERE id = 43553;
+
+-- Druid: movement plus a small out-of-combat regen. SPA 0 on a duration buff repeats per tic.
+UPDATE spells_new SET effectid1 = 3, effect_base_value1 = 25, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+                      effectid2 = 0, effect_base_value2 = 5,  effect_limit_value2 = 0, formula2 = 100, max2 = 0
+ WHERE id = 43555;
+
+-- Bard: endurance regen (the only source besides the Sinew line) plus a little mana.
+UPDATE spells_new SET effectid1 = 189, effect_base_value1 = 5, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+                      effectid2 = 15,  effect_base_value2 = 3, effect_limit_value2 = 0, formula2 = 100, max2 = 0
+ WHERE id = 43557;
+
+-- Necromancer: the kill-shot trigger is unchanged; its payload becomes a percentage of max HP.
+UPDATE spells_new SET effectid1 = 147, effect_base_value1 = 2,  effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+                      effectid2 = 15,  effect_base_value2 = 25, effect_limit_value2 = 0, formula2 = 100, max2 = 0
+ WHERE id = 43575;
+
+-- Magician: the group's pets. All three are read live off the owner.
+UPDATE spells_new SET effectid1 = 218, effect_base_value1 = 15, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+                      effectid2 = 215, effect_base_value2 = 10, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+                      effectid3 = 397, effect_base_value3 = 10, effect_limit_value3 = 0, formula3 = 100, max3 = 0
+ WHERE id = 43562;
+
+-- Beastlord: overhaste. SPA 119 is added AFTER the haste cap; base is the percentage directly.
+UPDATE spells_new SET effectid1 = 119, effect_base_value1 = 10, effect_limit_value1 = 0, formula1 = 100, max1 = 0
+ WHERE id = 43564;
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 39,
+		.description = "2026_08_08_aotv4_delve_traps_goals_and_boss_credit",
+		// Three delve bugs reported together.
+		//
+		// ============================================================================================
+		// 1. THE BOSS COULD BE SKIPPED BY KILLING ANYTHING
+		// ============================================================================================
+		// ⚠️⚠️ Activity 1 (kill the warden) shipped with an EMPTY `npc_match_list`, and an empty list
+		// matches EVERY npc -- the same mechanism section 24 relies on for activity 0, where it is
+		// exactly what we want. On the boss step it meant one trash kill closed the step, so the only
+		// hard part of a delve was optional.
+		// ✅ `npc_match_list` accepts NPC TYPE IDS as well as names (task_client_state.cpp:530:
+		// `IsInMatchList(activity.npc_match_list, std::to_string(filter.mob->GetNPCTypeID()))`), and
+		// every warden is npc **2000301** (aotv4_dungeon.M.BOSS_NPC). That matters because a warden's
+		// NAME is randomised -- a given name plus a rolled title -- so matching by name could never
+		// have worked here.
+		// ⚠️ This does NOT reintroduce the zone-scoping problem v22 removed: that was the `zones`
+		// column, which stays empty. npc matching is independent of zone.
+		//
+		// ============================================================================================
+		// 2. DoN KILL GOALS WERE 30-60 WHILE LDoN WAS A FLAT 30
+		// ============================================================================================
+		// The six DoN dungeons carried hand-authored goals (30/35/40/45/50/60) from when the delve was
+		// DoN-only; v36 carried them across unchanged while all 33 LDoN dungeons got 30. Odd rungs are
+		// DoN and even rungs LDoN, so the ladder alternated between a 30-kill run and a 60-kill one at
+		// the same difficulty. Normalised to the LDoN value.
+		// ⚠️ The per-mode maths has to be reapplied, not just the base: Swarm is goalmul 3 (90) and
+		// Gauntlet is a FIXED 10 with three wardens, not a multiple. Mode is derived from the task id
+		// (offsets 0/40/80/120/160/200, section 24) and the dungeon index is the remainder.
+		//
+		// ============================================================================================
+		// 3. TRAPS WERE FIRING IN DELVES
+		// ============================================================================================
+		// 14 of the 39 delve maps carry stock traps (all Mistmoore's and Miragul's; mmca/mmcd/mmce have
+		// 84 each). They are LDoN dungeon furniture that has nothing to do with a scaled delve run.
+		// ⚠️⚠️ **`chance` CANNOT BE USED TO TURN A TRAP OFF -- `chance == 0` MEANS ALWAYS FIRE.**
+		// zone/trap.cpp:316 reads `(trap->chance == 0 || zone->random.Roll(trap->chance))`, so zeroing
+		// it makes every trap trigger on approach, the exact opposite of the intent. Same class of
+		// sentinel trap as `maxcharges = 0` on the tradeskill masks (section 32).
+		// ✅ Traps load through `TrapsRepository::GetWhere(... ContentFilterCriteria::apply())`
+		// (trap.cpp:454), so `min_expansion` is the engine's own switch. Setting it to 99 filters them
+		// out at load and is fully reversible -- no rows are destroyed, and restoring them is one
+		// UPDATE back to -1.
+		// ⚠️ Scoped to the delve zone list ONLY. Those zones are unreachable except as a delve instance
+		// (v27: zero zone_points target any of them), so this cannot change the open world.
+		// 📌 The end-of-run chest (npc 2000300) and the warden (2000301) are npcs, not traps, so nothing
+		// here can touch them.
+		// 📌 GMs never trigger traps either (`!cur->GetGM()` on that same line) -- the fourth thing this
+		// week that was invisible while testing with the GM flag on.
+		.check       = "SELECT taskid FROM task_activities WHERE taskid BETWEEN 2000300 AND 2000538 AND activityid = 1 AND npc_match_list = ''",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE task_activities
+   SET npc_match_list = '2000301'
+ WHERE taskid BETWEEN 2000300 AND 2000538 AND activityid = 1;
+
+UPDATE task_activities
+   SET goalcount = CASE FLOOR((taskid - 2000300) / 40)
+                     WHEN 2 THEN 90
+                     WHEN 3 THEN 10
+                     ELSE 30
+                   END
+ WHERE taskid BETWEEN 2000300 AND 2000538
+   AND activityid = 0
+   AND MOD(taskid - 2000300, 40) BETWEEN 0 AND 5;
+
+UPDATE traps
+   SET min_expansion = 99
+ WHERE zone IN ('guka','gukc','guke','gukf','gukh',
+                'mira','mirb','mirc','mird','mirg','mirj',
+                'mmca','mmcb','mmcc','mmcd','mmce','mmcf','mmcg','mmch','mmci','mmcj',
+                'ruja','rujd','rujf','rujg','ruji','rujj',
+                'taka','takb','takc','takd','take','takg',
+                'delvea','delveb','stillmoona','stillmoonb','thundercrest','thenest');
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 40,
+		.description = "2026_08_08_aotv4_song_buff_window_and_remove_healing_potions",
+		// ============================================================================================
+		// 1. ⚠️⚠️ BENEFICIAL SONGS VANISHED ON EVERY ZONE -- THE SONG WINDOW IS NEVER PERSISTED
+		// ============================================================================================
+		// Reported as "bard buffs are not maintaining through zones -- when I had the buff on, it
+		// disappeared when I zoned", on Anthem de Arms sung by a Warrior.
+		//
+		// A buff's slot is chosen by `spells_new.short_buff_box`:
+		//     GetFirstBuffSlot(IsDisciplineBuff(spell_id), spells[spell_id].short_buff_box)  (spells.cpp:3805)
+		//     Client::GetFirstBuffSlot: if (song) return GetMaxBuffSlots();                  (spells.cpp:3745)
+		// so a `short_buff_box = 1` spell lands in the SONG window, at slot indices ABOVE the long
+		// buff slots. And both halves of persistence iterate the LONG slots only:
+		//     max_buff_slots = StaticLookup(client->ClientVersion())->LongBuffs               (zonedb.cpp:3008)
+		// ⚠️ So NOTHING in the song window is ever written to `character_buffs` or read back. It is not
+		// a bug in stock EQ -- a song there is transient by design, because a Bard re-pulses it every
+		// six seconds. Section 36 removed that pulse from BENEFICIAL songs and gave them the 3-day
+		// self-buff duration, and the song window then silently threw them away on every zone line.
+		// 📌 The tell was in the data: 701 Anthem de Arms is short_buff_box 1 and vanishes, while 703
+		// Chords of Dissonance is short_buff_box 0 and persists. Same caster, same class, same skill.
+		//
+		// Fix: beneficial songs move to the LONG buff window, which is where a 3-day buff belongs.
+		// ⚠️⚠️ DETRIMENTAL SONGS ARE NOT TOUCHED -- exactly ONE is in the song window and it stays
+		// there. Those still pulse (section 36 keeps the two behaviours on one predicate, in opposite
+		// senses), they are meant to be transient, and they land on the ENEMY where persistence is
+		// meaningless. Widening this to all songs would break the half that still works.
+		// ⚠️ Scoped to the five SONG skills. 915 non-song spells also use short_buff_box -- potions,
+		// clickies and the like -- and none of them are in scope.
+		// ⚠️ `IsShortDurationBuff` (spdat.cpp:2250) is the only other reader and it is exposed ONLY to
+		// Lua/Perl scripting; no engine behaviour keys off it, so this changes slot placement and
+		// nothing else.
+		// 📌 Consequence: these now occupy LONG buff slots and display in the normal buff window rather
+		// than the song window. That is the honest presentation for something lasting three days, but
+		// it does add buff-slot pressure for a character carrying many of them.
+		//
+		// ============================================================================================
+		// 2. HEALING POTIONS ARE REMOVED
+		// ============================================================================================
+		// 28 items: itemtype 21 with a direct-heal click (SPA 0, positive base) and "potion" in the
+		// name -- Potion of Light Healing, the 5-dose Troll's Essence / Soluan's Vigor / Calimony line
+		// and friends. Removed from 19 lootdrop rows and 30 merchant rows so no more enter the game,
+		// AND their click is nulled so the ones players already carry stop working.
+		// ⚠️ The item ROWS are deliberately kept. Deleting them would strand every reference in player
+		// inventories, bank slots, trader escrow (section 13 -- those rows ARE the item) and quest
+		// scripts. An inert item is safe; a missing item id is not.
+		// ⚠️ `clicktype` is zeroed alongside `clickeffect`: section 32 records that clicktype alone
+		// decides whether a click is even attempted, so leaving it set on a spell-less item invites a
+		// later reader to "repair" the effect.
+		// 📌 No tier clones exist for any of the 28 (checked: 0 rows in either tier band), so there is
+		// no Hallowed/Mythic copy to sweep.
+		//
+		// ⚠️⚠️ BOTH `items` AND `spells_new` ARE SHARED MEMORY: stop the stack, run ./shared_memory,
+		// restart. The migration applying at world boot changes nothing on its own.
+		.check       = "SELECT id FROM spells_new WHERE id = 701 AND short_buff_box = 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE spells_new
+   SET short_buff_box = 0
+ WHERE short_buff_box = 1
+   AND goodEffect <> 0
+   AND skill IN (12, 41, 49, 54, 70)
+   AND (buffduration > 0 OR buffdurationformula > 0)
+   AND id < 45000;
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_heal_potions;
+CREATE TEMPORARY TABLE aotv4_heal_potions (id INT PRIMARY KEY);
+INSERT INTO aotv4_heal_potions
+SELECT i.id FROM items i JOIN spells_new s ON s.id = i.clickeffect
+ WHERE i.clickeffect > 0 AND i.id < 300000
+   AND s.effectid1 = 0 AND s.effect_base_value1 > 0
+   AND i.Name LIKE '%otion%';
+
+DELETE l FROM lootdrop_entries l JOIN aotv4_heal_potions p ON p.id = l.item_id;
+DELETE m FROM merchantlist     m JOIN aotv4_heal_potions p ON p.id = m.item;
+
+UPDATE items i JOIN aotv4_heal_potions p ON p.id = i.id
+   SET i.clickeffect = 0, i.clicktype = 0, i.clicklevel = 0, i.clicklevel2 = 0;
+
+DROP TEMPORARY TABLE aotv4_heal_potions;
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 41,
+		.description = "2026_08_08_aotv4_titans_resistance_faction",
+		// ⚠️⚠️ EVERY CIVIC NPC NOW CONS OFF ONE SHARED FACTION, "Titan's Resistance", AND IT HAS NO
+		// RACE, CLASS OR DEITY MODIFIERS -- so every race walks into every town friendly, by birth.
+		// Reported as people picking a region and still being faction locked. Section 28's con FLOOR
+		// (Dubious, applied in Client::GetFactionLevel) stopped races being killed on sight, but it
+		// deliberately stopped at Dubious -- enough to survive, not enough to be welcome, and it only
+		// covered the 74 factions someone had curated. This replaces "not hostile" with "friendly".
+		// 📌 This server is explicitly not simulating race wars: birth should never decide access.
+		//
+		// ============================================================================================
+		// WHY THIS IS A THREE-LINE CHANGE AND NOT A REWRITE OF 2,969 NPCs
+		// ============================================================================================
+		// ⚠️⚠️ CON AND FACTION HITS COME FROM DIFFERENT COLUMNS, WHICH IS THE WHOLE TRICK.
+		//   * The CON a player sees is `npc_faction.primaryfaction` (Mob::GetPrimaryFaction, read in
+		//     zone/aggro.cpp:250 and Client::GetFactionLevel).
+		//   * The faction HITS for killing something come from `npc_faction_entries`, reached via
+		//     `npc_types.npc_faction_id` -- HateList::DoFactionHits(npc_faction_level_id, ...) falls to
+		//     `SetFactionLevel(..., npc_faction_level_id, ...)` and walks the entries.
+		// So repointing `primaryfaction` alone changes what everybody CONS at and leaves every existing
+		// faction consequence exactly where it was. `npc_types` is not touched at all -- zero rows.
+		// ⚠️ The one exception is the direct-reward path: DoFactionHits calls RewardFaction(faction_id)
+		// instead when `npc_types.faction_amount != 0`, which WOULD pay the new faction. Checked: **0**
+		// of the affected NPCs set faction_amount, so that path is never taken here. Re-check it before
+		// widening this to any other faction set.
+		//
+		// ⚠️⚠️ SCOPED BY FACTION, NEVER BY ZONE. Scoping by zone is the obvious approach and it is
+		// catastrophic: Kelethin is not a zone, it is a treetop city inside `gfaydark`, which is also a
+		// hunting zone full of Crushbone orcs -- and Qeynos' region includes Rathe Mountains and the
+		// Karanas. "Every NPC in a city zone" would hand friendly faction to the monsters. The 74
+		// curated civic factions in `aotv4_town_factions` (section 28) are the unit that means "a town".
+		//
+		// ⚠️ NO `faction_list_mod` ROWS ARE CREATED FOR IT, AND THAT IS THE ENTIRE POINT.
+		// CalculateFaction sums earned + base + class_mod + race_mod + deity_mod (common/faction.cpp:57);
+		// with no mod rows, every race/class/deity gets exactly `base`. The 1,902 race modifiers on the
+		// old civic factions still exist but nothing cons on them any more.
+		// 📌 "New characters are on it" needs no per-character work for the same reason: a character
+		// with no earned faction sits at base, so a freshly created anything cons Warmly on day one.
+		//
+		// base 750 = Warmly (Faction:WarmlyFactionMinimum). Deliberately not Ally (1100): Warmly reads
+		// as clearly welcome while leaving headroom in both directions if anything is ever earned.
+		//
+		// ⚠️⚠️ TWO QUESTS THAT REQUIRE **HOSTILE** FACTION WILL STOP BEING OFFERED, KNOWINGLY.
+		// Section 28 enumerated the four scripts that test the hostile end of the scale; two of them sit
+		// on civic factions and now con Warmly (2) instead of Dubious (7):
+		//   erudnext/Collier.lua            tests `>= 7`  (Circle of Unseen Hands)
+		//   erudnext/Weligon_Steelherder.lua tests `> 5`   (Deepwater Knights)
+		// The other two -- felwithea/Tynkale (Clerics of Tunare) and westwastes/Sontalak (Claws of
+		// Veeshan) -- are NOT civic and are unaffected. Accepted as the cost of the design; re-check
+		// this list if the civic set is ever widened.
+		//
+		// ⚠️ REVERSIBLE: `aotv4_faction_primary_backup` records each npc_faction's original
+		// primaryfaction before the update, so the whole change is one UPDATE ... JOIN back.
+		// ⚠️ Faction data is read at ZONE BOOT, not shared memory (only `items` and `spells_new` are) --
+		// so this needs a world+zone restart and NOT a ./shared_memory run.
+		.check       = "SELECT id FROM faction_list WHERE id = 9000",
+		.condition   = "empty",
+		.match       = "",
+		// ⚠️⚠️ THE 74-ROW CIVIC LIST UNDER-COVERED THE HUBS, WHICH IS *WHY* PEOPLE WERE STILL LOCKED.
+		// Section 28 built that list from a keyword test ("Merchants of", "Guards of", "Residents"...)
+		// and warns in its own text that the test is a keyword list, not a classifier, and silently
+		// under-covers. Auditing the thirteen real hub city zones found the biggest civic factions in
+		// the game missing from it, every one of them race-hostile:
+		//     229  Coalition of Tradefolk              70 merchants   worst race mod -375  (FREEPORT)
+		//     406  Coldain                             61 merchants   worst race mod -100  (THURGADIN)
+		//     336  Coalition of Tradefolk Underground  21 merchants   worst race mod -400
+		//     271  Dismal Rage                         10 merchants   worst race mod -375
+		//     355  Storm Reapers                        6 merchants   worst race mod -800  (KOS!)
+		//     311  Steel Warriors                       1 merchant    worst race mod -400
+		//     5025 Kaladim Merchants / 286 Mayor Gubbin              harmless, added for completeness
+		// Freeport's entire merchant body and the whole of Thurgadin were outside the list. None of
+		// them matches the keyword test -- "Coalition of Tradefolk" and "Coldain" simply do not look
+		// like the names someone thought of.
+		// 📌 Firiona Vie was CHECKED and was already fine: `Inhabitants of Firiona Vie` (31 merchants)
+		// and `Emerald Warriors` are both covered, and everything uncovered in that zone is a monster
+		// faction (Frogloks of Kunark, Goblins of Mountain Death, Agents of Mistmoore) -- which is the
+		// faction-scoping doing its job.
+		//
+		// ⚠️⚠️ SO THE SET IS **DERIVED, NOT CURATED** -- that is the actual fix, and it is why this is
+		// not just "section 28 plus a few more names". A hand list makes "not covered" the default and
+		// under-coverage silent; deriving it makes "covered" the default and leaves only a short,
+		// reviewable exclusion list. Two bounds make the derivation safe:
+		//   1. TOWN ZONES ONLY (the list above). This is what keeps Karnor's Castle, Skyshrine, Kael
+		//      Drakkel, Chardok, Solusek's Eye and Sanctus Seru out. Every one of those has a VENDOR,
+		//      so a server-wide "all merchants" sweep would put Venril Sathir (18 merchants), Claws of
+		//      Veeshan (24), Kromzek/Kromrif (9) and the three Seru factions (11) on the friendly
+		//      faction and silently pacify five raid zones.
+		//   2. MERCHANTS ONLY, not "every npc in a town zone". That looser rule was tried and it drags
+		//      in `KOS`, `KOS_animal`, `Noobie Monsters KOS to Guards`, `Sabertooths of Blackburrow`,
+		//      `The Forsaken` and `Meldrath` -- newbie monsters near city zones would stop being
+		//      hostile. Monsters do not run shops, which is exactly what makes commerce the safe test.
+		// ⚠️ GUARDS NEED NO SEPARATE RULE. Guard aggro requires a con of exactly THREATENINGLY or
+		// SCOWLS (zone/aggro.cpp), and every civic faction here is now Warmly -- so guards are covered
+		// by the same change. Guard-only factions ("Guards of ...") were already caught by section 28's
+		// keyword list, which is retained rather than replaced.
+		//
+		// ⚠️ TWO EXCLUSIONS, both deliberate: 344 `Beta Neutral` and 5032 `Indifferent` are generic
+		// catch-alls spanning 63 and 302 NPCs across the world. They carry NO race modifiers and base
+		// 0, so they already con Indifferent (5) and already pass the merchant gate -- including them
+		// would buy nothing and flip 365 unrelated NPCs friendly.
+		// 📌 221 Bloodsabers is excluded for free by the zone bound: its merchants are in `qcat`, the
+		// Qeynos catacombs, which is not a town. Its -300 does not stop any race entering Qeynos
+		// itself, and covering it would pacify a dungeon.
+		//
+		// 📌 As of 2026-08-08 the derivation adds 22 factions to section 28's 74, the largest being
+		// Dark Bargainers (121 merchants), Citizens of Shar Vahl (81), Coalition of Tradefolk (70),
+		// Coldain (61), Traders of the Haven (53) and Haven Defenders (51). It is a query rather than a
+		// list precisely so the next city or expansion does not need anyone to remember.
+		.sql         = R"(
+DROP TEMPORARY TABLE IF EXISTS aotv4_town_zones;
+CREATE TEMPORARY TABLE aotv4_town_zones (zone VARCHAR(32) PRIMARY KEY);
+INSERT INTO aotv4_town_zones VALUES
+  ('qeynos'),('qeynos2'),('qrg'),('freportn'),('freporte'),('freportw'),
+  ('halas'),('rivervale'),('erudnext'),('erudnint'),('paineel'),
+  ('felwithea'),('felwitheb'),('kaladima'),('kaladimb'),('akanon'),
+  ('neriaka'),('neriakb'),('neriakc'),('grobb'),('oggok'),
+  ('cabeast'),('cabwest'),('thurgadina'),('thurgadinb'),
+  ('sharvahl'),('shadowhaven'),('katta'),
+  ('gfaydark'),('firiona');
+
+INSERT IGNORE INTO aotv4_town_factions (faction_id, name)
+SELECT f.id, f.name
+  FROM aotv4_town_zones t
+  JOIN spawn2 s          ON s.zone = t.zone
+  JOIN spawnentry se     ON se.spawngroupID = s.spawngroupID
+  JOIN npc_types n       ON n.id = se.npcID AND n.merchant_id > 0
+  JOIN npc_faction nf    ON nf.id = n.npc_faction_id
+  JOIN faction_list f    ON f.id = nf.primaryfaction
+ WHERE nf.primaryfaction > 0
+   AND nf.primaryfaction NOT IN (344, 5032)
+ GROUP BY f.id;
+
+DROP TEMPORARY TABLE aotv4_town_zones;
+
+INSERT INTO faction_list (id, name, base) VALUES (9000, 'Titan''s Resistance', 750);
+
+CREATE TABLE IF NOT EXISTS aotv4_faction_primary_backup (
+  npc_faction_id     INT NOT NULL,
+  old_primaryfaction INT NOT NULL,
+  PRIMARY KEY (npc_faction_id)
+);
+
+INSERT IGNORE INTO aotv4_faction_primary_backup (npc_faction_id, old_primaryfaction)
+SELECT nf.id, nf.primaryfaction
+  FROM npc_faction nf
+  JOIN aotv4_town_factions t ON t.faction_id = nf.primaryfaction;
+
+UPDATE npc_faction nf
+  JOIN aotv4_town_factions t ON t.faction_id = nf.primaryfaction
+   SET nf.primaryfaction = 9000;
+
+INSERT IGNORE INTO aotv4_town_factions (faction_id, name) VALUES (9000, 'Titan''s Resistance');
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 42,
+		.description = "2026_08_08_aotv4_remove_outdoor_only_spell_restriction",
+		// Outdoor-only spells (Camouflage, Invoke Lightning, Sow-likes, the Druid/Ranger utility lines)
+		// become castable anywhere. On live the restriction is flavour; here it is a tax that falls
+		// unevenly, because the reward picker hands these spells to any of the sixteen classes and a
+		// player has no say in getting one they can only use half the time.
+		//
+		// ⚠️ `spells_new.zonetype` is: **1 = outdoors only, 2 = dungeons only, -1 = anywhere**
+		// (common/spdat.h:1646 -- "01=Outdoors, 02=dungeons, ff=Any"). Setting it to -1 is what opens
+		// them; the server test is `zone_type == 1`, which then can never match.
+		//
+		// ⚠️ Only **zonetype 1** is touched, and only that value is actually enforced. The enforcement
+		// is exactly two sites, both testing `== 1`:
+		//     zone/spells.cpp:722   the player casting path
+		//     zone/bot.cpp:9722     the bot equivalent
+		// 📌 `zonetype 2` (dungeons only -- Grow, Growth, Diminution) is checked NOWHERE in the server,
+		// so those four are already usable anywhere and are deliberately left alone rather than
+		// rewritten for tidiness. `zonetype 0` (29 rows, all NPC spells) is likewise unenforced.
+		//
+		// ⚠️ Scoped to `id < 45000`. RoF2 caps spell links and the spellbook packet below 45000
+		// (section 14), so anything above it is unreachable and changing it would be noise.
+		//
+		// ⚠️⚠️ THE CLIENT HAS ITS OWN COPY OF THIS FIELD. `spells_us.txt` carries zonetype, so a
+		// player whose client file predates this change may still refuse to send the cast -- the same
+		// three-layer problem recorded for combat skills (section 4) and the bow minimum range
+		// (section 39): client display, client send, server execute. **Re-export the client files
+		// (`./export_client_files`) and ship `spells_us.txt` alongside this**, or it will look fixed on
+		// the server and broken in game.
+		//
+		// ⚠️ REVERSIBLE: `aotv4_spell_zonetype_backup` records the original value per spell first.
+		// ⚠️⚠️ `spells_new` IS SHARED MEMORY: stop the stack, run ./shared_memory, restart. The
+		// migration applying at world boot changes nothing on its own.
+		// ⚠️⚠️ MOUNTS ARE EXCLUDED, AND THEY ARE **345 OF THE 419** -- opening zonetype 1 blindly is
+		// overwhelmingly a MOUNT change wearing a utility-spell costume. SPA 113 `SummonHorse` is how
+		// EQ keeps mounts outdoors, and a mount summoned inside a dungeon is a large model in geometry
+		// never built for it. Excluding it leaves exactly the 74 spells actually being asked for:
+		// Camouflage, Invoke Lightning, Harmony, Breath of Karana, Fist of Karana, Illusion: Tree, the
+		// Drifting Cloud line and friends.
+		// 📌 There is a SECOND, independent mount guard at zone/client_packet.cpp:683 --
+		// `if (RuleB(Character, PreventMountsFromZoning) || !zone->CanCastOutdoor())` fades the
+		// SummonHorse buff on entering an indoor zone. So a mount would still drop on zoning even
+		// without the zonetype check; what the zonetype check stops is SUMMONING one while already
+		// inside. Both are wanted, so this leaves mounts entirely alone.
+		// ⚠️ The test is the EFFECT (SPA 113), never the spell name -- "Journeyman's Boots" and every
+		// class's mount line share no naming convention.
+		.check       = "SELECT id FROM spells_new WHERE zonetype = 1 AND id < 45000 AND 113 NOT IN (effectid1, effectid2, effectid3, effectid4) LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+CREATE TABLE IF NOT EXISTS aotv4_spell_zonetype_backup (
+  spell_id     INT NOT NULL,
+  old_zonetype INT NOT NULL,
+  PRIMARY KEY (spell_id)
+);
+
+INSERT IGNORE INTO aotv4_spell_zonetype_backup (spell_id, old_zonetype)
+SELECT id, zonetype FROM spells_new
+ WHERE zonetype = 1 AND id < 45000
+   AND 113 NOT IN (effectid1, effectid2, effectid3, effectid4);
+
+UPDATE spells_new SET zonetype = -1
+ WHERE zonetype = 1 AND id < 45000
+   AND 113 NOT IN (effectid1, effectid2, effectid3, effectid4);
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 43,
+		.description = "2026_08_08_aotv4_npcs_do_not_cast_fear",
+		// NPCs stop casting fear. This is the second half of "nothing runs":
+		//   * AoT:NPCsNeverFlee (zone/fearpath.cpp) stops a creature fleeing from LOW HEALTH.
+		//   * The pool generator now prunes SPA 23, so a player can never be offered a fear spell.
+		//   * This removes fear from NPC spell lists, so nothing casts it at a player either.
+		// ⚠️⚠️ THE FLEE RULE DOES NOT COVER FEAR, AND CANNOT. A feared mob enters through
+		// StartFleeing, not through Mob::CheckFlee's low-health path -- the guard is deliberately
+		// placed after the already-fleeing block so feared mobs keep moving rather than freezing.
+		// Fear therefore had to be closed at the source on both sides, which is what these two changes
+		// do. Once it is, the flee guard's fear caveat is moot in practice, but the guard stays where
+		// it is: moving it would break fear the moment any of this is reverted.
+		//
+		// 46 npc_spells lists carry a fear spell. Their entries are removed, not the spells themselves
+		// -- `spells_new` is untouched, so an NPC scripted to cast one directly still can and nothing
+		// referencing those spell ids dangles.
+		// ⚠️ SPA 23 only, checked across ALL TWELVE effect slots. SPA 102 `Fearless` is fear IMMUNITY,
+		// the opposite, and must not be caught.
+		// ⚠️ REVERSIBLE: `aotv4_npc_fear_backup` stores each removed (npc_spells_id, spellid) pair.
+		// ⚠️ `npc_spells` is loaded at ZONE BOOT and is NOT shared memory (only items and spells_new
+		// are), so this needs a zone restart and no ./shared_memory run.
+		// 📌 Item clickies and procs that fear are NOT covered here -- they are a separate, much
+		// smaller surface, and none is currently reachable in the reward pool.
+		.check       = "SELECT ne.spellid FROM npc_spells_entries ne JOIN spells_new s ON s.id = ne.spellid WHERE 23 IN (s.effectid1,s.effectid2,s.effectid3,s.effectid4,s.effectid5,s.effectid6,s.effectid7,s.effectid8,s.effectid9,s.effectid10,s.effectid11,s.effectid12) LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+CREATE TABLE IF NOT EXISTS aotv4_npc_fear_backup (
+  npc_spells_id INT NOT NULL,
+  spellid       INT NOT NULL,
+  PRIMARY KEY (npc_spells_id, spellid)
+);
+
+INSERT IGNORE INTO aotv4_npc_fear_backup (npc_spells_id, spellid)
+SELECT ne.npc_spells_id, ne.spellid
+  FROM npc_spells_entries ne
+  JOIN spells_new s ON s.id = ne.spellid
+ WHERE 23 IN (s.effectid1,s.effectid2,s.effectid3,s.effectid4,s.effectid5,s.effectid6,
+              s.effectid7,s.effectid8,s.effectid9,s.effectid10,s.effectid11,s.effectid12);
+
+DELETE ne FROM npc_spells_entries ne
+  JOIN spells_new s ON s.id = ne.spellid
+ WHERE 23 IN (s.effectid1,s.effectid2,s.effectid3,s.effectid4,s.effectid5,s.effectid6,
+              s.effectid7,s.effectid8,s.effectid9,s.effectid10,s.effectid11,s.effectid12);
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 44,
+		.description = "2026_08_08_aotv4_bash_ac_divisor",
+		// Shield AC contributes more to BASH DAMAGE: Combat:BashACBonusDivisor 25 -> 10.
+		// This is the third of three shield changes and the only one that is pure data:
+		//   1. AoT:ShieldMeleeHatePct  -- threat on every swing and every spell while a shield is worn
+		//   2. AoT:BashThreatMultiplier / BashACCapMultiplier -- Bash's threat, and its AC damage cap
+		//   3. this -- how much of the shield's AC reaches Bash's damage at all
+		//
+		// ⚠️⚠️ THE DIVISOR ALONE WOULD HAVE DONE ALMOST NOTHING -- THE CAP WAS THE BINDING LIMIT.
+		// Mob::GetBaseSkillDamage caps the AC contribution at exactly `skill/10`, so at 300 skill AC
+		// could never add more than 30 regardless of the shield, and at divisor 25 you would need 750
+		// AC on a single shield to reach that cap. Measured against our own items -- shields usable at
+		// level 30 average **74 AC** and top out at 390 -- the AC term was worth about **3 damage**.
+		// Both levers therefore move together: this halves-and-a-bit the divisor, and
+		// AoT:BashACCapMultiplier (2) widens the cap to skill/5.
+		// 📌 Resulting shape at 300 skill: an average 74 AC shield goes from ~3 to ~7 AC damage
+		// (35 -> 39 total, the "small buff"), while a best-in-slot 390 AC shield goes from 3 to 39
+		// (35 -> 71). The point is that the number now RESPONDS to shield quality, which is what
+		// "encourage tanks with shields" actually requires -- a flat base bump would not.
+		// ⚠️ This is a stock EQEmu rule, not an AoT one, so it also affects any other consumer of
+		// BashACBonusDivisor. Checked: Mob::GetBaseSkillDamage is the only reader.
+		// ⚠️ Rules are read at ZONE BOOT -- a zone restart or #reloadrules, not just a world restart.
+		// ⚠️ rule_values has one row per (ruleset_id, rule_name); scoped by rule_name so every ruleset
+		// moves together (section 35).
+		.check       = "SELECT rule_value FROM rule_values WHERE rule_name = 'Combat:BashACBonusDivisor' AND rule_value > 2",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE rule_values SET rule_value = '2.0' WHERE rule_name = 'Combat:BashACBonusDivisor';
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 45,
+		.description = "2026_08_09_aotv4_remove_npc_accuracy_debuffs",
+		// Reported from the first delve: NPCs casting something that gives "a 95 percent chance to
+		// miss". It is `6631 Black Cyclone` -- **SPA 216 Accuracy, base -200**, 10 tick duration -- and
+		// it is cast in delvea, which is rung 1. There is no cure for it and no counterplay: you swing
+		// and miss until it wears off.
+		//
+		// ⚠️⚠️ IT IS NOT BLINDNESS, WHICH IS THE OBVIOUS SUSPECT AND THE WRONG ONE. Several delve NPCs
+		// do cast SPA 20 Blind (Eye of Confusion, Sunbeam, Blinding Ash), but Blind does NOT touch hit
+		// chance in this codebase -- its only combat use is the flee/aggro check at zone/aggro.cpp:1167.
+		// Chasing "blind" finds four plausible spells and fixes nothing.
+		//
+		// 8 spells carry a NEGATIVE SPA 216 (Accuracy) or SPA 184 (HitChance) in some slot and are cast
+		// by NPCs: Discordling Leap, Girplan Chatter, Gelid Breath, Black Cyclone, Torment of Body,
+		// Chimeran Laceration, Drake Decay, Feralize.
+		//
+		// ⚠️⚠️ THE DEBUFF SLOT IS BLANKED, THE SPELL IS NOT DELETED -- and that distinction matters.
+		// Several of these are primarily something else: Gelid Breath is a 1,250 damage nuke that
+		// happens to carry -10 hit chance, Torment of Body is a 3,000 damage tap. Removing the spells
+		// from npc_spells_entries (the approach v43 used for fear) would delete those attacks outright
+		// and quietly gut the encounters. Blanking only the offending slot to 254 leaves every spell
+		// casting and doing its real job, minus the mechanic being complained about.
+		//
+		// ⚠️ ONLY NEGATIVE VALUES. SPA 216/184 with a POSITIVE base is an accuracy BUFF -- our own
+		// Ranger aura (43553) is SPA 216 base 15 -- so a blanket "remove SPA 216" would delete it.
+		// ⚠️ ALL TWELVE SLOTS are checked, and each slot is tested against its OWN base value. A loose
+		// `216 IN (effectid1..4) AND (base1 < 0 OR base2 < 0 ...)` matches spells whose negative is a
+		// damage slot and misses debuffs sitting in slot 5+; it produced four false positives on the
+		// first pass here.
+		// ⚠️ `spells_new` IS SHARED MEMORY: stop the stack, run ./shared_memory, restart.
+		// ⚠️ REVERSIBLE via aotv4_accuracy_debuff_backup, which records (spell_id, slot, effectid, base).
+		.check       = "SELECT id FROM spells_new WHERE (effectid1 IN (216,184) AND effect_base_value1 < 0) OR (effectid2 IN (216,184) AND effect_base_value2 < 0) OR (effectid3 IN (216,184) AND effect_base_value3 < 0) OR (effectid4 IN (216,184) AND effect_base_value4 < 0) LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+CREATE TABLE IF NOT EXISTS aotv4_accuracy_debuff_backup (
+  spell_id  INT NOT NULL,
+  slot      INT NOT NULL,
+  effectid  INT NOT NULL,
+  base      INT NOT NULL,
+  PRIMARY KEY (spell_id, slot)
+);
+
+INSERT IGNORE INTO aotv4_accuracy_debuff_backup (spell_id, slot, effectid, base)
+SELECT id, 1, effectid1, effect_base_value1 FROM spells_new WHERE effectid1 IN (216,184) AND effect_base_value1 < 0;
+INSERT IGNORE INTO aotv4_accuracy_debuff_backup (spell_id, slot, effectid, base)
+SELECT id, 2, effectid2, effect_base_value2 FROM spells_new WHERE effectid2 IN (216,184) AND effect_base_value2 < 0;
+INSERT IGNORE INTO aotv4_accuracy_debuff_backup (spell_id, slot, effectid, base)
+SELECT id, 3, effectid3, effect_base_value3 FROM spells_new WHERE effectid3 IN (216,184) AND effect_base_value3 < 0;
+INSERT IGNORE INTO aotv4_accuracy_debuff_backup (spell_id, slot, effectid, base)
+SELECT id, 4, effectid4, effect_base_value4 FROM spells_new WHERE effectid4 IN (216,184) AND effect_base_value4 < 0;
+
+UPDATE spells_new SET effectid1 = 254, effect_base_value1 = 0 WHERE effectid1 IN (216,184) AND effect_base_value1 < 0;
+UPDATE spells_new SET effectid2 = 254, effect_base_value2 = 0 WHERE effectid2 IN (216,184) AND effect_base_value2 < 0;
+UPDATE spells_new SET effectid3 = 254, effect_base_value3 = 0 WHERE effectid3 IN (216,184) AND effect_base_value3 < 0;
+UPDATE spells_new SET effectid4 = 254, effect_base_value4 = 0 WHERE effectid4 IN (216,184) AND effect_base_value4 < 0;
+UPDATE spells_new SET effectid5 = 254, effect_base_value5 = 0 WHERE effectid5 IN (216,184) AND effect_base_value5 < 0;
+UPDATE spells_new SET effectid6 = 254, effect_base_value6 = 0 WHERE effectid6 IN (216,184) AND effect_base_value6 < 0;
+UPDATE spells_new SET effectid7 = 254, effect_base_value7 = 0 WHERE effectid7 IN (216,184) AND effect_base_value7 < 0;
+UPDATE spells_new SET effectid8 = 254, effect_base_value8 = 0 WHERE effectid8 IN (216,184) AND effect_base_value8 < 0;
+UPDATE spells_new SET effectid9 = 254, effect_base_value9 = 0 WHERE effectid9 IN (216,184) AND effect_base_value9 < 0;
+UPDATE spells_new SET effectid10 = 254, effect_base_value10 = 0 WHERE effectid10 IN (216,184) AND effect_base_value10 < 0;
+UPDATE spells_new SET effectid11 = 254, effect_base_value11 = 0 WHERE effectid11 IN (216,184) AND effect_base_value11 < 0;
+UPDATE spells_new SET effectid12 = 254, effect_base_value12 = 0 WHERE effectid12 IN (216,184) AND effect_base_value12 < 0;
+)",
+		.content_schema_update = false,
+	},
+
+	ManifestEntry{
+		.version     = 46,
+		.description = "2026_08_09_aotv4_fix_crit_aura_skill_limit",
+		// ⚠️⚠️ THE ROGUE AND BERSERKER AURAS WERE APPLYING THEIR CRIT BONUS TO **1H BLUNT ONLY**.
+		// Reported as "did 2 full swarm delves for each aura and not a single crit ... either stupid
+		// unlucky or they don't work". Not luck -- structurally impossible.
+		//
+		// SPA 169 CriticalHitChance and SPA 330 CriticalDamageMob both use `limit_value` to select
+		// WHICH SKILL the bonus applies to (zone/bonuses.cpp:1114 and :1124):
+		//     if (limit_value == ALL_SKILLS) CriticalHitChance[HIGHEST_SKILL + 1] += base_value;
+		//     else                           CriticalHitChance[limit_value]       += base_value;
+		// `ALL_SKILLS` is **-1** (common/skills.h:156). Both auras shipped with limit **0**, and skill
+		// 0 is **Skill1HBlunt** -- so a Rogue swinging a dagger (1H Piercing) got nothing at all.
+		//
+		// ⚠️⚠️ AND IT IS WORSE THAN A MISSING 2 PERCENT, BECAUSE OF HOW THE CRIT GATE WORKS.
+		// Mob::TryCriticalHit wraps the entire crit roll in `if (innate_crit || crit_chance)`, and a
+		// Rogue has no innate MELEE crit (innate is Warrior/Berserker melee, Ranger archery, Rogue
+		// THROWING). With the bonus landing on the wrong skill, crit_chance is 0 and the block never
+		// runs -- the character can never critical at all. Fixed, it goes from 0 to roughly 8-9
+		// percent, because the bonus is a MODIFIER ON THE DEX ROLL (`dex_bonus += dex_bonus * chance
+		// / 100`) rather than a flat percentage. That is why 2 is a sensible number there and would
+		// not be as a flat crit rate.
+		//
+		// 📌 43561 Aura of the Arcane is NOT touched and is NOT broken: SPA 294 CriticalSpellChance
+		// ignores limit_value entirely and adds straight to the bonus (bonuses.cpp:1150), so its 2
+		// percent has been applying the whole time. It is simply small -- Spells:BaseCritChance is 0,
+		// so 2 percent IS the whole crit chance for every caster except a Wizard (who has 5-7 percent
+		// innate at level 12+ via Spells:WizCritChance). Deliberately left at 2: the aura is GROUP
+		// SHARED, so any number here is granted to every caster in the group at once, and raising it
+		// is spell-crit creep multiplied by group size.
+		// 📌 The other 13 auras were checked -- no other one passes a skill-limited SPA.
+		.check       = "SELECT id FROM spells_new WHERE id IN (43558, 43565) AND effect_limit_value1 <> -1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE spells_new SET effect_limit_value1 = -1 WHERE id IN (43558, 43565);
+)",
+		.content_schema_update = false,
+	},	ManifestEntry{
+		.version     = 47,
+		.description = "2026_08_09_aotv4_zone_exp_multipliers",
+		// A hunting-zone experience pass: hub cities 1.5x, open dungeons 3-8x, the Resplendent hub 0.
+		//
+		// ⚠️⚠️ THIS WAS SUPPLIED AS `REPLACE INTO zone` AND WAS DELIBERATELY NOT APPLIED THAT WAY.
+		// REPLACE deletes the row and re-inserts it, so every column absent from the supplied values is
+		// reset -- section 35 records this exact trap. The supplied file set
+		// **bypass_expansion_check = 0 on all 134 rows**, and the six DoN delve zones (delvea, delveb,
+		// stillmoona, stillmoonb, thundercrest, thenest) rely on that flag being **1**: they are
+		// expansion 9 on a Classic server, so clearing it makes every one of them refuse entry with
+		// "part of an expansion that you do not yet own" -- restoring the exact bug migration v37
+		// fixed, across half the delve ladder, and invisibly to any GM (zone/zoning.cpp:367 exempts
+		// them). It also put `thenest` version 0 back to `min_level = 66`, which is a second refusal
+		// path at a level 30 cap.
+		// 📌 So only the ONE column the change is actually about is applied here. Everything else on
+		// those 134 rows is left exactly as it is.
+		//
+		// ⚠️ Matched on (short_name, version), not on `id` -- zone ids are not stable across content
+		// imports and several of these zones have many version rows. All 134 supplied rows resolve to
+		// a real zone row; 66 of them differ from what is already there.
+		// ⚠️ `zone_exp_multiplier` multiplies NORMAL xp, AA xp AND group xp (zone/exp.cpp:130, :294,
+		// :443) -- it is not just a kill-xp knob.
+		// 📌 The delve zones are all set to 1.00 here, which agrees with migration v16: DoN ships
+		// 2.90-3.10 and that was normalised precisely so a delve kill is worth an equivalent
+		// open-world kill. No conflict.
+		// ⚠️⚠️ `resplendent` is set to **0.00**, which means NO experience of any kind in the hub --
+		// including quest and task rewards, since the multiplier is applied to all three paths above.
+		// That is presumably intended for a safe hub with no mobs, but it is worth knowing it is not
+		// merely "no kill xp".
+		// 📌 Highest values supplied: kedge 8, sleeper 8, frozenshadow 7, firiona 5, kaesora 5.
+		// ⚠️ Zone config is read at ZONE BOOT and is not shared memory -- restart zones, no
+		// ./shared_memory run needed.
+		.check       = "SELECT z.short_name FROM zone z WHERE (z.short_name = 'resplendent' AND z.version = 0 AND z.zone_exp_multiplier <> 0.00) OR (z.short_name = 'kedge' AND z.version = 0 AND z.zone_exp_multiplier <> 8.00) LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+DROP TEMPORARY TABLE IF EXISTS aotv4_zone_exp;
+CREATE TEMPORARY TABLE aotv4_zone_exp (sn VARCHAR(32), ver INT, mult DECIMAL(6,2), PRIMARY KEY (sn, ver));
+INSERT INTO aotv4_zone_exp (sn, ver, mult) VALUES
+  ('stillmoona',0,1.0), ('stillmoona',1,1.0), ('stillmoona',2,1.0), ('stillmoona',3,1.0),
+  ('stillmoona',4,1.0), ('stillmoona',5,1.0), ('stillmoona',6,1.0), ('stillmoona',7,1.0),
+  ('stillmoona',8,1.0), ('stillmoona',9,1.0), ('stillmoonb',0,1.0), ('stillmoonb',1,1.0),
+  ('stillmoonb',2,1.0), ('stillmoonb',3,1.0), ('stillmoonb',4,1.0), ('stillmoonb',5,1.0),
+  ('stillmoonb',6,1.0), ('stillmoonb',7,1.0), ('thundercrest',0,1.0), ('thundercrest',1,1.0),
+  ('thundercrest',2,1.0), ('thundercrest',3,1.0), ('thundercrest',4,1.0), ('thundercrest',5,1.0),
+  ('thundercrest',6,1.0), ('thundercrest',7,1.0), ('thundercrest',8,1.0), ('thundercrest',9,1.0),
+  ('thundercrest',10,1.0), ('thundercrest',11,1.0), ('thundercrest',12,1.0), ('thundercrest',13,1.0),
+  ('thundercrest',14,1.0), ('thundercrest',15,1.0), ('delvea',0,1.0), ('delvea',1,1.0),
+  ('delvea',2,1.0), ('delvea',3,1.0), ('delvea',4,1.0), ('delvea',5,1.0),
+  ('delvea',6,1.0), ('delvea',7,1.0), ('delvea',8,1.0), ('delvea',9,1.0),
+  ('delveb',0,1.0), ('delveb',1,1.0), ('delveb',2,1.0), ('delveb',4,1.0),
+  ('delveb',3,1.0), ('delveb',5,1.0), ('delveb',6,1.0), ('thenest',0,1.0),
+  ('thenest',3,1.0), ('thenest',1,1.0), ('thenest',4,1.0), ('thenest',5,1.0),
+  ('thenest',6,1.0), ('thenest',7,1.0), ('thenest',8,1.0), ('thenest',9,1.0),
+  ('thenest',10,1.0), ('thenest',11,1.0), ('thenest',12,1.0), ('thenest',13,1.0),
+  ('thenest',14,1.0), ('thenest',15,1.0), ('thenest',16,1.0), ('resplendent',0,0.0),
+  ('gfaydark',0,1.5), ('lfaydark',0,1.5), ('crushbone',0,3.0), ('mistmoore',0,3.25),
+  ('unrest',0,4.0), ('kedge',0,8.0), ('butcher',0,1.5), ('cauldron',0,3.5),
+  ('freportn',0,1.5), ('freportw',0,1.5), ('freporte',0,1.5), ('runnyeye',0,4.0),
+  ('beholder',0,3.0), ('rivervale',0,1.5), ('kithicor',0,3.0), ('commons',0,1.5),
+  ('ecommons',0,1.5), ('misty',0,1.5), ('nro',0,2.0), ('sro',0,2.0),
+  ('befallen',0,3.5), ('oasis',0,2.0), ('oot',0,2.0), ('hateplaneb',0,4.0),
+  ('iceclad',0,3.0), ('frozenshadow',0,7.0), ('velketor',0,4.0), ('thurgadina',0,1.5),
+  ('eastwastes',0,2.5), ('greatdivide',0,3.5), ('crystal',0,3.0), ('sleeper',0,8.0),
+  ('thurgadinb',0,3.0), ('droga',1,3.0), ('droga',0,3.0), ('firiona',0,5.0),
+  ('dreadlands',0,3.0), ('frontiermtns',0,2.5), ('timorous',0,4.0), ('karnor',0,2.5),
+  ('nurga',1,3.0), ('nurga',0,3.0), ('qeynos',0,1.5), ('qeynos2',0,1.5),
+  ('qrg',0,1.5), ('qeytoqrg',0,2.0), ('qey2hh1',0,2.0), ('northkarana',0,2.5),
+  ('southkarana',0,2.25), ('eastkarana',0,2.0), ('blackburrow',0,3.0), ('paw',1,3.5),
+  ('paw',0,3.5), ('qcat',0,2.0), ('rathemtn',0,4.0), ('lakerathe',0,4.0),
+  ('fieldofbone',0,2.0), ('warslikswood',0,2.0), ('cabwest',0,1.5), ('swampofnohope',0,2.0),
+  ('lakeofillomen',0,2.0), ('kaesora',0,5.0), ('kurn',0,3.0), ('dalnir',0,4.0),
+  ('cabeast',0,1.5), ('veksar',0,3.0);
+
+UPDATE zone z
+  JOIN aotv4_zone_exp t ON t.sn = z.short_name AND t.ver = z.version
+   SET z.zone_exp_multiplier = t.mult;
+
+DROP TEMPORARY TABLE aotv4_zone_exp;
+)",
+		.content_schema_update = false,
+	},	ManifestEntry{
+		.version     = 48,
+		.description = "2026_08_09_aotv4_item_rebalance",
+		// The 2026-08-09 item pass, in one place. Four changes, all on `items`:
+		//   1. TWO-HANDED DAMAGE NERF -- 938 weapons, roughly -15 percent
+		//   2. RANGED WEAPON RANGE normalised to 5
+		//   3. STATS STRIPPED from items you cannot equip
+		//   4. The tradeskill reward gear forced back to NO DROP
+		//
+		// ⚠️⚠️ THESE ARRIVED AS A 161MB `REPLACE INTO items` DUMP AND MUST NEVER BE APPLIED THAT WAY.
+		// That dump (aot_npcs_items_1.0.0.sql) carried a live `USE `peq`;` on line 20, which overrides
+		// the database named on the mysql command line -- loading it into a scratch schema applied it
+		// to the real one. It also predated a fortnight of work, so REPLACE silently reverted:
+		// craft sockets on 8,887 rows, the tradeskill gear rework (v29/v30), and the gear-tier in-place
+		// edits (loregroup on 37,576 rows). Its ACTUAL payload was only the four items above.
+		// 📌 Diffing that dump against a database it has already been loaded into proves nothing -- it
+		// matches itself. Compare against a PRE-IMPORT backup (build/bin/backups/peq-YYYY-MM-DD.tar.gz,
+		// which world writes before every migration run) or the comparison is worthless.
+		//
+		// ============================================================================================
+		// 1. TWO-HANDED DAMAGE
+		// ============================================================================================
+		// 938 base weapons: 2H Blunt 402 (avg 109.6 -> 92.7), 2H Slash 400 (110.0 -> 93.1),
+		// 2H Pierce 136 (94.4 -> 80.1). Every one is a reduction; none is a buff.
+		// ⚠️ Only BASE ids are listed. The Hallowed and Mythic copies are DERIVED
+		// (floor(1.5x) and 2x) and must be regenerated afterwards -- see the deployment note below.
+		// Setting tier damage here as well would create two sources of truth for the same number.
+		//
+		// ============================================================================================
+		// 2. RANGED WEAPON RANGE
+		// ============================================================================================
+		// Every archery (5), arrow (19) and throwing (27) item is set to `range` = 5.
+		// ⚠️⚠️ THE VALUE IS 5, NOT 0. The supplied dump zeroed 735 of them, and a range of 0 makes the
+		// weapon unusable rather than short-ranged. Written as "normalise every ranged item to 5"
+		// rather than "fix the 735 that were zeroed", because the latter is not reproducible on a
+		// server that never had the dump applied -- and it also sweeps up 13 items that were already
+		// sitting at 0 beforehand (Honed Obsidian War Bow and three bane arrows among them).
+		// 📌 This pairs with AoT:BowMinRangeIsMeleeRange (section 39): bows already fire inside melee
+		// range, so a short maximum range is the coherent other half of that design.
+		//
+		// ============================================================================================
+		// 3. STATS ON NON-EQUIPPABLE ITEMS
+		// ============================================================================================
+		// Anything with `slots = 0` loses ac/hp/mana/endur, the seven core stats and the five resists.
+		// 6,012 rows: 2,362 misc components, 1,871 food, 1,171 reagents, 338 spell scrolls, 152 drink,
+		// 35 keys, 32 books. None of it was reachable -- stats on an item you cannot wear do nothing.
+		//
+		// ⚠️⚠️ TWO EXCLUSIONS, AND BOTH ARE LOAD BEARING:
+		//   * `augtype > 0` -- an AUGMENT legitimately carries stats with no wearable slot; that is its
+		//     entire purpose. 9,324 augments qualify, including all 316 delve augments.
+		//   * NOT IN `tribute_levels` -- **144 tribute items have `slots = 0` and their stats ARE
+		//     delivered**. Section 6 records that tributes are not a separate mechanism: CalcBonuses
+		//     resolves a tribute to an ITEM and runs it through AddItemBonuses(..., is_tribute = true).
+		//     Stripping them silently zeroes the entire tribute system -- no error, no message, and
+		//     nothing in game to connect the cause to the effect.
+		// ⚠️ Scoped `id < 300000` so tier copies are left to the tier script, which regenerates them.
+		//
+		// ============================================================================================
+		// 4. TRADESKILL REWARD GEAR BACK TO NO DROP
+		// ============================================================================================
+		// ⚠️⚠️ `nodrop = 0` MEANS NO DROP -- THE FLAG IS INVERTED (section 32, client_packet.cpp:10755
+		// tests `NoDrop == 0`). All 36 pieces had flipped to 1, i.e. TRADEABLE, so an earned reward
+		// could be handed to somebody who had not earned it. This is the second time that exact flag
+		// has bitten on these same items.
+		//
+		// ⚠️⚠️⚠️ DEPLOYMENT -- THIS MIGRATION IS NOT SUFFICIENT ON ITS OWN. After it applies, run in
+		// this order (section 35), or Hallowed and Mythic weapons keep PRE-NERF damage while the row
+		// counts look perfectly healthy:
+		//     1. custom/sql/aotv4_gear_tiers.sql     (regenerates both tiers from the new native data)
+		//     2. custom/sql/aotv4_craft_sockets.sql  (must follow -- the regen drops tier sockets)
+		//     3. UPDATE items SET nodrop = 0 WHERE id BETWEEN 147930 AND 147965;   (the tier script
+		//        sets nodrop across its scope; re-assert afterwards)
+		//     4. stop the stack, ./shared_memory, restart   (`items` is shared memory)
+		// ⚠️ VERIFY BY RATIO, NEVER BY ROW COUNT: `Mythic damage = 2x base`, `Hallowed = floor(1.5x)`,
+		// and `Mythic damage <> Hallowed damage` -- section 35 records 3,166 Mythics once having LESS
+		// AC than their own base while every count looked correct.
+		.check       = "SELECT id FROM items WHERE id = 25615 AND damage <> 33",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+DROP TEMPORARY TABLE IF EXISTS aotv4_2h_nerf;
+CREATE TEMPORARY TABLE aotv4_2h_nerf (id INT PRIMARY KEY, dmg INT);
+INSERT INTO aotv4_2h_nerf (id, dmg) VALUES
+  (1173,54), (1715,50), (1738,30), (1868,62), (2100,64), (2580,184), (2894,55), (2909,48),
+  (2928,62), (2931,53), (3349,85), (3352,40), (3353,48), (3355,60), (3368,59), (3372,17),
+  (3375,91), (3379,99), (3434,83), (3437,75), (3616,61), (3811,66), (5005,29), (5006,19),
+  (5010,26), (5011,28), (5012,30), (5024,24), (5025,21), (5030,28), (5031,31), (5035,18),
+  (5036,29), (5037,28), (5049,15), (5052,41), (5053,47), (5054,60), (5062,23), (5070,14),
+  (5115,45), (5162,116), (5203,53), (5301,19), (5304,41), (5308,72), (5312,19), (5322,48),
+  (5351,68), (5356,38), (5358,73), (5359,78), (5361,49), (5362,64), (5365,38), (5391,41),
+  (5392,170), (5401,102), (5404,79), (5407,94), (5411,91), (5412,117), (5424,88), (5518,57),
+  (5519,49), (5531,94), (5603,190), (5604,160), (5606,209), (5607,135), (5608,96), (5609,127),
+  (5610,98), (5611,38), (5612,121), (5613,54), (5615,102), (5617,65), (5619,79), (5620,128),
+  (5621,65), (5622,140), (5623,87), (5624,139), (5625,145), (5626,77), (5627,54), (5629,107),
+  (5630,38), (5631,48), (5632,33), (5633,29), (5657,74), (5658,113), (5659,68), (5662,131),
+  (5663,131), (5664,117), (5667,235), (5674,40), (5675,37), (5676,154), (5708,161), (5709,145),
+  (5710,151), (5818,141), (5840,197), (6004,16), (6005,19), (6013,19), (6020,24), (6021,37),
+  (6200,146), (6205,98), (6300,28), (6302,66), (6310,21), (6312,29), (6321,58), (6322,28),
+  (6327,33), (6352,48), (6353,114), (6377,49), (6383,90), (6405,33), (6406,35), (6591,86),
+  (6635,102), (6636,156), (6637,132), (6638,128), (6639,38), (6640,65), (6641,51), (6642,56),
+  (6644,58), (6645,48), (6646,110), (6647,119), (6649,55), (6650,26), (6651,61), (6652,89),
+  (6653,97), (6654,89), (6656,77), (6657,77), (6658,74), (6661,31), (6662,30), (6663,41),
+  (6664,31), (6665,27), (6667,205), (6668,180), (6669,165), (6670,145), (6671,198), (6673,84),
+  (6674,62), (6675,68), (6676,41), (6677,34), (6678,61), (6680,54), (6681,83), (6682,70),
+  (6683,66), (6684,70), (6685,108), (6686,111), (6693,132), (6715,73), (6722,53), (6905,31),
+  (6908,36), (6912,51), (6914,41), (6921,48), (6935,226), (6938,38), (7056,67), (7069,34),
+  (7174,109), (7178,109), (7518,102), (7539,95), (7560,125), (7561,108), (7562,125), (7579,97),
+  (7795,89), (7800,117), (7896,23), (7900,34), (7901,40), (7902,186), (7907,168), (7932,133),
+  (7933,31), (7956,144), (8100,116), (8137,318), (8312,83), (8350,118), (8741,106), (8745,129),
+  (8900,102), (10686,91), (10844,140), (10858,164), (10891,139), (10892,221), (10904,64), (10914,215),
+  (10994,23), (11028,117), (11050,155), (11058,113), (11536,25), (11537,29), (11539,30), (11540,25),
+  (11543,120), (11546,30), (11550,57), (11559,142), (11564,94), (11566,41), (11567,41), (11569,59),
+  (11608,169), (11609,152), (11611,129), (11628,180), (11629,147), (11647,142), (11649,162), (11662,161),
+  (11665,142), (11667,154), (11891,32), (11895,40), (11896,47), (11900,36), (11901,32), (11907,20),
+  (11927,44), (11955,26), (11973,102), (11977,80), (12526,40), (12530,50), (12531,58), (12540,70),
+  (12544,88), (12545,103), (12762,17), (12842,54), (12870,14), (13314,123), (13324,38), (13815,42),
+  (14383,158), (14840,78), (14841,78), (14842,76), (14844,44), (14849,31), (14865,80), (20711,105),
+  (20725,172), (20753,112), (20779,132), (20792,192), (20870,137), (20983,106), (21504,25), (21515,35),
+  (21516,32), (21526,36), (21527,45), (21531,36), (21532,42), (21542,36), (21543,35), (21570,33),
+  (21846,104), (21980,78), (22817,104), (22818,144), (22820,191), (22906,33), (22910,32), (24589,144),
+  (24618,185), (24624,219), (24628,140), (24640,180), (24642,200), (24648,165), (24707,15), (24728,124),
+  (24778,125), (24780,128), (24782,97), (24783,136), (24785,100), (24787,135), (24789,175), (24790,153),
+  (24791,101), (24793,149), (24799,110), (24879,186), (24882,111), (24891,106), (24998,91), (24999,152),
+  (25002,73), (25004,110), (25079,151), (25083,120), (25175,20), (25186,160), (25189,159), (25196,167),
+  (25204,137), (25220,136), (25222,117), (25223,140), (25226,99), (25227,130), (25228,174), (25313,56),
+  (25449,77), (25560,60), (25582,61), (25595,73), (25600,156), (25604,44), (25615,33), (25616,14),
+  (25647,39), (25800,117), (25843,82), (25847,86), (25848,130), (25849,97), (25860,126), (25979,165),
+  (25980,101), (25981,112), (25982,144), (25983,135), (25986,267), (25987,155), (25989,158), (25991,204),
+  (25994,99), (25996,137), (25997,160), (25999,154), (26001,116), (26007,88), (26030,99), (26031,194),
+  (26032,139), (26036,242), (26038,99), (26039,159), (26041,122), (26043,144), (26045,153), (26046,129),
+  (26049,158), (26079,103), (26081,146), (26083,91), (26085,164), (26086,196), (26087,163), (26092,167),
+  (26095,90), (26509,203), (26520,183), (26525,108), (26587,175), (26598,167), (26599,123), (26738,93),
+  (27037,101), (27038,129), (27039,121), (27040,118), (27041,116), (27042,134), (27043,131), (27044,127),
+  (27045,121), (27046,59), (27047,104), (27048,116), (27049,111), (27050,121), (27051,103), (27052,114),
+  (27053,129), (27054,123), (27055,132), (27056,59), (27057,104), (27058,131), (27059,119), (27060,115),
+  (27061,115), (27062,134), (27063,126), (27064,123), (27065,121), (27066,59), (27077,101), (27078,126),
+  (27079,124), (27080,122), (27081,121), (27082,132), (27083,125), (27084,97), (27085,124), (27086,59),
+  (27303,73), (27304,73), (27305,73), (27307,73), (27323,76), (27324,75), (27325,76), (27327,75),
+  (27737,117), (27748,151), (27795,67), (27799,67), (27913,171), (27914,142), (27915,132), (27917,178),
+  (27918,145), (27919,158), (27920,160), (27921,157), (27922,100), (27923,75), (27924,116), (27925,113),
+  (27928,66), (27949,160), (27961,153), (28576,54), (28583,52), (28747,79), (28763,124), (28814,160),
+  (28817,31), (28824,172), (28825,185), (28826,136), (28838,126), (28845,171), (28846,110), (28849,130),
+  (28850,139), (28852,170), (28941,171), (28961,176), (28969,179), (28974,161), (29098,70), (29118,40),
+  (29121,156), (29172,173), (29232,21), (29237,18), (29242,35), (29283,68), (29288,55), (29327,207),
+  (29408,139), (29413,122), (29423,73), (29424,73), (29425,75), (29427,73), (29434,73), (29436,76),
+  (29437,73), (29440,75), (29603,92), (29608,71), (29631,22), (29643,102), (29679,94), (29871,89),
+  (30101,38), (30201,19), (30206,29), (30211,42), (30216,29), (30220,96), (30265,29), (30277,32),
+  (30503,84), (30511,71), (30530,168), (31209,120), (31232,195), (31242,137), (31305,160), (31317,172),
+  (31344,185), (31350,154), (31356,189), (31375,173), (31383,192), (31395,192), (31398,180), (31415,186),
+  (31747,51), (31795,94), (31822,58), (32148,112), (32152,14), (32174,132), (32175,168), (32197,97),
+  (32198,51), (32199,91), (32200,69), (32305,130), (32330,129), (32331,162), (39152,146), (39254,178),
+  (39261,213), (39294,149), (40030,97), (40032,55), (40033,133), (40034,79), (40035,141), (40036,74),
+  (40037,124), (40038,146), (40039,111), (40206,177), (40321,63), (45064,38), (45065,20), (45073,31),
+  (45074,33), (45078,36), (45079,37), (45087,51), (45088,51), (45092,76), (45093,61), (45101,79),
+  (45102,67), (45106,91), (45107,76), (45115,119), (45116,138), (45120,130), (45121,116), (45129,185),
+  (45130,130), (45134,134), (45135,134), (46089,47), (46167,36), (46185,194), (46240,33), (46250,49),
+  (46321,122), (46357,90), (46390,128), (46407,129), (46453,140), (46498,185), (46740,92), (47261,127),
+  (47262,133), (47263,142), (47264,150), (47320,148), (47321,150), (47322,173), (47323,164), (47324,189),
+  (51261,113), (52058,139), (52163,177), (52168,140), (52510,104), (55234,158), (55262,98), (58911,26),
+  (58912,26), (58913,26), (58914,29), (58915,66), (58916,65), (58917,35), (58918,27), (58919,27),
+  (58920,32), (58921,34), (58922,63), (58923,60), (58924,37), (58926,33), (58933,33), (58934,60),
+  (58935,33), (58936,60), (58937,60), (58938,43), (58939,44), (58941,45), (58948,39), (58949,39),
+  (58950,35), (58951,46), (58952,46), (58953,43), (58954,50), (58955,58), (58956,49), (58969,29),
+  (58970,31), (58971,30), (58972,32), (58973,33), (58974,33), (58975,37), (58976,29), (58977,30),
+  (58978,36), (58979,36), (58980,36), (58981,40), (58982,39), (58983,39), (58984,41), (58991,37),
+  (58992,36), (58993,36), (58994,42), (58995,44), (58996,45), (58997,47), (58998,46), (58999,47),
+  (59953,11), (62118,23), (62122,30), (62148,53), (62149,27), (62169,53), (62171,29), (62187,47),
+  (62189,42), (62280,112), (62437,193), (62438,146), (63177,54), (63178,41), (63179,37), (63180,49),
+  (63181,49), (63182,46), (63183,52), (63184,51), (63185,46), (63412,26), (63413,28), (63414,28),
+  (63415,29), (63416,32), (63417,32), (63418,35), (63419,27), (63420,27), (63421,32), (63422,34),
+  (63423,34), (63424,37), (63425,37), (63427,43), (63434,33), (63435,36), (63437,41), (63438,60),
+  (63439,43), (63440,44), (63442,43), (63449,57), (63450,55), (63451,50), (63452,46), (63453,45),
+  (63454,43), (63455,50), (63456,50), (63457,50), (63470,29), (63471,30), (63472,30), (63473,32),
+  (63474,34), (63475,33), (63476,37), (63478,30), (63479,36), (63480,36), (63481,36), (63482,41),
+  (63483,41), (63484,39), (63485,45), (63492,36), (63493,36), (63494,36), (63495,44), (63496,44),
+  (63497,45), (63498,47), (63499,46), (63500,46), (63507,41), (63508,41), (63509,37), (63510,47),
+  (63511,47), (63512,46), (63513,51), (63514,52), (63515,48), (63644,26), (63645,28), (63646,28),
+  (63647,29), (63648,30), (63649,32), (63650,35), (63651,27), (63652,27), (63653,32), (63654,34),
+  (63655,34), (63656,37), (63657,37), (63658,37), (63659,42), (63666,35), (63667,33), (63668,33),
+  (63669,42), (63670,41), (63671,43), (63672,44), (63673,44), (63674,45), (63681,39), (63682,39),
+  (63683,36), (63684,45), (63685,46), (63686,43), (63687,50), (63688,50), (63689,44), (63702,29),
+  (63703,30), (63704,31), (63705,32), (63706,34), (63707,34), (63708,37), (63709,30), (63710,30),
+  (63711,36), (63712,36), (63713,36), (63714,41), (63715,39), (63716,39), (63717,43), (63724,37),
+  (63725,37), (63726,35), (63727,44), (63729,45), (63730,46), (63731,45), (63732,46), (63739,40),
+  (63740,54), (63741,36), (63742,49), (63743,47), (63744,44), (63745,52), (63746,52), (63747,46),
+  (65506,46), (65510,57), (65549,87), (65550,53), (67186,102), (67286,80), (67287,61), (67290,48),
+  (67291,36), (67383,17), (68199,165), (68262,176), (68266,26), (68268,34), (68359,91), (68368,200),
+  (68369,98), (68439,153), (68442,139), (68506,120), (68570,161), (68659,201), (68741,195), (68771,107),
+  (68838,149), (68932,115), (68941,68), (68947,72), (69043,188), (69044,153), (69057,173), (69096,153),
+  (69112,165), (69113,186), (69117,204), (69245,37), (69297,83), (69408,150), (69410,225), (69411,158),
+  (69420,130), (69423,157), (69427,162), (70007,114), (70017,91), (70065,161), (70103,117), (70128,170),
+  (70138,157), (70161,138), (70214,113), (70228,155), (70251,152), (70275,135), (70318,172), (70494,143),
+  (70520,158), (70530,138), (70555,150), (70564,157), (70575,132), (70590,137), (70612,142), (70627,149),
+  (70647,166), (70667,164), (70709,218), (71243,77), (71338,126), (71378,15), (71468,13), (71512,15),
+  (71537,62), (71547,146), (71555,21), (71595,14), (71617,24), (71637,87), (71653,144), (71663,125),
+  (71673,157), (82726,164), (82734,119), (82955,25), (82956,20), (83239,88), (83264,129), (83283,137),
+  (83304,176), (83324,183), (83367,155), (83401,174), (83453,178), (83482,157), (88088,128), (89310,87),
+  (89350,151), (89530,176), (89781,134), (101056,146), (101167,184), (101173,173), (101247,182), (101344,181),
+  (101346,155), (102821,82), (109739,207), (110244,177), (110291,191), (110292,155), (110294,196), (110739,207),
+  (110745,210), (110794,173), (111521,180), (120168,197), (120573,221), (120971,205), (121373,220), (127325,217),
+  (128126,248), (128128,245);
+
+UPDATE items i JOIN aotv4_2h_nerf n ON n.id = i.id SET i.damage = n.dmg;
+DROP TEMPORARY TABLE aotv4_2h_nerf;
+
+UPDATE items SET `range` = 5 WHERE itemtype IN (5, 19, 27) AND id < 300000 AND `range` <> 5;
+
+UPDATE items
+   SET ac=0, hp=0, mana=0, endur=0,
+       astr=0, asta=0, aagi=0, adex=0, awis=0, aint=0, acha=0,
+       fr=0, cr=0, dr=0, pr=0, mr=0
+ WHERE slots = 0
+   AND augtype = 0
+   AND id < 300000
+   AND id NOT IN (SELECT item_id FROM tribute_levels)
+   AND (ac>0 OR hp>0 OR mana>0 OR endur>0 OR astr>0 OR asta>0 OR aagi>0 OR adex>0
+        OR awis>0 OR aint>0 OR acha>0 OR fr>0 OR cr>0 OR dr>0 OR pr>0 OR mr>0);
+
+UPDATE items SET nodrop = 0 WHERE id BETWEEN 147930 AND 147965;
+)",
+		.content_schema_update = false,
+	},	ManifestEntry{
+		.version     = 49,
+		.description = "2026_08_09_aotv4_disable_fabled_and_legendary",
+		// Fabled and Legendary NPCs stop spawning. 16 active spawn rows: 10 Fabled and 6 Legendary.
+		//
+		// ⚠️⚠️ THEY ARE WILDLY OUT OF SCALE FOR A LEVEL 30 CAP, AND SOME SIT IN NEWBIE ZONES.
+		// The Legendary set runs level 37-93 and includes A_Legendary_Hill_Giant (72) in **commons**
+		// and A_Legendary_Behemoth (72) in **steamfont** -- both starter hunting zones. The Fabled set
+		// reaches level 75. Nothing at the cap can fight either.
+		//
+		// ⚠️⚠️ `chance = 0` RATHER THAN DELETING ROWS, AND IT IS CORRECT FOR BOTH SPAWN SHAPES:
+		//   * FABLED share a spawngroup with the ordinary version of the mob (2-11 entries per group).
+		//     Zeroing their weight means the normal NPC spawns in their place -- the spawn point stays
+		//     populated, which deleting the row would not guarantee.
+		//   * LEGENDARY are ALONE in their spawngroup (5 of 6) at chance 100. With the only entry at 0
+		//     the weighted pick has nothing to choose and the point simply stays empty, which is the
+		//     intended outcome for a mob that should not exist yet.
+		// So one statement covers both, and no spawn data is destroyed.
+		//
+		// ⚠️ Matched on the NPC NAME, because there is no flag for this -- EQEmu has no fabled/legendary
+		// rule, column or code path; they are ordinary npc_types that happen to be named that way.
+		// Checked: no AoTv4 npc (2000000+) matches either pattern, so nothing of ours is caught.
+		// ⚠️ The npc_types rows are LEFT ALONE. They stay summonable with #npcspawn and can be brought
+		// back by restoring the chances -- this is "off for now", not a deletion.
+		// ⚠️ REVERSIBLE: aotv4_fabled_spawn_backup records (spawngroupID, npcID, chance) first.
+		// ⚠️ Spawn data is read at ZONE BOOT and is not shared memory -- restart zones, no
+		// ./shared_memory run needed.
+		// 📌 If these are ever wanted back, they want a level pass first, not just their chances
+		// restored -- section 24's delve scaling exists because fixed high-level content does not work
+		// at this cap.
+		.check       = "SELECT se.npcID FROM spawnentry se JOIN npc_types n ON n.id = se.npcID WHERE (n.name LIKE '%Fabled%' OR n.name LIKE '%Legendary%') AND se.chance > 0 LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+CREATE TABLE IF NOT EXISTS aotv4_fabled_spawn_backup (
+  spawngroupID INT NOT NULL,
+  npcID        INT NOT NULL,
+  chance       INT NOT NULL,
+  PRIMARY KEY (spawngroupID, npcID)
+);
+
+INSERT IGNORE INTO aotv4_fabled_spawn_backup (spawngroupID, npcID, chance)
+SELECT se.spawngroupID, se.npcID, se.chance
+  FROM spawnentry se JOIN npc_types n ON n.id = se.npcID
+ WHERE n.name LIKE '%Fabled%' OR n.name LIKE '%Legendary%';
+
+UPDATE spawnentry se JOIN npc_types n ON n.id = se.npcID
+   SET se.chance = 0
+ WHERE n.name LIKE '%Fabled%' OR n.name LIKE '%Legendary%';
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

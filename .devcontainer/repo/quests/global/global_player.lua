@@ -363,7 +363,7 @@ local FREE_SKILLS = {
 	12,41,49,54,70,           -- singing + instruments (Bard)
 	9,17,25,27,29,31,32,39,42,67,-- utility (Bind Wound/Disarm Traps/Feign Death/Forage/Hide/Meditate/Mend/Safe Fall/Sneak/Begging)
 	0,1,2,3,36,28,7,51,       -- weapon proficiencies (1H/2H Blunt+Slash, 1H Pierce, H2H, Archery, Throwing)
-	56,57,59,                 -- race/class-locked tradeskills (Make Poison/Tinkering/Alchemy) -- granted so they SHOW in the skill window + are usable (server gates are patched; everyone is a Bard)
+	56,57,59,                 -- stock race/class-locked tradeskills (Make Poison/Tinkering/Alchemy). Granted so they SHOW in the skill window, and the server gates are fully removed as of 2026-08-08: two combine gates in zone/tradeskills.cpp and the GM-TRAINER gate in zone/client_process.cpp. They were opened in the Bard-only era as "or Bard", which the all-classes pivot silently narrowed back to Shaman/Gnome/Rogue + Bard -- see section 14.
 	33,15,19,34,37,11,20,76,22,71 -- passive combat: Offense/Defense/Dodge/Parry/Riposte/Block/Double(20)+Triple(76) Attack/Dual Wield(22)/Intimidation
 }
 local function grant_free_skills(c)
@@ -400,10 +400,24 @@ local TRADESKILLS = {
 	                                                  -- Baking, Tailoring, Blacksmithing, Fletching, Brewing,
 	                                                  -- Jewelry Making, Pottery
 }
+-- ⚠️⚠️ THE FLOOR IS READ FROM THE RULE, NOT HARDCODED, AND IT IS SHARED WITH CHARACTER CREATION.
+-- `Client::SetClassStartingSkills` (world/client.cpp) applies the same floor at creation so a new
+-- character is BORN with it -- this function was running from EVENT_CONNECT, which is after the first
+-- player profile has already been sent, so a new character saw 0 tradeskills until they relogged.
+-- ⚠️ `eq.get_rule` DOES exist (lua_general.cpp binds it, returning a string). A comment elsewhere in
+-- this file claimed otherwise and duplicated a constant as a result; that is how AA:ExpPerPoint
+-- silently drifted 120x (section 35). Read the rule.
+local function tradeskill_floor_value()
+	local ok, v = pcall(function() return tonumber(eq.get_rule("AoT:TradeskillFloor")) end)
+	if ok and v and v > 0 then return v end
+	return 20   -- fallback only if the rule is missing; keep in step with ruletypes.h
+end
+
 local function floor_tradeskills(c)
+	local floor = tradeskill_floor_value()
 	for _, v in ipairs(TRADESKILLS) do
-		if c:CanHaveSkill(v) and c:MaxSkill(v) >= 20 and c:GetRawSkill(v) < 20 then
-			c:SetSkill(v, 20)
+		if c:CanHaveSkill(v) and c:MaxSkill(v) >= floor and c:GetRawSkill(v) < floor then
+			c:SetSkill(v, floor)
 		end
 	end
 end
@@ -737,7 +751,11 @@ function event_death(e)
   -- so a death at cap banks 3 points. That is deliberately small -- three points buys one 2-cost
   -- ability and then a 1-cost one, which is the intended shape of a single death's reward, not a
   -- shopping trip.
-  -- ⚠️ Lua cannot read a rule directly (there is no get_rule binding), so the constant is duplicated
+  -- ⚠️⚠️ `eq.get_rule` DOES exist (lua_general.cpp binds it, returning a string) -- an earlier version of
+  -- this comment claimed it did not, which is why the constant below is duplicated rather than read.
+  -- Section 35 records these two silently drifting 120x apart once already. Prefer eq.get_rule; this
+  -- one is left hardcoded only because it is read inside the death path where a rule miss would be
+  -- worse than a stale number. The constant is duplicated
   -- here. If `AA:ExpPerPoint` is ever retuned, THIS MUST MOVE WITH IT or deaths will pay out at a
   -- rate that no longer matches what experience is worth anywhere else.
   -- ⚠️ run_xp was captured at the TOP of this function, before SetEXP(0, ...) above wiped it. Reading

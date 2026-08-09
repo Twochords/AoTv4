@@ -130,8 +130,39 @@ int Mob::GetBaseSkillDamage(EQ::skills::SkillType skill, Mob *target)
 				return 0;
 			} // return 0 in cases where we don't have an item
 
-			if (ac_bonus > skill_bonus) {
-				ac_bonus = skill_bonus;
+			// ⚠️⚠️ AoTv4: THE AC CONTRIBUTION IS CAPPED AT `skill/10`, AND THAT CAP -- NOT THE DIVISOR --
+			// WAS THE REAL LIMIT. Stock caps the shield's contribution at exactly the skill bonus, so at
+			// 300 skill AC could add at most 30 however good the shield was, and at the stock divisor of
+			// 25 you would have needed 750 AC on one shield to reach even that.
+			// 📌 AoT:BashACCapMultiplier scales the cap; 3 lets AC contribute up to skill/3.3.
+			// ⚠️ The cap must stay SOME multiple of skill_bonus rather than being removed -- it is what
+			// stops a high-AC shield carrying a character who has never trained Bash.
+			const float ac_cap = skill_bonus * static_cast<float>(RuleI(AoT, BashACCapMultiplier));
+			if (ac_bonus > ac_cap) {
+				ac_bonus = ac_cap;
+			}
+
+			// ⚠️⚠️ AND THE SHIELD ITSELF IS WORTH A FLAT PERCENTAGE, BECAUSE AC ALONE CANNOT DO THIS JOB.
+			// The goal is to make carrying a shield attractive, and scaling off AC cannot deliver that
+			// at the bottom of the curve: measured against our OWN items, shields droppable below level
+			// 30 average **6.6 AC** and merchant shields average **6.3** (the earlier "74 average" came
+			// from filtering on `reclevel`, which section 26 records as useless -- classic gear leaves it
+			// 0). At 6 AC the divisor change is literally invisible: 6/25 = 0.24 and 6/2 = 3.0 both
+			// vanish or barely register once `static_cast<int>(ac_bonus + skill_bonus)` truncates.
+			// So AC provides the GRADIENT (a better shield is better) and this provides the FLOOR
+			// (any shield at all is worth carrying). Both are needed; neither works alone here.
+			// ⚠️ Deliberately gated on HasShieldEquipped() rather than on `inst`, so it does NOT apply
+			// to the two-hander path -- a 2H bash is not what this is trying to encourage.
+			// 📌 It raises THREAT as well as damage, and that is intended: DoSpecialAttackDamage seeds
+			// hate from base_damage before adding the shield AC and the x2, so a bigger Bash is a
+			// louder Bash. That is the whole point of shield-and-board.
+			if (IsClient() && HasShieldEquipped()) {
+				const int shield_dmg_pct = RuleI(AoT, BashShieldDamagePct);
+				if (shield_dmg_pct) {
+					base = base * (100 + shield_dmg_pct) / 100;
+					skill_bonus = skill_bonus * (100 + shield_dmg_pct) / 100.0f;
+					ac_bonus    = ac_bonus    * (100 + shield_dmg_pct) / 100.0f;
+				}
 			}
 
 			if (RuleB(Character, ItemExtraSkillDamageCalcAsPercent) && GetSkillDmgAmt(skill) > 0) {
@@ -231,6 +262,32 @@ void Mob::DoSpecialAttackDamage(Mob *who, EQ::skills::SkillType skill, int32 bas
 	if (hate_override > -1)
 		hate = hate_override;
 
+	// ⚠️⚠️ AoTv4: A SPECIAL ADDS NO BONUS THREAT -- EXCEPT BASH/SLAM, WHICH IS THE TANK'S TOOL.
+	// Stock adds a SEPARATE hate packet here (`who->AddToHateList(this, hate, 0)` further down) on top
+	// of the hate the damage itself generates inside Mob::Damage, so every special is worth roughly
+	// double threat for its damage. That quietly makes the damage classes the best threat generators
+	// on the server, which is backwards.
+	//
+	// ⚠️⚠️ THIS CUTS THE *BONUS* THREAT, NOT ALL THREAT. Mob::Damage still generates hate from the
+	// damage dealt a few lines below, and it must -- a Kick that produced literally no threat would
+	// mean hitting something without it noticing. What goes away is the second, additive packet, so a
+	// special now generates threat like any other hit of the same size.
+	//
+	// ⚠️ THE FLOOR IS **1**, NOT 0, DELIBERATELY. Zero is as low as the number goes but it is not the
+	// same kind of value: `AddToHateList(this, 0, 0)` is the "no hate" call used by utility paths, and
+	// leaning on it here would tie this behaviour to whatever that path does next. 1 is the smallest
+	// value that is unambiguously still a hate contribution, and it keeps the attacker on the list in
+	// its own right rather than only via the damage.
+	//
+	// ⚠️⚠️ "SLAM" AND "BASH" ARE THE SAME SKILL. Slam is simply Bash with no shield equipped -- see the
+	// `// SLAM - Bash without a shield equipped` comments in Client::OPCombatAbility. So the exclusion
+	// is one skill id, not two, and testing for a separate Slam skill would find nothing.
+	// 📌 TAUNT is untouched and needs no exception: it has no damage path and never reaches this
+	// function (see section 19), so pure-threat abilities keep working exactly as before.
+	if (skill != EQ::skills::SkillBash && RuleI(AoT, SpecialBonusThreat) > -1) {
+		hate = RuleI(AoT, SpecialBonusThreat);
+	}
+
 	if (skill == EQ::skills::SkillBash) {
 		if (IsClient()) {
 			EQ::ItemInstance *item = CastToClient()->GetInv().GetItem(EQ::invslot::slotSecondary);
@@ -245,6 +302,24 @@ void Mob::DoSpecialAttackDamage(Mob *who, EQ::skills::SkillType skill, int32 bas
 					MessageString(Chat::FocusEffect, GLOWS_RED, itm->Name);
 			}
 		}
+
+		// ⚠️⚠️ AoTv4: BASH/SLAM IS THE ONE SPECIAL THAT *GAINS* THREAT -- x2 by default.
+		// Every other special is floored to a token amount above, so this multiplier is what makes
+		// Bash the threat tool rather than merely the last one left with its stock hate.
+		// ⚠️ APPLIED AFTER the shield AC and Furious Bash focus above, deliberately: those are the
+		// things that make a shield-and-board tank better at holding aggro, and doubling the finished
+		// number scales them too. Multiplying before would double only the base damage and quietly
+		// make the shield bonuses worth half as much as they look.
+		// ⚠️⚠️ IT DOES **NOTHING** FOR A BARE SLAM, AND THAT IS A PROPERTY OF STOCK, NOT OF THIS RULE.
+		// The SLAM branch of Client::OPCombatAbility checks the secondary AND shoulder slots for weapon
+		// damage; with neither it sets `damage = -5` and leaves `hate_override` at **0**, so hate is 0
+		// before this line and 0 * 2 is still 0. GetBaseSkillDamage(SkillBash) agrees independently --
+		// it `return 0`s when there is no shield and no two-hander. So a shieldless slam already did no
+		// damage and generated no threat; the multiplier cannot rescue it.
+		// 📌 Where the x2 DOES apply to a slam is the two-hander case, which resolves an item and so
+		// produces real damage and real hate. If bare slams are ever meant to matter, the fix is in
+		// GetBaseSkillDamage/the SLAM branch, not here.
+		hate = hate * RuleI(AoT, BashThreatMultiplier);
 	}
 
 	my_hit.offense = offense(my_hit.skill);

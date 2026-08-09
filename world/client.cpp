@@ -2186,15 +2186,64 @@ bool CheckCharCreateInfoTitanium(CharCreate_Struct *cc)
 
 void Client::SetClassStartingSkills(PlayerProfile_Struct *pp)
 {
+	// ⚠️⚠️ AoTv4: A CHARACTER IS BORN AT ITS LEVEL-1 CAPS -- INCLUDING THE SKILLS STOCK SKIPS.
+	// Reported as "upon making a new char my skills weren't capped; camping out and logging back in
+	// made them cap". The server was never wrong -- `max_skills_for_level` in global_player.lua does
+	// cap everything -- but it runs from EVENT_CONNECT, which fires in Client::CompleteConnect, and the
+	// player profile has ALREADY been sent to the client by then (Handle_Connect_OP_ZoneEntry). The
+	// client draws its skill sheet from that profile and then receives ~77 OP_SkillUpdate packets in
+	// the middle of the busiest moment of zoning; section 15 records RoF2 dropping exactly that kind of
+	// burst. The database ends up right and the client shows the pre-cap values until the NEXT login
+	// sends a fresh profile. Setting the skills here, at creation, means the very first profile is
+	// already correct and no packet burst is involved.
+	//
+	// ⚠️ Stock skipped Bind Wound and Alcohol Tolerance outright, so they started at 0 and were only
+	// lifted to 1 by grant_free_skills on connect and capped later still. On a server where every class
+	// is granted these anyway there is no reason to defer them.
+	// ⚠️ SPECIALIZED skills are still skipped and that is CORRECT, not an oversight: their cap curve
+	// does not open until the twenties, so GetSkillCap(...,1) is 0 for every class and setting them
+	// here would write 0 over 0. `grant_free_skills` picks them up once MaxSkill() is non-zero.
+	// ⚠️⚠️ TRADESKILLS GET THE FLOOR, NOT THE CAP -- see the second loop below. They are not capped like
+	// a combat skill: section 32 keeps every tradeskill at a floor (AoT:TradeskillFloor, 20) which is
+	// ABOVE the level-1 cap, and that floor is also the one thing the roguelite death does not reset.
+	// 📌 The twelve reward-gated combat specials need no exception: their level-1 cap is 0 for a class
+	// that does not have them natively, so this loop writes 0 and the picker still owns them. Verified
+	// against live characters -- Backstab/Dragon Punch/Tiger Claw are all 0 on every level 1 character.
 	for (uint32 i = 0; i <= EQ::skills::HIGHEST_SKILL; ++i) {
 		if (pp->skills[i] == 0) {
-			// Skip specialized, tradeskills (fishing excluded), Alcohol Tolerance, and Bind Wound
+			// Skip specialized and tradeskills (fishing excluded) -- see the notes above.
 			if (EQ::skills::IsSpecializedSkill((EQ::skills::SkillType)i) ||
-				(EQ::skills::IsTradeskill((EQ::skills::SkillType)i) && i != EQ::skills::SkillFishing) ||
-				i == EQ::skills::SkillAlcoholTolerance || i == EQ::skills::SkillBindWound)
+				(EQ::skills::IsTradeskill((EQ::skills::SkillType)i) && i != EQ::skills::SkillFishing))
 				continue;
 
 			pp->skills[i] = SkillCaps::Instance()->GetSkillCap(pp->class_, (EQ::skills::SkillType)i, 1).cap;
+		}
+	}
+
+	// ⚠️⚠️ AoTv4: TRADESKILLS START AT THE FLOOR, AT CREATION -- not on the first connect.
+	// `floor_tradeskills` in global_player.lua does the same thing from EVENT_CONNECT, which is too
+	// late for the first player profile (see the note above) -- a new character saw 0 across the
+	// tradeskill window until they relogged.
+	// ⚠️ The floor is read from AoT:TradeskillFloor so this and the Lua share ONE number. The Lua reads
+	// it with `eq.get_rule('AoT:TradeskillFloor')`; a comment there previously claimed no such binding
+	// existed and duplicated the constant, which is exactly how AA:ExpPerPoint drifted 120x once
+	// already (section 35).
+	// ⚠️ Only RAISES, never lowers, and only where the class can actually have the skill -- a cap of 0
+	// means "this class cannot have this tradeskill", and writing the floor over that would grant it.
+	// 📌 Fishing is excluded from the skip list above and so already received its level-1 cap; the
+	// floor still applies to it here if that cap was lower.
+	{
+		const int ts_floor = RuleI(AoT, TradeskillFloor);
+		for (uint32 i = 0; i <= EQ::skills::HIGHEST_SKILL; ++i) {
+			if (!EQ::skills::IsTradeskill((EQ::skills::SkillType)i)) {
+				continue;
+			}
+			if (SkillCaps::Instance()->GetSkillCap(pp->class_, (EQ::skills::SkillType)i, 1).cap <= 0) {
+				continue;
+			}
+			if (pp->skills[i] < ts_floor) {
+				pp->skills[i] = ts_floor;
+			}
 		}
 	}
 

@@ -150,6 +150,18 @@ my @RULES = (
                 "ports, gates, binds, evacs, summons -- they also defeat region locking"],
     ["enchant", q{name LIKE 'Enchant %' OR name LIKE 'Mass Enchant %'},
                 "tradeskill material conversion, useless as a reward"],
+    # ⚠️⚠️ FEAR IS PRUNED BECAUSE NOTHING ON THIS SERVER SHOULD RUN. AoT:NPCsNeverFlee (2026-08-08)
+    # stops creatures fleeing from low health, and fear is the OTHER way a mob ends up running -- it
+    # enters through StartFleeing rather than Mob::CheckFlee, so the flee guard deliberately does not
+    # cover it. Removing fear from the pool closes that second door on the player side, and migration
+    # v43 closes it on the NPC side.
+    # ⚠️ NOT purity-tested, unlike illusion/vision/sense/truenorth. Those prune only when the junk
+    # effect is the ONLY thing the spell does, because the junk rides along harmlessly. Fear is
+    # different: a spell that fears AND does something real still makes the target run, which is the
+    # entire behaviour being removed. Presence is the correct test here.
+    # 📌 SPA 23 only. SPA 102 `Fearless` is the OPPOSITE (fear immunity) and stays offerable.
+    ["fear",    spa_in(23),
+                "fear -- mobs running is the behaviour AoT:NPCsNeverFlee exists to remove"],
     # ⚠️ Was slots 1-3 only. A resurrect in slot 4+ was offerable.
     ["rez",     spa_in(81),
                 "resurrection"],

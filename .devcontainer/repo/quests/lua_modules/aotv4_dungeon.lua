@@ -1218,6 +1218,29 @@ function M.on_npc_spawn(e)
         return
     end
 
+    -- ⚠️⚠️ THE LDoN CURSED BARRELS AND CHESTS GO TOO -- 256 distinct npcs over 502 spawns across the
+    -- 33 LDoN maps (`a_barrel`, `a_dark_chest`, `a_dusty_barrel`, `an_ancient_chest`, `a_moldy_chest`
+    -- ...). They are adventure furniture for a system we do not run: in stock LDoN they are trapped
+    -- containers tied to the adventure's own trap/disarm loop, and here they are just unexplained
+    -- objects that can hurt you. The `traps` table rows are handled separately (migration v39,
+    -- min_expansion) -- these are NPCs and content filtering never touches them.
+    --
+    -- ⚠️⚠️⚠️ OUR OWN END-OF-RUN CHEST IS THE SAME CLASS. npc 2000300 an_ornate_delve_chest is
+    -- `class = 62` (Class::LDoNTreasure, common/classes.h:65) because it was cloned from stock
+    -- 119179 a_gilded_chest -- so a class-only sweep DESTROYS THE DELVE REWARD, and it would do it
+    -- silently, at the exact moment the run is won. The `npcid < 2000000` divider is what separates
+    -- them, the same one the race 127 block above uses and for the same reason: everything AoTv4 adds
+    -- lives at 2000000+ while the stock LDoN/DoN npcs are five- and six-digit ids.
+    -- 📌 The CHEST_NPC/BOSS_NPC early-out at the top of this function already returns before here, so
+    -- the divider is defence in depth rather than the only guard. Keep both.
+    -- ⚠️ Monsters merely NAMED "cursed" are NOT touched -- A_Cursed_Guktan, a_cursed_burrower and
+    -- friends are ordinary class 1/2 mobs (700+ spawns) and are exactly what you are meant to fight.
+    -- The test is the CLASS, never the name.
+    if npc:GetClass() == 62 and npcid < 2000000 then
+        npc:Depop()
+        return
+    end
+
     -- ⚠️⚠️ STRIP THE STOCK LOOT. These are Dragons of Norrath zones, so the mobs carry DoN drops --
     -- an expansion the server does not even have unlocked (era caps at OoW, section 12). A level 3
     -- delve was handing out gear from six expansions past anything else in the game, which made the
