@@ -1253,48 +1253,16 @@ int64 Mob::GetWeaponDamage(Mob *against, const EQ::ItemData *weapon_item) {
 	}
 
 	//check to see if our weapons or fists are magical.
-	if (against->GetSpecialAbility(SpecialAbility::MeleeImmunityExceptMagical)) {
-		if (GetSpecialAbility(SpecialAbility::MagicalAttack)) {
-			dmg = 1;
-		}
-		//On live this occurs for ALL NPC's >= 10
-		else if (IsNPC() && GetLevel() >= RuleI(Combat, NPCAttackMagicLevel)) {
-			dmg = 1;
-		}
-		else if (weapon_item) {
-			if (weapon_item->Magic) {
-				if (weapon_item->Damage && (weapon_item->IsType1HWeapon() || weapon_item->IsType2HWeapon())) {
-					dmg = weapon_item->Damage;
-				}
-				//Non weapon items, ie. boots for kick.
-				else if (weapon_item->ItemType == EQ::item::ItemTypeArmor) {
-					dmg = 1;
-				}
-				else {
-					return 0;
-				}
-			}
-			else {
-				return 0;
-			}
-		}
-		else if ((GetClass() == Class::Monk || GetClass() == Class::Beastlord) && GetLevel() >= 30) {
-			dmg = GetHandToHandDamage();
-		}
-		else {
-			return 0;
-		}
+
+	if (weapon_item) {
+		dmg = weapon_item->Damage;
+
+		dmg = dmg <= 0 ? 1 : dmg;
 	}
 	else {
-		if (weapon_item) {
-			dmg = weapon_item->Damage;
-
-			dmg = dmg <= 0 ? 1 : dmg;
-		}
-		else {
-			dmg = GetHandToHandDamage();
-		}
+		dmg = GetHandToHandDamage();
 	}
+
 
 	int eledmg = 0;
 	if (!against->GetSpecialAbility(SpecialAbility::MagicImmunity)) {
