@@ -227,8 +227,16 @@ bool Mob::CastSpell(uint16 spell_id, uint16 target_id, CastingSlot slot,
 		}
 	}
 
+	// ⚠️ SAFETY NET: any cast by a non-Bard also clears a lingering pulse.
+	// Non-Bards no longer enter pulse mode at all -- their songs are cast once, see the note in
+	// CastedSpellFinished -- so this should never find anything to clear. It stays because a stray
+	// pulse on a class with no song UI is invisible and unstoppable, and it costs one comparison.
+	// ⚠️ It does NOT notify the client, per ZeroBardPulseVars' own declaration. That is fine here:
+	// the new cast replaces the client's casting state immediately afterwards.
+	const bool aotv4_non_bard_singer = HasActiveSong() && GetClass() != Class::Bard;
+
 	//Casting a spell from an item click will also stop bard pulse.
-	if (HasActiveSong() && (IsBardSong(spell_id) || slot == CastingSlot::Item)) {
+	if (HasActiveSong() && (IsBardSong(spell_id) || slot == CastingSlot::Item || aotv4_non_bard_singer)) {
 		LogSpells("Casting a new song while singing a song. Killing old song [{}]", bardsong);
 		//Note: this does NOT tell the client
 		ZeroBardPulseVars();
@@ -1511,11 +1519,27 @@ void Mob::CastedSpellFinished(uint16 spell_id, uint32 target_id, CastingSlot slo
 				// fights -- turning those into one-shots would be a real nerf.
 				// ⚠️ The test is IsBeneficialSpell, not "is it in the reward pool": a bard's own stock
 				// buff songs need this exactly as much as an awarded one does.
-				if (IsPulsingBardSong(spell_id) && IsBeneficialSpell(spell_id)) {
+				// ⚠️⚠️ A NON-BARD NEVER SUSTAINS A SONG -- IT IS CAST ONCE, LIKE ANY OTHER SPELL.
+				// Sustaining is Bard machinery end to end: the gem shows "singing", the spell bar stays
+				// locked until the song ends, and you stop by casting another song. A class with one
+				// awarded song has none of that, and trying to bolt it on failed three separate ways --
+				// the locked bar made the CLIENT refuse to send the stop ("You haven't recovered yet"),
+				// stopping the pulse without OP_InterruptCast left the client frozen (no abilities, no
+				// camping), and re-enabling the bar so the gem could be clicked removed the only visual
+				// cue that a song was running at all, so it pulsed invisibly forever and slowed
+				// everything the player walked past. Reported from play on a Monk with Largo's.
+				// One cast, native duration, done -- the same shape §36 already gave beneficial songs,
+				// for the same reason.
+				// ⚠️ A BARD IS COMPLETELY UNCHANGED: detrimental songs still pulse for them, which is
+				// how a Bard actually fights, and their whole song UI works.
+				// 📌 The cost is that a non-Bard's detrimental song lasts only its native duration
+				// (Largo's is 3 ticks, ~18s) instead of for as long as they sing. That is a coherent
+				// debuff, and it is the trade for it being controllable at all.
+				if (IsPulsingBardSong(spell_id) && (IsBeneficialSpell(spell_id) || GetClass() != Class::Bard)) {
 					aotv4_song_as_buff = true;
 				}
 
-				if (IsPulsingBardSong(spell_id) && !IsBeneficialSpell(spell_id)) {
+				if (IsPulsingBardSong(spell_id) && !IsBeneficialSpell(spell_id) && GetClass() == Class::Bard) {
 					bardsong = spell_id;
 					bardsong_slot = slot;
 
