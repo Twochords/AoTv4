@@ -488,6 +488,22 @@ function event_connect(e)
 	-- tell the client which combat skills are already earned (so the unlock hook reveals them)
 	spell_choice.send_unlocks(e.self)
 
+	-- ⚠️⚠️ AND RE-SEND ANY REWARD STILL OWED. The offer survives a camp in its data bucket, but the
+	-- dll only knows a reward is pending from the SPELLCHOICEDATA line -- so without this, camping
+	-- out and back in left the picker empty and Ctrl+Q refusing to open, until the next level sent a
+	-- fresh line. Reported from play as camping wiping out spell choices. No-ops when nothing is owed.
+	spell_choice.resend_pending(e.self)
+
+	-- ⚠️⚠️ AND THE SAME FOR THE AA OFFER -- THIS WAS MISSING AND IS THE EXACT SAME BUG AS ABOVE.
+	-- The banked points and the pending offer both live in data buckets and survive a relog fine, but
+	-- the dll learns about them ONLY from an AACHOICEDATA line. Without this the Advancement tab comes
+	-- up EMPTY after every login while the bank quietly holds points -- and because the offer is
+	-- STICKY (it only re-rolls when something is picked), the next thing to re-send it was a level up.
+	-- So a player could be sitting on banked AA with no way to see or spend it.
+	-- ⚠️ `reoffer_if_banked` re-sends the CURRENT offer verbatim rather than rolling a new one, which
+	-- is what keeps relogging from reshuffling the options, and it is silent when nothing is pending.
+	aa_choice.reoffer_if_banked(e)
+
 	-- Open the AoT menu (core_aotmenu.cpp). The dll swallows this line.
 	--
 	-- ⚠️ THE SERVER TELLS THE CLIENT IT IS IN THE WORLD; the dll must NOT work that out for itself.
@@ -700,6 +716,38 @@ function event_level_up(e)
   spell_choice.offer(e)
 end
 
+-- ⚠️⚠️ AA POINTS ARRIVE HERE WHEN `AoT:LiveAAExp` IS ON -- this is the ONLY thing that catches them.
+--
+-- `Client::SetEXP` awards AA points the stock way, fires this event with the number gained, and THEN
+-- forces the native unspent pool back to 0 (`AoT:AAPointsToPicker`). So the point exists for exactly
+-- the duration of this handler: if nothing banks it here, the player earns nothing and NOTHING
+-- REPORTS IT -- the engine logged a gain, the native window shows 0, and the picker was never told.
+--
+-- ⚠️ `e.aa_gained` is the count, passed as the event's string data. It is at least 1 whenever this
+-- fires, but a multi-point kill is possible at low level once the carried remainder is large, so it
+-- must be read rather than assumed to be 1.
+-- ⚠️⚠️ GATED ON `AoT:AAPointsToPicker`, NOT ON LiveAAExp, AND THAT IS DELIBERATE. This is the catch
+-- for EVERY route that would otherwise leave a spendable point in the native AA window, not just the
+-- per-kill one: quest scripts calling AddAAPoints, the Lua/Perl SetAAPoints bindings, the `#set
+-- aapoints` GM command, and respec refunds all divert through Client::AoTv4DivertAAPoints and arrive
+-- here. Gate this on LiveAAExp instead and quest-granted AA is destroyed rather than banked, silently.
+-- 📌 Achievements never reach this: the `grant_aa` reward type assigns the ability rank directly,
+-- which is already "just assigned, never an open point to spend".
+function event_aa_gain(e)
+	if not e.self then return end
+	if tostring(eq.get_rule("AoT:AAPointsToPicker")) ~= "true" then return end
+
+	local gained = tonumber(e.aa_gained) or tonumber(e.data) or 0
+	if gained <= 0 then return end
+
+	e.self:Message(MT.Yellow, string.format(
+		"Your experience hardens into %d point%s of advancement.", gained, gained == 1 and "" or "s"))
+	-- ⚠️⚠️ `on_points_banked`, NOT `grant_picks` -- the points are ALREADY in the bank. C++ credits
+	-- aa_bank_<charid> before firing this event precisely so a point can never be lost to this hook
+	-- not running. Calling grant_picks here would add them a second time and double every AA earned.
+	aa_choice.on_points_banked(e, gained)
+end
+
 -- On death, bank ALL experience as Alternate Advancement and restart at level 1 (roguelite).
 -- The random AA window then pops; banked AA scales with how far the run got.
 function event_death(e)
@@ -787,20 +835,33 @@ function event_death(e)
   -- leftover is kept in `aa_xp_<charid>` and added to the next death, so nothing earned is ever lost
   -- and early runs accumulate toward a point instead of evaporating. This is also what makes the
   -- sheet's fractional "AA percent" meaningful rather than decorative.
-  local gained = math.floor((run_xp or 0) * rate)
-  local pool   = (tonumber(eq.get_data("aa_xp_" .. cid)) or 0) + gained
-  local banked = math.floor(pool / AA_EXP_PER_POINT)
-  eq.set_data("aa_xp_" .. cid, tostring(pool - banked * AA_EXP_PER_POINT))
+  -- ⚠️⚠️ THE DEATH LUMP IS PAID ONLY WHEN LIVE AA IS OFF. With `AoT:LiveAAExp` enabled the engine
+  -- already paid this run's experience out as AA *while it was being earned* (1:1, in Client::SetEXP),
+  -- so converting the run total again here would pay the SAME experience twice and roughly double AA
+  -- income. The two are alternatives, never both.
+  -- ⚠️ Nothing is lost by skipping it: the engine carries the partial remainder in `m_pp.expAA`, which
+  -- survives the wipe above exactly as the old `aa_xp_<charid>` bucket did, so a run that ended part
+  -- way to a point still counts toward the next one.
+  -- 📌 `aa_xp_<charid>` is deliberately left in place rather than deleted -- it still holds whatever a
+  -- pre-switch character had banked, and reading it costs nothing.
+  local live_aa = (tostring(eq.get_rule("AoT:LiveAAExp")) == "true")
 
-  if banked > 0 then
-    client:Message(MT.Yellow, string.format(
-      "Your journey is distilled into %d point%s of advancement.", banked, banked == 1 and "" or "s"))
-    aa_choice.grant_picks(e, banked)
-  elseif gained > 0 then
-    -- Tell them it counted even when it did not reach a whole point, or a real run reads as wasted.
-    client:Message(MT.Yellow, string.format(
-      "Your journey leaves its mark. (%d of %d toward your next point of advancement.)",
-      pool, AA_EXP_PER_POINT))
+  if not live_aa then
+    local gained = math.floor((run_xp or 0) * rate)
+    local pool   = (tonumber(eq.get_data("aa_xp_" .. cid)) or 0) + gained
+    local banked = math.floor(pool / AA_EXP_PER_POINT)
+    eq.set_data("aa_xp_" .. cid, tostring(pool - banked * AA_EXP_PER_POINT))
+
+    if banked > 0 then
+      client:Message(MT.Yellow, string.format(
+        "Your journey is distilled into %d point%s of advancement.", banked, banked == 1 and "" or "s"))
+      aa_choice.grant_picks(e, banked)
+    elseif gained > 0 then
+      -- Tell them it counted even when it did not reach a whole point, or a real run reads as wasted.
+      client:Message(MT.Yellow, string.format(
+        "Your journey leaves its mark. (%d of %d toward your next point of advancement.)",
+        pool, AA_EXP_PER_POINT))
+    end
   end
   -- ⚠️ SetEXP above keeps AA exp intact, so anything earned through ordinary AA experience is
   -- untouched by this -- the banked points are a SEPARATE private pool (aa_bank_<charid>) that only

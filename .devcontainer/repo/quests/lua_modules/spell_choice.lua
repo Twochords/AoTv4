@@ -375,6 +375,30 @@ function M.clear_pending(client)
 	eq.set_data(bucket_key(client), "")
 end
 
+-- ⚠️⚠️ RE-SEND A STILL-OWED OFFER ON LOGIN. Call from event_connect.
+--
+-- The offer itself ALREADY survives a camp -- it lives in the `spell_choice_<charid>` data bucket,
+-- which is persistent -- but the CLIENT's knowledge of it does not. The dll learns that a reward is
+-- owed ONLY by receiving a SPELLCHOICEDATA line, so after a relog the picker had nothing to show and
+-- Ctrl+Q refused to open. Reported from play as camping out "wiping out spell choices until you
+-- level again" -- levelling being simply the next thing that sends that line. Nothing was ever lost;
+-- it was unreachable, which is indistinguishable from lost to the player.
+--
+-- ⚠️ Deliberately routed through `refresh_and_show` rather than re-emitting the stored tokens: an
+-- offer sitting in the bucket across a session can contain something the player has since learned
+-- another way, and that helper is the one place that prunes stale tokens, tops the set back up to
+-- CHOICE_COUNT and only then sends. A second emitter here would drift from it -- the same reasoning
+-- that made reroll share build_offer.
+--
+-- ⚠️ Costs one bucket read when nothing is owed, and sends nothing in that case. It must NOT call
+-- refresh_and_show unconditionally: that function writes "" to the bucket when it finds nothing to
+-- offer, which is harmless, but it would also run gather_candidates on every single login.
+function M.resend_pending(client)
+	if not client then return end
+	if (eq.get_data(bucket_key(client)) or "") == "" then return end
+	refresh_and_show(client, bucket_key(client))
+end
+
 -- Tell the client (eq-core-dll skill-unlock hook) which combat skills the player has EARNED
 -- (value > 0) so it reveals only those. Call on connect and after each skill pick. The dll
 -- swallows this line; with no client mod it's harmless noise the player won't normally see.

@@ -55,12 +55,20 @@ WHERE r.enabled = 1
 	WHERE e.recipe_id = r.id AND e.item_id = 990061 AND e.iscontainer = 1
   );
 
--- 3) sell the Kit on every merchant that already stocks the Refining Crucible (2000060), at each
+-- 3) sell the Kit on every merchant that already stocks the Refining Crucible (147510), at each
 --    merchant's next free slot. merchantlist loads at ZONE BOOT -> restart zones after. Idempotent
 --    (the DELETE clears any prior kit rows first).
+--
+-- ⚠️⚠️ THE CRUCIBLE ID IS A LOAD-BEARING INPUT HERE, NOT A COMMENT -- IT SELECTS THE MERCHANT SET.
+-- It moved 2000060 -> 147510 (migration v53, 2026-08-09; an id at or above 0x100000 cannot be linked
+-- in chat). Left at the old id this subquery matches NOTHING after v53, so the INSERT places the Kit
+-- on ZERO merchants and the script still reports success -- the Kit simply becomes unbuyable
+-- everywhere, with no error and nothing to grep for. That is a silent failure of the whole script,
+-- not a stale comment.
+-- 📌 Both ids are accepted so the script also works on a database that has not yet taken v53.
 DELETE FROM merchantlist WHERE item = 990061;
 INSERT INTO merchantlist (merchantid, slot, item)
 	SELECT ml.merchantid, MAX(ml.slot) + 1, 990061
 	FROM merchantlist ml
-	WHERE ml.merchantid IN (SELECT DISTINCT merchantid FROM merchantlist WHERE item = 2000060)
+	WHERE ml.merchantid IN (SELECT DISTINCT merchantid FROM merchantlist WHERE item IN (147510, 2000060))
 	GROUP BY ml.merchantid;

@@ -71,10 +71,19 @@ INSERT IGNORE INTO aotv4_scope (id) VALUES
 DELETE FROM aotv4_scope WHERE id IN (9997, 9998, 9999, 55623);
 
 -- clear any prior tier rows so re-runs are clean. New band [300000,900000) holds only our tiers.
--- Also sweep the OLD +1M/+2M band (pre-2026-07 scheme) so a migration leaves no orphan tier rows,
--- but SPARE the refine crucible bag (2000060, created by aotv4_refine_crucible.sql).
+-- Also sweep the OLD +1M/+2M band (pre-2026-07 scheme) so a migration leaves no orphan tier rows.
+--
+-- ⚠️ The `AND id <> 2000060` exemption that used to guard this sweep is GONE, and deliberately: the
+-- Refining Crucible moved 2000060 -> 147510 (migration v53, 2026-08-09) because an id at or above
+-- 0x100000 cannot be linked in chat -- it rendered as "6Refining Crucible". It now sits outside this
+-- band entirely, so there is nothing left in [1000000,2999999] to spare.
+-- ⚠️⚠️ DO NOT "RESTORE" THE EXEMPTION, and do not read it as licence to park anything else up there.
+-- Keeping a dead `<> 2000060` would point the next reader at an id that no longer exists, which is
+-- how a renumber gets quietly reverted.
+-- 📌 147510 is safe from the tier generator for a second, independent reason: it is `slots = 0`, and
+-- the scope below only takes slots>0 items -- so no Hallowed/Mythic copy of a container is ever made.
 DELETE FROM items WHERE id BETWEEN 300000 AND 899999;
-DELETE FROM items WHERE id BETWEEN 1000000 AND 2999999 AND id <> 2000060;
+DELETE FROM items WHERE id BETWEEN 1000000 AND 2999999;
 
 -- ============================== HALLOWED (base + 300,000) ==================================
 DROP TEMPORARY TABLE IF EXISTS tmp_hallowed;

@@ -772,6 +772,39 @@ void Client::SetEXP(ExpSource exp_source, uint64 set_exp, uint64 set_aaxp, bool 
 	}
 	check_level--;
 
+	// AoTv4: AA EXPERIENCE IS EARNED 1:1 WITH THE EXPERIENCE ACTUALLY APPLIED.
+	//
+	// The roguelite already converted a run's experience into AA at exactly this rate, but only as a
+	// lump at death, so the AA bar sat dead for the whole run. This pays the same total continuously
+	// instead: a full climb to the cap is 464,000 experience = 2.32 points either way. It is a change
+	// of TIMING, not of income -- do not "balance" it by scaling the rate.
+	//
+	// WARNING: THE CAP CLAMP MUST HAPPEN HERE, ABOVE THE AA AWARD BLOCK, AND THAT IS THE WHOLE REASON
+	// IT MOVED UP FROM ITS ORIGINAL POSITION FURTHER DOWN THIS FUNCTION. Deriving AA from the applied
+	// delta is what makes AA stop at the level cap automatically: a character parked at the cap has
+	// set_exp clamped back to where it already was, so the delta is 0 and no AA is earned. Compute the
+	// delta BEFORE the clamp and a capped character farms AA forever -- which is exactly the v50 bug
+	// (deaths paying 7 points against an intended 2.32) reintroduced by another route. The check_level
+	// clamp stays below, where check_level is finalised.
+	//
+	// WARNING: NO LEVEL SCALING, DELIBERATELY. 1:1 is ALREADY steeply depth weighted, twice over: a
+	// higher level mob grants more experience, and the curve is quadratic in cumulative terms
+	// (1000 * L to gain level L). Levels 1-10 are 11.6 percent of a climb's AA and levels 20-30 are
+	// 55 percent. A (level/cap) style multiplier was tried on the death payout and reverted for this
+	// same reason -- see the note in global_player.lua. Adding one here double counts it a third time.
+	//
+	// Not paid on resurrection experience: it is a refund of experience already earned once.
+	const int aotv4_hard_cap_early = RuleI(AoT, HardLevelCap);
+	if (aotv4_hard_cap_early > 0 && GetLevel() <= static_cast<uint8>(aotv4_hard_cap_early)) {
+		const uint64 aotv4_cap_exp = GetEXPForLevel(static_cast<uint16>(aotv4_hard_cap_early));
+		if (set_exp > aotv4_cap_exp) {
+			set_exp = aotv4_cap_exp;
+		}
+	}
+
+	if (RuleB(AoT, LiveAAExp) && !isrezzexp && set_exp > current_exp) {
+		set_aaxp += (set_exp - current_exp);
+	}
 
 	//see if we gained any AAs
 	if (set_aaxp >= max_AAXP) {
@@ -806,19 +839,29 @@ void Client::SetEXP(ExpSource exp_source, uint64 set_exp, uint64 set_aaxp, bool 
 		char val1[20] = { 0 };
 		char val2[20] = { 0 };
 
-		if (gained == 1 && m_pp.aapoints == 1) {
-			MessageString(Chat::Experience, GAIN_SINGLE_AA_SINGLE_AA, ConvertArray(m_pp.aapoints, val1)); //You have gained an ability point!  You now have %1 ability point.
-		} else if (gained == 1 && m_pp.aapoints > 1) {
-			MessageString(Chat::Experience, GAIN_SINGLE_AA_MULTI_AA, ConvertArray(m_pp.aapoints, val1)); //You have gained an ability point!  You now have %1 ability points.
-		} else {
-			MessageString(Chat::Experience, GAIN_MULTI_AA_MULTI_AA, ConvertArray(gained, val1), ConvertArray(m_pp.aapoints, val2)); //You have gained %1 ability point(s)!  You now have %2 ability point(s).
+		// AoTv4: WHEN THE PICKER OWNS AA, SUPPRESS THE STOCK "you now have N ability points" LINES.
+		// They name m_pp.aapoints, which is about to be forced back to 0 -- so they would promise a
+		// spendable pool that the native window then correctly shows as empty. The picker prints its
+		// own message from Lua, against the private bank, which is the number that is actually real.
+		const bool aotv4_divert_aa = RuleB(AoT, AAPointsToPicker);
+		if (!aotv4_divert_aa) {
+			if (gained == 1 && m_pp.aapoints == 1) {
+				MessageString(Chat::Experience, GAIN_SINGLE_AA_SINGLE_AA, ConvertArray(m_pp.aapoints, val1)); //You have gained an ability point!  You now have %1 ability point.
+			} else if (gained == 1 && m_pp.aapoints > 1) {
+				MessageString(Chat::Experience, GAIN_SINGLE_AA_MULTI_AA, ConvertArray(m_pp.aapoints, val1)); //You have gained an ability point!  You now have %1 ability points.
+			} else {
+				MessageString(Chat::Experience, GAIN_MULTI_AA_MULTI_AA, ConvertArray(gained, val1), ConvertArray(m_pp.aapoints, val2)); //You have gained %1 ability point(s)!  You now have %2 ability point(s).
+			}
 		}
 
 		if (RuleB(AA, SoundForAAEarned)) {
 			SendSound();
 		}
 
-		if (parse->PlayerHasQuestSub(EVENT_AA_GAIN)) {
+		// AoTv4: when diverting, AoTv4DivertAAPoints fires this event itself -- AFTER it has credited
+		// the bank, so the handler sees the real total. Firing here as well would offer twice and pop
+		// the window twice for one point.
+		if (!aotv4_divert_aa && parse->PlayerHasQuestSub(EVENT_AA_GAIN)) {
 			parse->EventPlayer(EVENT_AA_GAIN, this, std::to_string(gained), 0);
 		}
 
@@ -832,6 +875,31 @@ void Client::SetEXP(ExpSource exp_source, uint64 set_exp, uint64 set_aaxp, bool 
 		}
 
 		//Message(Chat::Yellow, "You now have %d skill points available to spend.", m_pp.aapoints);
+
+		// AoTv4: HAND THE POINTS TO THE PICKER AND LEAVE THE NATIVE POOL EMPTY.
+		//
+		// The design is that AA is spent through the random picker, never bought directly in the
+		// native AA window -- so m_pp.aapoints must end at 0. The points themselves are not lost: the
+		// EVENT_AA_GAIN fired just above carries `gained` to global_player.lua, which banks it in the
+		// private aa_bank_<charid> bucket that the picker spends from.
+		//
+		// WARNING: THIS MUST STAY BELOW BOTH THE EVENT AND THE QUERYSERV BLOCK. Both derive the number
+		// gained from m_pp.aapoints (the event via `gained`, QS via aapoints - last_unspentAA), so
+		// zeroing any earlier hands Lua a 0 and silently drops the point on the floor -- the player
+		// earns nothing and nothing reports it.
+		//
+		// The remainder in set_aaxp is deliberately NOT cleared: it is what keeps the AA bar sitting at
+		// the correct partial fill toward the next point, and it carries across the roguelite death the
+		// same way the old aa_xp_<charid> remainder did.
+		//
+		// WARNING: THIS GOES THROUGH AoTv4DivertAAPoints AND MUST NOT GO BACK TO A BARE
+		// `m_pp.aapoints = 0`. That is what it used to be, and it destroyed points whenever the quest
+		// hook did not run -- the bank was credited by Lua while the zeroing happened here regardless,
+		// so the two could disagree and the player silently lost the point. The helper credits the
+		// bank in C++ first, so the grant and the zeroing are now inseparable.
+		if (aotv4_divert_aa) {
+			AoTv4DivertAAPoints(gained);
+		}
 	}
 
 	uint8 max_level = RuleI(Character, MaxExpLevel) + 1;
@@ -852,6 +920,61 @@ void Client::SetEXP(ExpSource exp_source, uint64 set_exp, uint64 set_aaxp, bool 
 			set_exp = GetEXPForLevel(GetLevel()+1);
 		} else {
 			set_exp = GetEXPForLevel(max_level);
+		}
+	}
+
+	// ⚠️⚠️ AoTv4: THE HARD LEVEL CAP MUST CAP *EXPERIENCE* TOO, NOT JUST THE LEVEL.
+	//
+	// `AoT:HardLevelCap` clamps the LEVEL in SetLevel, but the ceiling above is computed from
+	// `Character:MaxExpLevel` (70), so a character held at 30 kept accruing experience toward the
+	// level 71 threshold -- unbounded as far as any player could tell. That matters here far more
+	// than it would on a stock server, because the roguelite death banks AA from TOTAL RUN
+	// EXPERIENCE at AA:ExpPerPoint (200,000). A full climb to the cap is 464,000 = 2.32 points,
+	// which is the intended payout; farming at cap pushed real characters to 7 points and the
+	// engine ceiling allowed 12.7. Reported from play as "people are getting more AAs after 30".
+	//
+	// ⚠️⚠️ THE LUA PIN IN `era_system.clamp_level` CANNOT DO THIS AND NEVER COULD. It is guarded on
+	// `client:GetLevel() > cap`, and the C++ clamp in SetLevel means the level NEVER exceeds the cap
+	// -- so the guard is unreachable and the pin never fires. The comment on that clamp claiming it
+	// "still pins experience at the threshold" is wrong. The Lua pin is still load-bearing for the
+	// per-character REGION caps, which sit BELOW this one and therefore can still be crossed.
+	//
+	// ⚠️⚠️ `GetLevel() <= hard_cap` IS LOAD BEARING -- WITHOUT IT THIS DELEVELS GMs. A GM who has
+	// #levelled to 60 would have set_exp pinned to the level 30 value, `check_level` would then
+	// resolve to 30, and `SetLevel(check_level)` directly below fires whenever GetLevel() differs --
+	// silently dropping them 60 -> 30. Anyone already above the cap is left completely alone.
+	//
+	// ⚠️ Pinned at GetEXPForLevel(cap), not cap + 1: the experience bar therefore sits at 0 percent
+	// on reaching the cap rather than filling. That is the exact 2.32 point ceiling asked for --
+	// cap + 1 would be 495,000 = 2.47 and is still over it.
+	// ⚠️⚠️ AND `check_level` IS CLAMPED UNCONDITIONALLY, NOT ONLY WHEN THE EXPERIENCE IS TRIMMED --
+	// BECAUSE THE LEVEL-UP MESSAGE TWENTY LINES BELOW PRINTS IT RAW.
+	//
+	//     Message(Chat::Yellow, "Welcome to level %i!", check_level);   // <-- unclamped
+	//     ...
+	//     SetLevel(check_level);                                        // <-- clamps to the cap INSIDE
+	//
+	// Client::SetLevel clamps its ARGUMENT (see the note at the top of it), so the level actually
+	// applied has always been correct. The message did not know that, so a player crossing several
+	// levels in one kill was told "Welcome to level 35!" and then quietly set to 30. Reported from
+	// play, repeatedly, as "people are still able to level up past 30" -- they were not; every one of
+	// those reports was this line lying, and the cap was doing its job the whole time.
+	// 📌 That is also why it kept coming back: nothing was broken to find, so nothing got fixed.
+	//
+	// ⚠️ The `level_count == 1` branch beside it uses GAIN_LEVEL, which the CLIENT renders from its own
+	// level -- so single-level dings never showed this. Only a multi-level gain does, which the linear
+	// experience curve made common.
+	// ⚠️ `GetLevel() <= hard_cap` still guards the whole block so a GM who has #levelled above the cap
+	// is not dragged back down by their next kill.
+	// WARNING: THE `set_exp` HALF OF THIS CLAMP NOW LIVES FURTHER UP, ABOVE THE AA AWARD BLOCK, AND
+	// MUST NOT BE DUPLICATED BACK IN HERE. AA experience is derived from the applied experience delta,
+	// so the clamp has to run BEFORE that delta is measured or a character parked at the cap keeps
+	// earning AA forever -- the v50 bug by another route. Only the check_level half belongs here,
+	// because check_level is not finalised until the level loops above have run.
+	const int aotv4_hard_cap = RuleI(AoT, HardLevelCap);
+	if (aotv4_hard_cap > 0 && GetLevel() <= static_cast<uint8>(aotv4_hard_cap)) {
+		if (check_level > static_cast<uint16>(aotv4_hard_cap)) {
+			check_level = static_cast<uint16>(aotv4_hard_cap);
 		}
 	}
 

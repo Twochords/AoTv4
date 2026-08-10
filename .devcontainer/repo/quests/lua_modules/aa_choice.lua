@@ -189,6 +189,27 @@ end
 
 ------------------------------------------------------------------- public API
 -- Bank `points` AA points (added to the private bucket) and start presenting choices.
+-- ⚠️⚠️ FOR POINTS THAT ARE **ALREADY BANKED** -- does NOT add to the bank.
+--
+-- `Client::AoTv4DivertAAPoints` (zone/client.cpp) credits aa_bank_<charid> in C++ and only then
+-- fires EVENT_AA_GAIN, so by the time global_player's handler runs the points are already there.
+-- Adding them again here would DOUBLE every live-earned point.
+-- 📌 The split exists because banking used to happen in Lua, and a point was destroyed whenever the
+-- quest hook did not run -- the C++ zeroed the native pool either way. The bank is authoritative in
+-- C++ now; this half only rolls the offer and pops the window.
+function M.on_points_banked(e, points)
+	local client = e.self
+	points = tonumber(points) or 0
+	eq.set_data(count_key(client), "0")
+	M.offer(e)
+
+	if points > 0 then
+		client:Message(MT.NPCQuestSay, "AAPOPUP")
+	end
+end
+
+-- Adds `points` to the bank and then offers. Used by the DEATH LUMP path (AoT:LiveAAExp off), which
+-- is the one route where Lua is still the thing granting the points.
 function M.grant_picks(e, points)
 	local client = e.self
 	points = tonumber(points) or 0
@@ -197,6 +218,18 @@ function M.grant_picks(e, points)
 	end
 	eq.set_data(count_key(client), "0")
 	M.offer(e)
+
+	-- ⚠️⚠️ POP THE WINDOW ONLY HERE, BECAUSE THIS IS THE ONLY PLACE POINTS ARE ACTUALLY ADDED.
+	-- The dll opens the Advancement tab on this line and NOT on AACHOICEDATA, which M.offer just
+	-- sent. That distinction is the whole point: the offer is STICKY, so AACHOICEDATA is re-sent on
+	-- every login (global_player.event_connect), on every level up (reoffer_if_banked) and after
+	-- every pick -- popping on it would throw the window open constantly.
+	-- ⚠️ Sent AFTER M.offer so the tab is already populated when the window appears; the reverse
+	-- order shows an empty list for a frame before it fills.
+	-- ⚠️ Only when something was really banked. grant_picks(0) happens on paths that just refresh.
+	if points > 0 then
+		client:Message(MT.NPCQuestSay, "AAPOPUP")
+	end
 end
 
 -- Re-open the picker for any LEFTOVER banked points (called on level-up). After a death the picker
@@ -206,9 +239,17 @@ end
 -- so it pops; otherwise just refresh the dll's banked header silently (no "nothing affordable" spam).
 function M.reoffer_if_banked(e)
 	-- Re-show the CURRENT pending offer (the SAME options) so it stays reachable after leveling/zoning.
-	-- NEVER re-rolls or generates -- the offered set changes ONLY when the player picks one. If nothing
-	-- is pending, do nothing (a new set is rolled only on death, or right after a pick).
-	resend_stored_offer(e.self)
+	-- NEVER re-rolls or generates -- the offered set changes ONLY when the player picks one.
+	if resend_stored_offer(e.self) then return end
+
+	-- ⚠️⚠️ BUT IF POINTS ARE BANKED WITH NO OFFER PENDING, ROLL ONE. This used to return here, which
+	-- left a player holding banked AA and NO way to reach it: the tab is populated only by an
+	-- AACHOICEDATA line, and with no stored offer nothing ever sent one again. It is also the recovery
+	-- path for points banked while the EVENT_AA_GAIN handler was not running -- C++ credits the bank
+	-- regardless, so the next login surfaces them instead of them sitting there invisible forever.
+	if get_num(bank_key(e.self)) > 0 then
+		M.offer(e)
+	end
 end
 
 -- Present one AA choice if the banked budget can still afford anything.

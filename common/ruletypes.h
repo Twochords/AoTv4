@@ -598,7 +598,14 @@ RULE_INT(Combat, BerserkerFrenzyStart, 35, "Percentage Health Points below which
 RULE_INT(Combat, BerserkerFrenzyEnd, 45, "Percentage Health Points above which Warrior and Berserker end frenzy")
 RULE_BOOL(Combat, OneProcPerWeapon, true, "If enabled, One proc per weapon per round")
 RULE_BOOL(Combat, ProjectileDmgOnImpact, true, "If enabled, projectiles (i.e. arrows) will hit on impact, instead of instantly")
-RULE_BOOL(Combat, MeleePush, true, "Enable melee push")
+// WARNING: A RULE DESCRIPTION MUST BE PURE ASCII. It is written to `rule_values`.`notes`, which is
+// **latin1** on this schema, so a multi-byte character makes the REPLACE INTO fail with MySQL error
+// 1366 ("Incorrect string value") and the whole statement is aborted. This description carried a
+// warning emoji for one session and errored on EVERY world boot -- the rule VALUE survived only
+// because migration v52 wrote it by a separate path, which is exactly what made it look harmless.
+// On a database where v52 has not run, the failed statement means the row is never created at all.
+// None of the other 600+ rules here use non-ASCII; keep it that way.
+RULE_BOOL(Combat, MeleePush, false, "Enable melee push. AoTv4 ships this FALSE (stock default is true): melee pushback was reported from play as far too strong, shoving players around constantly. Migration v52 also clears the rule_values row, because an existing row overrides this default -- both are needed. See the force-zeroing note in Mob::CommonDamage (zone/attack.cpp), which the disable depends on: the damage packet is static and force is only ever written inside the push block.")
 RULE_INT(Combat, MeleePushChance, 50, "NPC chance the target will be pushed. Made up, 100 actually isn't that bad")
 RULE_REAL(Combat, MeleePushForceClientPercent, 0.00, "Percent to add or remove from push for players")
 RULE_REAL(Combat, MeleePushForcePetPercent, 0.00, "Percent to add or remove from push for pets")
@@ -1186,6 +1193,16 @@ RULE_BOOL(AoT, AAExpSlowdownEnabled,    	true, "Slow NORMAL experience the more 
 RULE_INT(AoT, AAExpSlowdownBase,        	100,  "Numerator base of the AA experience slowdown. Larger = the slowdown starts more gently. With the default 100/10, half rate is reached at 12.5 AA.")
 RULE_INT(AoT, AAExpSlowdownFactor,      	10,   "Denominator factor of the AA experience slowdown. The multiplier asymptotes to 1/Factor, so 10 means normal experience never drops below 10 percent however much AA is earned.")
 RULE_INT(AoT, AAExpMinLevel,            	1,    "Lowest level at which a character may earn AA experience. Stock EQ hardcodes 51 in two places in zone/exp.cpp; on a server whose cap is below that, AA would be completely unearnable.")
+// WARNING: THESE TWO SHIP TOGETHER WITH THE LUA CHANGE, AND ENABLING LiveAAExp WITHOUT REMOVING THE
+// DEATH LUMP IN global_player.lua PAYS THE SAME EXPERIENCE TWICE -- roughly doubling AA income.
+// LiveAAExp pays AA experience 1:1 with the experience actually applied, so a full climb to the level
+// cap (464,000) yields 2.32 points, exactly what the death conversion paid as a lump. It is a timing
+// change, not an income change. It stops automatically at the level cap because a capped character's
+// applied experience is 0 (see the note in Client::SetEXP) -- which is what keeps the v50 fix intact.
+RULE_BOOL(AoT, LiveAAExp,               	true,  "Earn AA experience continuously at 1:1 with normal experience, instead of converting the run total to AA at death. Requires the matching global_player.lua change (drop the death lump) or AA is paid twice.")
+// WARNING: WITHOUT THIS, LiveAAExp HANDS PLAYERS SPENDABLE POINTS IN THE NATIVE AA WINDOW, which
+// defeats the random picker entirely -- they could simply buy what they wanted directly.
+RULE_BOOL(AoT, AAPointsToPicker,        	true,  "Earned AA points go to the picker's private bank (aa_bank_<charid>) via EVENT_AA_GAIN and the native unspent pool is forced to 0, so AA can only be spent through the random picker.")
 RULE_INT(AoT, DamageCapBaseDelayPct,    	50, "Base damage cap as a percent of weapon delay (50 = 50% of delay)")
 RULE_INT(AoT, DamageCapLevelPctPerLevel, 	5, "Additional cap percent of weapon delay added per character level (5 = +5% of delay per level)")
 RULE_INT(AoT, DamageCapTwoHandBonusPct,  	80, "Additional percent bonus to the damage cap for two-handed weapons (80 = +80%, so 180% of 1H cap)")

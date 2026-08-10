@@ -6,7 +6,8 @@
 #
 # Writes SQL only; it touches no database itself. The delve chest hands out a tier 1/2/3 augment
 # (aotv4_dungeon.lua) and FOUR OF A TIER COMBINE INTO ONE RANDOM AUGMENT OF THE NEXT TIER in the
-# Refining Crucible, item 2000060 (zone/tradeskills.cpp, AoTv4RefineCombine).
+# Refining Crucible, item 147510 (zone/tradeskills.cpp, AoTv4RefineCombine) -- moved from 2000060 by
+# migration v53, because an id at or above 0x100000 cannot be linked in chat.
 #
 # ⚠️⚠️ THESE ARE ORDINARY ITEMS -- `evoitem` IS 0 AND THAT IS DELIBERATE. An earlier version made
 # them native EVOLVING items that grew on delve score, and it was abandoned for a concrete reason:

@@ -1106,6 +1106,9 @@ public:
 
 	void SetAAPoints(uint32 points);
 	void AddAAPoints(uint32 points);
+	// AoTv4: route raw AA points to the picker's private bank and leave the native unspent pool at 0.
+	// Every writer of m_pp.aapoints must go through this -- see the note on the definition.
+	void AoTv4DivertAAPoints(uint32 points);
 	bool RemoveAAPoints(uint32 points);
 	int GetAAPoints() { return m_pp.aapoints; }
 	int GetSpentAA() { return m_pp.aapoints_spent; }

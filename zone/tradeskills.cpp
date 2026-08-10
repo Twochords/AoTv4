@@ -270,7 +270,18 @@ void Object::HandleAugmentation(Client* user, const AugmentItem_Struct* in_augme
 //
 // Handles several distinct 4-stacks in one combine. The crucible itself is never consumed. Gated by
 // item id (NOT bagtype) so real bagtype-30 quest containers are untouched.
-static const uint32 AOTV4_REFINE_BAG_ID = 2000060;
+// ⚠️⚠️ MOVED 2000060 -> 147510 (migration v53, 2026-08-09). An item id at or above 0x100000
+// (1,048,576) CANNOT BE LINKED IN CHAT: RoF2 packs the id into a five hex digit field and
+// common/say_link.cpp masks it (`0x000FFFFF & item_id`), so 2000060 (0x1E84BC, six digits) encoded as
+// 951484 -- a nonexistent item -- and the link rendered junk in front of the name. Reported from play
+// as "6Refining Crucible". Section 10 records the same ceiling as the reason the gear tier step is
+// 300,000 and not 1,000,000; this item was the one exempted from that renumber and so the only one
+// left above it.
+// ⚠️ 147510 sits deliberately outside every band that gets wholesale-deleted by a regenerator
+// (gen_delve_augs.pl clears 147600-148199; aotv4_gear_tiers.sql clears 1000000-2999999).
+// ⚠️ THIS CONSTANT AND MIGRATION v53 MUST SHIP TOGETHER -- one without the other leaves a crucible
+// that either links correctly and refines nothing, or refines and links wrong.
+static const uint32 AOTV4_REFINE_BAG_ID = 147510;
 // ⚠️ AOTV4_TIER_STEP and AoTv4TierBaseId now come from zone/aotv4_tiers.h. This file used to carry
 // its own copies -- it was one of the five places the step was duplicated, and the header's own note
 // says to migrate one of them the next time it is touched for another reason. Adding the delve

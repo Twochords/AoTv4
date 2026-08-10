@@ -5023,6 +5023,18 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 		}
 
 		a->hit_heading = attacker ? attacker->GetHeading() : 0.0f;
+
+		// ⚠️⚠️ ZERO IT EXPLICITLY -- `p` IS `static` AND ITS BUFFER IS REUSED BY EVERY DAMAGE EVENT.
+		// `a->force` is assigned ONLY inside the push block below; there is no else branch and nothing
+		// memsets the buffer between calls. So every path that SKIPS that block -- push disabled, zero
+		// damage, rooted, braced, or a failed MeleePushChance roll -- previously inherited whatever
+		// force the LAST pushing hit happened to leave there, and sent it to the client anyway.
+		// That makes "turn melee push off" not actually turn it off: it leaves a stale shove firing on
+		// hits that were never meant to push, and it is worse the moment the rule is toggled at runtime
+		// with #reloadrules, because the buffer is already primed by then.
+		// 📌 Costs one float store per damage packet and makes the disable deterministic.
+		a->force = 0.0f;
+
 		// AoTv4 Bracing (melee tree) joins the existing guards -- a braced character is not shoved.
 		if (RuleB(Combat, MeleePush) && damage > 0 && !IsRooted() && !AoTv4Braced() &&
 			(IsClient() || zone->random.Roll(RuleI(Combat, MeleePushChance)))) {

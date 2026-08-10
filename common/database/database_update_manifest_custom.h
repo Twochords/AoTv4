@@ -5021,6 +5021,227 @@ UPDATE spawnentry se JOIN npc_types n ON n.id = se.npcID
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 50,
+		.description = "2026_08_09_aotv4_clamp_over_cap_experience",
+		// One-time cleanup for the experience overflow fixed in code this same commit
+		// (zone/exp.cpp, Client::SetEXP). `AoT:HardLevelCap` clamped the LEVEL to 30 but the
+		// experience ceiling was computed from `Character:MaxExpLevel` (70), so a character parked at
+		// the cap kept banking experience toward the level 71 threshold.
+		//
+		// ⚠️⚠️ IT IS NOT COSMETIC, BECAUSE THE ROGUELITE DEATH PAYS AA OUT OF TOTAL RUN EXPERIENCE at
+		// `AA:ExpPerPoint` (200,000). A full climb to the cap is 464,000 = 2.32 points, which is the
+		// intended payout; characters found in play were carrying enough to bank **7**, and the
+		// engine ceiling (2,555,000) allowed 12.7. The code fix stops it accruing from now on -- this
+		// clamps what is ALREADY banked, so the next death cannot pay out over the ceiling.
+		//
+		// ⚠️⚠️ `level <= cap` IS LOAD BEARING AND MIRRORS THE C++ GUARD EXACTLY. A GM who has
+		// #levelled above the cap legitimately holds more experience than this; clamping them would
+		// also make `check_level` resolve back to the cap and delevel them on their next kill.
+		// Anyone above the cap is left completely alone.
+		//
+		// ⚠️ The ceiling is DERIVED from the rule, not hardcoded, so it stays correct if live runs a
+		// different cap: the curve is `1000 * n * (n + 3) / 2` for n = level - 1 (zone/exp.cpp:1085 --
+		// note the documented copy further down that file is inside `#if 0` and is dead code). Both
+		// `Character:UseOldRaceExpPenalties` and `UseOldClassExpPenalties` are false, so the figure is
+		// identical for every race and class and a single number is correct for everyone.
+		//
+		// 📌 Already-GRANTED AA points are deliberately NOT clawed back -- players spent them in good
+		// faith. Only the unspent experience that has not yet been converted is trimmed.
+		.check       = "SELECT cd.id FROM character_data cd JOIN (SELECT COALESCE((SELECT CAST(rule_value AS UNSIGNED) FROM rule_values WHERE rule_name = 'AoT:HardLevelCap' AND ruleset_id = 1 LIMIT 1), 30) AS cap) r WHERE cd.level <= r.cap AND cd.exp > 1000 * (r.cap - 1) * (r.cap + 2) / 2 LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE character_data cd
+  JOIN (
+    SELECT COALESCE((SELECT CAST(rule_value AS UNSIGNED) FROM rule_values
+                      WHERE rule_name = 'AoT:HardLevelCap' AND ruleset_id = 1 LIMIT 1), 30) AS cap
+  ) r
+   SET cd.exp = 1000 * (r.cap - 1) * (r.cap + 2) / 2
+ WHERE cd.level <= r.cap
+   AND cd.exp  > 1000 * (r.cap - 1) * (r.cap + 2) / 2;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 51,
+		.description = "2026_08_09_aotv4_onslaught_task_duration",
+		// Onslaught is "the same delve against a 30 minute clock", and its journal entry was claiming
+		// SIX HOURS. Reported from play as exactly that mismatch.
+		//
+		// ⚠️⚠️ v36 IS WHAT BROKE IT, AND IT DID SO SILENTLY. That migration rebuilt all 234 delve tasks
+		// as 39 dungeons CROSS JOINed with 6 modes, taking `duration 21600 / duration_code 3` from the
+		// original rows for EVERY mode -- overwriting the 1800 that Onslaught alone needs. Nothing
+		// errored, because 21600 is a perfectly valid duration; only Onslaught's meaning was lost.
+		//
+		// ⚠️⚠️ THE CLOCK WAS NEVER WRONG -- ONLY THE LABEL. `M.ONSLAUGHT_SECS` (1800) is enforced in Lua
+		// by M.onslaught_tick, so the run really did end at 30 minutes. The task row is what the client
+		// renders in the journal, so the player was told six hours and then failed at thirty. That is
+		// worse than either number being wrong on its own, and it is why this is a data fix rather than
+		// a code one: the behaviour is correct and only `tasks.duration` disagreed with it.
+		//
+		// ⚠️ Matched on the TITLE, not on an id band. The band is currently 2000460-2000498, but v36
+		// already moved the mode offsets once (10 -> 40, because 6 dungeons became 39) and an id-band
+		// migration would silently update the wrong mode -- or nothing at all -- if they move again.
+		// Verified exact: 39 rows match, and zero rows outside the Onslaught band match.
+		//
+		// ⚠️ `duration_code` is deliberately left at 3. tasks.h:213 documents it as the descriptor used
+		// only "for when duration == 0", so with an explicit duration it has no effect; changing it
+		// would be churn that implies a behaviour it does not have.
+		.check       = "SELECT id FROM tasks WHERE id BETWEEN 2000300 AND 2000538 AND title LIKE 'Delve:%(Onslaught)' AND duration <> 1800 LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE tasks
+   SET duration = 1800
+ WHERE id BETWEEN 2000300 AND 2000538
+   AND title LIKE 'Delve:%(Onslaught)';
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 52,
+		.description = "2026_08_09_aotv4_disable_melee_push",
+		// Melee pushback off. Reported from play as far too strong -- players shoved around constantly
+		// in every fight.
+		//
+		// ⚠️⚠️ THE COMPILED DEFAULT ALONE IS NOT ENOUGH, AND NEITHER IS THIS ROW ALONE. `Combat:MeleePush`
+		// is flipped to false in common/ruletypes.h so a server with no row behaves correctly, but an
+		// EXISTING row overrides the default -- and this database has one (ruleset 1, 'true'). Both
+		// halves ship together; either on its own leaves push enabled somewhere.
+		//
+		// ⚠️ Scoped by rule_name with NO ruleset filter, per section 35: rule_values holds multiple rows
+		// per rule across rulesets, so filtering on ruleset_id fixes one and silently leaves another.
+		//
+		// ⚠️⚠️ IT ALSO NEEDS THE ZONE BINARY, WHICH IS NOT OPTIONAL HERE. The damage packet in
+		// Mob::CommonDamage is `static` and `a->force` is written ONLY inside the push block -- no else,
+		// no memset -- so simply disabling the rule leaves the last pushing hit's force sitting in the
+		// reused buffer and still being sent. attack.cpp now zeroes it explicitly before the block.
+		// Applying this migration against an older zone gives intermittent phantom pushes rather than
+		// none, which reads as the setting not working.
+		//
+		// 📌 `Spells:NPCSpellPush` is deliberately NOT touched. It is a separate mechanic and was not in
+		// the report -- though note this database carries it as **true** while the stock compiled default
+		// is **false**, which is almost certainly an artifact of the 0.1.2 rules dump (section 35 records
+		// that dump silently changing 64 rules). Worth a decision, separately.
+		.check       = "SELECT rule_value FROM rule_values WHERE rule_name = 'Combat:MeleePush' AND rule_value <> 'false' LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE rule_values
+   SET rule_value = 'false'
+ WHERE rule_name = 'Combat:MeleePush';
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 53,
+		.description = "2026_08_09_aotv4_renumber_refine_crucible",
+		// The Refining Crucible moves 2000060 -> 147510, because its chat link was rendering with junk
+		// characters in front of the name. Reported from play as "6Refining Crucible".
+		//
+		// ⚠️⚠️ AN ITEM ID MUST STAY BELOW 0x100000 (1,048,576) OR ITS LINK IS SILENTLY WRONG. RoF2
+		// packs the id into a FIVE hex digit field and common/say_link.cpp masks it on the way in:
+		//     "%1X" "%05X" ...   (0x000FFFFF & item_id)
+		// 2000060 is 0x1E84BC -- six digits -- so the mask throws the top bit away and the link encodes
+		// **951484**, an id that does not exist. Nothing errors; the link simply describes another item
+		// and the client renders the leftovers. Section 10 already recorded this ceiling as the reason
+		// the gear tier step is 300,000 rather than 1,000,000.
+		//
+		// ⚠️⚠️ IT SURVIVED BECAUSE IT WAS DELIBERATELY EXEMPTED. `aotv4_tier_renumber.sql` moved every
+		// other item out of the 1,000,000-2,999,999 band and spared this one on all TEN tables
+		// (`AND item_id <> 2000060`), so the single item left above the ceiling is the one players are
+		// handed for crafting. Only two items in the whole database exceed it: this, and stock 3008007
+		// "Mythic Hallowed Shuriken", which section 35 already flags as a tier lookalike.
+		//
+		// ⚠️⚠️ 147510 IS CHOSEN TO SIT OUTSIDE EVERY WHOLESALE-DELETE BAND, not merely to be free.
+		// `gen_delve_augs.pl` clears 147600-148199 and `aotv4_gear_tiers.sql` clears 1000000-2999999,
+		// so an "obvious" spot in either would be erased the next time those regenerate. 147510-147599
+		// is the gap between the Delver's Sigils (147500-147509) and the augment band, and is empty.
+		//
+		// ⚠️⚠️ THE ZONE BINARY MUST SHIP WITH THIS. `AOTV4_REFINE_BAG_ID` in zone/tradeskills.cpp gates
+		// the whole refine behaviour on this exact id -- not on bagtype, so real bagtype-30 quest
+		// containers are untouched. Migration without the binary leaves a crucible that links correctly
+		// and refines nothing; binary without the migration is the reverse.
+		//
+		// ⚠️ `items` is SHARED MEMORY: world down, ./shared_memory, restart. The migration alone changes
+		// nothing a player can see.
+		//
+		// ⚠️ All ten reference tables from the tier renumber are covered, so a crucible sitting in a
+		// bag, a shared bank, a corpse, a parcel, a bandolier, a potion belt, a shop listing or a world
+		// container follows the rename instead of becoming an unresolvable id.
+		.check       = "SELECT id FROM items WHERE id = 2000060 AND NOT EXISTS (SELECT 1 FROM items i2 WHERE i2.id = 147510) LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE items                  SET id      = 147510 WHERE id      = 2000060;
+UPDATE inventory              SET item_id = 147510 WHERE item_id = 2000060;
+UPDATE sharedbank             SET item_id = 147510 WHERE item_id = 2000060;
+UPDATE character_corpse_items SET item_id = 147510 WHERE item_id = 2000060;
+UPDATE character_parcels      SET item_id = 147510 WHERE item_id = 2000060;
+UPDATE character_bandolier    SET item_id = 147510 WHERE item_id = 2000060;
+UPDATE character_potionbelt   SET item_id = 147510 WHERE item_id = 2000060;
+UPDATE trader                 SET item_id = 147510 WHERE item_id = 2000060;
+UPDATE object                 SET itemid  = 147510 WHERE itemid  = 2000060;
+UPDATE object_contents        SET itemid  = 147510 WHERE itemid  = 2000060;
+UPDATE merchantlist           SET item    = 147510 WHERE item    = 2000060;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 54,
+		.description = "2026_08_09_aotv4_live_aa_transition",
+		// One-time carry-over for switching AA from a lump at death to 1:1 as experience is earned
+		// (`AoT:LiveAAExp`, zone/exp.cpp). WITHOUT THIS, TURNING THAT RULE ON SILENTLY DESTROYS
+		// PROGRESS, in two ways that no player or log would report:
+		//
+		//   1. `aa_xp_<charid>` held the carried remainder toward the next point -- up to 199,999,
+		//      i.e. nearly a full point. It is read and written ONLY inside the death payout block,
+		//      and that block is now skipped, so the value is simply orphaned. A real character on
+		//      test was holding 152,224 (76 percent of a point).
+		//   2. Experience already accumulated in the current run stops paying. The live path only
+		//      credits NEW experience deltas, and the death lump that would have converted the
+		//      existing total is gone -- so a character sitting at the level cap loses that whole
+		//      climb, 2.32 points. Worst case is about 3.3 points, more than a full run.
+		//
+		// Both are fixed by crediting the same total into native AA experience, which is what the new
+		// system reads. The engine then awards it on the character's next kill (the stored value feeds
+		// straight back into the award block in Client::SetEXP) and that award is diverted to the
+		// picker's bank like any other. Value preserving, not a grant.
+		//
+		// WARNING: `exp` IS ADDED BECAUSE IT IS EXACTLY WHAT THE DEATH LUMP WOULD HAVE CONVERTED --
+		// the old payout was `run_xp * 1.0` where run_xp is the character's total experience. It is
+		// NOT double counting: normal experience is untouched, only mirrored into the AA total once.
+		//
+		// WARNING: NATIVE UNSPENT POINTS ARE MOVED TO THE PICKER'S BANK, NOT DELETED. The design is
+		// that nothing spendable ever sits in the native AA window (`AoT:AAPointsToPicker`), but the
+		// C++ divert only catches NEW grants -- anything a character already held before the binary
+		// shipped would otherwise stay spendable there forever.
+		//
+		// Idempotent by construction: it is gated on the old buckets still existing (or on someone
+		// still holding native points), and it deletes those buckets, so it cannot run twice. Nothing
+		// recreates them -- the only writer was the death block that is now disabled.
+		.check       = "SELECT 1 FROM (SELECT (SELECT COUNT(*) FROM data_buckets WHERE `key` LIKE 'aa\\_xp\\_%') + (SELECT COUNT(*) FROM character_data WHERE aa_points > 0) AS n) t WHERE t.n > 0",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE character_data cd
+  LEFT JOIN data_buckets b
+         ON b.`key` = CONCAT('aa_xp_', cd.id)
+   SET cd.aa_exp = cd.aa_exp + cd.exp + COALESCE(CAST(b.value AS UNSIGNED), 0);
+
+INSERT INTO data_buckets (`key`, value, character_id)
+SELECT CONCAT('aa_bank_', cd.id), CAST(cd.aa_points AS CHAR), 0
+  FROM character_data cd
+ WHERE cd.aa_points > 0
+    ON DUPLICATE KEY UPDATE value = CAST(CAST(data_buckets.value AS UNSIGNED) + VALUES(value) AS CHAR);
+
+UPDATE character_data SET aa_points = 0 WHERE aa_points > 0;
+
+DELETE FROM data_buckets WHERE `key` LIKE 'aa\_xp\_%';
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

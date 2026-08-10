@@ -12278,6 +12278,14 @@ void Client::SetAAPoints(uint32 points)
 {
 	const uint32 current_points = m_pp.aapoints;
 
+	// AoTv4: a SET that would leave a spendable balance is diverted like a grant -- see
+	// AoTv4DivertAAPoints. This covers the Lua/Perl SetAAPoints bindings and the `#set aapoints` GM
+	// command. Setting 0 or lower is left alone: that is a clear, and is already the state we want.
+	if (RuleB(AoT, AAPointsToPicker) && points > current_points) {
+		AoTv4DivertAAPoints(points - current_points);
+		return;
+	}
+
 	m_pp.aapoints = points;
 
 	QuestEventID event_id = points > current_points ? EVENT_AA_GAIN : EVENT_AA_LOSS;
@@ -12307,8 +12315,68 @@ bool Client::RemoveAAPoints(uint32 points)
 	return true;
 }
 
+// AoTv4: THERE MUST NEVER BE A SPENDABLE POINT IN THE NATIVE AA WINDOW.
+//
+// AA is spent exclusively through the random picker, so every route that would hand a player raw
+// points has to end with m_pp.aapoints back at 0. The points are not destroyed -- EVENT_AA_GAIN
+// carries them to global_player.lua, which banks them in the private aa_bank_<charid> bucket the
+// picker spends from. An achievement that awards a specific AA does not come through here at all:
+// the `grant_aa` reward type assigns the ability rank directly (achievement_manager.cpp), which is
+// what "just assigned, never an open point" means for that path.
+//
+// WARNING: FIRE THE EVENT BEFORE ZEROING. Lua learns the amount from the event; zero first and it is
+// handed 0, the point is silently destroyed, and nothing anywhere reports the loss.
+// WARNING: EVERY writer of m_pp.aapoints must route through this. As of 2026-08-09 they are
+// AddAAPoints and SetAAPoints (below), the respec refund in aa.cpp, and the experience award block in
+// exp.cpp. Add a fourth without diverting it and that one path quietly reopens the native window.
+void Client::AoTv4DivertAAPoints(uint32 points)
+{
+	if (!points) {
+		return;
+	}
+
+	// WARNING: THE BANK IS CREDITED HERE, IN C++, AND *NOT* BY THE LUA EVENT HANDLER.
+	//
+	// The first version of this delegated the banking to global_player.lua's event_aa_gain, which
+	// called aa_choice.grant_picks. That put a REWARD behind a quest hook, and when the hook did not
+	// run the point was destroyed -- m_pp.aapoints was zeroed below whatever happened, so the player
+	// simply lost it with no error, no log line and nothing in the window. Reported from play as
+	// "I got an AA, and it didnt award it anywhere and nothing in the window", and confirmed in the
+	// data: aa_exp had dropped by exactly one point's worth while aa_bank_<id> stayed 0 and
+	// aa_pcount_<id> still held its previous value, proving grant_picks never ran.
+	//
+	// Writing the bucket directly makes the grant atomic with the zeroing: the two now cannot
+	// disagree, whatever the quest system is doing. The event below is now only a NOTIFICATION so Lua
+	// can roll and show the offer -- if it never fires, the points are still safely banked and the
+	// player is offered them on their next login (global_player.event_connect).
+	//
+	// ⚠️ Key format is "aa_bank_<charid>", matching aa_choice.lua's bank_key(). The Lua side writes
+	// these buckets with eq.set_data, which stores character_id = 0 and puts the id in the KEY, so the
+	// string-key overload here is the matching one -- do NOT switch this to the DataBucketKey form
+	// scoped by character, or C++ and Lua would read two different rows.
+	const std::string bank_key = fmt::format("aa_bank_{}", CharacterID());
+	const int         banked   = Strings::ToInt(DataBucket::GetData(&database, bank_key));
+	DataBucket::SetData(&database, bank_key, std::to_string(banked + static_cast<int>(points)));
+
+	m_pp.aapoints = 0;
+	SendAlternateAdvancementStats();
+
+	// Fired AFTER the bank is credited, so the handler sees the real total and can offer against it.
+	if (parse->PlayerHasQuestSub(EVENT_AA_GAIN)) {
+		parse->EventPlayer(EVENT_AA_GAIN, this, std::to_string(points), 0);
+	}
+}
+
 void Client::AddAAPoints(uint32 points)
 {
+	// AoTv4: divert to the picker instead of the native pool. The stock messages below are skipped
+	// with it -- they name m_pp.aapoints, which is about to be 0, so they would advertise a spendable
+	// pool the window then correctly shows as empty. The picker prints its own line.
+	if (RuleB(AoT, AAPointsToPicker)) {
+		AoTv4DivertAAPoints(points);
+		return;
+	}
+
 	m_pp.aapoints += points;
 
 	if (parse->PlayerHasQuestSub(EVENT_AA_GAIN)) {

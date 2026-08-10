@@ -1188,6 +1188,23 @@ std::string Client::SearchList(std::string kind, std::string term)
 			} else {
 				out += fmt::format("0|   {}  ({}-{})^", zone_name, row[3] ? row[3] : "?", row[4] ? row[4] : "?");
 			}
+
+			// ⚠️⚠️ IF THIS LIST EVER OUTGROWS ONE CHAT LINE, SAY SO -- DO NOT JUST STOP.
+			// Two independent ceilings sit above this, and BOTH used to fail silently:
+			//   * the dll parsed at most AC_MAX rows (it was 60 against 69 rows here, which is what
+			//     cut the Cabilis region off mid-list and was reported from play), and
+			//   * Client::Message vsnprintf's into char[4096] (zone/client.cpp:1840), so anything
+			//     past ~4,096 bytes is chopped mid-row with no error anywhere.
+			// AC_MAX is now 100 and the payload is ~2,055 bytes, so neither binds today. This guard
+			// exists so that the day the authored table grows past them, the player sees a row that
+			// says the list was cut instead of a list that just ends -- the same "no silent caps"
+			// lesson as the spell pool chunking and the Death Book.
+			// 📌 The real fix at that point is to CHUNK this the way SJPOOLDATA does, not to raise the
+			// numbers again; this marker is the tripwire that tells you the day has come.
+			if (out.size() > 3600) {
+				out += "0|   ... list truncated, tell a developer ...^";
+				break;
+			}
 		}
 		return out;
 	}

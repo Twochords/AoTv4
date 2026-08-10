@@ -864,7 +864,16 @@ void Client::RefundAA() {
 	}
 
 	if (refunded > 0) {
-		m_pp.aapoints += refunded;
+		// AoTv4: a respec refund is a grant like any other and must not land in the native pool -- see
+		// Client::AoTv4DivertAAPoints. Refunding to the picker's bank is also the only coherent
+		// outcome here: the abilities were bought THROUGH the picker, so their value has to return to
+		// it or unlearning would launder points into the native window the picker deliberately keeps
+		// empty.
+		if (RuleB(AoT, AAPointsToPicker)) {
+			AoTv4DivertAAPoints(refunded);
+		} else {
+			m_pp.aapoints += refunded;
+		}
 		SaveAA();
 		Save();
 	}
