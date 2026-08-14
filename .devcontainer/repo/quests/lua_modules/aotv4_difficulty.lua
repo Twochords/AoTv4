@@ -106,9 +106,12 @@ M.SWAP_COOLDOWN_SECS = 300      -- 5 minutes
 -- 📌 It costs a zone process per (zone x difficulty) shard, and those are capped by the launcher's
 -- `dynamics` and the 7000-7029 port range. Restricting to one zone keeps testing well inside that
 -- while the real capacity question is settled separately.
-M.TEST_ZONES = {
-	unrest = true,   -- The Estate of Unrest (zone 63)
-}
+-- ⚠️⚠️ EMPTY MEANS EVERY ZONE, AND THAT IS THE SHIPPING STATE. Opened 2026-08-14.
+-- ⚠️⚠️ THERE IS NO PER-ENVIRONMENT SWITCH HERE, AND IT LOOKED LIKE THERE WAS. This module is tracked
+-- in /src and ships to live verbatim, so while this table held `unrest` the LIVE server was
+-- Unrest-only too -- not just the test container. Anything scoped here is scoped everywhere; if a
+-- restriction is ever wanted for testing again, remember it goes out with the next Lua ship.
+M.TEST_ZONES = {}
 
 -------------------------------------------------------------------- WHICH TIER DOES WHAT
 -- ⚠️⚠️ TIERS DO NOT INHERIT EACH OTHER'S MECHANICS. This table is keyed on the EXACT difficulty, not

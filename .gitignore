@@ -82,6 +82,21 @@ skill-caps.diff
 # Auto-generated migration pre-backup dumps (mysqldump, see CLAUDE.md §15) -- dated, 100s of MB, never commit
 /peq_aotv4_*.sql
 /peq_*_backup*.sql
+# carolus21rex/aotv4_scaling -- the item/NPC rescaling pipeline. NOT tracked here: it is its own
+# upstream repo and stays a separate clone you pull, exactly like repo/eq-core-dll.
+# ⚠️⚠️ IT WAS BRIEFLY STAGED AS A NESTED REPO AND THAT SHIPS NOTHING. git records a directory
+# containing .git as a bare commit SHA (mode 160000), which clones as an EMPTY directory -- the same
+# failure .devcontainer/.gitignore records for repo/quests. If it is ever wanted in here, VENDOR it
+# (remove its .git and add the files); never `git add` the directory as it stands.
+# 📌 It is a database tool, not server code -- nothing on the live server loads it, so it does not
+# need to ship with the server to be usable against live.
+# ⚠️⚠️ ITS LOCAL EDITS ARE THEREFORE UNTRACKED AND LIVE ONLY ON THIS CONTAINER'S DISK. The one that
+# matters is in item_scaling_main.py: four queries exclude id band 147500-147968 so the pass cannot
+# rescale AoTv4's own items -- the fixed-seed delve augments (whose weights the Refining Crucible
+# reads), the Delver's Sigil ladder, and the tradeskill reward gear. A fresh clone does NOT have that
+# exclusion. Re-apply it before running the item pass against any database.
+/aotv4_scaling/
+
 # ⚠️⚠️ WHOLE-TABLE npc_types DUMPS. Untracked deliberately -- `aot_npcs_1.0.3.sql` arrived as a 32MB,
 # 67,702-line commit and is exactly the CLAUDE.md §35 hazard: applying one REVERTS every per-row
 # customisation on the table it replaces. Live examples it would undo -- the npc scaling pass
