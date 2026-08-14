@@ -125,6 +125,30 @@ sub spa_in {
     return "$spa IN (" . join(',', map { "effectid$_" } 1 .. 12) . ")";
 }
 
+# The PURITY test, factored out of the twelve-line form the illusion rule writes by hand: every
+# populated slot must be one of @ok, with 254 (empty) always allowed.
+#
+# ⚠️ This asks "does the spell do anything BESIDES the listed effects", which is the shape section 5
+# insists on -- prune the spell that does ONLY the junk thing, so a cosmetic or utility effect riding
+# along on something real keeps the spell in the pool.
+# ⚠️ It does NOT understand the engine's other "blank" slots -- a 10 spacer (base 0, formula 100) and
+# SPA 148/149, which `IsBlankSpellEffect` (common/spdat.cpp:950) also skips. Nothing needing that has
+# come up yet; add them to @ok at the call site if it does.
+sub only_spas {
+    my $set = join(',', @_, 254);
+    return join(' AND ', map { "effectid$_ IN ($set)" } 1 .. 12);
+}
+
+# "no slot pairs $spa with a POSITIVE base" -- the sign test, kept as a helper because the slot index
+# and the base-value index have to move together and writing that out by hand is where it goes wrong.
+# ⚠️ The `curecurse` rule already relies on this idea in the opposite direction (SPA 116 with a
+# NEGATIVE base is the one that removes counters), so the sign of a base value is load bearing in both
+# directions depending on the effect. Never assume it.
+sub spa_no_positive {
+    my $spa = shift;
+    return '(' . join(' AND ', map { "NOT (effectid$_ = $spa AND effect_base_value$_ > 0)" } 1 .. 12) . ')';
+}
+
 my @RULES = (
     # ⚠️ Do NOT key travel off `teleport_zone <> ''`. That column is not "destination zone", it is
     # "names an NPC or a zone": every pet/familiar/warder/Eye-of-Zomm spell puts its SUMMON TYPE
@@ -210,8 +234,68 @@ my @RULES = (
     # the family carries one, whatever it targets.
     ["ldon",    join(' OR ', 'targettype = 34', map { spa_in($_) } (164, 165, 166)),
                 "LDoN dungeon-object appraise/disarm/unlock"],
-    ["corpse",  spa_in(91),
-                "summon corpse"],
+    # ⚠️ 91 SummonCorpse and 77 LocateCorpse are one rule: both are corpse admin, and 77 is the whole
+    # of Locate Corpse, Track Corpse and Lyssa's Locating Lyric (all three pure). Death here drops you
+    # at your bind with your corpse behind you, so finding it is not the puzzle it is on live -- and
+    # spending one of three level-up slots on a spell that points at it is a wasted level.
+    ["corpse",  join(' OR ', map { spa_in($_) } (91, 77)),
+                "summon or locate a corpse"],
+    # ---------------------------------------------------------------- 2026-08-13 removals
+    # Seven junk families, all confirmed against the pool before being written (counts in the block
+    # comment at the end of this list). Each is keyed off its SPA rather than a name, so any other
+    # member of the family goes with it -- section 5's rule, and the reason `ldon` stopped keying off
+    # targettype.
+    #
+    # ⚠️⚠️ BLIND IS THE ONLY ONE THAT NEEDED CARE, AND IT HAD A LIVE TRAP IN IT: SPA 20 WITH A
+    # *POSITIVE* BASE IS **CURE** BLINDNESS (212, base +1). A naive purity test prunes it -- it is a
+    # single pure SPA 20 slot and looks exactly like Sunbeam. Hence `spa_no_positive`.
+    # ⚠️ SPA 2 (ArmorClass) is tolerated because Flash of Light and Blinding Luminance carry it at base
+    # **-5** -- a trivial AC *debuff* that is part of the blind, not a benefit. It is tolerated rather
+    # than ignored generally: a POSITIVE SPA 2 is a real AC buff and must never be swept up, which is
+    # why the sign guard is on 20 and the tolerance list is this narrow.
+    # ⚠️ It deliberately KEEPS `1545 The Unspoken Word`, which blinds AND carries SPA 79 for -605 -- a
+    # real nuke with a blind rider is not a blind spell.
+    # 📌 Two spells the owner did not name are caught, and that is the SPA-not-name rule working:
+    # `297 Eye of Confusion` is Sunbeam, and `134 Blinding Luminance` is Flash of Light.
+    ["blind",   spa_in(20) . ' AND ' . only_spas(20, 2) . ' AND ' . spa_no_positive(20),
+                "inflicts blindness and nothing of value"],
+    # ⚠️⚠️ SPA 76 IS NOT IMPLEMENTED -- `common/spdat.h:1139` says so outright ("just seems to send a
+    # message"), so Sentinel and the CLASSIC `2501 Sanctuary` do literally nothing. That is the
+    # `identify` argument in its purest form: a reward slot spent on a no-op.
+    # ⚠️ Not to be confused with the modern Sanctuary (5912, SPA 312), which is real -- and is already
+    # outside the pool on `classes8 = 254`.
+    ["sentinel", spa_in(76),
+                "proximity alarm -- SPA 76 is unimplemented, it only prints a message"],
+    # A scouting eye: a pet you see through. Catches `323 Eye of Zomm` and its higher-level twin
+    # `1720 Eye of Tallon`.
+    # ⚠️ Section 5 already records SPA 67 spells storing their summon type in `teleport_zone` -- that
+    # is why the TRAVEL rule must not key off that column, and is unrelated to pruning them here.
+    ["eye",     spa_in(67),
+                "summon a remote-vision eye"],
+    # Destroys your own pet to refund a little mana. Useful to a Magician who knows what it is for,
+    # and indistinguishable from a trap as one of three offered rewards.
+    ["reclaimpet", spa_in(68),
+                "destroys your pet for mana"],
+    # Speak through your pet. No combat use at all.
+    ["voicegraft", spa_in(75),
+                "talk through your pet"],
+    # ⚠️⚠️ SPA 24 `Stamina` IS **NOT** INERT -- do not reason from it sitting in the big
+    # no-direct-action fall-through in `SpellEffect()` (spell_effects.cpp:3233). It has real handlers
+    # in `bonuses.cpp` (:2046, :4355), exactly like STR/AC/ResistAll which share that block, so this
+    # prunes a working spell rather than a no-op. It is here because the owner asked for `310 Flare`
+    # and that is the ONLY spell in the pool carrying it.
+    # ⚠️⚠️ THAT COUNT OF ONE IS WHAT MAKES A BLANKET SPA RULE SAFE HERE. If it ever rises, re-check
+    # before trusting this: an Invigor-style stamina restore would be a genuinely useful reward on a
+    # server where specials cost endurance (section 22), and this rule would silently eat it.
+    ["stamina", spa_in(24),
+                "Flare -- the pool's only SPA 24"],
+    # SPA 61 SE_Identify prints an item's stats in chat. Harmless, and completely pointless as a
+    # level-up reward: the client already shows every stat on the item's own display, so the spell
+    # answers a question nobody has. Spending one of three reward slots on it is a wasted level.
+    # ⚠️ Keyed off the SPA, not the name, so any other member of the family goes with it -- the same
+    # reason the LDoN rule above stopped keying off targettype.
+    ["identify", spa_in(61),
+                "identify an item -- the client already shows its stats"],
     # SPA 32 SummonItem conjures an ITEM. That is one rule covering three things the reward picker
     # should never offer: Magician summons (weapons, bags, jewellery), the Enchanter "Enchant <metal>"
     # and "Mass Enchant <metal>" tradeskill lines, and the focus-essence junk. The older name-based

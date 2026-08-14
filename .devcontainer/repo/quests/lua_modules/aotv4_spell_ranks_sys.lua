@@ -10,9 +10,9 @@
 --     RANK    per base spell, 1-5. Permanent. Applies to every future copy.
 --     KEPT    at most 2 spells you START a run with. This is the only thing death touches.
 --
--- ⚠️ Keeping is therefore NOT how you protect a rank -- the rank was never at risk. Keeping only
--- buys you the spell in hand at level 1, paid for by forfeiting the level-up pick at the level that
--- spell was originally taken.
+-- ⚠️ Keeping is therefore NOT how you protect a rank -- the rank was never at risk. Keeping buys you
+-- the spell in hand at level 1, and costs nothing: it used to forfeit the level-up pick at the level
+-- the spell was taken, which was removed on 2026-08-10 (see spell_choice.M.offer).
 --
 -- ⚠️⚠️ A RANK IS A DIFFERENT SPELL ROW, NOT A MODIFIER. spell_ranks.lua maps base -> {r2,r3,r4,r5}
 -- (real rows at 43576-44327 from gen_spell_ranks.pl). "Applying a rank" means scribing a different
@@ -73,7 +73,6 @@ end
 local function rkey(c) return "spellrank_"  .. c:CharacterID() end  -- base:rank  PERMANENT
 local function nkey(c) return "spellknown_" .. c:CharacterID() end  -- base list   PERMANENT
 local function kkey(c) return "spellkeep_"  .. c:CharacterID() end  -- base list   which 2 survive
-local function pkey(c) return "pickspent_"  .. c:CharacterID() end  -- forfeited levels this run
 -- ⚠️ The origin level is SPELL_CHOICE'S bucket, written at the moment of the pick. Keeping a second
 -- copy here would be two sources of truth for one fact and would charge the wrong level once they
 -- drifted. Never derive it from the spell's own classes8 -- that is the level it becomes AVAILABLE.
@@ -140,6 +139,24 @@ function M.ranked_id(c, base)
     return chain and chain[rk - 1] or base
 end
 
+-- The BASE id of any spell, whether a base or one of its ranks. Public because the picker has to ask
+-- the same question when deciding what is already known, and requiring spell_ranks.lua in two places
+-- would be two readers of one map.
+-- ⚠️ Returns the id unchanged when it is not part of any chain, so unranked spells are safe to pass.
+function M.base_of(spell_id)
+    return ranks.base[spell_id] or spell_id
+end
+
+-- Is this base spell one of the character's KEPT spells?
+-- ⚠️ Normalises first: the keep list stores BASES, but callers hand over whatever id they are holding.
+function M.is_kept(c, spell_id)
+    local base = M.base_of(spell_id)
+    for _, kb in ipairs(M.kept(c)) do
+        if kb == base then return true end
+    end
+    return false
+end
+
 -- ---------------------------------------------------------------- kept spells
 function M.kept(c)
     local out = {}
@@ -183,10 +200,8 @@ function M.keep(c, spell_id)
     end
     list[#list + 1] = base
     eq.set_data(kkey(c), table.concat(list, ","))
-    local lv = M.origin_of(c, base)
-    notify(c, string.format("%s will be in hand at the start of each run.%s",
-        eq.get_spell_name(base) or ("spell " .. base),
-        lv and string.format(" You forfeit your level %d pick.", lv) or ""))
+    notify(c, string.format("%s will be in hand at the start of each run.",
+        eq.get_spell_name(base) or ("spell " .. base)))
     return true
 end
 
@@ -303,30 +318,23 @@ function M.on_death_before_wipe(c)
     return n
 end
 
--- Called AFTER the wipe. Re-scribe the kept spells AT THEIR EARNED RANK and charge the forfeit.
+-- Called AFTER the wipe. Re-scribe the kept spells AT THEIR EARNED RANK.
 -- ⚠️ `first_slot` because the class auras are re-scribed by the same caller and take the low slots;
 -- ScribeSpell overwrites without complaint, so two writers starting at 0 destroy one another.
+-- 📌 Keeping is FREE (2026-08-10). This used to also write `pickspent_` and charge the level-up pick
+-- at each kept spell's origin level; see the note in spell_choice.M.offer for why that was removed.
 function M.on_death_after_wipe(c, first_slot)
-    local spent, slot = {}, first_slot or 0
-    for _, base in ipairs(M.kept(c)) do
+    local kept, slot = M.kept(c), first_slot or 0
+    for _, base in ipairs(kept) do
         c:ScribeSpell(M.ranked_id(c, base), slot)
         slot = slot + 1
-        local lv = M.origin_of(c, base)
-        if lv then spent[#spent + 1] = lv end
     end
-    eq.set_data(pkey(c), table.concat(spent, ","))
-    if #spent > 0 then
-        c:Message(15, string.format("Your kept spells return. You forfeit your level %s pick%s.",
-            table.concat(spent, " and "), #spent == 1 and "" or "s"))
+    if #kept > 0 then
+        c:Message(15, string.format("Your kept spell%s return%s to your book.",
+            #kept == 1 and "" or "s", #kept == 1 and "s" or ""))
     end
 end
 
-function M.pick_is_forfeit(c, level)
-    for _, lv in ipairs(split(eq.get_data(pkey(c)))) do
-        if tonumber(lv) == level then return true end
-    end
-    return false
-end
 
 -- ---------------------------------------------------------------- upgrading
 -- What the next rank costs, and whether it can be afforded. Returned as data so the UI can render

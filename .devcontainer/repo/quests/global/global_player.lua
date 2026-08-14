@@ -19,6 +19,7 @@ local aotv4_regions = require("aotv4_regions")   -- region unlocks earned by dyi
 local aotv4_reforge = require("aotv4_reforge")   -- race/class change at level 1 (Reforger Vael)
 local skill_pool      = require("skill_pool")       -- combat specials: which are native, which rotate
 local aotv4_aa_tank = require("aotv4_aa_tank")       -- marker AAs in the Tank tree
+local aotv4_difficulty = require("aotv4_difficulty") -- Normal/Nightmare/Hell/Inferno world shards (/pick)
 
 -- AA-on-death tuning lives at the point of use, in event_death -- see the "RANDOM AA ON DEATH" block.
 -- ⚠️ A long comment here used to describe a two-regime, era-anchored scheme (DEATH_AA_AT_CAP 0.40 /
@@ -47,6 +48,14 @@ function event_enter_zone(e)
 	aotv4_worldboss.on_enter_zone(e)                -- spawn the armed world boss if it is waiting for this zone
 	aotv4_worldbuff.on_player(e)                    -- pick up an armed world buff on arrival
 	aotv4_dungeon.on_enter_zone(e)                  -- crossing a zone line out of a delve fails the run
+	-- Keep the player in the shard matching their chosen difficulty. ⚠️ AFTER the delve hook: that
+	-- one may fail a run and move them, and this must see where they ACTUALLY ended up. It no-ops
+	-- for anyone on Normal standing in the open world, which is the overwhelmingly common case.
+	aotv4_difficulty.on_enter_zone(e)
+	-- Hidden travel waypoints: the first player into a zone boots its invisible markers.
+	-- ⚠️ Guarded internally to run ONCE per zone process and never inside an instance, so this costs
+	-- one boolean for every arrival after the first -- and nothing at all in a delve or a shard.
+	require("aotv4_travel").spawn_markers()
 	eq.set_hotzone(hotzones.is_hot(eq.get_zone_short_name()))  -- 1.5x EXP if this is one of today's hot zones
 	e.self:Message(MT.NPCQuestSay, "PORTALCLOSE")   -- dismiss the Portal window on any zone change
 	e.self:Message(MT.NPCQuestSay, "LOOTCLOSE")     -- and the Advanced Loot window (its corpse is gone)
@@ -704,6 +713,19 @@ function event_level_up(e)
   grant_native_combat_skills(e.self)   -- cap curves for some specials only open above level 1
   max_skills_for_level(e.self)         -- every skill to its new cap for this level (tradeskills excluded)
 
+  -- ⚠️⚠️ AND TELL THE CLIENT, OR A SKILL GRANTED HERE STAYS INVISIBLE UNTIL THE NEXT LOGIN.
+  -- The dll hides every reward-gated combat skill it has not been told about (the CSkillMgr::GetSkillCap
+  -- detour, section 4) and it only learns the earned set from a SKILLUNLOCKDATA line. This was sent on
+  -- connect, after a pick, and on death -- but NOT here, which is the one place a NATIVE special first
+  -- becomes grantable: most of them have no skill_caps row until a given level, so the grant above is a
+  -- no-op at level 1 and only succeeds on the level-up that opens the cap.
+  -- Reported from play as Rogues never being auto-granted Backstab: skill_caps has no Rogue/Backstab
+  -- row below level 10, so it is correctly refused for nine levels, granted server side on dinging 10,
+  -- and then hidden by the client until something else happened to re-send the set.
+  -- 📌 send_unlocks also re-sends each earned skill's value, which is what makes the client rebuild its
+  -- Combat Abilities list -- without it the ability can be "known" and still not appear on the bar.
+  spell_choice.send_unlocks(e.self)
+
   if e.self:GetLevel() == 5 then
     eq.popup("", "<c \"#F0F000\">Welcome to level 5.</c><br><br>You have just been granted a new ability called '<c \"#F0F000\">Origin</c>' which allows you to teleport back to your starting city.<br><br>Open the Alternate Advancement window by pressing the '<c \"#F0F000\">V</c>' key, look in the '<c \"#F0F000\">General' tab</c>, and find the '<c \"#F0F000\">Origin</c>' ability and select it.<br><br>Now press the '<c \"#F0F000\">Hotkey</c>' button to create a hotkey you can place on your hot bar.");
   end
@@ -961,6 +983,14 @@ function event_say(e)
   -- line, so the rest of event_say is skipped for its own commands.
   if aotv4_dungeon.handle_say(e) then return end
 
+  -- /pick window: "diffwin" (send the ladder) and "diffset <n>" (switch). Consumes the line so it
+  -- never reaches chat or a quest, the same as the delve commands above.
+  if aotv4_difficulty.handle_say(e) then return end
+
+  -- Hidden waypoints: "travel" lists what you have found, "travelto <id>" goes there. Consumes the
+  -- line so it never reaches chat or a quest, the same as the delve and difficulty commands above.
+  if require("aotv4_travel").handle_say(e) then return end
+
   -- consume "spellpick <N>" from the level-up reward window (the only reward picker now)
   spell_choice.handle_say(e)
   -- ⚠️ The AA picker owns "/say aapick <n>". Both handlers are called because they match different
@@ -1079,11 +1109,36 @@ function event_task_complete(e)
   aotv4_dungeon.on_task_complete(e)
 end
 
+-- Feign Death, once per creature holding you on its hate list.
+-- ⚠️⚠️ THE RETURN VALUE IS THE MECHANISM: EntityList::ClearFeignAggro (entity.cpp:3611) skips that
+-- creature when this returns non-zero, so it keeps its hate. Hell and Inferno use it to make feign
+-- unreliable rather than impossible. Returning nothing means "forget the player", which is stock --
+-- so a handler that rolls and then forgets to return silently disables the whole mechanic.
+function event_feign_death(e)
+  return aotv4_difficulty.on_feign_death(e)
+end
+
+-- Confirmation dialogs. ⚠️ EVENT_POPUP_RESPONSE carries ONLY `e.popup_id` -- there is no "which
+-- button" field, and CANCELLING FIRES NOTHING AT ALL. So a handler here means "they pressed OK";
+-- there is no way to observe a refusal, which is why any pending state must be keyed on the player
+-- and re-validated rather than assumed still true.
+-- ⚠️ Each consumer checks its own id and returns false if it is not theirs, so several systems can
+-- share this one hook.
+function event_popup_response(e)
+  if require("aotv4_travel").on_popup(e) then return end
+end
+
 -- Custom "when you are hit" abilities: Divine Aura, Blade Turn, Counterattack,
 -- Vengeful Aura. The RETURN VALUE matters here -- zone/attack.cpp:4404 uses it
 -- as damage_override (negative negates the hit, positive replaces it, 0 leaves
 -- it alone), so this must return what the module hands back.
 function event_damage_taken(e)
+  -- Hell champion affixes: `draining` takes mana and endurance, `leeching` heals the creature.
+  -- ⚠️⚠️ CALLED FOR ITS SIDE EFFECT ONLY, AND ITS RETURN IS DISCARDED. This hook's return value is a
+  -- DAMAGE OVERRIDE (zone/attack.cpp:4404) -- negative negates the hit, positive replaces it -- so
+  -- letting it into the return path would silently rewrite every hit taken in Hell. The reactions
+  -- module owns that value and keeps it.
+  aotv4_difficulty.on_damage_taken(e)
   return aotv4_reactions.on_damage_taken(e)
 end
 
@@ -1096,6 +1151,7 @@ function event_damage_given(e)
   if not (override and override < 0) then
     aotv4_thirst.on_damage_given(e, e.self)
     aotv4_aa_tank.on_damage_given(e, e.self)   -- Bloodied Bash: Bash/Slam leeches
+    aotv4_difficulty.on_damage_given(e)        -- Hell: a `barbed` champion reflects half its level
   end
   return override
 end

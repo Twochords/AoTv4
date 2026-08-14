@@ -67,6 +67,29 @@ nohup ./queryserv    > logs/queryserv_manual.log    2>&1 &   # logging
   `No zoneserver available to boot up`. Restart `eqlaunch zone`. Keep **exactly one** eqlaunch.
 - Zones are **dynamic**: `eqlaunch` boots `./zone` processes on demand and respawns them; idle
   zones self-terminate. That's normal, not a crash.
+- ⚠️⚠️ **SAME "Server down", COMPLETELY DIFFERENT CAUSE: `CUSTOM_BINARY_DATABASE_VERSION` AHEAD OF THE
+  DATABASE.** A zone whose binary expects a newer custom version than `db_version.custom_version` logs
+  `Custom | database [56] binary [57] checking updates` then **`Exiting due to pending database
+  updates`** — by design. Every zone boots, refuses and exits, so none ever binds a port, world answers
+  `No zoneserver available to boot up`, and the player sees "server is down". `eqlaunch` is running and
+  innocent, so §2's bullet above sends you the wrong way.
+  - ⚠️⚠️ **THE TRIGGER IS APPLYING A MIGRATION'S SQL BY HAND.** That lands the payload but never advances
+    `custom_version`, and the gap is harmless until the **next binary rebuild** — at which point two
+    unrelated changes combine to take the server down. Did exactly this on 2026-08-13 (v57's door applied
+    by hand, then `zone` rebuilt for §47) and lost the server until it was spotted.
+  - **Either let world apply the migration, or advance the version by hand at the same time.** "The
+    migration will no-op later" is wrong reasoning: the version check fires **before** any migration
+    would run. ⚠️ Only advance it after confirming the payload really is present.
+  - 📌 Diagnose from a **zone** log, not world's — world says only that no zoneserver was available.
+    Find the newest with `find logs/zone -name '*.log' -printf '%T@ %p\n' | sort -rn | head -1`;
+    ⚠️ `ls -t logs/zone/*.log` fails with **"Argument list too long"** once that directory fills up.
+- ⚠️⚠️ **`pgrep -cx zone` COUNTS ZOMBIES, so it lies about how many zones are running.** `eqlaunch` leaves
+  defunct (`Z`) children behind — 22 of them after a few restarts — and they are dead, harmless, and
+  indistinguishable from live zones in a `pgrep` count. It also breaks any "is this process older than my
+  new binary" test, which is how a restart can look like it left stale zones on the old code when it did
+  not. Count and age only **live** ones:
+  `ps -eo pid,stat,etimes,comm | awk '$4=="zone" && $2 !~ /Z/'`
+  ⚠️ `stat -c %Y /proc/<pid>` is **not** process start time — use `etimes` or `lstart`.
 
 ### RoF2 login needs 5999/udp PUBLISHED (client "times out at username/password")
 The RoF2 client logs in on the **SoD stream** (`login.json` `sod_port: 5999`), NOT the Titanium
@@ -125,6 +148,10 @@ Price box sits beside the button. Pure Lua + the picker XML; **no item and no ve
 - **Price = `5p × (rerolls_bought + 1)`** — 5p, 10p, 15p, … Counted per character in bucket
   `rerollbuy_<charid>` and ⚠️ **never reset by the roguelite death**: rerolls get dearer over a
   character's whole life, not per run.
+  📌 **One thing does reduce it: declining a Tome of Insight's offer** (§44) — 25/50/100 percent by
+  tier, editing this counter permanently. It is the only thing in the game that winds it back, and it
+  is why `M.BOOK_REROLL_CUT` lives in `spell_choice` (this file owns the counter) and is read *back* by
+  `aotv4_spell_books`, one direction only.
 - ⚠️⚠️ **A TOKEN ITEM + VENDOR WAS BUILT FIRST AND THEN DELETED** (item 147495 "Destiny Fragment",
   npc 2000210). Charging coin straight from the button is simpler and needs no shared-memory rebuild,
   no spawn rows and no hand-in script. If a token is ever wanted again, the reason the vendor could
@@ -275,6 +302,18 @@ its own; our `dsp_chat` calls `SpellChoiceParseTransport`. Wire format is **unch
       not implement, so it would answer nothing and the detail pane would sit on whatever the previous
       kind left there. Same "a row index is not a data index" trap as the Death Book and the spell
       Known/Pool tabs.
+    - ⚠️⚠️ **`AC_MAX` IS NOT "just match the server" ANY MORE, AND AT 60 IT SILENTLY ATE ROWS**
+      (fixed 2026-08-10). The four **search** kinds really do carry `LIMIT 60` in `Client::SearchList`,
+      so 60 matched them exactly — but a **browse** list has no LIMIT by design, and zxp returns **69**
+      rows today (63 zones + 6 region headers). Everything past the 60th was dropped client-side with no
+      message, so the list simply ended mid-region. Reported from play as the **Cabilis section being
+      cut short**. Now **100**.
+      ⚠️ The real ceiling is the **server's chat buffer**, not this: `Client::Message` uses `vsnprintf`
+      into `char[4096]` (`zone/client.cpp:1840`) and the zxp payload is ~2,055 bytes today (100 rows ≈
+      2,900). Raising `AC_MAX` far beyond that just moves the truncation into the chat buffer, where it
+      is silent again — so the server appends a **visible marker row** instead of overflowing.
+      📌 The general shape: **any client-side row cap sized to a server `LIMIT` becomes a silent
+      truncator the moment a kind without that LIMIT is added to the same window.**
     - ⚠️⚠️ **THE LEVEL RANGES ARE AUTHORED, NOT DERIVED, AND LIVE IN `aotv4_zone_xp`** so they can be
       edited without a rebuild. A computed range was built first (percentile 10-90 of spawned mob
       levels, excluding merchants, bankers, GM trainers, LDoN chests and anything on a town faction)
@@ -334,6 +373,19 @@ that the class can't natively have get a level-scaled cap (unused slots `77+` st
 rows). Reward-gated *combat* skills are revealed **only if earned** — the server sends
 `SKILLUNLOCKDATA <csv of earned skill ids>` (skills with value > 0) on connect and after each
 pick; the hook hides un-earned combat skills from both the Skills window and the ability picker.
+
+⚠️⚠️ **`SKILLUNLOCKDATA` MUST ALSO BE SENT ON LEVEL UP — it was not, and Rogues never got Backstab
+(fixed 2026-08-10).** It was sent on connect, after a pick, and on death, but **not** from
+`event_level_up` — which is the one place a **native** special first becomes grantable: most have no
+`skill_caps` row until a given level, so `grant_native_combat_skills` is a no-op at level 1 and only
+succeeds on the level-up that opens the cap. `skill_caps` has no Rogue/Backstab row below **level 10**,
+so it was correctly refused for nine levels, granted server-side on dinging 10, and then **hidden by
+the client** until something else happened to re-send the set. `global_player.event_level_up` now calls
+`spell_choice.send_unlocks(e.self)`.
+- 📌 `send_unlocks` also re-sends each earned skill's **value**, which is what makes the client rebuild
+  its Combat Abilities list — without it the ability can be "known" and still not appear on the bar.
+- ⚠️ This is the §4 three-layer problem biting on the **middle** layer: the server had granted it and
+  the server would have executed it, but the client never displayed it, so it was unusable.
 
 **(c) Server execution (`/src/zone/special_attacks.cpp`, `Client::OPCombatAbility`).** EQEmu
 class-gates the activated specials. Patched to be **skill-gated** (any class that trained the
@@ -554,9 +606,11 @@ of which classes had a special natively -- the only surviving copy is `skill_poo
 ⚠️ **The generator writes `spell_blacklist.lua` too — it MUST be regenerated with the pool.** When
 > the custom set took over, the blacklist was emptied ("empty by design: the pool is hand-authored"),
 > so re-pointing at the stock set without rebuilding it silently reopens every port, rez and
-> Enchant-material spell. Current prune = **473** (travel 169 / summon-item 199 / illusion 23 /
-> vision 19 / enchant 20 / rez 15 / cure-curse 7 / LDoN 18 / summon-corpse 3), leaving **2174
-> offerable**. Travel is pruned partly because ports **defeat region locking**.
+> Enchant-material spell. ⚠️⚠️ **THE PER-RULE COUNTS LIVE IN ONE PLACE ONLY — §20's blacklist block.**
+> A second copy used to sit here and had drifted to a prune of 473 / 2174 offerable against an actual
+> **695 / 1938**, which is the same two-sources-of-truth failure this file warns about everywhere else.
+> Read them off the generator's own output, and update §20 alone.
+> Travel is pruned partly because ports **defeat region locking**.
 >
 > ⚠️⚠️ **`teleport_zone` is NOT "destination zone" — it is "names an NPC *or* a zone".** Every
 > pet/familiar/warder/Eye-of-Zomm spell stores its **summon type** there (SPA 33/71/152 pets, 106
@@ -602,6 +656,14 @@ runtime in `spell_choice.gather_candidates`. Criteria:
 > crawl). So era filtering is the `id<10000` + level approximation, not a surgical classic list.
 
 ## 6. Death-driven AA rewards (roguelite) — ⚠️ RETIRED 2026-07-25, kept as history
+
+> ⚠️⚠️ **THE "AA IS BACK TO BASE EQ" BANNER BELOW IS NO LONGER TRUE — SEE §45.** The **picker owns AA
+> again**: `Client::AoTv4DivertAAPoints` zeroes `m_pp.aapoints` on every path and banks the points in
+> `aa_bank_<charid>` (rule `AoT:AAPointsToPicker`), so there is **never a spendable point in the native
+> AA window** — including from quest and achievement grants. What did *not* come back is the
+> **death-driven lump**: as of 2026-08-10 AA accrues continuously, 1:1 with applied experience. So
+> "spent in the client's own AA window" is wrong, while everything below about the *picker's* retirement
+> as a **random-AA-on-death** system stands. `aa_choice.lua` is loaded again for the offer.
 
 > **Random AA is gone and AA is back to BASE EQ**: earned as AA experience, spent in the client's own
 > AA window. The whole picker is unwired — `global_player.lua` no longer requires `aa_choice` (no
@@ -1020,6 +1082,82 @@ class, `classes8`, skill caps, expansion). The windows are generic (`SPELLCHOICE
 ## 11. Discovered-PoK-book travel network
 
 A personal fast-travel system over the Plane of Knowledge books.
+
+### ⚠️⚠️ THE HUB BOOK MUST FOLLOW THE HUB ZONE — it did not, for as long as resplendent was the hub
+A **hub book** is one whose click unlocks a whole SET of waypoints at once (`pok_travel.grant_sets`)
+rather than just its own zone. There is one, it grants **Butcherblock Docks + Commonlands + Qeynos
+Hills**, and it is the only way a new character gets any waypoint at all — *and* the only way to open
+the Portal window at the start, since §3 records that window as openable **only at a book** with no
+`/aot` launcher button.
+- It was authored at **`tutorialb` doorid 48** (`custom/sql/aotv4_pok_books_extra.sql`). Then
+  `aotv4_start_resplendent.sql` made **`resplendent` (729)** the start zone for all **1,441**
+  (race, class, deity) rows and turned the tutorial off — **and the book stayed behind in a zone
+  nobody could reach.** Reported from play as *"I don't see the PoK book in Resplendent"*.
+  Fixed by **migration v57**: `resplendent` doorid **100**, plus a `grant_sets.resplendent` entry.
+- ⚠️⚠️ **v57 MUST NOT ADD A SECOND BOOK ON LIVE, AND ITS CONDITION IS WHAT GUARANTEES THAT.** Live's
+  book is at an **unknown doorid** (it was placed by hand), so the migration keys on *any*
+  `dest_zone = 'poknowledge'` door **in the zone** rather than on doorid 100, and the INSERT carries a
+  matching `NOT EXISTS` guard so it is safe when run by hand too. Keyed on the id, it would have found
+  nothing at 100 on live and planted a duplicate beside the book players already use.
+  ⚠️ There is deliberately **no `DELETE` first**: if live's book happens to sit at doorid 100, deleting
+  and re-inserting would silently **move** a book whose position players already know. Idempotency comes
+  from the guard, which touches nothing already present — verified by re-running the whole readable
+  script and confirming the count stayed at 1.
+  📌 So the two environments each end up with one book, not necessarily at the same doorid, and that is
+  fine: nothing keys off the doorid. `grant_sets` keys off the **zone**, and `book_override` is only
+  needed for a zone holding two books.
+- ⚠️⚠️⚠️ **IT EXISTS ON LIVE AND HAS NEVER EXISTED IN DEV, AND THAT DISTINCTION COST MOST OF AN HOUR.**
+  It was authored **on live** with the door tool — `#door create` then `#door save`, which really does
+  persist, against whichever database it was run on — and never flowed back to this container. So it is
+  a genuine row on live while every check here correctly found nothing.
+  ⚠️ **§25's very first line says the live server is a different database and that absence here proves
+  nothing — and it was still reasoned past.** Five separate verifications (all 75 dev doors at
+  `dest_zone='NONE'`; all four sibling custom books intact; zero hits across **six** full-`doors` dumps
+  *and* the newest HeidiSQL backup at `custom_version 54`; no DELETE/REPLACE on `doors` anywhere in the
+  codebase; `aotv4_start_resplendent.sql` doing no door work) were used to conclude "it never existed",
+  when all they could ever establish was "not in dev". **When something is reported from play, the
+  question is always "does it exist on LIVE", and live cannot be queried from here.** Ask.
+  📌 Two search bugs also fed the wrong conclusion, both already written down elsewhere in this file:
+  a HeidiSQL dump uses **`REPLACE INTO`**, not `INSERT INTO` (§35), so the first pass over `Deez.sql`
+  reported it as having no `doors` table at all; and that file had meanwhile been **replaced** with a
+  newer backup, so the stale mtime was read.
+- ⚠️ tutorialb's book and its `grant_sets` entry are **deliberately kept**: they cost nothing, and the
+  tutorial rules have already been reverted once by an unannounced rules dump (§35 — `EnableTutorialButton`
+  is back to `true` and `MaxLevelForTutorial` to 15 right now), so it may become reachable again.
+- ⚠️⚠️ **A HUB BOOK IS A SOURCE THAT IS NEVER A DESTINATION.** `resplendent` is in
+  `pok_travel.never_attune` and must **never** go into `pok_portals.lua`: the hub is where you are
+  BOUND and you return by **dying**, which is the whole roguelite loop, so a book *to* it is a free
+  bind-anywhere. tutorialb is the same shape (one-way-out). That guard's own comment predicted this
+  change — *"the accident quietly disappears the moment somebody adds a book to the zone"* — which is
+  exactly why the rule was written down rather than left implicit in the data.
+- 📌 **No hook change was needed.** `event_click_door` matches `dest_zone == "poknowledge"` generically,
+  so a new book anywhere is picked up by discover → open → `return 1`.
+- 📌 **Position was derived, not walked**: −22 / 548 / 0 is the start-and-bind point nudged 13 units
+  along y, so the model stands in front of an arriving player rather than inside them. That point is
+  known-good standing ground (every character materialises on it and respawns there after every death),
+  which also makes it the most discoverable spot in the zone. ⚠️ In-game `/loc` prints **Y,X,Z** —
+  `doors.pos_x/pos_y` are already swapped relative to it, so never paste a raw `/loc`.
+
+### ⚠️⚠️ THE HUB NPC LOCK TRIGGERS DO NOT SURVIVE A FULL IMPORT, AND WERE FOUND MISSING 2026-08-13
+`custom/sql/aotv4_resplendent_npc_lock.sql` installs four `BEFORE INSERT/UPDATE` triggers that
+re-assert `npc_types.class = 1` / `bodytype = 1` on the three hub NPCs (2000400-2000402) and
+`spawn2.heading = 256` / `min_expansion = max_expansion = -1` on their spawns. It exists because they
+were clobbered **twice** — created as bodytype 11 (NoTarget, so nobody can `/hail` them) and class 41
+(Merchant, so right-click opens an empty merchant window), then reverted again by the 2026-08-02
+"Group A" `REPLACE INTO npc_types SELECT * FROM <dump>`.
+- ⚠️⚠️ **`information_schema.TRIGGERS` for `peq` was completely EMPTY**, so all four had been dropped —
+  a full-table dump import runs `DROP TABLE`, which takes the trigger with it (a REPLACE INTO / UPDATE
+  / TRUNCATE+reload does **not**). The NPCs happened to still be correct, so **nothing was visibly
+  wrong** — the guard was simply off, and the next full import would have reverted Alessa to an
+  untargetable merchant with no symptom until a player tried to hail her.
+- **Re-run it after ANY full import.** Verify with the trigger query at the foot of that file, and
+  confirm the guard actually bites rather than merely existing: an `UPDATE npc_types SET class = 41,
+  bodytype = 11 WHERE id = 2000400` must read back as **1/1**.
+- ⚠️ It must go through **`mysql < file`**, not `mysql -e` — it uses `DELIMITER`, which is a client
+  directive the `-e` path does not honour.
+- 📌 The `spawn2` half keys on **`spawngroupID`**, not the auto-increment `spawn2.id`: the group id is
+  the stable custom handle and survives the row being deleted and recreated.
+
 - **Discover** — `global_player.lua` `event_click_door`: clicking any door whose destination is
   `poknowledge` calls `pok_travel.discover(zone)` AND **`return 1`** (cancels the door's `HandleClick`
   so the book does NOT teleport you to PoK — `Handle_OP_ClickDoor` skips `HandleClick` when the event
@@ -1268,6 +1406,11 @@ addresses rebased at runtime. Four detours:
   Percussion 70** (SPELL::Skill is a BYTE @ **+0x270**; per-class level array @ +0x246, Bard @ +0x24e).
 
 ### ⚠️⚠️ A NON-BARD SINGING A REAL BARD SONG — the song machinery is class-gated (fixed 2026-08-05)
+> ⚠️⚠️ **THE CURE RECORDED HERE WAS SUPERSEDED ON 2026-08-10 — READ §46 FIRST.** Giving a non-Bard the
+> *pulse* (the fix in the fourth bullet) was the wrong answer and was reverted: sustaining is Bard
+> machinery end to end, and a non-Bard now casts a song **once**, like any other spell. The diagnosis
+> below is still exactly right, and the two ⚠️/📌 notes at the end still stand.
+
 `Client::CastedSpellFinished` gates the entire bard-song block on **`GetClass() == Class::Bard`**
 (`zone/spells.cpp:1471`). Correct on live, where only a Bard can hold a song — but the reward pool
 hands genuine songs to all sixteen classes here, and a non-Bard fell into the **else** branch:
@@ -2024,16 +2167,57 @@ written afterwards with `SetItemText` has no colour and draws **black**. Every e
 explicit `SetItemColor(row, col, colour)` — the `Cell()` helpers in `core_autoskill.cpp` and
 `core_spelljournal.cpp` now take a colour and do both.
 
-### Blacklist as of 2026-07-29 — 637 pruned, **1996 offerable**
+### Blacklist as of 2026-08-13 — 695 pruned, **1938 offerable**
 ```
-travel 170 · discipline 157 · summonitem 183 · illusion 23 · vision 19
-enchant 20 · rez 15 · ldon 36 · curecurse 7 · corpse 3 · sense 3 · truenorth 1
+travel 170 · summonitem 183 · discipline 157 · fear 40 · ldon 36 · illusion 23
+enchant 20 · vision 19 · rez 15 · curecurse 7 · corpse 6 · blind 4 · sense 3
+sentinel 2 · eye 2 · identify 2 · rootform 2 · truenorth 1 · reclaimpet 1
+voicegraft 1 · stamina 1
 ```
+📌 **The 2026-08-13 pass added seven families (14 spells)** on an owner list: `blind`, `sentinel`,
+`eye`, `reclaimpet`, `voicegraft`, `stamina`, and `corpse` widened from SPA 91 alone to **91 + 77** so
+it covers Locate Corpse / Track Corpse / Lyssa's Locating Lyric. Two spells on that list —
+**Fear (229) and Panic Animal (241) — were already pruned** by the existing `fear` rule; both
+`gather_candidates` and `send_pool` apply the blacklist, so neither was ever being offered or shown on
+the Pool tab. Three spells NOT on the list were caught, which is the key-off-SPA rule working as
+intended: `134 Blinding Luminance` (= Flash of Light), `297 Eye of Confusion` (= Sunbeam) and
+`1720 Eye of Tallon` (= Eye of Zomm).
+- ⚠️⚠️ **SPA 20 WITH A *POSITIVE* BASE IS `212 Cure Blindness`**, which is a single pure SPA 20 slot and
+  looks identical to Sunbeam under any naive purity test. The `blind` rule carries a **sign guard**
+  (`spa_no_positive`) for it. The `curecurse` rule relies on the same idea in the **opposite**
+  direction — SPA 116 with a *negative* base is the one that removes counters — so **the sign of a base
+  value is load bearing in both directions depending on the effect, and must never be assumed.**
+- ⚠️ `blind` tolerates **SPA 2 at a negative base** (Flash of Light and Blinding Luminance carry −5, a
+  trivial AC debuff that is part of the blind). A **positive** SPA 2 is a real AC buff and must never be
+  swept up — which is why the tolerance is this narrow and the sign guard sits on 20.
+  ⚠️ It deliberately keeps `1545 The Unspoken Word`: blind riding on a −605 nuke is not a blind spell.
+- ⚠️⚠️ **SPA 24 `Stamina` IS NOT INERT — do not reason from the fall-through.** It sits in the big
+  no-direct-action block in `SpellEffect()` (`spell_effects.cpp:3233`) alongside STR/AC/ResistAll, but
+  it has real handlers in **`bonuses.cpp` (`:2046`, `:4355`)**, so `stamina` prunes a *working* spell.
+  It is a blanket SPA rule only because **`310 Flare` is the pool's one and only SPA 24**. ⚠️ If that
+  count ever rises, re-check before trusting it — an Invigor-style restore would be a genuinely good
+  reward where specials cost endurance (§22), and this rule would silently eat it.
+- ⚠️⚠️ **SPA 76 IS UNIMPLEMENTED** — `common/spdat.h:1139` says so outright (*"just seems to send a
+  message"*), so `299 Sentinel` and the **classic** `2501 Sanctuary` do literally nothing. Not to be
+  confused with the modern Sanctuary (`5912`, SPA 312), which is real and is already outside the pool on
+  `classes8 = 254`.
+- 📌 Two helpers were factored out of the hand-written twelve-line form: **`only_spas(...)`** (the
+  purity test) and **`spa_no_positive($spa)`** (the sign guard). `only_spas` does **not** know the
+  engine's other blank slots — a `10` spacer with base 0 and formula 100, and SPA 148/149, which
+  `IsBlankSpellEffect` also skips (§5) — so add them at the call site if a rule ever needs them.
+- 📌 **The regenerated picker XML came out byte-identical** (still 154 icons), so that pass needed **no
+  client-side copy**. Rerunning `gen_choice_xml.pl` is still mandatory — you cannot know it will be
+  identical until you have run it.
 ⚠️ These counts are only true as of the last `gen_stock_pool.pl` run — **re-read them off the
 generator's own output rather than trusting this block**, which drifts the moment any SQL touches
 `spells_new`. The 2026-07-28 figures recorded here (619 pruned / 2008 offerable / `ldon 18`) were
 already stale before the Sinew line was added: `ldon` had moved 18 → 36 on its own.
 Pool is **2633** spells (2585 stock + 48 custom) over 78 levels before the blacklist is applied.
+- 📌 **An `identify` rule was added 2026-08-11** (SPA **61** `SE_Identify`, 2 spells). Harmless and
+  completely pointless as a reward: the client already shows every stat on the item's own display, so
+  the spell answers a question nobody has and spending one of three slots on it wastes a level.
+  ⚠️ Keyed off the **SPA**, not the name, so any other member of the family goes with it — the same
+  reason the `ldon` rule stopped keying off `targettype`.
 - ⚠️ **`discipline` MIRRORS `common/spdat.cpp IsDiscipline` EXACTLY** — `mana = 0 AND (EndurCost > 0 OR
   EndurUpkeep > 0)`. Do not simplify it to "has an endurance cost": that would misclassify anything
   carrying both, and the rule must agree with what the ENGINE calls a discipline or the picker and the
@@ -2389,6 +2573,20 @@ same six task families**, so a Deepest Guk run was handed *"Delve: Tirranun's De
 - ⚠️ The migration is keyed on the **highest new id** (`2000538` = Fragile + dungeon 38), which cannot
   exist under the old 6-zone scheme whose band stopped at 2000355. Testing for a wrong **title**
   instead would also match the mode variants of the correct task and re-run forever.
+
+#### ⚠️⚠️ "Fragile" WAS REMOVED 2026-08-11 — DO NOT REUSE `taskoff` 200
+The mode was `hp 0.50 / dmg 2.00` for a `score` of 1.50, and **it cancelled out**: incoming damage is
+hp × lifetime, so 0.50 × 2.00 is exactly Standard's 1.00 while paying 1.5× score. Free score, and it
+played like Standard with spikier hits.
+- ⚠️⚠️ **ITS 39 TASK ROWS ARE STILL IN `tasks`**, so a new mode reusing offset 200 inherits the old
+  titles and names itself *Fragile* in the journal. Rewrite them or take a fresh offset.
+- ⚠️ Retuning the damage **up** was rejected rather than tried: **2.00 already one-shots players through
+  ordinary spells**, so the lever itself is wrong here.
+- 📌 **The lesson for any future mode: raw damage multipliers do not work on this server. Change a RULE
+  (pacing, aggro, resources, respawns), not a number.** §43's difficulty ladder is built on the same
+  finding — health is the big dial, damage the small one.
+- ⚠️ The remaining modes are Standard / Hard / Swarm / Gauntlet / Onslaught. The chest's affix doubling
+  (`CHEST_AFFIX_MULT`) still means "any mode other than Standard".
 
 #### ⚠️⚠️ THE GEAR BUMP CLAMP WAS FLAT AND PUT LEVEL 21 MOBS IN A LEVEL 1 DELVE (fixed 2026-08-06)
 Reported from play: *"someone joined a level 1 and the mobs were level 21"* — which is exactly rung 1
@@ -3189,8 +3387,8 @@ Three things are deliberately separate, and conflating them is the main way to m
 - **Files**: `lua_modules/aotv4_spell_ranks_sys.lua` (all the logic), `lua_modules/spell_ranks.lua`
   (**generated** base → `{r2,r3,r4,r5}` map), `custom/tools/gen_spell_ranks.pl`,
   `custom/sql/aotv4_spell_ranks.sql` (the rows), `custom/sql/aotv4_spell_rank_economy.sql` (the two
-  items + the global drop). Buckets, all per character: `spellrank_` / `spellknown_` / `spellkeep_`
-  (permanent) and `pickspent_`.
+  items + the global drop). Buckets, all per character and **all permanent**: `spellrank_` /
+  `spellknown_` / `spellkeep_`. (`pickspent_` was the forfeit ledger and is gone — see below.)
 - ⚠️⚠️ **A RANK IS A DIFFERENT SPELL ROW, NOT A MODIFIER.** 188 base spells × 4 ranks = **752 rows at
   43576-44327**, named `"… Rk. II"` … `"Rk. V"`. "Applying a rank" scribes a *different id*, which is
   why the native spellbook shows the real damage and the real mana cost with no client work at all.
@@ -3202,9 +3400,20 @@ Three things are deliberately separate, and conflating them is the main way to m
   and *every* future award of it arrives at rank III — from the picker, from a kept slot, from
   anywhere. It lives in a data bucket, so it survives the roguelite wipe like AA does.
   ⚠️ Therefore **keeping is NOT how you protect a rank** — the rank was never at risk. Keeping buys
-  only the spell *in hand at level 1*, paid for by forfeiting the level-up pick at the level that
-  spell was originally taken (`pickspent_`). Two kept, two picks lost: neutral in count, positive in
-  control.
+  only the spell *in hand at level 1*.
+  - ⚠️⚠️ **AND IT IS NOW FREE — THE FORFEIT WAS REMOVED 2026-08-10, AND `pickspent_` IS GONE.** Keeping
+    used to cost the level-up pick at the level that spell was originally taken, charged in
+    `spell_choice.M.offer` by returning early without offering. It was retired because the ledger was a
+    **snapshot written at death**, so swapping a keep mid-run desynced it in both directions — players
+    were charged at levels they had never kept anything from, having already paid earlier in the same
+    run. It was also unevenly priced: an origin level recorded **above the current cap** could never
+    come round again, so those keeps were silently free anyway.
+    📌 **Do not reintroduce a forfeit without a ledger that tracks the kept list live** rather than
+    snapshotting it — that mismatch is the whole reason this was removed. `M.pick_is_forfeit` no longer
+    exists.
+    📌 The pick's **origin level** (`spell_choice.record_pick_level`) is still recorded and still worth
+    keeping accurate — the spell window shows where each spell was acquired — but **nothing is priced
+    off it** any more.
 - ⚠️ **`ranked_id()` is the single funnel.** Everything that awards a spell goes through it, so there
   is one place that knows how to resolve base → owned rank. Do not add a second.
 - **Economy**: **Parchment Fragment 147920** (one per spell destroyed on death, so income scales with
@@ -3299,8 +3508,9 @@ and so nobody reads "done" as "proven".
 - **Delve rewards end to end** — no death has paid Parchment Fragments, no Ink of the Lost has
   dropped, no region-unlock achievement has fired, and the three Resplendent hub NPCs
   (Wayfinder Alessa / Reforger Vael / Herald Coren) have never been hailed by a real player.
-- **Spell ranks (§29)** — the whole chain (keep 2, forfeit the picks, spend fragments + ink, receive
-  the `Rk.` row) is untested in play.
+- **Spell ranks (§29)** — the whole chain (keep 2, spend fragments + ink, receive the `Rk.` row) is
+  untested in play. ⚠️ The **forfeit** that was part of this chain when the note was written was removed
+  on 2026-08-10; keeping is now free, so there is nothing to test there.
 - ⚠️⚠️ **Individual loot (§31)** — nothing has died with two players on it. The sharp test needs
   **two grouped characters killing ONE npc**, then confirming the lists are disjoint in **both**
   windows (the `/advl` window *and* the stock right-click one — the native path was the hole, so
@@ -3328,6 +3538,40 @@ build, but nobody has performed the action:
   labels render, and that clicking a row does **nothing** (every row is id 0).
 - **The recipe era unlock (§32, v31)** — 388 recipes became findable. Search Pottery in the recipe
   window and confirm PoP armour appears.
+
+### Added 2026-08-12 — built, luacheck-clean and BUILT INTO `zone`, but the stack has not been up since
+Every item below compiles and the `zone` binary post-dates the sources, but **nothing here has been run
+in game at all** — the difficulty system in particular has a lot of first-guess tuning in it.
+- ⚠️⚠️ **World difficulties (§43)** — needs `./shared_memory` for v55/v56 first, then a world restart.
+  The sharp tests, in order: `/pick` in **Unrest** (the only zone in `M.TEST_ZONES`) and confirm a shift
+  lands you **where you were standing**; shift **twice** and confirm the second is refused by the
+  cooldown; try to shift **with something on you** and confirm the refusal; walk a **zone line** and
+  confirm you are put back on Normal *and* the window says so (the stale-window bug was
+  `DIFFDATA`-on-arrival); then two characters shifting to **different** difficulties in the same zone
+  and confirm they are in different instances — that is the recycled-id bug, which presented as the
+  cooldown being spent with no move.
+  ⚠️ Confirm the creatures actually changed: `#showstats` on one, or just watch the damage. "The level
+  changed and nothing else did" is the exact bug §43 opens with.
+- ⚠️⚠️ **Champions (§43)** — needs Hell. Confirm the `<Barbed>` tag is visible **on a creature that
+  spawned before you zoned in** (that is what the `ChangeLastName` persistence fix is for; the stock
+  broadcast reaches an empty zone). Then confirm `barbed` reflects only on **melee**, and that
+  `draining`/`leeching` do not alter the damage you take — their hook's return value is a damage
+  override and is deliberately discarded.
+- ⚠️⚠️ **Feign resistance (§43)** — Hell/Inferno only, and it is the one mechanic whose failure mode is
+  *silent and looks like the difficulty not applying*. Pull several creatures, feign, and confirm
+  **some** keep hate rather than all or none.
+- ⚠️ **Inferno's aggro radius (§43)** — the point of the `aggro_z` split is that a **multi-level**
+  dungeon must not aggro through the floor. Test it somewhere vertical, not in an open field.
+- ⚠️⚠️ **Tomes of Insight (§44)** — click one and confirm **one** tome is spent (RoF2 raises
+  `EVENT_ITEM_CLICK_CAST`, not `EVENT_ITEM_CLICK`, and both are wired with a 2-second dedupe). Confirm
+  the description no longer reads as **Shield Wall** — which needs `./export_client_files` and the
+  regenerated `dbstr_us.txt` shipped, not just v56. Then: **Decline** on a tome offer and confirm the
+  reroll price drops; **Reroll** on a tome offer and confirm it is refused; and Decline on an ordinary
+  **level-up** offer and confirm the button is not even shown.
+- ⚠️ **AA as you play (§45)** — confirm a point arrives around level 20 and again near 28, that the
+  native AA window shows **0 spendable** throughout, and that sitting **at the cap** earns nothing.
+- ⚠️ **Non-Bard songs (§46)** — a Monk with Largo's: cast once, no locked spell bar, and **camping
+  works**. All three were separate failures of the previous approach.
 
 ## 31. Individual loot — everybody gets their own roll — 2026-08-01
 
@@ -4283,3 +4527,660 @@ works alone.
   mostly leaves `reclevel` 0. Derive obtainability from **minimum dropper level** or merchant rows.
 - 📌 Resulting parity at skill 300: Bash 35 vs Kick 36 at average gear (it was 32 — *behind* the
   everyone-has-it baseline), rising to 52 with a shield and 183 with a Mythic one.
+
+## 43. World difficulties — `/pick` — Normal / Nightmare / Hell / Inferno — 2026-08-11/12
+
+Pick a difficulty and the zone you are **standing in** becomes a private **instance** of itself,
+shared with everyone else at that difficulty, with tougher creatures. Difficulty is a property of the
+**character**, not of a destination. Pure Lua + one dll window + three small C++ additions.
+Player-facing copy: `PATCH_NOTES_2026_08_10.md`.
+
+- **Files**: `lua_modules/aotv4_difficulty.lua` (all the logic), `eq-core-dll/src/core_difficulty.cpp/.h`
+  + `EQUI_AoTDifficultyWnd.xml`, and in C++ `zone/mob.h` (`pAggroRangeZ` / `GetAggroRangeZ`),
+  `zone/aggro.cpp` (the z comparison), `zone/npc.cpp` (the `aggro_z` stat **and** `ChangeLastName`
+  persistence). Hooks: `global_player` `event_enter_zone` / `event_say` / `event_damage_taken` /
+  `event_damage_given` / **`event_feign_death`** (new), `global_npc` `event_spawn` /
+  `event_death_complete`.
+- **Protocol**: `DIFFDATA <cur>^id|name|hp|lvl|dmg|blurb~affix~affix^…` out; `/say diffwin` and
+  `/say diffset <n>` in. Command is **`/pick`**, plus a Difficulty button on `/aot`.
+
+| diff | hp | lvl | dmg | ac/atk/resist | mechanics (they do **not** inherit) |
+|---|---|---|---|---|---|
+| 0 Normal | 1.0 | +0 | 1.00 | 1.00 | none — the real zone, no instance |
+| 1 Nightmare | ×2 | +2 | 1.20 | 1.15 | sees through invis/sneak/hide; immune to mez/charm/root/snare |
+| 2 Hell | ×3 | +4 | 1.50 | 1.30 | **champions** (1 in 5); feign 50% unreliable |
+| 3 Inferno | ×4 | +6 | 2.10 | 1.45 | aggro radius ×2 (horizontal only); feign 75% unreliable |
+
+- ⚠️⚠️ **THE NATIVE `/pick` CANNOT BE USED, AND THE DLL SWALLOWS IT DELIBERATELY.**
+  `PickZoneEntry_Struct` carries only `{zone_id, player_count, instance_id}` — **no text field** — so
+  all four difficulties would render as the same zone name with different populations, and
+  `Handle_OP_PickZone` is a bare stub here so the stock command does nothing anyway. The intercept in
+  `core_bazaar.h` returns without calling the trampoline.
+- ⚠️⚠️ **VERSION 0, WHICH IS THE OPPOSITE OF WHAT THE DELVE DOES.** §24 warns delves never to use
+  version 0 because that is the open-world spawn set — and here the open world is exactly what is
+  wanted, privately. A non-zero version gives an **empty** zone: `spawn2` rows filter
+  `(version = N OR version = -1)` and world zones define their spawns at version 0 only.
+- ⚠️ **Landing coordinates are the player's CURRENT position**, so shifting leaves you where you stood
+  rather than at the zone-in point. Registration before the move is mandatory for the §24 reason
+  (`create_instance` adds nobody; world silently redirects an unregistered character).
+
+### ⚠️⚠️ A LEVEL BUMP ON ITS OWN CHANGES ALMOST NOTHING — every stat must be named
+`NPC::SetLevel` (`zone/npc.cpp:2253`) is three lines: it sets `level` and sends two appearance
+packets. An NPC's damage comes from `min_dmg`/`max_dmg` on its `npc_types` row, **not** from its
+level. So the first pass recoloured the con and a Nightmare creature hit for exactly what a Normal one
+did — reported from play as *"none of the stats or damage changed on mobs in different difficulties"*,
+which was accurate.
+- **Adding a difficulty means filling in every column of `M.LEVELS`**: hp, level, damage, AC, attack,
+  accuracy, avoidance and the five resists are each applied explicitly by `M.on_npc_spawn`.
+- ⚠️⚠️ **AND THE BUMP BUYS EVEN LESS THAN THIS SAYS: it contributes NOTHING to melee damage**, because
+  `Combat:LevelDifferenceRollCheck` is `-1` = disabled. It drives the con colour and the resist maths
+  and nothing else. See the measured breakdown two subsections below before touching `dmg`.
+- ⚠️⚠️ **IT DOES NOT USE `ScaleNPC`, DELIBERATELY.** That rewrites the stat block wholesale from
+  `npc_scale_global_base` — right for a delve, where every mob *should* become a generic creature of
+  the layer's level, and **destructive here**: it would flatten every hand-authored named mob and boss
+  in the world into a stat block of its level.
+- ⚠️⚠️ **`max_hp` CLAMPS DOWN ONLY** — raising the maximum does not raise current health, so the
+  explicit `SetHP` is what stops the creature dying in the same number of hits as before. Same
+  asymmetry §24 records for the delve warden's `max_mana`. ⚠️ It is **one** call, last: each
+  `ModifyNPCStat("max_hp")` runs `CalcMaxHP`, so the difficulty multiple and the `hardened` affix are
+  multiplied together *first* and written once, or the second is computed from the first's result.
+- ⚠️⚠️ **`SetSpecialAbility`, NOT `ModifyNPCStat("special_abilities", …)`.** That key **replaces** the
+  creature's whole ability set from a packed string, silently wiping whatever it natively had — summon,
+  rampage, immunities, everything.
+- ⚠️ **`SnareImmunity` (16) covers ROOT *and* snare** — `Mob::IsImmuneToSpell` tests it against both
+  `SpellEffect::Root` and `SpellEffect::MovementSpeed` (`spells.cpp:5561`). One flag, two schools.
+  ⚠️ **Stun and fear are deliberately excluded**: stun is a core melee tool and fear a core Necromancer
+  one, so removing them deletes two classes' kits rather than making the world scarier.
+- ⚠️ Skips anything AoTv4 spawned (**2000000+**) and anything **owned** — the same rule §24 records for
+  the delve's rescale sweep. Doubling a player's pet's health is not a difficulty setting.
+
+### ⚠️⚠️ WHY THE DAMAGE MULTIPLIER LOOKS LIKE IT IS NOT WORKING — measured 2026-08-12
+Reported as *"the damage increase doesn't seem as noticeable in hell/inferno"*, with a level 15 Monk
+(557 hp) taking **2-17** from a level 19 death beetle on Inferno. **The dial is working exactly as
+specified** — the arithmetic below reproduces that range from the multiplier — and three separate
+structural facts conspire to make it unfeelable on low-level trash. None of them is fixable by raising
+`dmg`, so this is written down to stop the next person trying.
+
+**1. NPC damage comes from the SPREAD, not the magnitude.**
+`ModifyNPCStat("min_hit"/"max_hit")` recomputes **`base_damage = round((max_dmg − min_dmg) / 1.9)`**
+(`zone/npc.cpp:2376`), and for an **NPC** attacker `max_hit = hit.base_damage` outright — the
+offense-multiplier branch at `attack.cpp:1107` is `IsOfClientBotMerc()` only. For `a_death_beetle`
+(base 2/25):
+
+| difficulty | min/max | `base_damage` = max_hit |
+|---|---|---|
+| Normal | 2 / 25 | **12** |
+| Nightmare ×1.20 | 2 / 30 | 15 |
+| Hell ×1.50 | 3 / 37 | 18 |
+| Inferno ×2.10 | 4 / 52 | **25** |
+
+Scaling both ends multiplies the spread, so `base_damage` **does** scale linearly — 12 → 25 is 2.08×
+against a specified 2.10. The observed 2-17 against a ceiling of 25 is correct, and Normal would be
+~1-8.
+- 📌 **A narrow-spread mob is barely moved in absolute terms.** min 20 / max 25 gives `base_damage`
+  **3** — it reads as "hits for 20-25" and deals about 3. The ratio is still right; there is just
+  almost nothing there to multiply. Check the **spread** before concluding a multiplier is broken.
+
+**2. Mitigation has a FLOOR, so at most ~56 percent of `max_hit` ever lands.**
+`min_mit = mitigation / (1.25·mitigation + offense)` (`AoT:MitFloorAcCoeff` 1.25, `MitOffScalar` 1.0),
+which is ≈ **0.44** when AC ≈ offense, and `rolled_mit` is clamped up to it. So `max_hit` 25 lands as
+~14-17 however the roll falls. Doubling raw damage doubles a number that is already being roughly
+halved.
+- ⚠️ **To make that beetle threatening you would need `max_hit` ≈ 107 — a ×9 multiplier.** §24's
+  Fragile lesson already records **2.00 one-shotting players through ordinary spells** on real content.
+  `dmg` is the wrong lever, in both directions at once: too weak to feel on trash, lethal on anything
+  real.
+- 📌 **Test the damage dial on content whose base damage is meaningful.** In Unrest,
+  `an_undead_barkeep` is level 15 with base 3/50 (`max_hit` 25 → **52**) and
+  `#a_herald_of_mischief` is level 50 with base 7/152 (76 → **161**). A 2/25 beetle is not a test of
+  this system.
+
+**3. ⚠️⚠️ THE LEVEL BUMP CONTRIBUTES NOTHING TO MELEE DAMAGE — `Combat:LevelDifferenceRollCheck` IS
+`-1`, WHICH MEANS DISABLED.** The guard is `if (level_diff_roll_check >= 0)` (`attack.cpp:1141`), so
+the whole level-difference block — and its `LevelDifferenceRollBonus` of 0.5 — never runs. **−1 is the
+stock default**, not something set here.
+- **A level 19 creature hits a level 15 player exactly as a level 13 one would.** The `+2/+4/+6` bump
+  still drives the con colour and the resist maths, but for the mitigation half of melee damage it
+  feeds nothing at all. Correct the claim in the subsection above accordingly.
+- ⚠️⚠️ **ENABLING IT IS NOT A DIFFICULTY KNOB.** The modifier is server-wide and **symmetric**: the
+  same rule that would make a higher-level creature hit harder also grants **players +0.5 mitigation
+  against anything below them**, i.e. near-immunity to lower-level content. Same class of decision as
+  §32's `IgnoreLevelBasedHasteCaps` — a whole-game melee change, to be taken on its own merits.
+- 📌 `0.5` is enormous next to a `rolled_mit` that sits near 0.44-0.56, which is exactly why it cannot
+  be flipped casually as a difficulty tweak.
+
+📌 **The honest summary: at the bottom of the level range HP is the dial you feel** (a 3-4× longer
+fight is a large absolute change), **and damage only becomes felt where base damage is already
+meaningful.** That is what §43's "health is the big dial, damage the small one" means in practice — the
+note undersells how nearly invisible the damage dial is on low-level trash.
+
+### ⚠️⚠️ INSTANCE IDS ARE RECYCLED HERE, SO ONE MAP IS NOT ENOUGH
+`Instances:RecycleInstanceIds` is true and `Database::TryGetUnusedInstanceID` hands out the lowest free
+id above `ReservedInstances` (100), so a dead shard leaves `zdiff_i_<zone>_<diff>` naming an id
+something else has since claimed. Two buckets exist and **both** must agree:
+`zdiff_i_<zone>_<diff>` (forward, a **cache**) and `zdiff_of_<inst>` (reverse, the **authority** on
+what a shard is).
+- **Observed 2026-08-12**: `zdiff_i_63_1` and `zdiff_i_63_2` *both* named instance 105 while
+  `zdiff_of_105` said 1 — so asking for Hell in Unrest resolved to the **Nightmare** shard. It
+  presented as *"it consumes the cooldown and doesn't move me"*: `place()` saw want == have and
+  correctly declined to move, but the cooldown had already been spent.
+- ⚠️ `here()` (which difficulty is the zone this process is running?) **round-trips its answer** for
+  the same reason: trusting `zdiff_of_<inst>` alone means the next thing to claim a dead shard's id
+  inherits its marker. The likeliest claimant is a **delve**, which would then be scaled a second time
+  on top of its own player-relative scaling *and* would start paying Tome of Insight drops — silent in
+  every direction. 📌 That round trip is also what makes leftover markers inert, so nothing has to hunt
+  them down when an instance dies (there is no hook for that anyway).
+- ⚠️ `here()` is **cached on the instance id**, not set once at load: `on_npc_spawn` runs for every
+  spawn on the server, and a zone process is not guaranteed to serve the same instance for its whole
+  life — a stale cache would scale an ordinary zone.
+
+### ⚠️⚠️ Two ordering bugs that each produced an invisible, self-locking bad state
+Both were reported from play and both are worth reading before touching `M.set`.
+1. **RESOLVE THE SHARD BEFORE COMMITTING ANY STATE.** `instance_for` returns 0 when
+   `eq.create_instance` fails, and `place()` then sees want == have == 0 and quietly declines to move
+   anyone — but the bucket had **already** been written, so a failed creation left the player standing
+   in the ordinary world while every read of their difficulty said Hell. No error, no log line. (The
+   §24 gate-order lesson, in the other direction: there, creating early leaks an instance on every
+   refusal.)
+2. **THE "you are already on X" REFUSAL MUST CONSULT `here()`, NOT JUST THE BUCKET.** Reading the
+   bucket alone made that refusal **lie and leave no way out**: with the bucket saying Hell and the
+   player in the open world — exactly what (1) produced — every attempt to shift to Hell answered *"you
+   are already playing on Hell"*, so the one action that would have fixed the state was the one being
+   blocked. Reported as *"it said I was already there, but I'm not"*. Requiring **both** to agree makes
+   the mismatch self-healing.
+- **Gate order**: testing scope → already-there → **combat** → cooldown → delve → resolve shard →
+  commit. ⚠️ Refused in combat on `GetAggroCount() > 0` for the §24 reason — a difficulty switch is a
+  zone change, so without it it is a **better escape than Gate** (breaks every hate list at once, no
+  cast time, no reagent). ⚠️ Never while in a delve: moving the player out from here strands the run.
+- ⚠️ **The 5-minute cooldown is stamped on every successful shift, including back down to Normal.** A
+  free trip home would let a player alternate Inferno and Normal at will and would make dropping to
+  Normal the cheapest combat escape.
+
+### ⚠️⚠️ ZONING ALWAYS RETURNS YOU TO NORMAL — and the reset test is what makes it loop-safe
+Difficulty is chosen from inside the zone you mean to fight in and is never carried into a new one.
+Two reasons, the second being the operational one: it keeps the choice deliberate, **and** carrying it
+would create an instance of every zone you pass through, one per difficulty — and every occupied
+instance is a zone process on a zone port (§27). Travelling the world on Inferno would boot a shard
+per hop.
+- ⚠️⚠️ **THE TEST IS "AM I IN THE OPEN WORLD WHILE SET TO SOMETHING ELSE."** Swapping difficulty is
+  itself a zone-in, so this hook fires on the arrival `place()` just caused — but that lands in a
+  **non-zero** instance, so the reset cannot trigger and there is no loop. A zone line always lands you
+  in instance 0. **Anything added here that resets while standing in a shard will bounce the player
+  forever.**
+- ⚠️⚠️ **ALWAYS RE-SEND `DIFFDATA` ON ARRIVAL.** `M.set` sends it from the zone you are **leaving** and
+  then moves you, so the window a player reads after the move still describes the world they came from
+  — reported as *"it shows I'm in Normal"* while standing in a shard. Nothing else pushes DIFFDATA on a
+  zone change.
+- ⚠️ Inside a shard the **shard is the authority**: `on_enter_zone` reconciles the bucket to `here()`,
+  because a recycled id can re-tag a shard under a player between visits. `here()` returns 0 for a
+  delve, and the bucket is deliberately left alone there — a delve must not clear a difficulty.
+- 📌 A relog inside a shard is **not** reset (you arrive in a non-zero instance). If that instance has
+  since expired, world drops you at your safe return in instance 0 and the reset then fires normally,
+  which is the graceful end of that case.
+
+### ⚠️⚠️ TESTING SCOPE IS TEMPORARY AND LIVE — `M.TEST_ZONES` currently holds only `unrest`
+Anything above Normal is refused elsewhere. **Empty or nil = every zone**, which is the shipping
+behaviour, so lifting the restriction is deleting one entry rather than unpicking a gate.
+- ⚠️⚠️ **Normal (0) is always allowed, everywhere, and that is not optional** — it is the only way
+  back. Gate it and a character who shifted in a listed zone and walked into an unlisted one could
+  never return by hand.
+- 📌 The reason for the scope is capacity: it costs a zone process per **(zone × difficulty)** shard,
+  capped by the launcher's `dynamics` and the 7000-7029 range (§27).
+
+### Inferno: `aggro_z` — a wider radius must NOT mean aggro through the floor
+⚠️⚠️ **STOCK COMPARES x, y AND z AGAINST THE ONE AGGRO RADIUS** (`Mob::CheckWillAggro`,
+`zone/aggro.cpp:433`), so anything widening a creature's radius also widens how far **above and below**
+itself it can notice you — in a multi-level dungeon, aggro through the floor. `Mob::pAggroRangeZ` +
+`GetAggroRangeZ()` (an AoTv4 addition) split the vertical half out; the spawn hook pins `aggro_z` to
+the creature's **original** radius *before* widening the horizontal one.
+- ⚠️ **−1 means "not set" and falls back to `GetAggroRange()`**, which is exactly stock — every
+  creature the difficulty system has not touched is unaffected.
+- ⚠️ A plain `float` on `Mob`, not an entity variable: `CheckWillAggro` runs per creature per client on
+  a timer, where a string-map lookup is not free.
+- ⚠️ `DescribeAggro` (the `#aggro` diagnostic) was updated to match, or it would report a creature as
+  out of range while the real check aggros.
+- 📌 **×2 is calibrated against the data**, not picked: the most common authored `aggroradius` is 55
+  (15,514 creatures) and 100 already exists on 3,083 more, so this puts an ordinary creature roughly
+  where a naturally alert one already sits. `M.AGGRO_CAP` 250 exists because a few creatures ship
+  `aggroradius` 10000 (whole-zone) and doubling that is meaningless.
+
+### Hell: champions — and why `ChangeLastName` had to be made to persist
+One creature in five (`M.AFFIX_CHANCE`) spawns with a permanent affix: **Armored** (×2 AC),
+**Hardened** (×2 hp on top of Hell's own), **Mending** (regen), **Frenzied** (`attack_delay` ×0.7),
+**Barbed**, **Draining**, **Leeching**. It glows (nimbus **412**, still the only id proven to work
+here) and is **tagged under its name**.
+- ⚠️⚠️ **A TAG UNDER THE NAME, NOT A RENAME.** `ChangeLastName` drives the line a player's guild
+  renders on, so a champion reads as *a gnoll pup* with `<Barbed>` beneath it — legible at a glance and
+  leaving the real name intact for hails, quests, tracking and `#peekloot`. It replaced
+  `TempName("a barbed gnoll pup")`, which mangled the name itself (TempName needs underscores for the
+  wire, so every champion also lost its own spacing).
+- ⚠️⚠️ **STOCK `NPC::ChangeLastName` ONLY SENDS THE PACKET**, so the tag reached exactly the clients
+  standing in range at that instant: `Mob::lastname` was untouched, every later spawn packet
+  (`mob.cpp:1288`, `:1361`) still carried the old value, and a player who zoned in later saw
+  **nothing**. That is the common case for anything tagged at spawn — a zone or instance populates
+  **before** the first player finishes zoning in, so the broadcast goes to an empty zone. The AoTv4
+  change adds the `strn0cpy` into `lastname`; it also stopped `GetLastName()` disagreeing with what was
+  on screen.
+- ⚠️⚠️ **THE THREE BEHAVIOURAL AFFIXES ARE PAID IN LUA, NOT BY A SPELL ROW.** A damage shield scaled to
+  the creature's own level cannot be expressed in `spells_new` at all — SPA 59's value is a fixed
+  number on the row, so "half the creature's level" would need one row per level. Same for the drain
+  and the leech. The spawn hook only **marks** the creature (entity variable `zdiff_affix`) and the
+  damage hooks do the work — the identical pattern the Thirst line uses (§5).
+- ⚠️ **Entity variable, not a data bucket**: it describes *this spawn*. A bucket would be keyed on the
+  npc type and would make every future creature of that kind permanently armored, server-wide.
+- ⚠️⚠️ **`event_damage_taken`'s RETURN IS A DAMAGE OVERRIDE** (`zone/attack.cpp:4404`), so
+  `on_damage_taken` is called for its **side effect only** and its return discarded in
+  `global_player.lua` — letting it into the return path would silently rewrite every hit taken in Hell.
+  The reactions module owns that value.
+- ⚠️ `barbed` is **melee only** (`e.spell_id` guard): a damage shield that fires on spells is not a
+  damage shield, it is a tax on casting.
+- ⚠️⚠️ **ALL THREE SUSTAIN AFFIXES WERE BADLY OVERTUNED ON THE FIRST PASS**, and the tell in each case
+  was a unit, not a judgement call. `hp_regen` **is per TICK (6 s), not per second**, so `KNIT_PER_LV`
+  12 was 360 a tick at level 30 = **60 health a second**, outpacing real groups — not hard, unkillable.
+  `DRAIN_PCT` was 50 **from both pools at once** (a Hell fight is ~10 hits taken, so it emptied a
+  caster mid-fight and every fight after). `LEECH_PCT` was 50. Now **2.0 / 12 / 20**. The rule they
+  obey: *an affix must change how a fight feels, never whether it is winnable.* All three are still
+  first guesses to be corrected in play.
+- ⚠️ `key` (stored, read back by the damage hooks) and `word` (what the player sees) are **separate**,
+  so the display can be reworded without invalidating the variable on every creature already spawned —
+  which is why `knitting` still keys as `knitting` while displaying **Mending**.
+
+### Feign Death gets unreliable, per creature — and the flag must not come back
+`M.TRAITS[diff].feign_resist` percent of creatures stay on you; the rest forget you as normal.
+- ⚠️⚠️ **IT IS A PER-CREATURE ROLL, NOT A ROLL ON THE FEIGN.** The feign always succeeds — you drop,
+  melee stops — so a Monk never loses the ability to lie down mid-pull; what changes is how much of the
+  room believes it. Failing the feign outright would be a flat nerf to the skill, which is not what a
+  difficulty setting should be.
+- ⚠️⚠️ **THE RETURN VALUE IS THE WHOLE MECHANISM** and it must be returned all the way out through
+  `global_player.event_feign_death`: `EntityList::ClearFeignAggro` (`entity.cpp:3611`) skips a creature
+  whose handler returned non-zero. A handler that rolls correctly and then falls off the end returns
+  nil = zero = "forget the player", silently, and looks exactly like the difficulty not applying.
+- ⚠️⚠️ **DO NOT ALSO SET `FeignDeathImmunity` (special ability 27).** `ClearFeignAggro` tests that flag
+  **first** and `continue`s, so a flagged creature never reaches the event at all — setting both would
+  silently pin every creature at 100 percent. That binary flag is what this replaced.
+- ⚠️ **Hell and Inferno, not Nightmare.** Feign is the Monk and Necromancer answer to a pull gone
+  wrong, and Nightmare is meant to be the step you can take without changing how you play.
+
+### ⚠️⚠️ TIERS DO NOT INHERIT — `M.TRAITS` is keyed on the EXACT difficulty
+Every hook looks its traits up by exact key, never `diff >= something`. Only the **numbers** climb.
+- 📌 So a **harder** tier can lack something an easier one has: Hell creatures are mezzable where
+  Nightmare's are not. Deliberate — it makes each difficulty a different fight rather than a strictly
+  worse one, and gives a reason to choose Nightmare over Hell for a given camp. Anything that should
+  apply everywhere goes in `M.LEVELS`, not here.
+- 📌 A trait *can* appear on two tiers (`feign_resist` does) — written out on each, so the table always
+  reads as the whole truth for a difficulty and nothing is implied by position.
+- ⚠️⚠️ **`M.AFFIXES` (the window text) LISTS ONLY WHAT IS BUILT.** "Doubles Ink of the Lost" was there
+  and was **not** implemented (`grant_ink_on_kill` has a flat chance with no difficulty awareness), so
+  it was removed rather than left advertising something the world does not do. A window that promises
+  an affix the world does not apply is worse than one that lists nothing.
+- ⚠️⚠️ **NO NUMBERS IN THE BLURBS.** They used to restate the multipliers in prose and the two drifted
+  immediately (Hell read "about half again as hard" at `dmg` 1.40). `hp`/`lvl`/`dmg` now go on the wire
+  as their own fields and the window renders them as **columns**, straight from `M.LEVELS`.
+- ⚠️ **Damage accelerates where health is linear** (2/3/4 against 1.20/1.50/2.10) on purpose: health
+  decides how long a fight runs, damage decides whether you survive a mistake. Health is the big dial —
+  a ×4 damage creature at the cap simply one-shots people and the difficulty stops being a choice.
+
+### 📌 "CREATURES NEVER LOSE INTEREST" IS UNBUILDABLE HERE, and the rising dead is DEAD CODE
+Two mechanics that were specced and are not live. Both are worth knowing so they are not re-attempted.
+- **Never lose interest**: there is **no leash-and-return behaviour in this codebase**. The only way a
+  creature forgets you is `hate_list.RemoveStaleEntries(600000, npc_aggro_max_dist)` on a periodic
+  timer (`mob_ai.cpp:1052`). Remove the distance half and a creature does not chase you better — it
+  holds hate **forever, from wherever it got stuck**, with nothing to send it home; corpses and
+  zone-ins accumulate permanent attackers, and because the check is timer-driven the behaviour differs
+  tick to tick. Nightmare's "awake and unbindable" is what replaced it.
+- **The rising dead** (`M.on_npc_death`) is complete and **no tier enables it** — `rising` was removed
+  from Hell on 2026-08-12 by owner decision, so it returns at its first line on every kill. Kept
+  because the cost of holding it is one early return. ⚠️ If it is re-enabled, put its line back in
+  `M.AFFIXES`: the reverse trap (a built mechanic nobody is told about) is just as bad.
+  📌 Its two non-obvious parts, should that happen: a risen creature must never rise again (25 percent
+  each time is an unbounded chain — roughly 1 in 64 reaching a fourth body), and **zeroing
+  `loottable_id` is what stops the drop, `ClearItemList` alone would not** — under individual loot
+  (§31) the table is re-rolled at **death** per eligible player from `GetLoottableID()`, so clearing
+  the list at spawn empties a list that is about to be refilled. (The delve solves the same problem
+  with a `delve_noloot` entity variable checked in `NPC::Death`; both are correct.)
+
+### Client side
+`core_difficulty.cpp/.h` is its own TU with **no detours** — `dsp_chat` calls `DifficultyParseTransport`
+(swallows `DIFFDATA`), `InterpretCmd` intercepts `/pick`, and the `CleanGameUI`/`ReloadUI` detour
+`core_achievements_native.cpp` owns calls the reset. Flag `areDifficultyWindowEnabled`. Debug trace
+`<EQ>\aotv4_difficulty.log` — which is what tells an unbuilt dll (no file) apart from a missing
+`EQUI.xml` `<Include>` (`pXWnd=NULL`).
+- ⚠️ The row array is sized **16**, well above the four the server sends: the ladder is server-authored
+  and a fifth difficulty must not silently truncate, which is the failure the Delve window hit when its
+  rung count outgrew a tight cap.
+- ⚠️ Affixes ride in the **same wire field** as the blurb, separated by `~`, rather than as a sixth
+  pipe field — an older dll splits on `|` into five and would glue a raw affix list onto the
+  description instead of ignoring it.
+- ⚠️ **Every gate is re-checked server side.** The window is display only; a modified client cannot
+  shift in combat, inside a delve, or past the cooldown.
+
+## 44. Tomes of Insight — an extra reward pick, or a cheaper reroll — v55/v56 — 2026-08-11/12
+
+A consumable that grants **one extra level-up reward pick without levelling you up**. Three tiers, one
+per level band — **Worn** 147966 (1-10), **Etched** 147967 (11-20), **Radiant** 147968 (21-30) — each
+usable only inside its own band, dropping only in the harder world difficulties (§43). Click one and
+the ordinary picker opens with three choices; **Decline** instead and your reroll price is cut.
+
+- **Files**: `lua_modules/aotv4_spell_books.lua`, `quests/global/items/1479{66,67,68}.lua`,
+  `custom/sql/aotv4_spell_books.sql` (readable copy of migration **v55**; **v56** fixes the
+  description), the decline half of `lua_modules/spell_choice.lua`, and the `ASC_Decline` /
+  `ASC_DeclineInfo` pieces emitted by `aotv4_client_install/gen_choice_xml.pl`.
+- **Protocol**: the existing `SPELLCHOICEDATA` / `SPELLDESCDATA` unchanged, plus
+  **`SPELLDECLINE <tier> <pct> <cost_after>`** out and `/say spelldecline` in.
+- **Drop**: per kill, from `global_npc.event_death_complete`, sharing the killer lookup ink already
+  needed. Nightmare → Worn at **5%**, Hell → Etched at **3%**, Inferno → Radiant at **1%**. Rates
+  descend because the tiers are **not** interchangeable — tier 3 is the only one usable at the cap,
+  where a character spends most of its life, so it is the rate that governs the system long-term.
+  ⚠️ **Normal drops nothing**, or the whole difficulty ladder becomes optional.
+
+### ⚠️⚠️ CON VALUES ARE NOT ORDERED BY DIFFICULTY — never write `con >= White`
+From `common/emu_constants.h`: Green 2, DarkBlue 4, Gray 6, **White 10**, Red 13, Yellow 15,
+**LightBlue 18**, WhiteTitanium 20. **LightBlue (18) is numerically larger than White (10) but is an
+easier creature**, so a `>=` test silently lets a capped character farm tomes off trivial mobs — the
+exact parking exploit the gate exists to stop. `CON_REWARDS` enumerates what counts instead.
+- ⚠️⚠️ **THE CON GATE IS WHAT MAKES 5 PERCENT SAFE.** Without it the best play is to park at the top of
+  a band and farm trivial creatures, which beats levelling — and levelling is the whole loop.
+- ⚠️⚠️ **THE DROP KEYS OFF THE ZONE'S DIFFICULTY (`aotv4_difficulty.here()`), NOT THE CHARACTER'S
+  SETTING.** Those come apart the moment a player enters an instance that is not a difficulty shard —
+  a **delve**, whose instance carries no marker. Keying off `zonediff_<charid>` would pay Nightmare
+  tome drops for delve creatures, which are scaled to the player, endless, and already paying a chest.
+- ⚠️ Plain `math.random` with **no reseed**, matching `grant_ink_on_kill`: reseeding on a per-kill hook
+  is a global side effect that would yank the sequence out from under the delve, the world boss and the
+  picker several times a second.
+
+### ⚠️⚠️ THE BAND IS ONE-DIRECTIONAL: over it is fine, under it is refused
+| holding | at level | result |
+|---|---|---|
+| Worn (1-10) | 13 | **allowed**, drawn from level 10 — capped by the TOME |
+| Worn (1-10) | 7 | **allowed**, drawn from level 7 — capped by the PLAYER |
+| Radiant (21-30) | 5 | **REFUSED, and the tome is kept** |
+- ⚠️ **Over the band must not refuse.** Worn is what Nightmare drops, so a flat rejection meant the
+  difficulty handed out a reward its own players could not spend once they out-levelled the band.
+- ⚠️⚠️ **Under the band must refuse, before anything is consumed.** Capping to the player's level would
+  technically produce a usable reward while silently spending a high tier for a low-tier result — the
+  player destroys a Radiant tome and gets what a Worn one would have given.
+- ⚠️⚠️ **"ONE EXTRA LEVEL-UP PICK", NOT "PICK ANYTHING IN THE BAND".** You cannot scribe a spell above
+  your own level, so a tier 1 tome opened at level 3 can only ever offer levels 1-3. The band is a gate
+  on **consumption**, not a description of the offer — which is exactly what lets the whole system
+  reuse the existing picker with **no client change to the offer itself**.
+- ⚠️ The offer is built at the **top of the band** and `gather_candidates` widens down by `LEVEL_BAND`
+  from there, so it lands inside the band rather than on one exact level.
+
+### ⚠️⚠️ ONE CLICK CAN RAISE TWO EVENTS, AND RoF2 RAISES THE ONE YOU WOULD NOT EXPECT
+`EVENT_ITEM_CLICK` comes from `Handle_OP_ItemVerifyRequest` (`client_packet.cpp:9532`), but **RoF2
+clicks an item via `OP_CastSpell`, which raises `EVENT_ITEM_CLICK_CAST`** (`:4462`, `:4494`). With only
+the former defined the tome cast its inert spell and the script never ran: the zone log showed *"Cast
+from unlimited charge item [Worn Tome of Insight]"* on every click while the player saw nothing at all.
+- **Both are defined**, because which one arrives depends on the client and the slot, and `M.use` is
+  **deduped** on a 2-second `tomeuse_<charid>` stamp so a client sending both still spends one tome.
+  ⚠️ The stamp is written **before** any work, so both paths dedupe including the "nothing left to
+  teach" exit.
+- ⚠️⚠️ **A QUEST ITEM SCRIPT IS FOUND BY FILE NAME, IN `quests/global/items/`** — *not* `quests/items/`,
+  which `GetQIByItemQuest` never searches. Renumber the item in `M.TIERS` without renaming the file and
+  the book is inert on click with no error anywhere.
+- ⚠️ **The inert spell 44328 on the item row is load-bearing, not decoration.**
+  `Handle_OP_ItemVerifyRequest` reads `item->Click.Effect` and the client will not even *send* the
+  packet for an item it believes has no click.
+- ⚠️⚠️ **BUILD THE OFFER FIRST, DESTROY THE BOOK SECOND** — the ordering `spell_choice.reroll` already
+  documents for coin. There is no refund path once the item is gone. If the two ever get out of step,
+  fail in **this** direction: a free offer is recoverable, a destroyed tome is not.
+- ⚠️ `DeleteItemInInventory(slot, **1**, true)` — quantity 0 means "the whole stack", which would burn
+  every tome the player is carrying for one offer.
+
+### ⚠️⚠️ v56: A CLONE INHERITS `descnum` TOO — the tome described Shield Wall
+v55 cloned spell **43380** (the Shield Wall marker buff) as the click vehicle and renamed it without
+repointing `descnum`, which still named 43380 — so clicking a tome displayed *"Allies are absorbing
+part of the melee damage you take"*. Same trap as the damage formula in §5: **a clone inherits every
+column you do not override, and the ones that hurt are the ones with no obvious connection to what you
+changed.**
+- ⚠️ The spell itself was always **inert and correct** (`effectid1-3` all 254, no duration) — it never
+  cast a shield, it only described one. All behaviour is in the item scripts.
+- ⚠️⚠️ **A SPELL DESCRIPTION IS RESOLVED BY THE CLIENT FROM ITS OWN `dbstr_us.txt`** (§6), so applying
+  v56 alone changes nothing in game: it needs `./export_client_files` and the regenerated file shipped
+  to players. ⚠️ No literal `%` in the text — the description path is printf-style.
+- 📌 `descnum` = the spell id, the convention every other custom spell here follows, so nothing has to
+  remember a separate mapping.
+- ⚠️ **`items` AND `spells_new` are shared memory**: world applying v55 at boot is not enough — stop
+  the stack, `./shared_memory`, restart, or the rows are invisible to every zone.
+- ⚠️ Migration keyed on the **last** id created (147968): testing the first would let a half-applied
+  run look complete, and testing the spell would miss an items-only failure.
+
+### Decline — and why it must be restricted to a tome's offer
+Declining winds the **lifelong `rerollbuy_` counter** back: **25 / 50 / 100 percent** by tier, so a
+Radiant tome resets the reroll ladder to its bottom rung (5p) and it escalates again from there.
+- ⚠️⚠️ **IT PERMANENTLY EDITS THE COUNTER; IT IS NOT A ONE-SHOT VOUCHER.** That counter is deliberately
+  **not** cleared by the roguelite death (§3), so a tome is the only thing in the game that can reduce
+  it. Tier 3 does not make rerolls free forever.
+- ⚠️⚠️ **WITHOUT THE QUEUE TAG, DECLINE IS AN EXPLOIT.** A level-up offer costs nothing, so if any
+  offer could be declined the correct play would be to decline **every** level and never take a reward,
+  pinning the price at its floor. A tome-sourced queue entry is prefixed **`B<tier>@`**, and
+  `M.decline` requires one while `M.reroll` refuses one.
+- ⚠️ The tag is a **prefix on the entry**, not a token in the list: every consumer tokenizes on `,` and
+  reads `kind:id`, so a `B:3` token would be parsed as a spell and fed to `HasSpellScribed(3)`.
+  ⚠️ It must be stripped before tokenizing **and put back when saving** in three places — the prune
+  path (which runs on every login, so a lost tag stops Decline working after a relog), `handle_say`
+  (where the tag would ride in as `toks[1]` and make "Select 1" resolve to the second card), and the
+  reroll rewrite.
+- ⚠️⚠️ **A TOME OFFER GOES TO THE FRONT OF THE QUEUE — the opposite of `M.offer`.** The window always
+  shows the front and Decline always acts on the front, so a tome pushed behind an unresolved level-up
+  offer would put the click on the **wrong** offer, silently declining a reward that was never paid for
+  and cutting nothing. Nothing is lost: the displaced offer reappears as soon as this one resolves.
+- ⚠️⚠️ **A TOME'S OFFER CANNOT BE REROLLED FOR COIN** — the tome *is* the reroll. It also closes a loop
+  in the other direction: reroll bumps the counter and decline cuts it, so a tier 3 tome could absorb a
+  reroll purchase and then zero the counter it had just raised. Checked **before** the funds test so
+  the refusal names the real reason rather than telling a broke player they cannot afford something
+  they were never allowed to buy.
+- ⚠️⚠️ **A DECLINE THAT WOULD BUY NOTHING IS REFUSED AND THE OFFER LEFT STANDING.** A character who has
+  never bought a reroll is already at the 5p floor — and the tome has **already been destroyed** by
+  then, so letting the click through would take the offer away as well and the player would have spent
+  a tome for neither of the two things it can give. Same principle as the reroll gate order (never
+  charge for an outcome that does not exist); here the charge has already happened, so the reward is
+  what has to be protected.
+- ⚠️ `SPELLDECLINE` is sent with **every** offer, including an explicit **0** for an ordinary level-up,
+  so the button is hidden again the moment a tome offer resolves — a stale Decline button looks live
+  and does nothing. ⚠️ Sent **before** `SPELLREROLLCOST`: receiving the cost makes the dll redraw the
+  control row, and with the old order that redraw ran against the previous offer's tier.
+- ⚠️⚠️ **`ASC_Decline` OVERLAPS THE REROLL ROW EXACTLY**, and that is safe *only* because the two are
+  mutually exclusive. If a tome's offer is ever made rerollable, they must be given separate rows
+  first. 📌 Stacking a second row underneath was rejected because this window is `Style_Sizable`, so
+  the client saves its size **per character** (§20) — an edited `<Size>` only applies to a character
+  that has never opened it, and everyone already playing would lose the new row off the bottom with
+  nothing to indicate why.
+
+## 45. AA is earned as you play, not banked at death — v54 — 2026-08-09/10
+
+The roguelite used to convert a run's experience into AA as a **lump at death**, so the AA bar sat
+dead for an entire run. It is now paid **continuously, 1:1 with the experience actually applied**
+(`zone/exp.cpp`, rule `AoT:LiveAAExp`). A full climb to the cap is 464,000 experience = **2.32
+points** either way — this is a change of **timing, not of income**. §6 and §12 describe the retired
+*random AA picker*; the picker is still how points are spent, and that has not changed.
+
+- ⚠️⚠️ **THE CAP CLAMP MUST HAPPEN ABOVE THE AA AWARD BLOCK, AND THAT IS WHY IT MOVED UP.** Deriving AA
+  from the applied delta is what makes AA stop at the level cap **automatically**: a character parked at
+  the cap has `set_exp` clamped back to where it already was, so the delta is 0 and no AA is earned.
+  Compute the delta **before** the clamp and a capped character farms AA forever — which is exactly the
+  v50 bug (deaths paying 7 points against an intended 2.32) reintroduced by another route.
+- ⚠️⚠️ **NO LEVEL SCALING, DELIBERATELY.** 1:1 is already steeply depth-weighted twice over: a higher
+  level mob grants more experience, *and* the curve is quadratic in cumulative terms. Levels 1-10 are
+  **11.6 percent** of a climb's AA and levels 20-30 are **55 percent**. A `(level/cap)` multiplier was
+  tried on the death payout and reverted for this reason; adding one here double-counts it a third time.
+- ⚠️ Not paid on **resurrection** experience — that is a refund of experience already earned once.
+- 📌 Dying is still the only way to keep earning: at the cap you stop gaining experience, so you stop
+  gaining AA until a new run.
+
+### ⚠️⚠️ EVERY WRITER OF `m_pp.aapoints` MUST GO THROUGH `Client::AoTv4DivertAAPoints`
+There must never be a spendable point in the native AA window — AA is spent exclusively through the
+picker. As of 2026-08-09 the writers are **`AddAAPoints`**, **`SetAAPoints`** (which covers the
+Lua/Perl bindings and `#set aapoints`), the **respec refund** in `aa.cpp`, and the **experience award
+block** in `exp.cpp`. Add a fifth without diverting it and that one path quietly reopens the native
+window.
+- 📌 An achievement awarding a **specific** AA does not come through here at all: `grant_aa` (§32)
+  assigns the ability rank directly, which is what "just assigned, never an open point" means there.
+- ⚠️⚠️ **THE BANK IS CREDITED IN C++, NOT BY THE LUA EVENT HANDLER — and this was a real, silent loss
+  of earned points.** The first version delegated banking to `global_player.event_aa_gain` →
+  `aa_choice.grant_picks`, which put a **reward behind a quest hook**: when the hook did not run,
+  `m_pp.aapoints` was zeroed regardless and the player simply lost the point, with no error, no log
+  line and nothing in the window. Reported as *"I got an AA, and it didnt award it anywhere"* and
+  confirmed in the data — `aa_exp` had dropped by exactly one point's worth while `aa_bank_<id>` stayed
+  0 and `aa_pcount_<id>` was unchanged, proving `grant_picks` never ran. Writing the bucket directly
+  makes the grant **atomic with the zeroing**; the event is now only a notification so Lua can show the
+  offer, and if it never fires the points are still banked and offered on next login.
+- ⚠️⚠️ **FIRE `EVENT_AA_GAIN` BEFORE ZEROING, AND AFTER CREDITING.** Lua learns the amount from the
+  event: zero first and it is handed 0.
+- ⚠️⚠️ **KEY FORMAT IS THE STRING `aa_bank_<charid>`, MATCHING `aa_choice.bank_key()`.** The Lua side
+  writes these with `eq.set_data`, which stores `character_id = 0` and puts the id **in the key**, so
+  the string-key `DataBucket` overload is the matching one — switch it to the character-scoped
+  `DataBucketKey` form and C++ and Lua read two different rows.
+- ⚠️ The stock *"you now have N ability points"* messages are skipped when diverting: they name
+  `m_pp.aapoints`, which is about to be 0, so they would advertise a pool the window correctly shows as
+  empty. The picker prints its own line.
+- ⚠️⚠️ **THE LUA HANDLER CALLS `aa_choice.on_points_banked`, NOT `grant_picks` — calling the latter
+  would DOUBLE every AA earned.** The points are already in the bank by the time `event_aa_gain` fires
+  (that is the whole point of crediting in C++), so `grant_picks` would add them a second time.
+  `grant_picks` is still correct on the **death** path, which is the one place the points have *not*
+  been banked yet.
+- 📌 **The old death-lump path is retained, gated on `AoT:LiveAAExp` being false** — the `else` branch
+  in `global_player.event_death` still divides `run_xp` by `AA_EXP_PER_POINT` and calls `grant_picks`.
+  So the two schemes are one rule apart, not a rewrite. ⚠️ `AA_EXP_PER_POINT` is the **hardcoded Lua
+  copy** of `AA:ExpPerPoint` that §35 records drifting ~120× from the DB — it still governs that branch.
+- 📌 `aa_xp_<charid>` is deliberately **not** deleted: it holds whatever a pre-switch character had
+  banked. Under the live scheme the engine carries the partial remainder in `m_pp.expAA`, which survives
+  the death wipe exactly as that bucket did, so a run ending part-way to a point still counts.
+
+### ⚠️⚠️ THE HARD LEVEL CAP HAS TO CAP *EXPERIENCE*, NOT JUST THE LEVEL
+Sitting at the cap was quietly banking experience toward a level that cannot be reached, which then
+paid out far more AA on death than intended. `AoT:HardLevelCap` is now applied to `set_exp` in both
+`AddEXP` and `SetEXP`.
+- ⚠️ Two gates in `exp.cpp` were **hardcoded to level 50/51** and are now read from the rule — on a
+  server capped at 30 the stock literals mean the branch never fires.
+- 📌 *"Welcome to level 35!"* on crossing several levels at once was **only the message lying** — the
+  cap was always being applied correctly.
+
+## 46. ⚠️⚠️ A NON-BARD NEVER SUSTAINS A SONG — it is cast once (2026-08-10)
+
+This **supersedes the fix recorded in §14** and extends §36's beneficial-song change. §14 gave a
+non-Bard the *pulse* (keying the song block on `IsBardSong(spell_id)` as well as the class) because a
+non-Bard's song faded almost immediately. That was the right diagnosis and the wrong cure: **sustaining
+is Bard machinery end to end** — the gem shows "singing", the spell bar stays locked until the song
+ends, and you stop by casting another song. A class with one awarded song has none of that, and
+bolting it on failed three separate ways:
+
+1. the locked bar made the **client refuse to send the stop** (*"You haven't recovered yet"*);
+2. stopping the pulse without `OP_InterruptCast` left the client **frozen** — no abilities, no camping;
+3. re-enabling the bar so the gem could be clicked removed the only cue that a song was running, so it
+   **pulsed invisibly forever** and slowed everything the player walked past.
+
+Reported from play on a Monk with Largo's. `Client::CastedSpellFinished` (`zone/spells.cpp:1538`) now
+sets `aotv4_song_as_buff` when `IsPulsingBardSong(spell_id) && (IsBeneficialSpell(spell_id) ||
+GetClass() != Class::Bard)`, and only starts `bardsong`/`bardsong_timer` for a **Bard casting a
+detrimental song**.
+
+- ⚠️⚠️ **A BARD IS COMPLETELY UNCHANGED.** Detrimental songs still pulse for them — which is how a Bard
+  actually fights — and their whole song UI still works.
+- ⚠️ `bard_song_mode` **stays true** for the cast-once case, deliberately: the song keeps its bard
+  casting behaviour (instant, movable, no fizzle) and its name, icon and instrument scaling. Only the
+  pulse is gone. That is what "a buff that looks like a song" means, and it is the shape §36 already
+  gave beneficial songs.
+- 📌 **The cost**: a non-Bard's *detrimental* song lasts only its native duration (Largo's is 3 ticks,
+  ~18 s) instead of for as long as they sing. That is a coherent debuff, and it is the trade for being
+  controllable at all. §36's three-day floor is **beneficial only**, so it does not extend these.
+- ⚠️ §14's other findings still stand: `IsBardSong` is **skill**-gated (Singing/Percussion/Stringed/
+  Wind/Brass), which is what keeps the skill-98 reward spells behaving as normal spells — **do not
+  widen it to "has a Bard level"**. And `GetInstrumentMod` is still Bard-only, so a non-Bard sings at
+  baseline power.
+- ⚠️ `HasActiveSong()` at `spells.cpp:239` carries an `aotv4_non_bard_singer` term for the same reason —
+  a non-Bard mid-song must not be treated as holding the song bar.
+
+## 47. ⚠️⚠️ THE HEALER AA TREE WAS DEAD FROM EVERY REAL HEAL FOR 18 DAYS — 2026-08-13
+
+Five marker AAs (`zone/aotv4_healer_aa.cpp`, `custom/sql/aotv4_aa_healer_hosted.sql`) hang off one hook,
+`Mob::AoTv4HealerPostHeal`, called at the end of `Mob::HealDamage`. **None of them had ever fired from a
+direct heal or a lifetap** between being written (2026-07-26, `0120014d6`) and this fix. Reported from
+play as Overflowing Grace giving *"no buff, no nothing"* after healing **or** tapping.
+
+The hook's first line is the whole story:
+```cpp
+if (!caster || !IsValidSpell(spell_id)) return;
+```
+`Mob::HealDamage(amount, Mob* caster = nullptr, uint16 spell_id = SPELL_UNKNOWN)` defaults **both**, and
+the two heal paths each omitted a *different* one:
+
+| path | call as written | what was missing |
+|---|---|---|
+| direct heals (`spell_effects.cpp`, 7 sites across 4 SPAs) | `HealDamage(dmg, caster)` | **`spell_id`** → `IsValidSpell(0xFFFF)` is false |
+| lifetap (`Mob::Damage`, `attack.cpp:4568`) | `HealDamage(healed)` | **`caster`** → `!caster` |
+
+- ⚠️⚠️ **MIRROR-IMAGE BUGS ARE WHY THIS SURVIVED SO LONG.** Fixing one leaves the other, so the feature
+  still appears completely dead and the natural conclusion is "the AA logic is wrong" — which sent the
+  first investigation into the rank ids, the spell row, the prereqs and `RuneAbsorb`, all of which were
+  correct.
+- ⚠️⚠️ **THE TELL: THE ONLY CALL IN `spell_effects.cpp` THAT PASSED A SPELL ID WAS THE HoT TIC**
+  (`HealDamage(effect_value, caster, buff.spellid)`, `:4055`) — and a HoT is the one thing the tree
+  deliberately **excludes** (`from_hot`, or a HoT on a nearly-full target trickles out shields and death
+  saves for one cast). So the hook was reachable **only where it refuses to act**. Nothing fired and
+  nothing errored. 📌 When a hook looks inert, list its callers and check what each one *omits* — a
+  defaulted parameter is invisible at the call site.
+- ⚠️ Four SPAs were fixed: `CurrentHP`, `CurrentHPOnce`, `PercentalHeal`, `CompleteHeal`.
+- ⚠️ For a tap the healed mob **is** the attacker, so `caster == target`. Fine for Grace; anything added
+  to this hook that assumes healer ≠ target must check.
+
+### Overflowing Grace — the numbers, and the 30-second internal cooldown
+AA ability **8**, first rank id **37** (`GetAA(37)` — it takes a **RANK** id, not an ability id), shield
+buff **43390** (SPA 55 rune). Converts a share of an **overheal** into a melee absorb.
+
+| rank | conversion | duration |
+|---|---|---|
+| 1 | 10% | 3 ticks (18s) |
+| 2 | 18% | 3 ticks |
+| 3 | 18% | 5 ticks (30s) |
+| 4 | 25% | 5 ticks |
+| 5 | 25% | 5 ticks + `Grace Renewed` when the shield is fully spent |
+
+- ⚠️⚠️ **`GRACE_COOLDOWN_MS` = 30000, AND IT IS PER TARGET, NOT PER HEALER.** It is what makes a
+  *parked* heal safe to allow: the shield can be rebuilt on one body at most once per window, however
+  many heals land and however many healers are casting. Per target rather than per healer because
+  shielding a whole group **is** the ability — re-shielding one body on repeat is the exploit.
+  ⚠️ It is stamped on the target **only when a shield is actually built**; a refused build must not
+  start it. ⚠️ Stored as `Mob::m_aotv4_grace_ready` on the **shielded** mob, beside
+  `m_aotv4_grace_rank`, for the same reason that one lives there.
+  📌 30s against an 18-30s shield means **deliberate gaps** — it is not meant to be permanently up.
+- ⚠️⚠️ **IT REFRESHES, IT DOES NOT STACK.** It used to *add* to whatever was left of an existing shield,
+  which is what made parking a heal dangerous — repeated casts climbed straight to the cap and stayed.
+  One heal is worth one shield: the pool is replaced and the duration restarts.
+  ⚠️ But it never **downgrades** — it takes `max(remaining, new)`, so a small overheal landing on a big
+  surviving shield keeps the bigger number. That is the trap the original top-up code was written to
+  avoid, preserved without the stacking.
+- ⚠️⚠️ **A FULLY WASTED HEAL NOW COUNTS, AND GRACE IS THE ONE THING ABOVE THE `acthealed == 0` GATE.**
+  Healing a target already at full health is the case the AA's own description promises ("healing past a
+  target maximum health"), and it used to produce nothing at all — which is exactly how anyone testing
+  it the obvious way concluded it was broken. **Everything below that gate still requires a real heal**:
+  Triage, Echo, Renewal and Breath are all farmable off a parked heal and none is capped the way this is.
+- ⚠️ Capped at **20% of max HP** (`GRACE_CAP_PCT_OF_MAXHP`), clamped before the buff is applied.
+- 📌 Worked example at rank 1, level 10 (~416 max HP): `12 Healing` heals **135** (formula 4 = base +
+  level×4, §5), all of it wasted at full health → a **13** point shield, well under the ~83 cap.
+
+### 📌 Residual gaps — heals that still cannot build a shield
+Each is a balance decision rather than a bug, so all were left alone:
+- **Lua-paid heals.** `Lua_Mob::HealDamage(amount)` (the 1-arg binding) passes no caster.
+  ⚠️ That matters most for **Moonfire** (§5): the engine pays 1× and `aotv4_moonfire.lua` pays the other
+  2×, so **only the engine's third of a Moonfire tap can build a shield**. `aotv4_thirst.lua` is the
+  same. There is a 2-arg binding if those should ever count.
+- **`attack.cpp:3859`** — the damage-shield heal. Enabling it means every DS proc builds shields.
+- **`aotv4_outs_aa.cpp:144`** — the Reprieve self-heal.
+
+### 📌 Verifying it, and why the DB alone cannot
+- `GetAA()` takes a **rank id**; the marker AAs join to the SQL by `AA_GRACE = 37` etc., and the file
+  says it outright: *"THE RANK IDS BELOW ARE THE ONLY JOIN TO THE SQL, AND NOTHING CHECKS THEM. A wrong
+  id reads 0 forever, which in game looks exactly like an AA you bought that quietly does nothing."*
+- ⚠️⚠️ **`character_alternate_abilities.aa_id` STORES THE `first_rank_id`, NOT THE ABILITY ID**, and
+  `aa_value` is **points spent**, not a rank number (`Client::SaveAA`: `e.aa_id = a->first_rank_id`,
+  and the rank is derived via `GetRankByPointsSpent`). Checking ownership by ability id returns nothing
+  and produces a confident wrong answer — it did here. Every healer rank costs 1, so 1 point = rank 1.
+- ⚠️ Granting one rank for a test is a row in that table, but **`LoadAlternateAdvancement` runs from
+  `Handle_Connect_OP_ZoneEntry`** — so **any zone entry** reloads it; a full camp is not needed.
+  📌 `SaveAA` uses `ReplaceMany` and never deletes absent rows, so a hand-inserted row survives an
+  in-game save even while memory does not know about it — meaning *the row being present does not prove
+  the character has it loaded*.
+- ⚠️ `#grantaa` grants **all** AAs (optionally skipping `grant_only`), not one, so it is the wrong tool
+  for testing a single ability. These are `grant_only = 1`, so they cannot be bought in the native
+  window at all — the picker (`aa_pool.lua`, ids 4-12) is the only route in play.

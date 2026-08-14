@@ -298,9 +298,15 @@ M.MODES = {
       hp = 1.00, dmg = 1.00, lvl = 0, swarm = 0, bosses = 1, score = 1.50,
       desc = "The same delve against a clock. Run out of time and the run is failed where it stands." },
 
-    { id = "fragile", name = "Fragile", taskoff = 200, goalmul = 1,
-      hp = 0.50, dmg = 2.00, lvl = 0, swarm = 0, bosses = 1, score = 1.50,
-      desc = "Everything dies in half the time and kills you in half the time. Win the trade or lose the run." },
+    -- ⚠️⚠️ "Fragile" (taskoff 200) WAS REMOVED 2026-08-11. DO NOT REUSE OFFSET 200 for a new mode
+    -- without also rewriting its 39 task rows -- the old titles are still in `tasks` and a new mode
+    -- reusing the offset would inherit them and name itself Fragile in the journal.
+    -- It was hp 0.50 / dmg 2.00, which cancels out: incoming damage is hp x lifetime, so 0.50 x 2.00
+    -- is exactly Standard's 1.00 while it paid 1.50 score -- free score, and the mode played like
+    -- Standard with spikier hits. Retuning the damage up was rejected because 2.00 ALREADY one-shots
+    -- players through ordinary spells, so the lever itself is wrong here.
+    -- 📌 The lesson for any future mode: raw damage multipliers do not work on this server. Change a
+    -- RULE (pacing, aggro, resources, respawns), not a number.
 }
 
 M.MODE_DEFAULT = "standard"
@@ -481,7 +487,7 @@ end
 
 -- ⚠️ Coin: ten platinum per rung, DOUBLED when an affix is running. "Affix" is any mode other than
 -- Standard -- they are the difficulty modifiers, and every one of them makes the run materially
--- harder (Hard doubles hp and damage, Swarm triples the bodies, Fragile halves your margin).
+-- harder (Hard doubles hp and damage, Swarm triples the bodies, Onslaught adds a clock).
 M.CHEST_PLAT_PER_LEVEL = 10
 M.CHEST_AFFIX_MULT     = 2
 
@@ -2310,7 +2316,20 @@ function M.on_enter_zone(e)
 
     c:Message(MT.Red, string.format("You left %s. The delve is closed and the mission is failed.", L.name))
 
-    if zid then
+    -- ⚠️⚠️ A GM IS NEVER DRAGGED BACK. The run is still closed above -- state hygiene is not optional
+    -- and a leaked run bucket would fail the NEXT delve for a reason nobody could see -- but the MOVE
+    -- is skipped, because this hook fires on the zone the player has ALREADY arrived in and would
+    -- silently yank them out of it.
+    -- ⚠️⚠️ THAT IS EXACTLY HOW IT PRESENTS: you `#zone` somewhere, land there, and are immediately put
+    -- back where you were, having never seen the zone you asked for. Reported from play as "#zone oot
+    -- ported me to beholder, the zone I was already in".
+    -- ⚠️ And it is unfalsifiable after the fact, because this handler DELETES the run and the return
+    -- point as it fires -- so the evidence that would prove it destroys itself. That is the reason to
+    -- fix it on principle rather than wait to catch it again.
+    -- 📌 `RegionManager::CanEnterZone` states the rule this follows: *"GMs are never region-gated; they
+    -- need to be able to reach content to fix it."* Any gate of ours that moves or blocks a player owes
+    -- the same exemption -- §41 is the other half of that bargain: gates still get TESTED as a non-GM.
+    if zid and not c:GetGM() then
         c:MovePC(tonumber(zid), tonumber(x), tonumber(y), tonumber(z), 0)
     end
     -- ⚠️ Only if this member was the last one on the run. Walking a zone line out of a group delve

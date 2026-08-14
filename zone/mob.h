@@ -1218,6 +1218,18 @@ public:
 	FACTION_VALUE GetSpecialFactionCon(Mob* iOther);
 	inline const bool IsAIControlled() const { return pAIControlled; }
 	inline const float GetAggroRange() const { return (spellbonuses.AggroRange == -1) ? pAggroRange : spellbonuses.AggroRange; }
+	// AoTv4: the VERTICAL half of the aggro box, kept separate from the horizontal one.
+	//
+	// ⚠️⚠️ STOCK USES ONE NUMBER FOR ALL THREE AXES. Mob::CheckWillAggro compares x, y AND z against
+	// GetAggroRange(), so anything that widens a creature's aggro radius also widens how far ABOVE and
+	// BELOW itself it can notice you -- in a multi-level dungeon that means aggro through the floor.
+	// The Inferno difficulty widens the radius deliberately and must NOT widen that, so it records the
+	// creature's ORIGINAL radius here and the z comparison uses this instead.
+	// ⚠️ -1 means "not set" and falls back to GetAggroRange(), which is exactly stock behaviour --
+	// every creature the difficulty system has not touched is unaffected.
+	// ⚠️ A plain float rather than an entity variable (the delve_noloot pattern) because CheckWillAggro
+	// runs per creature per client on a timer; a string map lookup there is not free.
+	inline const float GetAggroRangeZ() const { return (pAggroRangeZ < 0.0f) ? GetAggroRange() : pAggroRangeZ; }
 	inline const float GetAssistRange() const { return (spellbonuses.AssistRange == -1) ? pAssistRange : spellbonuses.AssistRange; }
 
 
@@ -1410,7 +1422,6 @@ public:
 	int64  AoTv4BacksToTheWall(int64 damage);
 	int64  AoTv4Stonestride(int64 damage);   // tank tree; `this` is the DEFENDER
 	bool   AoTv4Braced();
-	bool   AoTv4HeldInPlace();
 	bool   AoTv4RelentlessExtraSwing();
 	inline uint32 GetShieldTargetID() const { return m_shield_target_id; }
 	inline void SetShieldTargetID(uint32 val) { m_shield_target_id = val; }
@@ -1850,6 +1861,10 @@ protected:
 	uint32 m_aotv4_laststand_until = 0;
 	bool   m_aotv4_heal_echoing   = false; // Mender's Echo reentry guard -- an echo is itself a heal
 	uint8  m_aotv4_grace_rank     = 0;   // rank of the Overflowing Grace shield currently on me
+	// AoTv4 Overflowing Grace internal cooldown, on the SHIELDED mob for the same reason the rank is:
+	// it limits how often ANY healer may build a shield on me. That is what makes parking a heal on a
+	// full-health target safe to allow -- see AoTv4HealerPostHeal.
+	uint32 m_aotv4_grace_ready    = 0;   // ...and when a new shield may be built on me (ms)
 	int m_shield_target_mitigation;
 	int m_shielder_mitigation;
 	int m_shielder_max_distance;
@@ -1956,6 +1971,7 @@ protected:
 	uint32 minLastFightingDelayMoving;
 	uint32 maxLastFightingDelayMoving;
 	float pAggroRange = 0;
+	float pAggroRangeZ = -1.0f;   // AoTv4: -1 = follow pAggroRange (stock)
 	float pAssistRange = 0;
 	std::unique_ptr<Timer> AI_think_timer;
 	std::unique_ptr<Timer> AI_movement_timer;

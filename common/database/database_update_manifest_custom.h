@@ -5242,6 +5242,261 @@ DELETE FROM data_buckets WHERE `key` LIKE 'aa\_xp\_%';
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 55,
+		.description = "2026_08_11_aotv4_spell_books",
+		// Tomes of Insight: a consumable granting ONE extra reward pick without levelling you up.
+		// Three tiers, one per level band (1-10 / 11-20 / 21-30), usable only inside their own band.
+		// Behaviour is in lua_modules/aotv4_spell_books.lua; this creates the items and the inert
+		// spell their click rides on. Readable copy: custom/sql/aotv4_spell_books.sql.
+		//
+		// ⚠️⚠️ items AND spells_new ARE SHARED MEMORY. World applying this at boot is not enough --
+		// stop the stack, run ./shared_memory, restart, or the new rows are invisible to every zone.
+		//
+		// ⚠️ Keyed on the LAST id created (147968). Testing for the first would let a half-applied
+		// run look complete; testing for the spell would miss an items-only failure.
+		.check       = "SELECT id FROM items WHERE id = 147968",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DROP TEMPORARY TABLE IF EXISTS aotv4_tome_spell;
+CREATE TEMPORARY TABLE aotv4_tome_spell AS SELECT * FROM spells_new WHERE id = 43380;
+UPDATE aotv4_tome_spell SET
+    id = 44328, name = 'Insight',
+    buffduration = 0, buffdurationformula = 0,
+    cast_time = 0, recovery_time = 0, recast_time = 0, mana = 0,
+    targettype = 6, goodEffect = 1, spell_category = -99,
+    classes1=255, classes2=255, classes3=255, classes4=255, classes5=255, classes6=255,
+    classes7=255, classes8=255, classes9=255, classes10=255, classes11=255, classes12=255,
+    classes13=255, classes14=255, classes15=255, classes16=255;
+DELETE FROM spells_new WHERE id = 44328;
+INSERT INTO spells_new SELECT * FROM aotv4_tome_spell;
+DROP TEMPORARY TABLE aotv4_tome_spell;
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_tome_items;
+CREATE TEMPORARY TABLE aotv4_tome_items AS SELECT * FROM items WHERE id = 147921;
+UPDATE aotv4_tome_items SET
+    nodrop = 0, norent = 1, maxcharges = -1,
+    clicktype = 1, clickeffect = 44328, casttime = 0,
+    stackable = 1, stacksize = 20, itemtype = 17, slots = 0, loregroup = 0,
+    classes = 65535, races = 65535, deity = 0,
+    reqlevel = 0, reclevel = 0, price = 0, sellrate = 0,
+    augtype = 0,
+    augslot1type = 0, augslot2type = 0, augslot3type = 0,
+    augslot4type = 0, augslot5type = 0, augslot6type = 0,
+    augslot1visible = 0, augslot2visible = 0, augslot3visible = 0,
+    augslot4visible = 0, augslot5visible = 0, augslot6visible = 0;
+DELETE FROM items WHERE id BETWEEN 147966 AND 147979;
+UPDATE aotv4_tome_items SET id = 147966, Name = 'Worn Tome of Insight',    icon = 777;
+INSERT INTO items SELECT * FROM aotv4_tome_items;
+UPDATE aotv4_tome_items SET id = 147967, Name = 'Etched Tome of Insight',  icon = 865;
+INSERT INTO items SELECT * FROM aotv4_tome_items;
+UPDATE aotv4_tome_items SET id = 147968, Name = 'Radiant Tome of Insight', icon = 1357;
+INSERT INTO items SELECT * FROM aotv4_tome_items;
+DROP TEMPORARY TABLE aotv4_tome_items;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 56,
+		.description = "2026_08_12_aotv4_tome_spell_description",
+		// The tome click showed SHIELD WALL's description -- "Allies are absorbing part of the melee
+		// damage you take" -- because v55 cloned spell 43380 (the Shield Wall marker buff) and renamed
+		// it without repointing `descnum`, which still named 43380. Same trap as the damage formula in
+		// section 5: A CLONE INHERITS EVERY COLUMN YOU DO NOT OVERRIDE, and the ones that hurt are the
+		// ones with no obvious connection to what you changed.
+		//
+		// ⚠️ The spell itself was always INERT and correct (effectid1-3 all 254, no duration) -- it
+		// never cast a shield, it only described one. The tome's behaviour lives in
+		// quests/items/1479xx.lua and the spell is only the vehicle that makes the item clickable.
+		//
+		// ⚠️⚠️ A SPELL DESCRIPTION IS RESOLVED BY THE CLIENT FROM ITS OWN `dbstr_us.txt`, NOT FROM THIS
+		// DATABASE (section 6). Applying this migration alone changes NOTHING in game: it also needs
+		// `./export_client_files` and the regenerated dbstr_us.txt shipped to players.
+		// ⚠️ `spells_new` is SHARED MEMORY -- world down, ./shared_memory, restart, or every zone keeps
+		// the stale descnum.
+		// ⚠️ NO literal '%' in the text: the description path is printf-style and eats it as a format
+		// token (section 5).
+		//
+		// 📌 descnum = the spell id, which is the convention every other custom spell here follows
+		// (43380 -> 43380), so nothing has to remember a separate mapping.
+		.check       = "SELECT id FROM db_str WHERE id = 44328 AND type = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM db_str WHERE id = 44328 AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+    (44328, 6, 'A moment of clarity. Offers three rewards to choose from, without granting a level.');
+UPDATE spells_new SET descnum = 44328 WHERE id = 44328;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 57,
+		.description = "2026_08_13_aotv4_resplendent_pok_book",
+		// The HUB PoK book, moved to where the hub actually is. Readable copy:
+		// custom/sql/aotv4_pok_books_extra.sql (which this supersedes for the hub book specifically).
+		//
+		// ⚠️⚠️ THE HUB BOOK WAS IN `tutorialb` AND THE HUB MOVED WITHOUT IT. `aotv4_pok_books_extra.sql`
+		// put the set-granting book at tutorialb doorid 48 -- it unlocks Butcherblock Docks, Commonlands
+		// and Qeynos Hills in one click (pok_travel `grant_sets`) and then opens the window so the player
+		// ports out. `aotv4_start_resplendent.sql` then made resplendent (729) the start zone for all
+		// 1,441 (race, class, deity) rows and turned the tutorial off -- so the only book that grants the
+		// starter waypoints, and the only way to open the Portal window at the start, became unreachable.
+		// Reported from play as "I don't see the PoK book in Resplendent".
+		//
+		// ⚠️ tutorialb's book and its `grant_sets` entry are DELIBERATELY LEFT ALONE. They cost nothing,
+		// and the tutorial rules have already been reverted once by an unannounced rules dump (§35), so
+		// the tutorial may yet be reachable again.
+		//
+		// ⚠️⚠️ THIS MUST NOT MAKE RESPLENDENT A TRAVEL DESTINATION. `pok_travel.never_attune` already
+		// lists it and its comment predicted exactly this change -- the hub is where you are BOUND and
+		// you return by DYING, which is the roguelite loop, so a book *to* it would be a free
+		// bind-anywhere. Do NOT add resplendent to pok_portals.lua. The tutorialb book is the same
+		// shape: a source that is never a destination.
+		//
+		// ⚠️ Cloned from `butcher` doorid 78 -- a known-good stock PoK book -- so opentype (58),
+		// door_param, incline, size and the flags all match something proven to render and to fire
+		// EVENT_CLICK_DOOR. Only doorid, zone, position and the expansion gate are overridden. The name
+		// stays POKTELE500, the standard book model, which renders in every zone.
+		// ⚠️ min/max_expansion -1 = always spawn: the books are PoP-era content on a Classic server
+		// (§11), so without this the content filter hides it.
+		// ⚠️ `version` is copied from the template (0), which matches every existing resplendent door.
+		//
+		// ⚠️⚠️ POSITION IS DERIVED, NOT WALKED -- x/y/z -22/548/0 is the START AND BIND POINT
+		// (aotv4_start_resplendent.sql) nudged 13 units along y so the model is in front of a player
+		// rather than inside them. That point is guaranteed valid standing ground because every
+		// character materialises on it, and it is also where they respawn after every death -- the most
+		// discoverable spot in the zone. **If it looks wrong in game, correct it with one UPDATE**; the
+		// three hub NPCs sit further in at y ~685-697, z ~-26 (Alessa -30.7/696.6/-26.25) if it should
+		// live with them instead.
+		// ⚠️ In-game `/loc` prints Y,X,Z -- `doors.pos_x/pos_y` are already swapped relative to it, which
+		// is the note the extra-books script carries. Do not paste a raw /loc in here.
+		// ⚠️ heading 256 = south, facing back toward the arrival point (0 = north, 384 = east).
+		//
+		// ⚠️ Doors load at ZONE BOOT and are NOT shared memory -- restart zones, no ./shared_memory.
+		//
+		// ⚠️⚠️⚠️ IT MUST NOT ADD A SECOND BOOK ON LIVE, WHERE ONE ALREADY EXISTS AT AN UNKNOWN DOORID.
+		// §25's first line: **THE LIVE SERVER IS A DIFFERENT DATABASE FROM THIS CONTAINER.** The hub
+		// book was authored ON LIVE with the door tool (`#door create` then `#door save`, which really
+		// does persist -- against whichever database you ran it on) and never flowed back here, so it
+		// is a real row on live and has never existed in dev. That is why this migration exists at all,
+		// and it is also the trap: keyed on `doorid = 100` it would find nothing at 100 on live and
+		// insert a SECOND book beside the one players already use.
+		// So the condition tests for **any** `dest_zone = 'poknowledge'` door in the zone, not for our
+		// id, and the INSERT carries a matching `NOT EXISTS` guard so it is safe even if the check is
+		// bypassed or the file is run by hand.
+		// ⚠️ There is deliberately **no DELETE**. An earlier version deleted doorid 100 first for
+		// idempotency; if live's own book happened to sit at 100 that would have removed it and
+		// re-inserted ours at OUR coordinates, silently MOVING a book players already know the location
+		// of. `NOT EXISTS` provides the idempotency without touching anything that is already there.
+		// 📌 Net effect: on live it no-ops and live keeps its book wherever it stands; on dev (and any
+		// fresh import) it creates one. The two environments end up with a book each, not necessarily
+		// at the same doorid -- which is fine, because nothing keys off the doorid here (`grant_sets`
+		// keys off the ZONE, and `book_override` is only needed for zones holding two books).
+		.check       = "SELECT doorid FROM doors WHERE zone = 'resplendent' AND dest_zone = 'poknowledge'",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+INSERT INTO doors
+  (doorid, zone, version, name, pos_x, pos_y, pos_z, heading, opentype, guild, lockpick, keyitem,
+   nokeyring, triggerdoor, triggertype, disable_timer, doorisopen, door_param, dest_zone, dest_instance,
+   dest_x, dest_y, dest_z, dest_heading, invert_state, incline, size, buffer, client_version_mask,
+   is_ldon_door, close_timer_ms, dz_switch_id, min_expansion, max_expansion)
+SELECT 100, 'resplendent', src.version, src.name, -22, 548, 0, 256, src.opentype, src.guild, src.lockpick, src.keyitem,
+   src.nokeyring, src.triggerdoor, src.triggertype, src.disable_timer, src.doorisopen, src.door_param, src.dest_zone, src.dest_instance,
+   src.dest_x, src.dest_y, src.dest_z, src.dest_heading, src.invert_state, src.incline, src.size, src.buffer, src.client_version_mask,
+   src.is_ldon_door, src.close_timer_ms, src.dz_switch_id, -1, -1
+FROM doors src
+WHERE src.zone = 'butcher' AND src.doorid = 78
+  AND NOT EXISTS (SELECT 1 FROM doors d2 WHERE d2.zone = 'resplendent' AND d2.dest_zone = 'poknowledge');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 58,
+		.description = "2026_08_13_aotv4_aa_offhand",
+		// Two dual-wield AAs replacing two that this server's own rules made worthless. Readable copy:
+		// custom/sql/aotv4_aa_offhand.sql.
+		//
+		//   host  31 Fear Resistance ranks 116,117,118          -> Sinister Strikes  (SPA 249, 1 rank)
+		//   host 108 Flurry          ranks 255,256,257,542,543  -> Blindside         (SPA 304, 5 ranks)
+		//
+		// ⚠️⚠️ WHY THE OLD TWO WENT: both were fine AAs that this server had already legislated out of
+		// existence. `Steady Nerve` (31) resisted FEAR, and fear spells are blacklisted from the reward
+		// pool entirely (§5's `fear` rule, 40 spells). `Run Them Down` (108) stopped enemies fleeing,
+		// and `AoT:NPCsNeverFlee` already stops them fleeing for everyone. Neither was broken; both were
+		// buying something the server gives away or forbids.
+		// ⚠️ `78 Nothing Left to Fear` (fear IMMUNITY, prereq 31 rank 3) goes from the pool for the same
+		// reason -- and it would have become unobtainable anyway once 31 stopped having a rank 3.
+		//
+		// ⚠️⚠️ SPA 249 `SecondaryDmgInc` IS A BOOLEAN, NOT A MAGNITUDE. `bonuses.cpp:926` is
+		// `newbon->SecondaryDmgInc = true;` and `attack.cpp:1855` only tests it -- so rank 2 and above
+		// would add NOTHING. That is why this one is deliberately a SINGLE rank, with 116's chain
+		// terminated at `next_id = -1`. Giving it the usual 3-5 rung ladder would sell four ranks that
+		// do nothing.
+		// 📌 What it unlocks is real though: the offhand starts receiving the weapon damage bonus that
+		// only the primary gets otherwise (`GetWeaponDamageBonus(..., true)`), which is the live
+		// "Sinister Strikes" effect.
+		//
+		// ⚠️⚠️ SPA 304 `OffhandRiposteFail` MUST BE **NEGATIVE**. Despite the name, `attack.cpp:519` does
+		// `chance += chance * slip / 100` where `chance` is the ENEMY'S RIPOSTE CHANCE -- so a positive
+		// base makes your offhand swings riposted MORE often, i.e. the exact opposite of the ability.
+		// -15/-30/-45/-65/-85 reduces the riposte chance against offhand attacks by that percentage.
+		// 📌 Same class of trap as SPA 121's reverse damage shield (§5) and SPA 20's positive base being
+		// CURE blindness (§20): the sign carries the meaning, and the name does not tell you which way.
+		//
+		// ⚠️⚠️ BOTH SPAs WERE CHECKED AGAINST `Mob::ApplyAABonuses` (bonuses.cpp:612-1819) BEFORE BEING
+		// CHOSEN, and that check is not optional -- **SPA 176 `DualWieldChance` has NO case there**, so
+		// an AA granting it is silently inert while reading perfectly in the window. It was very nearly
+		// picked for this. §32 records the same trap in reverse (`MitigateMeleeDamage` missing from
+		// ApplyAABonuses while tagged `[AA]` in spdat.h). **Check the function, never the tag.**
+		//
+		// ⚠️ `aa_rank_prereqs` is a SEPARATE table and a hosted AA inherits its host's -- clear it or the
+		// ability shows in the window and refuses to train with no message (§6).
+		// ⚠️ AAs load at ZONE BOOT and are not shared memory: a zone restart applies this.
+		// ⚠️⚠️ THE NAMES AND DESCRIPTIONS ARE `db_str`, WHICH THE CLIENT READS FROM ITS OWN
+		// `dbstr_us.txt` (§6) -- this migration alone renames nothing in game. It needs
+		// ./export_client_files and the regenerated file shipped. Both are PASSIVE, so only types 1 and
+		// 4 are written; types 2/3 are the hotkey lines and matter only for activated abilities.
+		.check       = "SELECT id FROM aa_ability WHERE id = 108 AND name = 'Blindside'",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE aa_ability SET name = 'Sinister Strikes', classes = 65535, enabled = 1, type = 4 WHERE id = 31;
+UPDATE aa_ability SET name = 'Blindside',        classes = 65535, enabled = 1, type = 4 WHERE id = 108;
+
+-- Sinister Strikes: ONE rank only (SPA 249 is a boolean), so the chain stops at 116.
+UPDATE aa_ranks SET cost = 3, level_req = 5, next_id = -1 WHERE id = 116;
+
+-- Blindside keeps the melee tree's five-rung ladder.
+UPDATE aa_ranks SET level_req = 5,  cost = 3 WHERE id = 255;
+UPDATE aa_ranks SET level_req = 15, cost = 4 WHERE id = 256;
+UPDATE aa_ranks SET level_req = 25, cost = 5 WHERE id = 257;
+UPDATE aa_ranks SET level_req = 35, cost = 6 WHERE id = 542;
+UPDATE aa_ranks SET level_req = 45, cost = 8 WHERE id = 543;
+UPDATE aa_ranks SET next_id = -1 WHERE id = 543;
+
+DELETE FROM aa_rank_prereqs  WHERE rank_id IN (116,117,118, 255,256,257,542,543);
+DELETE FROM aa_rank_effects  WHERE rank_id IN (116,117,118, 255,256,257,542,543);
+
+INSERT INTO aa_rank_effects (rank_id, slot, effect_id, base1, base2) VALUES
+    (116, 1, 249,   1, 0),
+    (255, 1, 304, -15, 0),
+    (256, 1, 304, -30, 0),
+    (257, 1, 304, -45, 0),
+    (542, 1, 304, -65, 0),
+    (543, 1, 304, -85, 0);
+
+UPDATE db_str SET value = 'Sinister Strikes' WHERE id = 116 AND type = 1;
+UPDATE db_str SET value = 'Blindside'        WHERE id = 255 AND type = 1;
+
+UPDATE db_str SET value = 'Your weaker hand learns the same trick as your strong one. Your offhand weapon receives the damage bonus that normally only your primary weapon gets. This ability has a single rank -- the offhand either receives the bonus or it does not.' WHERE id = 116 AND type = 4;
+
+UPDATE db_str SET value = 'You strike from where they are not looking. Attacks with your offhand weapon are 15, 30, 45, 65 and 85 percent less likely to be riposted. It does nothing for your primary hand.' WHERE id = 255 AND type = 4;
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

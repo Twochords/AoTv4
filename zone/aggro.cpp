@@ -140,7 +140,7 @@ void NPC::DescribeAggro(Client *to_who, Mob *mob, bool verbose) {
 	if (
 		x_range > aggro_range ||
 		y_range > aggro_range ||
-		z_range > aggro_range
+		z_range > GetAggroRangeZ()
 	) {
 		to_who->Message(
 			Chat::White,
@@ -424,10 +424,13 @@ bool Mob::CheckWillAggro(Mob *mob) {
 	float y_range = std::abs(mob->GetY() - GetY());
 	float z_range = std::abs(mob->GetZ() - GetZ());
 
+	// AoTv4: z compares against its OWN range. See Mob::GetAggroRangeZ -- it returns aggro_range
+	// unless something has deliberately widened the horizontal radius, so this is stock for every
+	// creature the difficulty system has not touched.
 	if (
 		x_range > aggro_range ||
 		y_range > aggro_range ||
-		z_range > aggro_range ||
+		z_range > GetAggroRangeZ() ||
 		mob->IsInvisible(this) ||
 		(
 			mob->IsClient() &&

@@ -4533,7 +4533,16 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 
 				healed = RuleB(Spells, CompoundLifetapHeals) ? attacker->GetActSpellHealing(spell_id, healed) : healed;
 				LogCombat("Applying lifetap heal of [{}] to [{}]", healed, attacker->GetName());
-				attacker->HealDamage(healed);
+				// AoTv4: ⚠️⚠️ PASS THE CASTER AND THE SPELL, OR THE WHOLE HEALER AA TREE IS UNREACHABLE
+				// FROM A TAP. Stock calls `HealDamage(healed)` and both later parameters default
+				// (`caster = nullptr`, `spell_id = SPELL_UNKNOWN`), so `Mob::AoTv4HealerPostHeal` bailed
+				// on its very first line -- `if (!caster || !IsValidSpell(spell_id)) return;`. That
+				// silently disabled Overflowing Grace, Triage Instinct, Mender's Echo and Borrowed
+				// Breath for every lifetap in the game. Reported from play as Overflowing Grace not
+				// working "even directly vs via taps".
+				// ⚠️ The healed mob IS the attacker here, so caster == target for a tap. That is fine
+				// for Grace; anything added to that hook which assumes healer != target must check.
+				attacker->HealDamage(healed, attacker, spell_id);
 
 				//we used to do a message to the client, but its gone now.
 				// emote goes with every one ... even npcs

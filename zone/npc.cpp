@@ -2401,6 +2401,10 @@ void NPC::ModifyNPCStat(const std::string& stat, const std::string& value)
 		SetLevel(Strings::ToInt(value));
 	} else if (stat_lower == "aggro") {
 		pAggroRange = Strings::ToFloat(value);
+	} else if (stat_lower == "aggro_z") {
+		// AoTv4: the vertical half of the aggro box, so a widened radius does not widen how far above
+		// or below itself a creature can notice you. -1 restores stock (follow pAggroRange).
+		pAggroRangeZ = Strings::ToFloat(value);
 	} else if (stat_lower == "assist") {
 		pAssistRange = Strings::ToFloat(value);
 	} else if (stat_lower == "slow_mitigation") {
@@ -2527,6 +2531,8 @@ float NPC::GetNPCStat(const std::string& stat)
 		return GetOrigLevel();
 	} else if (stat_lower == "aggro") {
 		return pAggroRange;
+	} else if (stat_lower == "aggro_z") {
+		return pAggroRangeZ;
 	} else if (stat_lower == "assist") {
 		return pAssistRange;
 	} else if (stat_lower == "slow_mitigation") {
@@ -3257,6 +3263,16 @@ void NPC::DoQuestPause(Mob* m)
 
 void NPC::ChangeLastName(std::string last_name)
 {
+	// AoTv4: persist it as well as broadcasting it.
+	//
+	// ⚠️⚠️ STOCK ONLY SENDS THE PACKET, so the tag reached exactly the clients standing in range at
+	// that instant and nobody else -- `Mob::lastname` was left untouched, so every subsequent spawn
+	// packet (mob.cpp:1288, :1361) still carried the OLD value and a player who zoned in later saw
+	// nothing. That is the common case for anything tagged at spawn: a zone or an instance populates
+	// BEFORE the first player finishes zoning in, so the broadcast goes to an empty zone.
+	// ⚠️ It also left `GetLastName()` disagreeing with what was on screen.
+	strn0cpy(lastname, last_name.c_str(), sizeof(lastname));
+
 	auto outapp = new EQApplicationPacket(OP_GMLastName, sizeof(GMLastName_Struct));
 	auto gmn = (GMLastName_Struct*) outapp->pBuffer;
 

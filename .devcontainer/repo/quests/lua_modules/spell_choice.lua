@@ -18,6 +18,11 @@ local icons     = require("spell_icons")     -- id -> spellbook icon index (for 
 local spelldesc = require("spell_desc")      -- id -> description text (for the DLL window hover)
 local skills    = require("skill_pool")      -- combat skill rewards: id -> {name, icon}
 local blacklist = require("spell_blacklist") -- spell ids never offered (rez, enchant, ...)
+-- Rank chains + the keep list. ⚠️ Required ONCE at load, not per call: `already_known` runs for every
+-- pool entry in the level band, so a `pcall(require, ...)` inside it would repeat that work hundreds of
+-- times per offer. ⚠️ Still pcall'd so this module degrades rather than erroring if the rank system is
+-- ever unloaded. 📌 No cycle -- aotv4_spell_ranks_sys requires only spell_ranks.
+local ok_ranks, ranks_sys = pcall(require, "aotv4_spell_ranks_sys")
 
 local M = {}
 
@@ -52,6 +57,54 @@ function M.reroll_cost(client)
 	return REROLL_BASE_PLAT * (reroll_count(client) + 1) * 1000
 end
 
+-- ---------------------------------------------------------------- tome decline
+-- Declining a Tome of Insight's offer WINDS THE REROLL COUNTER BACK instead of teaching you a spell.
+-- Tier 3 zeroes it, so the next reroll is 5p again and it escalates from there as normal.
+--
+-- ⚠️⚠️ THIS PERMANENTLY EDITS THE COUNTER; IT IS NOT A ONE-SHOT VOUCHER. The counter is the same
+-- lifelong `rerollbuy_` value that is deliberately NOT cleared by the roguelite death, so a tome is
+-- the only thing in the game that can reduce it. A tier 3 tome does not make rerolls free forever --
+-- it resets the ladder to its bottom rung, and buying rerolls climbs it again.
+--
+-- ⚠️ These percentages live HERE, not in aotv4_spell_books, because this file owns the counter. That
+-- module reads them back through M.BOOK_REROLL_CUT -- one direction only, so there is no require
+-- cycle and no second copy to drift.
+M.BOOK_REROLL_CUT = { [1] = 25, [2] = 50, [3] = 100 }
+
+-- floor, not round: it always lands in the player's favour, and floor(n * 0) is cleanly 0 for tier 3.
+local function cut_count(n, pct)
+	return math.floor(n * (100 - pct) / 100)
+end
+
+-- What the next reroll WOULD cost after a cut of `pct`. Display only.
+function M.reroll_cost_after_cut(client, pct)
+	return REROLL_BASE_PLAT * (cut_count(reroll_count(client), pct) + 1) * 1000
+end
+
+-- ---------------------------------------------------------------- offer tags
+-- A queue entry is normally just its tokens ("S:12,S:34,K:8"). An offer that came from a TOME is
+-- prefixed "B<tier>@" so the queue remembers where it came from -- that is what lets `decline` refuse
+-- to fire on an ordinary level-up offer.
+--
+-- ⚠️⚠️ WITHOUT THE TAG, DECLINE IS AN EXPLOIT. A level-up offer costs nothing, so if any offer could
+-- be declined for a reroll cut, the correct play would be to decline every level-up and never take a
+-- reward -- the counter would be permanently pinned at 5p. The tag is the only thing distinguishing
+-- "a reward you paid a tome for" from "a reward you were given".
+--
+-- ⚠️ It is a PREFIX on the entry rather than a token in the list, because every consumer of this
+-- queue tokenizes on "," and reads "kind:id" -- a "B:3" token would be parsed as a spell and fed
+-- straight to HasSpellScribed(3).
+local function split_entry(entry)
+	local tag, toks = (entry or ""):match("^(B%d+)@(.*)$")
+	if tag then return tag, toks end
+	return nil, (entry or "")
+end
+
+local function join_entry(tag, toks)
+	if tag and tag ~= "" and toks ~= "" then return tag .. "@" .. toks end
+	return toks
+end
+
 -- Tell the window what the next reroll costs, so the box beside the button is never stale. Sent with
 -- every offer AND after every reroll -- the price changes the moment one is bought.
 function M.send_reroll_cost(client)
@@ -69,9 +122,26 @@ local function bucket_key(client)
 end
 
 -- Disciplines are trained (Combat Abilities window); normal spells are scribed.
+--
+-- ⚠️⚠️ "KNOWN" MEANS ANY RANK OF IT, AND ALSO MEANS KEPT. `HasSpellScribed(id)` alone tests one exact
+-- spell id, and a rank is a DIFFERENT id (§29) -- so a character carrying `Lifedraw Rk. III` was not
+-- "known" for plain `Lifedraw` and the picker kept offering the base version back. Reported from play
+-- with exactly that pair on screen.
+-- ⚠️ A KEPT spell is excluded too. Keeping guarantees it is in hand at the start of every run, so
+-- offering it spends one of three reward slots on something the player already arranged to have. The
+-- kept list stores BASES; `is_kept` normalises, so any rank id may be passed.
+-- 📌 Both tests go through `aotv4_spell_ranks_sys` rather than being reimplemented here -- it owns the
+-- chain map and the keep list, and a second reader of either is how the two drift.
+-- ⚠️ Degrades to the stock exact-id test if the rank system is unloaded, rather than erroring inside
+-- candidate gathering. 📌 `currently_scribed` only walks a chain for a spell that HAS one (188 bases),
+-- so an unranked candidate still costs a single HasSpellScribed.
 local function already_known(client, id)
 	if eq.is_discipline(id) then
 		return client:HasDisciplineLearned(id)
+	end
+	if ok_ranks and ranks_sys then
+		if ranks_sys.currently_scribed(client, id) then return true end
+		if ranks_sys.is_kept(client, id) then return true end
 	end
 	return client:HasSpellScribed(id)
 end
@@ -145,7 +215,7 @@ end
 -- Send the window data (SPELLCHOICEDATA + SPELLDESCDATA) + saylink fallback for ONE offer, given its
 -- comma-separated token string ("S:id,S:id,K:id"). Names/icons/descs are reconstructed from the tokens
 -- so the queue only needs to store the tokens.
-local function send_offer(client, offer_str)
+local function send_offer(client, offer_str, tag)
 	if not offer_str or offer_str == "" then return end
 	local names, descs, labels = {}, {}, {}
 	for tok in offer_str:gmatch("[^,]+") do
@@ -155,7 +225,12 @@ local function send_offer(client, offer_str)
 			local info = skills[id]
 			nm = (info and info.name) or ("skill " .. id); ic = (info and info.icon) or 0; ds = "A combat skill."
 		else
-			nm = eq.get_spell_name(id) or ("spell " .. id); ic = icons[id] or 0
+			nm = eq.get_spell_name(id) or ("spell " .. id)
+			-- ⚠️ Same base-icon fallback as build_offer: a queued token may be a RANK id, and
+			-- spell_icons.lua is generated from the pool so it only holds base ids. Without this the
+			-- card redraws with no icon after a prune or a relog, even though it had one when offered.
+			local ic_base = ok_ranks and ranks_sys.base_of(id) or id
+			ic = icons[id] or icons[ic_base] or 0
 			-- ⚠️ SAME SOURCE AS THE SEARCH WINDOW. Client::SearchDetail("spell", id) gives mana, cast
 			-- time, recast, range, learn level, resist, duration AND the db_str text with its #N/@N
 			-- placeholders already filled from the effect values -- none of which spell_desc.lua has;
@@ -184,6 +259,24 @@ local function send_offer(client, offer_str)
 		for i, d in ipairs(descs) do
 			client:Message(MT.NPCQuestSay, string.format("SPELLDESCDATA %d %s", i, d))
 		end
+		-- Whether this offer can be DECLINED, and what declining is worth. Sent with every offer,
+		-- including as an explicit 0 for an ordinary level-up, so the button is hidden again the
+		-- moment a tome offer is resolved -- a stale Decline button would look live and do nothing.
+		--
+		-- ⚠️⚠️ SENT BEFORE SPELLREROLLCOST, NOT AFTER. Receiving the cost makes the dll redraw the
+		-- whole control row, and the Reroll and Decline pairs share one slot -- so with the old order
+		-- that redraw ran against the PREVIOUS offer's tier and briefly drew the wrong pair. Cheap to
+		-- avoid, and section 15 already records this chat pipe dropping and reordering bursts, so the
+		-- less each line depends on the one after it the better.
+		--
+		-- ⚠️ The dll uses this only to draw buttons. Both decisions are re-made server side against
+		-- the queue's own tag (M.decline requires one, M.reroll refuses one), so a modified client
+		-- that shows either button anyway still cannot act on it.
+		local tier = tag and tonumber(tag:match("^B(%d+)$")) or 0
+		local pct  = M.BOOK_REROLL_CUT[tier] or 0
+		client:Message(MT.NPCQuestSay, string.format("SPELLDECLINE %d %d %d",
+			tier, pct, M.reroll_cost_after_cut(client, pct)))
+
 		-- The reroll price rides along with every offer. It is per character and escalates, so the
 		-- window has no way to work it out for itself and a hardcoded client-side figure would be
 		-- wrong for everyone after their first reroll.
@@ -211,8 +304,12 @@ local function refresh_and_show(client, key)
 	local q = eq.get_data(key) or ""
 	while q ~= "" do
 		local front, rest = q:match("^([^;]*);?(.*)$")
+		-- ⚠️ Strip the tome tag before tokenizing and put it back when saving, or a book-sourced
+		-- offer silently becomes an ordinary one the first time it is pruned -- and pruning happens
+		-- on every login, so the Decline button would stop working after a relog.
+		local tag, ftoks = split_entry(front)
 		local kept = {}
-		for tok in front:gmatch("[^,]+") do
+		for tok in ftoks:gmatch("[^,]+") do
 			local kind, id = tok:match("^(%a):(%d+)$"); id = tonumber(id)
 			if id and not already_have(client, kind, id) then
 				kept[#kept + 1] = tok
@@ -236,9 +333,10 @@ local function refresh_and_show(client, key)
 					end
 				end
 			end
-			q = (rest == "") and table.concat(kept, ",") or (table.concat(kept, ",") .. ";" .. rest)
+			local entry = join_entry(tag, table.concat(kept, ","))
+			q = (rest == "") and entry or (entry .. ";" .. rest)
 			eq.set_data(key, q)
-			send_offer(client, table.concat(kept, ","))
+			send_offer(client, table.concat(kept, ","), tag)
 			return
 		end
 		q = rest   -- entire front offer is already-known -> discard it and try the next queued offer
@@ -270,9 +368,28 @@ local function build_offer(client, level)
 	local skill_cands = gather_skill_candidates(client)
 	if #skill_cands > 0 and math.random() < SKILL_OFFER_CHANCE then n_skill = 1 end
 
+	-- ⚠️⚠️ OFFER THE RANK THE CHARACTER HAS EARNED, NOT THE BASE. The award path already scribes
+	-- `ranked_id()` (see M.handle_say), so a player owning rank III always RECEIVED rank III -- but the
+	-- card said "Lifedraw" while handing over "Lifedraw Rk. III", so the offer described something
+	-- other than the reward. Resolving here makes the name, icon and description on the card the ones
+	-- the player actually gets.
+	-- ⚠️ `ranked_id` normalises its argument through the chain first, so passing an already-ranked id is
+	-- harmless and the award path stays idempotent.
+	-- 📌 The POOL is still keyed on base ids and is unchanged -- this converts only at the moment of
+	-- offering, so nothing about candidate gathering, the blacklist or the Pool tab has to know.
 	local choices = {}
 	for _, sp in ipairs(pick_random(gather_candidates(client, level), CHOICE_COUNT - n_skill)) do
-		choices[#choices + 1] = { kind = "spell", id = sp.id, name = sp.name, icon = icons[sp.id] or 0 }
+		local give = (ok_ranks and ranks_sys) and ranks_sys.ranked_id(client, sp.id) or sp.id
+		-- ⚠️⚠️ ICON FALLS BACK TO THE BASE. `spell_icons.lua` is generated from the POOL, so it has no
+		-- entry for a rank row (43576-44327) -- and `gen_choice_xml.pl` only emits hidden icon buttons
+		-- for the icons that file lists (§3), so an unlisted icon draws an empty hole with no error.
+		-- The ranks share their base's artwork, so the base's icon is both correct and already declared.
+		choices[#choices + 1] = {
+			kind = "spell",
+			id   = give,
+			name = eq.get_spell_name(give) or sp.name,
+			icon = icons[give] or icons[sp.id] or 0,
+		}
 	end
 	for _, sc in ipairs(pick_random(skill_cands, n_skill)) do
 		choices[#choices + 1] = sc
@@ -292,16 +409,17 @@ end
 function M.offer(e)
 	local client = e.self
 
-	-- ⚠️⚠️ A FORFEITED LEVEL GETS NO OFFER. Keeping a spell through death costs the pick at the level
-	-- that spell was originally taken (aotv4_spell_ranks_sys) -- that forfeit is the entire price of
-	-- keeping, and it is charged HERE by simply not offering. Returning early rather than building
-	-- and discarding an offer matters: build_offer bumps the RNG seed, so building one we throw away
-	-- would silently change every later roll.
-	local ok, ranksys = pcall(require, "aotv4_spell_ranks_sys")
-	if ok and ranksys.pick_is_forfeit(client, client:GetLevel()) then
-		client:Message(15, "You forfeit this level's reward -- the price of the spell you kept.")
-		return
-	end
+	-- ⚠️⚠️ KEEPING A SPELL IS FREE, AND THE FORFEIT THAT USED TO PAY FOR IT IS GONE (2026-08-10).
+	-- Every level offers a pick, unconditionally. Keeping two spells through death costs nothing.
+	--
+	-- What was removed: a kept spell used to cost the pick at the level it was originally taken, and
+	-- this function charged it by returning early without offering. It was retired because the ledger
+	-- (`pickspent_`) was a snapshot written at death, so swapping a keep mid-run desynced it in both
+	-- directions -- players were charged at levels they had never kept anything from, having already
+	-- paid earlier in the same run. The mechanic was also unevenly priced: an origin level recorded
+	-- above the current cap could never come round again, so those keeps were silently free anyway.
+	-- 📌 Do not reintroduce a forfeit here without a ledger that tracks the kept list live rather than
+	-- snapshotting it -- that mismatch is the whole reason this was removed.
 
 	local this_offer = build_offer(client, client:GetLevel())
 	if this_offer == "" then return end
@@ -316,6 +434,92 @@ function M.offer(e)
 	refresh_and_show(client, bucket_key(client))   -- prune known spells, then show the oldest pending offer
 end
 
+-- ---------------------------------------------------------------- tome offers
+-- One extra pick, bought with a Tome of Insight. Returns false (having changed nothing) if there is
+-- nothing left to offer, so the caller knows not to consume the book.
+--
+-- ⚠️⚠️ IT GOES TO THE FRONT OF THE QUEUE, NOT THE BACK -- the opposite of M.offer. The window always
+-- shows the front, and Decline always acts on the front, so a tome pushed behind an unresolved
+-- level-up offer would put the player's Decline click on the WRONG offer -- silently declining a
+-- reward they had not paid for and cutting nothing. Clicking a book must show that book's offer.
+--
+-- ⚠️ Nothing is lost by jumping the queue: the displaced offer stays queued and reappears as soon as
+-- this one is resolved.
+--
+-- ⚠️⚠️ BUILT AT THE TOME'S BAND, NOT THE PLAYER'S LEVEL. A tome is not usable-or-not: its TIER
+-- decides which levels the reward is drawn from, so a Worn tome always offers a level 1-10 reward
+-- whoever clicks it. It used to refuse outright when the player sat outside the band, which is how a
+-- level 13 character with a Worn tome got a flat rejection and nothing else -- the tome dropped from
+-- the difficulty they were told to farm and then could not be spent.
+-- ⚠️ `level` is the TOP of the band; `gather_candidates` already widens down by LEVEL_BAND from
+-- there, so the offer lands inside the band rather than on one exact level.
+-- 📌 Falls back to the player's level when no band is passed, so any other caller behaves as before.
+function M.offer_from_book(client, tier, level)
+	local fresh = build_offer(client, level or client:GetLevel())
+	if fresh == "" then return false end
+
+	local key = bucket_key(client)
+	local q   = eq.get_data(key) or ""
+	local entry = join_entry("B" .. tostring(tier), fresh)
+	eq.set_data(key, (q == "") and entry or (entry .. ";" .. q))
+
+	refresh_and_show(client, key)
+	return true
+end
+
+-- Decline a tome's offer: take no reward, and wind the reroll counter back instead.
+--
+-- ⚠️⚠️ ONLY A TOME-TAGGED OFFER MAY BE DECLINED. An ordinary level-up offer is free, so allowing it
+-- here would make declining every level the optimal play -- see the note on the tag above.
+function M.decline(client)
+	local key = bucket_key(client)
+	local q   = eq.get_data(key) or ""
+	if q == "" then
+		client:Message(MT.Red, "You have no reward choice to decline.")
+		return false
+	end
+
+	local front, rest = q:match("^([^;]*);?(.*)$")
+	local tag = split_entry(front)
+	local tier = tag and tonumber(tag:match("^B(%d+)$"))
+	if not tier then
+		client:Message(MT.Red, "Only a tome's offer can be set aside. A level's reward must be taken.")
+		return false
+	end
+
+	local pct    = M.BOOK_REROLL_CUT[tier] or 0
+	local before = reroll_count(client)
+	local after  = cut_count(before, pct)
+
+	-- ⚠️⚠️ REFUSE A DECLINE THAT WOULD BUY NOTHING, and leave the offer standing. A character who has
+	-- never bought a reroll is already at the 5p floor, so the cut has nothing to remove -- and the
+	-- tome has ALREADY been destroyed by the time this runs (aotv4_spell_books.use consumes it to
+	-- create the offer). Letting the click through would take the offer away as well, so the player
+	-- would have spent a tome and received neither of the two things it can give.
+	-- 📌 This is the same principle as the reroll gate order: never charge for an outcome that does
+	-- not exist. Here the charge has already happened, so the reward has to be protected instead.
+	if after == before then
+		client:Message(MT.Red, string.format(
+			"Your rerolls already cost the least they can (%dp). Take a reward from the tome instead.",
+			math.floor(M.reroll_cost(client) / 1000)))
+		return false
+	end
+
+	-- ⚠️ Read the old price BEFORE writing the counter -- M.reroll_cost derives from the bucket, so
+	-- after the write there is no way to say what it used to be.
+	local before_cost = M.reroll_cost(client)
+	eq.set_data(reroll_key(client), tostring(after))
+	eq.set_data(key, rest)
+
+	client:Message(MT.Yellow, string.format(
+		"You set the tome's offer aside. Your next reroll falls from %dp to %dp.",
+		math.floor(before_cost / 1000), math.floor(M.reroll_cost(client) / 1000)))
+
+	refresh_and_show(client, key)
+	M.send_reroll_cost(client)
+	return true
+end
+
 -- ---------------------------------------------------------------- reroll
 -- Pay coin to replace the offer currently on screen with a fresh one.
 --
@@ -323,14 +527,31 @@ end
 -- rerolling has to overwrite that entry -- appending would leave the disliked set still sitting there
 -- to be picked, and the player would have paid for nothing.
 --
--- ⚠️⚠️ THE ORDER OF THE THREE GATES IS LOAD BEARING: pending offer, then funds, then BUILD, and only
--- then charge. Taking the money before building would bill a player for a reroll that turns out to
--- have nothing left to offer, and there is no refund path once TakeMoneyFromPP has run.
+-- ⚠️⚠️ THE ORDER OF THE GATES IS LOAD BEARING: pending offer, then TOME, then funds, then BUILD, and
+-- only then charge. Taking the money before building would bill a player for a reroll that turns out
+-- to have nothing left to offer, and there is no refund path once TakeMoneyFromPP has run.
 function M.reroll(client)
 	local key = bucket_key(client)
 	local q   = eq.get_data(key) or ""
 	if q == "" then
 		client:Message(MT.Red, "You have no reward choice to reroll.")
+		return false
+	end
+
+	-- ⚠️⚠️ A TOME'S OFFER CANNOT BE REROLLED. The tome IS the reroll -- it was spent to produce these
+	-- three -- so paying coin to replace them is charging twice for one decision. A tome offer has
+	-- exactly two outcomes: take a reward, or decline it for a cut to the reroll price.
+	--
+	-- ⚠️ It also closes a loop that would otherwise be free money in the wrong direction: reroll bumps
+	-- the counter and decline cuts it, so a tier 3 tome could absorb a reroll purchase and then zero
+	-- the counter it had just raised. Refusing here means the two never touch the same offer.
+	--
+	-- ⚠️ Checked BEFORE the funds test on purpose, so the refusal explains the real reason rather than
+	-- telling a broke player they cannot afford something they were never allowed to buy.
+	local front_now = q:match("^([^;]*)")
+	if select(1, split_entry(front_now)) then
+		client:Message(MT.Red,
+			"A tome's offer cannot be rerolled. Take one of its rewards, or decline it.")
 		return false
 	end
 
@@ -357,6 +578,9 @@ function M.reroll(client)
 		return false
 	end
 
+	-- ⚠️ No tag to carry: the gate above guarantees the front offer is an ordinary level-up one, so a
+	-- rerolled entry is always untagged. Do NOT "restore" tag-carrying here without removing that
+	-- gate -- the two are one decision, and half of it is worse than neither.
 	local _, rest = q:match("^([^;]*);?(.*)$")
 	eq.set_data(key, (rest ~= "" and (fresh .. ";" .. rest) or fresh))
 	eq.set_data(reroll_key(client), tostring(reroll_count(client) + 1))
@@ -456,9 +680,10 @@ function M.record_pick_level(client, spell_id)
 	-- first time I ever saw this" is a fact about a character that no longer exists. Ashrem's bucket
 	-- held 21 entries at levels 44 and 50, recorded before the cap came down to 35.
 	--
-	-- ⚠️ It is not merely a confusing display. The kept-spell FORFEIT charges the pick at this level
-	-- (aotv4_spell_ranks_sys), so a level recorded above the current cap can NEVER come round again
-	-- and keeping that spell is silently free -- the one thing the forfeit exists to prevent.
+	-- 📌 This used to matter for more than display: the kept-spell forfeit charged the pick at this
+	-- level, so a level recorded above the cap made that keep silently free. The forfeit was removed
+	-- on 2026-08-10, so the level is now purely informational -- the spell window shows where each
+	-- spell was acquired. Keeping it accurate is still worth it, but nothing is priced off it.
 	local out = {}
 	for e in cur:gmatch("([^,]+)") do
 		local id = tonumber(e:match("^(%d+):"))
@@ -570,6 +795,13 @@ function M.handle_journal_say(e)
 		return true
 	end
 
+	-- The picker window's Decline button (Tome of Insight offers only). Same path as reroll: the dll
+	-- swallows the echo, so it never reaches chat or any quest.
+	if (e.message or ""):lower():match("^spelldecline%s*$") then
+		M.decline(e.self)
+		return true
+	end
+
 	local sid = (e.message or ""):lower():match("^sjinfo%s+(%d+)%s*$")
 	if sid then
 		sid = tonumber(sid)
@@ -619,9 +851,12 @@ function M.handle_say(e)
 	end
 
 	-- the window shows the FRONT offer (oldest); the rest stay queued
+	-- ⚠️ Strip any tome tag first, or the tag rides in as toks[1] and every index is off by one --
+	-- "Select 1" would resolve to the second card.
 	local front, rest = q:match("^([^;]*);?(.*)$")
+	local _, ftoks = split_entry(front)
 	local toks = {}
-	for s in front:gmatch("([^,]+)") do toks[#toks + 1] = s end
+	for s in ftoks:gmatch("([^,]+)") do toks[#toks + 1] = s end
 	local tok = toks[idx]
 	if not tok then
 		client:Message(MT.Red, "That is not a valid choice.")
@@ -670,12 +905,15 @@ function M.handle_say(e)
 			-- like it had vanished -- with no error anywhere.
 			-- ⚠️ ranked_id() falls back to the base id when the spell has no rank chain, so unranked
 			-- spells are unaffected.
-			local ok_rs, ranksys = pcall(require, "aotv4_spell_ranks_sys")
-			local give = ok_rs and ranksys.ranked_id(client, spell_id) or spell_id
+			-- 📌 The token is ALREADY the ranked id (build_offer resolves it so the card matches the
+			-- reward), but this call stays: `ranked_id` normalises through the chain first, so it is
+			-- idempotent, and it is what keeps an offer QUEUED BEFORE that change awarding correctly.
+			local give = (ok_ranks and ranks_sys) and ranks_sys.ranked_id(client, spell_id) or spell_id
 			client:ScribeSpell(give, slot)
 			-- Permanent library: the Known tab is what this character has EVER been awarded, not what
 			-- happens to be scribed right now, so it is recorded here and never wiped.
-			if ok_rs then ranksys.note_known(client, spell_id) end
+			-- ⚠️ note_known normalises to the base, so passing a rank id is correct.
+			if ok_ranks and ranks_sys then ranks_sys.note_known(client, spell_id) end
 			client:Message(MT.Yellow, "You have learned " .. (eq.get_spell_name(give) or name) .. "!")
 		end
 

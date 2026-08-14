@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="us-ascii"?>
+<XML ID="EQInterfaceDefinitionLanguage">
+	<Schema xmlns="EverQuestData" xmlns:dt="EverQuestDataTypes" />
+
+	<!-- AoTv4 Travel window (CCustomWnd "AoTTravelWnd").
+
+	     Opened ONLY by clicking a Plane of Knowledge book.  The books are the terminals; the
+	     destinations are hidden waypoints discovered by walking over them out in the world.  There is
+	     deliberately no command that opens this: a window reachable from anywhere would make the book
+	     irrelevant, which is the whole shape of the design.
+
+	     Regions on the left, that region's destinations on the right, both scrolling.  Modelled on the
+	     "Attune the Map" window from tunaria/NMS-Release, with three deliberate differences:
+	       its Travel To Expedition button is gone, because this server does not use expeditions;
+	       its continents become our six REGIONS, which is also the unit of permission; and
+	       its AttuneMapLabel is dropped, because it overlapped both checkboxes on the same row.
+
+	     A checkbox is a Button carrying Style_Checkbox.  There is NO Checkbox tag on this client
+	     build, which was verified rather than assumed by grepping eqgame.exe for the tag name; using
+	     one would create a control the parser does not know and draw an empty hole with no error at
+	     all.  BDT_CheckboxWithText carries its own caption, so no separate Label is needed.
+
+	     Comments must never contain a double hyphen.  It is illegal in XML and makes the SIDL parser
+	     abort the WHOLE file, killing the client before character select.  Run
+	     aotv4_client_install/validate_ui_xml.sh before copying this anywhere. -->
+
+	<Label item="ATW_Hint">
+		<ScreenID>ATW_Hint</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>6</Y></Location>
+		<Size><CX>380</CX><CY>16</CY></Size>
+		<Text>Choose a region, then a destination</Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>240</R><G>200</G><B>120</B></TextColor>
+	</Label>
+
+	<!-- Region list.  The "Found" column is how a player sees that a region still holds things they
+	     have not walked over, without being told where any of them are. -->
+	<Listbox item="ATW_Regions">
+		<ScreenID>ATW_Regions</ScreenID>
+		<DrawTemplate>WDT_Inner</DrawTemplate>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>26</Y></Location>
+		<Size><CX>168</CX><CY>200</CY></Size>
+		<TextColor><R>255</R><G>255</G><B>255</B></TextColor>
+		<Style_Border>true</Style_Border>
+		<Style_VScroll>true</Style_VScroll>
+		<Columns><Width>106</Width><Heading>Region</Heading></Columns>
+		<Columns><Width>56</Width><Heading>Found</Heading></Columns>
+	</Listbox>
+
+	<!-- Destinations in the selected region.  Undiscovered ones appear here as Unknown rows rather
+	     than being hidden, so the list shows the shape of what is left to find. -->
+	<Listbox item="ATW_Zones">
+		<ScreenID>ATW_Zones</ScreenID>
+		<DrawTemplate>WDT_Inner</DrawTemplate>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>186</X><Y>26</Y></Location>
+		<Size><CX>324</CX><CY>200</CY></Size>
+		<TextColor><R>255</R><G>255</G><B>255</B></TextColor>
+		<Style_Border>true</Style_Border>
+		<Style_VScroll>true</Style_VScroll>
+		<Columns><Width>206</Width><Heading>Destination</Heading></Columns>
+		<Columns><Width>112</Width><Heading>Status</Heading></Columns>
+	</Listbox>
+
+	<Button item="ATW_Group">
+		<ScreenID>ATW_Group</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>12</X><Y>234</Y></Location>
+		<Size><CX>155</CX><CY>18</CY></Size>
+		<Text>Port Group</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Style_Checkbox>true</Style_Checkbox>
+		<Template>BDT_CheckboxWithText</Template>
+		<TooltipReference>Take your whole group.  Everyone must have found this place and opened its region</TooltipReference>
+	</Button>
+
+	<Button item="ATW_Auto">
+		<ScreenID>ATW_Auto</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>330</X><Y>234</Y></Location>
+		<Size><CX>175</CX><CY>18</CY></Size>
+		<Text>Auto Confirm</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Style_Checkbox>true</Style_Checkbox>
+		<Template>BDT_CheckboxWithText</Template>
+		<TooltipReference>Skip the confirmation box and travel immediately</TooltipReference>
+	</Button>
+
+	<!-- Travel.  Sized at 120x22, which is a stock EQ button size.
+
+	     It was CX 500 in a 532 wide window, i.e. the full width, and reported from play as "very
+	     pixelated because it got stretched".  BDT_Normal is a small bitmap template and the UI engine
+	     SCALES it to whatever Size it is given, so a button roughly four times its art's natural
+	     width is stretched four times and every edge blurs.  Nothing warns about this: it renders,
+	     it clicks, it just looks wrong.  Keep any button on this template near its natural size and
+	     centre it instead of spanning the window. -->
+	<Button item="ATW_Travel">
+		<ScreenID>ATW_Travel</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>200</X><Y>258</Y></Location>
+		<Size><CX>120</CX><CY>22</CY></Size>
+		<Text>Travel</Text>
+		<TextColor><R>255</R><G>200</G><B>140</B></TextColor>
+		<Template>BDT_Normal</Template>
+		<TooltipReference>Travel to the selected destination</TooltipReference>
+	</Button>
+
+	<Screen item="AoTTravelWnd">
+		<RelativePosition>false</RelativePosition>
+		<Location><X>240</X><Y>150</Y></Location>
+		<Size><CX>532</CX><CY>326</CY></Size>
+		<Text>Attune the Map</Text>
+		<Style_Transparent>false</Style_Transparent>
+		<DrawTemplate>WDT_Def</DrawTemplate>
+		<Style_Titlebar>true</Style_Titlebar>
+		<Style_Closebox>true</Style_Closebox>
+		<Style_Border>true</Style_Border>
+		<Style_Sizable>false</Style_Sizable>
+		<Pieces>ATW_Hint</Pieces>
+		<Pieces>ATW_Regions</Pieces>
+		<Pieces>ATW_Zones</Pieces>
+		<Pieces>ATW_Group</Pieces>
+		<Pieces>ATW_Auto</Pieces>
+		<Pieces>ATW_Travel</Pieces>
+	</Screen>
+
+</XML>

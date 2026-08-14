@@ -16,6 +16,8 @@
 	decides when to apply them and how big the shield is; the engine does the rest.
 */
 
+#include <algorithm>   // std::max -- the Grace shield refresh takes the better of old and new
+
 #include "../common/spdat.h"
 #include "client.h"
 #include "entity.h"
@@ -54,6 +56,13 @@ namespace
 	constexpr int GRACE_PCT[RANKS]        = { 10, 18, 18, 25, 25 };
 	constexpr int GRACE_TICKS[RANKS]      = {  3,  3,  5,  5,  5 };
 	constexpr int GRACE_CAP_PCT_OF_MAXHP  = 20;   // the shield can never exceed this share of max HP
+	// ⚠️⚠️ THIS IS WHAT MAKES A PARKED HEAL SAFE, AND IT IS PER TARGET, NOT PER HEALER. Grace fires on
+	// a fully wasted heal (see AoTv4HealerPostHeal), so without a window a healer could hold a heal on
+	// a full-health tank and rebuild the shield every cast. Per target rather than per healer because
+	// shielding a whole group IS the ability; re-shielding one body on repeat is the exploit.
+	// 📌 30s against a shield that lasts 18-30s (GRACE_TICKS) means brief gaps between shields by
+	// design -- it should not be permanently up.
+	constexpr uint32 GRACE_COOLDOWN_MS    = 30000;
 
 	// ---------------------------------------------------------------- Mender's Echo
 	constexpr int   ECHO_PCT[RANKS]  = { 8, 12, 12, 18, 18 };
@@ -165,19 +174,20 @@ void Mob::AoTv4HealerPostHeal(Mob *caster, uint64 requested, uint64 acthealed, u
 		return;
 	}
 
-	// Nothing here should fire for a heal that did not heal. This one line is what stops
-	// Overflowing Grace being farmed: park a heal on a target already at full health and every
-	// point of it is "overheal", which would have been free shields forever.
-	if (acthealed == 0) {
-		return;
-	}
-
 	// Heal-over-time tics are excluded throughout. A HoT ticking on a nearly-full target would
 	// otherwise trickle out shields, echoes and death saves for the price of one cast.
 	const bool from_hot = IsBuffSpell(spell_id);
 
 	// ------------------------------------------------------------------ Overflowing Grace
-	if (!from_hot && requested > acthealed) {
+	// ⚠️⚠️ GRACE IS DELIBERATELY THE ONE THING ABOVE THE `acthealed == 0` GATE BELOW, because a heal
+	// landing on a target at FULL health is the case it exists for -- "healing past a target maximum
+	// health", which is what the AA's own description promises. It used to sit below that gate, so a
+	// fully wasted heal produced nothing at all and the ability appeared broken to anyone who tested
+	// it the obvious way. Reported from play as "it doesn't put a buff or anything when overhealing".
+	// ⚠️ Everything BELOW the gate still requires a real heal: Triage, Echo, Renewal and Breath would
+	// all be farmable off a parked heal on a full-health target, and none of them is capped the way
+	// this is.
+	if (!from_hot && requested > acthealed && m_aotv4_grace_ready <= Timer::GetCurrentTime()) {
 		const int rank = static_cast<int>(caster->GetAA(AA_GRACE));
 		if (rank > 0) {
 			const int    i        = RankIndex(rank);
@@ -185,23 +195,36 @@ void Mob::AoTv4HealerPostHeal(Mob *caster, uint64 requested, uint64 acthealed, u
 			int64        shield   = static_cast<int64>(overheal) * GRACE_PCT[i] / 100;
 			const int64  cap      = GetMaxHP() * GRACE_CAP_PCT_OF_MAXHP / 100;
 
+			if (shield > cap) {
+				shield = cap;
+			}
+
 			if (shield > 0) {
 				caster->SpellOnTarget(SPELL_GRACE_SHIELD, this, 0, false, 0, false, -1, GRACE_TICKS[i]);
 
 				// The absorb pool is a share of an overheal, so it is only known now -- it cannot
 				// live in the spell row. SPA 55 stores the pool per buff instance
 				// (spell_effects.cpp:1411), so we find the buff we just applied and overwrite it.
-				// Topping up an existing shield rather than replacing it stops a second heal from
-				// wiping a big shield with a small one; the cap keeps that from running away.
+				//
+				// ⚠️⚠️ IT REFRESHES, IT DOES NOT STACK. This used to ADD to whatever was left of an
+				// existing shield, which is what made parking a heal dangerous -- repeated casts
+				// climbed straight to the cap and stayed there. One heal is worth one shield, so the
+				// pool is REPLACED and the duration starts again.
+				// ⚠️ It never DOWNGRADES, though: a small overheal landing on a big surviving shield
+				// keeps the bigger number, which is the trap the old top-up comment was written to
+				// avoid. So this is "refresh to the better of the two", not a blind overwrite.
+				// 📌 For a strict overwrite instead, drop the std::max and assign `shield`.
 				const uint32 slots = GetMaxTotalSlots();
 				for (uint32 s = 0; s < slots; ++s) {
 					if (buffs[s].spellid == SPELL_GRACE_SHIELD) {
-						int64 pool = static_cast<int64>(buffs[s].melee_rune) + shield;
-						if (pool > cap) {
-							pool = cap;
-						}
-						buffs[s].melee_rune = static_cast<uint32>(pool);
-						m_aotv4_grace_rank  = static_cast<uint8>(rank);
+						const int64 remaining = static_cast<int64>(buffs[s].melee_rune);
+						buffs[s].melee_rune   = static_cast<uint32>(std::max(remaining, shield));
+						m_aotv4_grace_rank    = static_cast<uint8>(rank);
+						// ⚠️ The cooldown is stamped on the TARGET, not the healer, and only when a
+						// shield is actually built -- a refused build must not start it. It is what
+						// makes a parked heal safe: the shield can be rebuilt on me at most once per
+						// window however many heals land, and by however many healers.
+						m_aotv4_grace_ready   = Timer::GetCurrentTime() + GRACE_COOLDOWN_MS;
 						break;
 					}
 				}

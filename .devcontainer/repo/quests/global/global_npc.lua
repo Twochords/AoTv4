@@ -7,6 +7,12 @@ function event_spawn(e)
     -- early-outs on the instance id, so the normal world pays one integer compare for it.
     aotv4_dungeon.on_npc_spawn(e)
 
+    -- World difficulty: bump level and health inside a Nightmare/Hell/Inferno shard. Early-outs on
+    -- a cached instance id, so the open world pays one integer compare.
+    -- ⚠️ AFTER the delve hook and harmless beside it: a delve instance carries no difficulty
+    -- marker, so this reads 0 there and does nothing.
+    require("aotv4_difficulty").on_npc_spawn(e)
+
     -- peq_halloween
     if (eq.is_content_flag_enabled("peq_halloween")) then
         -- exclude mounts and pets
@@ -59,6 +65,18 @@ function event_death_complete(e)
     local killer = eq.get_entity_list():GetClientByID(e.other:GetID())
     if killer and killer.valid then
       require("aotv4_spell_ranks_sys").grant_ink_on_kill(killer)
+
+      -- Tomes of Insight: an extra reward pick, dropped only in the harder world difficulties and
+      -- only off creatures that con white or better. Shares the killer lookup above rather than
+      -- repeating it -- this hook runs on every death on the server.
+      -- ⚠️ Returns immediately on Normal, so a player who never leaves the ordinary world pays one
+      -- bucket read per kill and nothing else.
+      require("aotv4_spell_books").on_npc_death(e.self, killer)
+
+      -- Hell and Inferno: the corpse may get straight back up as a skeleton of itself, at half
+      -- health, where it fell. ⚠️ Shares the killer lookup, and is passed it so the risen creature
+      -- can start on the hate list of whoever put the first one down.
+      require("aotv4_difficulty").on_npc_death(e, killer)
     end
   end
 

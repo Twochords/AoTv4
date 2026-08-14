@@ -43,7 +43,6 @@ namespace
 	constexpr int AA_FRENZY  = 146;  // host 47, ranks 146,5069,6102,7466,7691  (ACTIVATED)
 	constexpr int AA_BACKS   = 247;  // host 104 Double Riposte, ranks 247,248,249,504,505
 	constexpr int AA_BRACING = 210;  // host  89 Soul Abrasion,  ranks 210,211,212,1316,1317
-	constexpr int AA_RUNDOWN = 255;  // host 108 Flurry,         ranks 255,256,257,542,543
 
 	constexpr uint16 SPELL_BLEED_RANK1 = 43400;   // 43400..43404, one row per rank
 	constexpr uint16 SPELL_FRENZY      = 43405;
@@ -368,31 +367,13 @@ bool Mob::AoTv4Braced()
 }
 
 // =================================================================================================
-// Run Them Down. Called from Mob::CheckFlee; `this` is the NPC thinking about running.
-// Returns true if somebody currently fighting it is holding it in place.
+// `Run Them Down` (Mob::AoTv4HeldInPlace) WAS HERE AND WAS REMOVED WITH THE AA -- migration v58.
 //
-// ⚠️ The hate list is walked on every flee check, so the cheap tests come first and it stops at the
-// first holder found. Hate lists are short in practice, but this runs for every wounded NPC in the
-// zone, so it must stay cheap.
+// It walked the hate list on every flee check and pinned a wounded enemy in place if any attacker
+// owned the AA. The AA was retired because it bought a player something the server already gives
+// everyone for free: `AoT:NPCsNeverFlee` stops enemies fleeing regardless. Its host (ability 108,
+// ranks 255-543) now carries `Blindside`, so the check had to go with it or an offhand-riposte AA
+// would have gone on silently holding mobs in place.
+// 📌 The caller in zone/fearpath.cpp was removed in the same change; `AA_RUNDOWN` is gone from the
+// constants at the top of this file.
 // =================================================================================================
-bool Mob::AoTv4HeldInPlace()
-{
-	auto &haters = GetHateList();
-	if (haters.empty()) {
-		return false;
-	}
-
-	for (auto *h : haters) {
-		if (!h || !h->entity_on_hatelist) {
-			continue;
-		}
-		Mob *m = h->entity_on_hatelist;
-		if (!m->IsClient()) {
-			continue;
-		}
-		if (static_cast<int>(m->GetAA(AA_RUNDOWN)) >= 1) {
-			return true;
-		}
-	}
-	return false;
-}

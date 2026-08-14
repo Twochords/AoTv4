@@ -36843,6 +36843,7 @@
 43987^6^Extract a useful poison from Chalandria's Fang.  Rogues are more skilled and can draw a more potent poison.^0
 43990^6^Grants you the custom title: the Truthkeeper^0
 43991^6^Grants you the custom title: the Eagle Eye^0
+44328^6^A moment of clarity. Offers three rewards to choose from, without granting a level.^0
 44494^6^Grants the title ", Army of Light Regular"^0
 44495^6^Grants the title ", Obliteration Army Regular"^0
 44498^6^Clicking this item will offer you the chance to change your race and/or religion.  Once you complete the change, it is permanent.^0

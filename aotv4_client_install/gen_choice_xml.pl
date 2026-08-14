@@ -74,6 +74,20 @@ my $REROLL_Y = $DET_Y + $DET_H + 6;
 my $COST_X   = $DET_X + int(($DET_W - ($COST_W + $COST_GAP + $REROLL_W)) / 2);
 my $REROLL_X = $COST_X + $COST_W + $COST_GAP;
 
+# The Tome of Insight "Decline" option SHARES THE REROLL ROW -- same X, same Y, same size.
+#
+# ⚠️⚠️ THEY OVERLAP DELIBERATELY, AND IT IS SAFE ONLY BECAUSE THEY ARE MUTUALLY EXCLUSIVE. A tome's
+# offer cannot be rerolled (the tome IS the reroll), so the dll shows exactly one of the two pairs
+# and never both -- see RefreshDecline in core_spellchoice_native.cpp. If that rule is ever relaxed,
+# these MUST be given separate rows first or they will draw on top of each other.
+#
+# ⚠️ Stacking a second row underneath was the obvious alternative and is worse: it would need
+# 414..440 against a PAGE_CY of 446, and this window is <Style_Sizable>, so the client saves its size
+# PER CHARACTER (section 20). An edited <Size> only applies to a character that has never opened the
+# window, so everyone already playing would keep the old height and lose the new row off the bottom
+# with nothing to indicate why.
+my $DECL_Y = $REROLL_Y;
+
 my @out;
 sub w { push @out, $_[0]; }
 
@@ -251,6 +265,46 @@ w("\t\t<TooltipReference>Pay the shown price for three different rewards</Toolti
 w("\t</Button>");
 w('');
 push @pieces, 'ASC_Reroll';
+
+# ---------------------------------------------------------------------------------------------
+# Tome of Insight: decline this offer and cut the reroll price instead.
+#
+# ⚠️⚠️ BOTH PIECES ARE HIDDEN UNLESS THE OFFER CAME FROM A TOME. The server sends SPELLDECLINE with
+# the tier on every offer -- including an explicit 0 for an ordinary level-up -- and the dll shows or
+# hides the pair from that. A level-up reward can NEVER be declined (it is free, so declining every
+# level would pin the reroll price at its floor forever), and leaving a dead button on screen reads
+# as a broken window rather than as a rule.
+#
+# ⚠️ Hiding rather than greying, for the reason section 16 records: there is no address-mapped enable
+# setter on this build, and writing a raw ->Enabled member offset is the unreliable-struct-offset
+# trap. CXWnd::Show IS mapped.
+#
+# ⚠️ This is presentation only. spell_choice.decline re-checks the queue's own tome tag server side,
+# so a modified client that shows the button anyway still cannot decline a level-up offer.
+w("\t<STMLbox item=\"ASC_DeclineInfo\">");
+w("\t\t<ScreenID>ASC_DeclineInfo</ScreenID>");
+w("\t\t<DrawTemplate>WDT_Inner</DrawTemplate>");
+w("\t\t<RelativePosition>true</RelativePosition>");
+w("\t\t<Location><X>$COST_X</X><Y>$DECL_Y</Y></Location>");
+w("\t\t<Size><CX>$COST_W</CX><CY>$REROLL_H</CY></Size>");
+w("\t\t<Style_Border>true</Style_Border>");
+w("\t\t<TextColor><R>170</R><G>220</G><B>255</B></TextColor>");
+w("\t</STMLbox>");
+w('');
+push @pieces, 'ASC_DeclineInfo';
+
+w("\t<Button item=\"ASC_Decline\">");
+w("\t\t<ScreenID>ASC_Decline</ScreenID>");
+w("\t\t<RelativePosition>true</RelativePosition>");
+w("\t\t<Location><X>$REROLL_X</X><Y>$DECL_Y</Y></Location>");
+w("\t\t<Size><CX>$REROLL_W</CX><CY>$REROLL_H</CY></Size>");
+w("\t\t<Text>Decline</Text>");
+w("\t\t<TextColor><R>170</R><G>220</G><B>255</B></TextColor>");
+w("\t\t<Template>BDT_Normal</Template>");
+w("\t\t<TooltipReference>Take no reward, and reduce the price of your rerolls instead</TooltipReference>");
+w("\t</Button>");
+w('');
+push @pieces, 'ASC_Decline';
 
 # =================================================================================================
 # Known and Pool tabs.

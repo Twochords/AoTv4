@@ -11,7 +11,14 @@
 -- truenorth      1  True North and friends -- a compass, nothing else
 -- curecurse      7  curse-counter cures
 -- ldon          36  LDoN dungeon-object appraise/disarm/unlock
--- corpse         3  summon corpse
+-- corpse         6  summon or locate a corpse
+-- blind          4  inflicts blindness and nothing of value
+-- sentinel       2  proximity alarm -- SPA 76 is unimplemented, it only prints a message
+-- eye            2  summon a remote-vision eye
+-- reclaimpet     1  destroys your pet for mana
+-- voicegraft     1  talk through your pet
+-- stamina        1  Flare -- the pool's only SPA 24
+-- identify       2  identify an item -- the client already shows its stats
 -- summonitem   183  conjures an item -- mage summons, enchant-metal, focus essences
 -- illusion      23  illusions with no other effect -- pure costume
 -- rootform       2  costume forms whose only extra effect roots or immobilises the caster
@@ -42,6 +49,9 @@ return {
 	[126]=true,  -- fear
 	[127]=true,  -- fear
 	[128]=true,  -- fear
+	[134]=true,  -- blind
+	[143]=true,  -- blind
+	[201]=true,  -- blind
 	[205]=true,  -- truenorth
 	[209]=true,  -- fear
 	[211]=true,  -- summonitem
@@ -58,15 +68,23 @@ return {
 	[272]=true,  -- summonitem
 	[276]=true,  -- vision
 	[287]=true,  -- rootform
+	[297]=true,  -- blind
+	[299]=true,  -- sentinel
 	[304]=true,  -- fear
+	[305]=true,  -- identify
+	[310]=true,  -- stamina
 	[311]=true,  -- summonitem
 	[318]=true,  -- summonitem
 	[319]=true,  -- summonitem
 	[320]=true,  -- summonitem
 	[321]=true,  -- summonitem
+	[323]=true,  -- eye
 	[325]=true,  -- summonitem
+	[331]=true,  -- reclaimpet
 	[339]=true,  -- summonitem
+	[342]=true,  -- corpse
 	[352]=true,  -- vision
+	[371]=true,  -- voicegraft
 	[373]=true,  -- summonitem
 	[388]=true,  -- rez
 	[390]=true,  -- summonitem
@@ -154,8 +172,11 @@ return {
 	[679]=true,  -- vision
 	[695]=true,  -- summonitem
 	[696]=true,  -- summonitem
+	[698]=true,  -- corpse
 	[706]=true,  -- fear
+	[720]=true,  -- corpse
 	[735]=true,  -- vision
+	[737]=true,  -- identify
 	[1325]=true,  -- travel
 	[1326]=true,  -- travel
 	[1334]=true,  -- travel
@@ -205,6 +226,7 @@ return {
 	[1683]=true,  -- summonitem
 	[1684]=true,  -- summonitem
 	[1685]=true,  -- summonitem
+	[1720]=true,  -- eye
 	[1733]=true,  -- rez
 	[1736]=true,  -- travel
 	[1737]=true,  -- travel
@@ -287,6 +309,7 @@ return {
 	[2431]=true,  -- travel
 	[2432]=true,  -- travel
 	[2433]=true,  -- travel
+	[2501]=true,  -- sentinel
 	[2531]=true,  -- summonitem
 	[2532]=true,  -- summonitem
 	[2533]=true,  -- summonitem

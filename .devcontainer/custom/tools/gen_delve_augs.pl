@@ -64,7 +64,8 @@ my $ID_BASE        = 147600;  # sigil owns 147500-147509
 # tail as orphaned items that nothing references and nothing cleans up.
 my $ID_BAND_END    = 148199;
 my $TEMPLATE       = 71402;   # Stone of the Defensive Arts -- a plain stat aug, no click/charges
-my $ICON           = 1439;
+# ⚠️ Icon is PER ROW now -- see icon_for() below @LINES. All 316 shared 1439 and were
+# indistinguishable in a bag; reported from play as "all delve augs look the same".
 my $AUGTYPE        = 255;     # slot types 1-8; type 7 alone covers 33k items, 8 another 8k
 
 # tier => [ weight, how many variants, how many lines to spread over ]
@@ -113,6 +114,48 @@ my @MATERIAL = ( undef, "Delver's Shard", "Delver's Gem", "Delver's Prism" );
 
 # every stat column this generator ever writes -- each row zeroes ALL of them and then sets its own
 my @ALL_COLS = ( (map { $_->[1] } @LINES), (grep { defined } map { $_->[3] } @LINES) );
+
+# ---------------------------------------------------------------- icon per augment
+# ⚠️⚠️ THE ICON SAYS WHAT THE AUGMENT MOSTLY DOES. Every id here is in the 1431-1443 family that
+# hundreds of stock augments already use, so they are proven to render AND read as one coherent set
+# rather than unrelated art.
+# ⚠️ Classified by WEIGHT, not raw value: hp/mana/endurance pay $BIG_PER_WEIGHT (10) points per unit
+# of weight and every other line pays 1, so those three are divided by 10 to put all families on the
+# same scale. Without that, anything carrying hp would always look like an hp augment.
+# ⚠️ @ICON_ORDER is the tie-break and MUST stay fixed. It is what keeps the choice deterministic, so
+# re-running this generator produces byte-identical icons -- the same requirement the seeded LCG has.
+# ⚠️⚠️ TIER IS THE ROW, STAT FAMILY IS THE COLUMN -- the icon encodes BOTH.
+# Tier is what the player needs at a glance, because combining takes FOUR OF A TIER; the stat family
+# is what makes one drop different from the next. A single icon per family lost the tier, and a single
+# icon per tier would lose everything else, so each tier gets its own icon FAMILY.
+# ⚠️ All 21 ids are drawn from ranges that stock augments already use in bulk (1429-1443, 2242-2263,
+# 948-968), so every one is proven to render. An unused icon id draws an empty hole with no error.
+# ⚠️ The stat order within each row is identical, so the table stays readable and a future family can
+# be added as one more row without disturbing the others.
+my %ICON_FOR = (
+    #          hp    mana  end   ac    res   phys  cast
+    1 => { hp=>1429, mana=>1430, end=>1431, ac=>1432, res=>1433, phys=>1434, cast=>1435 },
+    2 => { hp=>2242, mana=>2243, end=>2245, ac=>2247, res=>2254, phys=>2255, cast=>2256 },
+    3 => { hp=> 948, mana=> 949, end=> 950, ac=> 951, res=> 952, phys=> 954, cast=> 956 },
+);
+my @ICON_ORDER = qw(hp mana end ac res phys cast);
+
+sub icon_for {
+    my ($cols, $tier) = @_;
+    my %w = map { $_ => 0 } @ICON_ORDER;
+    for my $L (@LINES) {
+        my ($key, $col) = @$L;
+        my $v = $cols->{$col} or next;
+        if    ($key eq 'hp' || $key eq 'mana' || $key eq 'end') { $w{$key} += $v / $BIG_PER_WEIGHT }
+        elsif ($key eq 'ac')                                    { $w{ac}   += $v }
+        elsif ($key =~ /^(?:mr|fr|cr|dr|pr)$/)                  { $w{res}  += $v }
+        elsif ($key =~ /^(?:str|sta|agi|dex)$/)                 { $w{phys} += $v }
+        else                                                    { $w{cast} += $v }   # int/wis/cha
+    }
+    my $best = $ICON_ORDER[0];
+    for my $k (@ICON_ORDER) { $best = $k if $w{$k} > $w{$best} }
+    return $ICON_FOR{$tier}{$best};
+}
 
 # ---------------------------------------------------------------- deterministic RNG (see header)
 my $state = $SEED;
@@ -300,7 +343,7 @@ DELETE FROM items_evolving_details WHERE item_evo_id IN (2001, 2002, 2003);
 -- fields shared by every row in the set
 UPDATE tmp_aug SET
     augtype = $AUGTYPE, augrestrict = 0, augdistiller = 0,
-    icon = $ICON, itemtype = 54, slots = 2097150,
+    itemtype = 54, slots = 2097150,
     classes = 65535, races = 65535, loregroup = 0, magic = 1,
     nodrop = 0, norent = 1, price = 0, sellrate = 0, ldonsellbackrate = 0,
     reclevel = 0, reqlevel = 0, stacksize = 1,
@@ -312,6 +355,7 @@ for my $r (@rows) {
     my @sets = ( "id = $rid", "Name = " . sqlstr($nm) );
     push @sets, map { "$_ = 0" } @ALL_COLS;                       # zero everything first...
     push @sets, map { "$_ = $cols->{$_}" } sort keys %$cols;      # ...then this roll's lines
+    push @sets, "icon = " . icon_for($cols, $tier);                      # ...and an icon matching what it does
     my $desc = join(', ', map { "$_ $cols->{$_}" } sort keys %$cols);
     print "-- T$tier  weight $w  ($desc)\n";
     print "UPDATE tmp_aug SET " . join(', ', @sets) . ";\n";

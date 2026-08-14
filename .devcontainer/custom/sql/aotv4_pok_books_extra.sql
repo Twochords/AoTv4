@@ -52,6 +52,11 @@ SELECT 14, 'qeytoqrg', version, name, 92.74, 3157.83, 0.04, 384, opentype, guild
    is_ldon_door, close_timer_ms, dz_switch_id, -1, -1
 FROM doors WHERE zone='butcher' AND doorid=78;
 
+-- ⚠️⚠️ THE HUB BOOK IS NOW IN `resplendent` (doorid 100, migration v57) -- SEE THE BOTTOM OF THIS FILE.
+-- The tutorialb row below is kept but is effectively dead: `aotv4_start_resplendent.sql` made
+-- resplendent the start zone and turned the tutorial off, so this book became unreachable and new
+-- characters got no starter waypoints and no way to open the Portal window. Reported from play.
+--
 -- TutorialB HUB book (doorid 48): NOT a travel destination -- clicking it unlocks the three starter
 -- zones (Butcherblock Docks + Commonlands + Qeynos Hills) via pok_travel.lua grant_sets, then opens the
 -- window so the player teleports OUT. TutorialB is never added to pok_portals, so it is one-way-out
@@ -67,3 +72,42 @@ SELECT 48, 'tutorialb', version, name, -124.44, -94.51, 17.24, 0, opentype, guil
    dest_x, dest_y, dest_z, dest_heading, invert_state, incline, size, buffer, client_version_mask,
    is_ldon_door, close_timer_ms, dz_switch_id, -1, -1
 FROM doors WHERE zone='butcher' AND doorid=78;
+
+-- ==========================================================================================
+-- RESPLENDENT HUB book (doorid 100) -- added 2026-08-13, migration v57.
+--
+-- Replaces the tutorialb book above, which went unreachable when aotv4_start_resplendent.sql made
+-- resplendent (729) the start zone for all 1,441 (race, class, deity) rows and disabled the tutorial.
+-- Same shape: grants the three starter waypoints via pok_travel grant_sets, opens the window, and is
+-- NEVER a destination itself (pok_travel.never_attune lists resplendent, and it is not in
+-- pok_portals.lua -- a book *to* the hub would be a free bind-anywhere and would break the roguelite
+-- loop of dying to return).
+--
+-- ⚠️ Position -22/548/0 is the START AND BIND POINT nudged 13 units along y, so the book is in front
+-- of an arriving player rather than inside them. That point is known-good standing ground (every
+-- character materialises on it and respawns there after every death). Correct with one UPDATE if it
+-- reads wrong in game; the three hub NPCs are further in at y ~685-697, z ~-26.
+-- ⚠️ /loc prints Y,X,Z -- pos_x/pos_y here are already swapped relative to it.
+-- ⚠️ heading 256 = south, facing back toward the arrival point.
+--
+-- ⚠️⚠️⚠️ SAFE TO RUN ON LIVE, WHERE A HUB BOOK ALREADY EXISTS AT AN UNKNOWN DOORID. §25: live is a
+-- DIFFERENT DATABASE. The book was authored there with the door tool (`#door create` + `#door save`)
+-- and never came back to dev, so live has a real row and dev never did. The `NOT EXISTS` guard is what
+-- stops this adding a SECOND book beside the one players already use -- it keys off
+-- `dest_zone = 'poknowledge'` for the ZONE, never off doorid 100, because live's id is unknown.
+-- ⚠️ Deliberately NO `DELETE` first: if live's book happened to sit at doorid 100, deleting and
+-- re-inserting would silently MOVE a book whose location players already know. Idempotency comes from
+-- the guard instead, which touches nothing that is already there.
+-- ==========================================================================================
+INSERT INTO doors
+  (doorid, zone, version, name, pos_x, pos_y, pos_z, heading, opentype, guild, lockpick, keyitem,
+   nokeyring, triggerdoor, triggertype, disable_timer, doorisopen, door_param, dest_zone, dest_instance,
+   dest_x, dest_y, dest_z, dest_heading, invert_state, incline, size, buffer, client_version_mask,
+   is_ldon_door, close_timer_ms, dz_switch_id, min_expansion, max_expansion)
+SELECT 100, 'resplendent', src.version, src.name, -22, 548, 0, 256, src.opentype, src.guild, src.lockpick, src.keyitem,
+   src.nokeyring, src.triggerdoor, src.triggertype, src.disable_timer, src.doorisopen, src.door_param, src.dest_zone, src.dest_instance,
+   src.dest_x, src.dest_y, src.dest_z, src.dest_heading, src.invert_state, src.incline, src.size, src.buffer, src.client_version_mask,
+   src.is_ldon_door, src.close_timer_ms, src.dz_switch_id, -1, -1
+FROM doors src
+WHERE src.zone = 'butcher' AND src.doorid = 78
+  AND NOT EXISTS (SELECT 1 FROM doors d2 WHERE d2.zone = 'resplendent' AND d2.dest_zone = 'poknowledge');

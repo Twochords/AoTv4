@@ -82,6 +82,15 @@ skill-caps.diff
 # Auto-generated migration pre-backup dumps (mysqldump, see CLAUDE.md §15) -- dated, 100s of MB, never commit
 /peq_aotv4_*.sql
 /peq_*_backup*.sql
+# ⚠️⚠️ WHOLE-TABLE npc_types DUMPS. Untracked deliberately -- `aot_npcs_1.0.3.sql` arrived as a 32MB,
+# 67,702-line commit and is exactly the CLAUDE.md §35 hazard: applying one REVERTS every per-row
+# customisation on the table it replaces. Live examples it would undo -- the npc scaling pass
+# (`aotv4_scaling/npc_scaling_main.py` + `npc_level_adjust_main.py`, 9,215 rows), the three hub NPCs'
+# class/bodytype (§11, clobbered TWICE already), and the travel marker 2000500's appearance.
+# 📌 The point is not that the dump is wrong, it is that a dump and a per-row fix cannot both be
+# "the source of truth" for one table. Keep dumps local, decide the ORDER by hand (dump first, then
+# re-run the scripts), and let the manifest migrations carry anything that must reach live.
+.devcontainer/custom/sql/aot_npcs_*.sql
 client_dist/BaseData.txt
 client_dist/dbstr_us.txt
 client_dist/SkillCaps.txt

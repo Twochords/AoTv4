@@ -271,6 +271,22 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 
 		switch(effect)
 		{
+			// AoTv4: ⚠️⚠️ EVERY `HealDamage` CALL IN THE FOUR HEAL SPAs BELOW MUST PASS `spell_id`.
+			// `Mob::HealDamage`'s third parameter defaults to SPELL_UNKNOWN (0xFFFF), and
+			// `Mob::AoTv4HealerPostHeal` opens with `if (!caster || !IsValidSpell(spell_id)) return;`
+			// -- so a two-argument call reaches the hook and is thrown away on the first line, because
+			// `IsValidSpell(0xFFFF)` is false (`spells[0xFFFF].player_1[0]`, common/spdat.cpp:988).
+			//
+			// ⚠️⚠️ THAT SILENTLY DISABLED THE WHOLE HEALER AA TREE FROM EVERY DIRECT HEAL SINCE IT WAS
+			// WRITTEN (2026-07-26): Overflowing Grace, Triage Instinct, Mender's Echo, Cleansing
+			// Renewal and Borrowed Breath. Reported from play as Overflowing Grace giving "no buff, no
+			// nothing" after healing.
+			// 📌 The tell was that the ONLY call in this file which passed a spell id was the HoT tic
+			// (`HealDamage(effect_value, caster, buff.spellid)`) -- the one path the tree deliberately
+			// EXCLUDES via `from_hot`. So the hook was reachable only where it refuses to act, which is
+			// why nothing ever fired and nothing ever errored.
+			// ⚠️ The lifetap path had the mirror-image bug -- caster omitted instead of spell_id -- see
+			// the note in Mob::Damage (zone/attack.cpp).
 			case SpellEffect::CurrentHP:	// nukes, heals; also regen/dot if a buff
 			{
 #ifdef SPELL_EFFECT_SPAM
@@ -314,7 +330,7 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 					}
 					//handles custom situation where quest function mitigation put high enough to allow damage to heal.
 					else {
-						HealDamage(dmg, caster);
+						HealDamage(dmg, caster, spell_id);
 					}
 				}
 				else if(dmg > 0) {
@@ -323,7 +339,7 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 					if(caster)
 						dmg = caster->GetActSpellHealing(spell_id, dmg, this);
 
-					HealDamage(dmg, caster);
+					HealDamage(dmg, caster, spell_id);
 				}
 
 #ifdef SPELL_EFFECT_SPAM
@@ -385,7 +401,7 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 							dmg = -dmg;
 							Damage(caster, dmg, spell_id, spell.skill, false, buffslot, false);
 						} else {
-							HealDamage(dmg, caster);
+							HealDamage(dmg, caster, spell_id);
 						}
 						break;
 					}
@@ -410,7 +426,7 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 							Damage(caster, dmg, spell_id, spell.skill, false, buffslot, false);
 						}
 						else {
-							HealDamage(dmg, caster);
+							HealDamage(dmg, caster, spell_id);
 						}
 					}
 					else if (dmg > 0) {
@@ -418,7 +434,7 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 						if (caster && !IsEffectInSpell(spell_id, SpellEffect::TotalHP)) {
 							dmg = caster->GetActSpellHealing(spell_id, dmg, this);
 						}
-						HealDamage(dmg, caster);
+						HealDamage(dmg, caster, spell_id);
 					}
 				}
 				break;
@@ -454,7 +470,7 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 				if (val < 0)
 					Damage(caster, -val, spell_id, spell.skill, false, buffslot, false);
 				else
-					HealDamage(val, caster);
+					HealDamage(val, caster, spell_id);
 
 				break;
 			}
@@ -469,7 +485,7 @@ bool Mob::SpellEffect(Mob* caster, uint16 spell_id, float partial, int level_ove
 					val = caster->GetActSpellHealing(spell_id, val, this);
 				}
 				if (val > 0) {
-					HealDamage(val, caster);
+					HealDamage(val, caster, spell_id);
 				}
 
 				break;

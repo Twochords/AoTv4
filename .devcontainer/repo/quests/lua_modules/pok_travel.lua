@@ -25,13 +25,34 @@ local function found_key(client) return "pok_found_" .. client:CharacterID() end
 -- the Felwithe zone line. Any zone/doorid not listed falls back to the zone short name (the common case).
 local book_override = {
 	gfaydark = { [109] = "gfaydark", [108] = "felwithe" },
-	butcher  = { [78]  = "butcher",  [179] = "butcherdocks" },   -- doorid 78 = Kaladim, 179 = Butcherblock Docks
+	-- ⚠️ doorid 179 (the Docks book) WAS DELETED 2026-08-14 -- the discoverable travel spot in
+	-- aotv4_travel replaced it, by owner decision. The mapping is kept because it costs nothing and
+	-- documents which book was which; it is simply never reached now. Butcher has ONE book again
+	-- (doorid 78, Kaladim), so the no-override fallback to the zone short name would also be correct.
+	-- 📌 The DESTINATION is untouched: `butcherdocks` is still in pok_portals and is still handed out
+	-- by the hub book's grant_sets below, so nobody loses the waypoint -- only the way to find it in
+	-- the field changed.
+	butcher  = { [78]  = "butcher",  [179] = "butcherdocks" },   -- doorid 78 = Kaladim, 179 = Docks (door removed)
 }
 
 -- HUB books: clicking one unlocks a whole SET of destinations at once (instead of just its own zone).
--- The Tutorial book opens the three starter-zone books so new players can get going.
+-- The hub book opens the three starter-zone books so new players can get going.
+--
+-- ⚠️⚠️ `resplendent` IS THE LIVE ONE; `tutorialb` IS HISTORY THAT IS KEPT ON PURPOSE. The set-granting
+-- book started in tutorialb, then `aotv4_start_resplendent.sql` made resplendent the start zone for
+-- every (race, class, deity) row and turned the tutorial off -- which left the only book that grants
+-- the starter waypoints, and the only way to open the Portal window at the start, in a zone nobody
+-- could reach. Reported from play as "I don't see the PoK book in Resplendent". The door itself is
+-- migration v57.
+-- ⚠️ tutorialb stays listed because it costs nothing and the tutorial has already been switched back
+-- on once by an unannounced rules dump (CLAUDE.md section 35) -- if it becomes reachable again its book
+-- should still work.
+-- ⚠️⚠️ BOTH ARE SOURCES THAT ARE NEVER DESTINATIONS. resplendent is in `never_attune` below and
+-- neither is in pok_portals, which is what stops a hub book becoming a free bind-anywhere. Adding
+-- either to pok_portals.lua would break the roguelite loop.
 local grant_sets = {
-	tutorialb = { "butcherdocks", "ecommons", "qeytoqrg" },
+	resplendent = { "butcherdocks", "ecommons", "qeytoqrg" },
+	tutorialb   = { "butcherdocks", "ecommons", "qeytoqrg" },
 }
 
 -- discovered zones the player has, de-duped and validated against the portal table (so only real
@@ -73,6 +94,14 @@ end
 -- Record the clicked book as discovered. A hub book (grant_sets) unlocks a whole set; otherwise the
 -- doorid disambiguates multi-book zones (gfaydark Kelethin/Felwithe, butcher Kaladim/Docks) and falls
 -- back to the zone short name.
+-- The books this character has attuned, as portal shorts, sorted by long name.
+-- ⚠️ Public because the native Travel window (aotv4_travel) lists books alongside the discovered
+-- field waypoints, and it must ask THIS module rather than re-reading `pok_found_<charid>` itself --
+-- two readers of one bucket is how the two lists drift apart.
+function M.found_list(client)
+	return get_found(client)
+end
+
 function M.discover(client, zone_short, doorid)
 	local set = grant_sets[zone_short]
 	if set then
@@ -110,6 +139,16 @@ end
 function M.open(client)
 	M.send_list(client, true)                       -- PORTALDATA (current discovered list)
 	client:Message(MT.NPCQuestSay, "PORTALOPEN")    -- dll shows the window
+
+	-- ⚠️⚠️ THE BOOK IS ALSO THE TERMINAL FOR THE DISCOVERED-WAYPOINT NETWORK. Clicking it opens the
+	-- native Travel window as well, which is the ONLY way that window ever opens -- there is no
+	-- command for it, deliberately (aotv4_travel.handle_say explains why).
+	-- 📌 Both windows currently answer one click. The GDI Portal overlay above is the last window in
+	-- this dll that was never converted to a native SIDL one (§3 has carried that TODO for a while),
+	-- and it should be retired now that this replaces it -- otherwise a book opens two competing
+	-- travel UIs showing overlapping destinations.
+	local ok_tv, travel = pcall(require, "aotv4_travel")
+	if ok_tv and travel then travel.open_window(client) end
 end
 
 -- Resolve "portals" (list) and "portalgo <short>" (travel). Returns true if it consumed the message.

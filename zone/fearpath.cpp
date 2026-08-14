@@ -103,13 +103,11 @@ void Mob::CheckFlee()
 		return;
 	}
 
-	// AoTv4 Run Them Down (melee tree): somebody fighting this thing is holding it in place.
-	// Checked here rather than in the movement code so it never starts fleeing at all -- a mob that
-	// begins to run and is then stopped still drags aggro around for a moment.
-	if (AoTv4HeldInPlace()) {
-		LogFlee("Mob [{}] is being held in place by Run Them Down", GetCleanName());
-		return;
-	}
+	// AoTv4: the `Run Them Down` hook that stood here was REMOVED with the AA itself (migration v58).
+	// It held a wounded enemy in place if one of its attackers owned the AA -- which bought nothing,
+	// because `AoT:NPCsNeverFlee` already stops every enemy fleeing for every player. Ability 108 now
+	// hosts `Blindside`, so leaving the check in would have had an offhand-riposte AA silently pinning
+	// mobs in place. `Mob::AoTv4HeldInPlace` is gone from zone/aotv4_melee_aa.cpp with it.
 
 	int hp_ratio   = GetIntHPRatio();
 	int flee_ratio = GetFleeRatio();
