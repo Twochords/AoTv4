@@ -56,14 +56,101 @@
 - Fixed clicking a Tome of Insight failing with an error and consuming nothing
 - Fixed a Tome's description showing the text for an unrelated Shield Wall effect
 
-## World difficulties — Nightmare, Hell and Inferno
+## Zones opened
 
-The four-difficulty ladder announced on 10 August has now been played rather than just built, and
-several things it promised were not actually happening. The full write-up of what each difficulty
-does is in those notes; this is what has changed since.
+- **The Plane of Hate is now enterable.** It sits in the Freeport region and has always had a way in,
+  but it carried a minimum level of **46** against a level cap of 30, so no character could pass the
+  door. That requirement is gone
+- **Kaesora** and **The Sleeper's Tomb** are open
+- The Plane of Hate was the only zone in an open region still walled off this way — every other zone
+  your regions cover is genuinely reachable
 
-- **Difficulties now work in every zone.** They were restricted to the Estate of Unrest while the
-  ladder was being proven; that restriction is lifted
+## World difficulties — Normal, Nightmare, Hell and Inferno
+
+### How you get in
+
+- Type **`/pick`**, or press **Difficulty** on the `/aot` menu, and choose from the four
+- The zone you are **standing in** becomes a private copy of itself at that difficulty, shared with
+  everyone else who picked the same one. You do not travel anywhere — you stay exactly where you are
+- **Normal is the ordinary world**, always available everywhere, and it is how you get back
+- **Difficulty follows your character, not the place.** Pick one and it applies to the zone you are in
+- **Zoning always returns you to Normal.** A difficulty is never carried into a new zone, so you
+  choose it from inside the zone you mean to fight in
+- **You cannot switch while something is hunting you**, and there is a **5 minute cooldown** between
+  switches — including switching back down. A difficulty is a decision, not a per-pull tactic
+- **Now available in every zone.** It was restricted to the Estate of Unrest while the ladder was
+  being proven; that restriction is lifted
+
+### What is different from the ordinary world
+
+Creatures are tougher at every step, and the numbers climb together:
+
+| | health | level | damage | armour, attack and resists |
+|---|---|---|---|---|
+| **Normal** | — | — | — | — |
+| **Nightmare** | ×2 | +2 | ×1.2 | ×1.15 |
+| **Hell** | ×3 | +4 | ×1.5 | ×1.3 |
+| **Inferno** | ×4 | +6 | ×2.1 | ×1.45 |
+
+Health is the big dial and damage the small one, deliberately — a harder world should cost you time
+and resources rather than delete you outright.
+
+On top of the numbers, each difficulty changes the **rules**, and they do **not** stack up as you
+climb. Only the numbers do. Each step is a different fight, not a strictly worse one — Hell creatures
+can be mezzed where Nightmare's cannot, and that is on purpose.
+
+- **Nightmare — awake and unbindable.** Nothing is fooled by invisibility, sneak, hide or improved
+  hide, and nothing can be mezzed, charmed, rooted or snared. Stun and fear still work
+- **Hell — champions.** One creature in five carries a permanent affix. It glows and is tagged under
+  its name, the way a guild tag sits under a player's, so you always see it before you pull:
+  *a gnoll pup* with **&lt;Barbed&gt;** beneath it. Feigning death also becomes unreliable — the feign
+  itself always works, but each creature rolls on its own and about **half** are not fooled, so you
+  shed part of a camp rather than all of it
+- **Inferno — vigilant.** Creatures notice you from twice as far away, horizontally only, so a wider
+  radius never lets anything see you through a floor. Feign is unreliable for about **three in four**
+
+The champion affixes:
+
+| tag | what it does |
+|---|---|
+| **Armored** | double armour class |
+| **Hardened** | double health, on top of the difficulty's own |
+| **Mending** | regenerates steadily — you cannot chip it and walk away |
+| **Frenzied** | attacks about 40 percent faster |
+| **Barbed** | reflects damage back at you on every melee hit you land |
+| **Draining** | its hits take mana and endurance as well as health |
+| **Leeching** | heals itself for a share of the damage it deals |
+
+### Fixed since it launched
+
+- **Hardened champions were not getting their bonus health.** The affix and the difficulty's own
+  multiplier were written one after the other, so the second replaced the first
+- **Leeching champions healed invisibly.** The leech worked, but the creature's health bar never
+  moved. It now visibly heals and tells you when it drains you
+- **Champion tags were invisible if the creature spawned before you arrived** — which was almost
+  always, since a zone fills before the first player finishes zoning in. Champions now keep their tag
+- **Fragile has been removed from the delve mode list.** Half health and double damage cancelled out
+  to exactly normal difficulty while paying 1.5 times the score
+
+## Tomes of Insight
+
+A consumable that grants **one extra level-up reward pick without levelling you up** — the same three
+choices you get on a level, offered on demand.
+
+- **They only drop in the harder difficulties.** Normal drops none at all
+- **Nightmare** drops **Worn** tomes, **Hell** drops **Etched**, **Inferno** drops **Radiant** —
+  rarer as you climb, because the higher tiers are the ones that stay useful at the level cap
+- Each tier is tied to a level band: **Worn 1-10**, **Etched 11-20**, **Radiant 21-30**
+- **You can use a tome from below your band** — it simply draws from the top of its own band. You
+  **cannot** use one from above it, and it is not consumed if you try
+- **Only creatures worth fighting drop them.** Anything conning light blue or below pays nothing, so
+  parking at the top of a band and farming trivial creatures earns you no tomes
+- **Decline instead of picking, and your reroll price is cut** — 25, 50 or 100 percent by tier. That
+  price otherwise rises for the whole life of your character and is never reset by death, so a tome is
+  the only thing in the game that winds it back
+- A tome's offer cannot be rerolled for coin. The tome **is** the reroll
+- Fixed clicking a tome failing with an error and consuming nothing
+- Fixed a tome's description showing the text for an unrelated Shield Wall effect
 - **Fixed Hardened champions not getting their bonus health.** The affix and the difficulty's own
   health multiplier were being written one after the other, so the second quietly replaced the first
   instead of stacking with it

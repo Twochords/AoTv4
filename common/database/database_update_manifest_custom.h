@@ -5497,6 +5497,38 @@ UPDATE db_str SET value = 'You strike from where they are not looking. Attacks w
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 59,
+		.description = "2026_08_14_aotv4_hate_min_level",
+		// The Plane of Hate could not be entered by ANY player. It is in region 2 (Freeport), it
+		// carries bypass_expansion_check, and there is a live zone_point leading to it -- but
+		// `zone.min_level` is **46** and this server's hard level cap is **30**
+		// (era_system.M.HARD_CAP), so `Client::CanEnterZone` refused every single character.
+		//
+		// ⚠️⚠️ AND IT IS INVISIBLE TO A GM. That check is `if (!GetGM() && GetLevel() < z->min_level)`
+		// (zone/zoning.cpp:1466), so anyone testing with the GM flag walks straight in and sees
+		// nothing wrong. This is the fourth time that flag has hidden a zone-access bug here --
+		// CLAUDE.md §41 lists the other three. **Test zone access as a non-GM.**
+		//
+		// 📌 `hateplaneb` (186) is the one that matters: it is the revamped Plane of Hate, it is the
+		// only one with a zone_point route, and it is the one mapped to a region. The classic
+		// `hateplane` is deliberately left alone -- it sits in region 99 "Unused" with no route in,
+		// so opening it would be a REGION decision, not a level-gate fix.
+		// ⚠️ `max_level` is left at 255. Only the floor was wrong.
+		// 📌 Audited the general case rather than just this zone: of every zone mapped to regions 1-6,
+		// this is the ONLY one gated out by a level requirement, and none is gated by a numeric
+		// `flag_needed`. (A non-numeric flag such as Sleeper's Tomb's "Sleeper's Key" never blocks --
+		// the check requires `Strings::IsNumber(flag_needed)` first, so it short-circuits.)
+		.check       = "SELECT COUNT(*) FROM zone WHERE short_name = 'hateplaneb' AND min_level > 30",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+-- ⚠️ EVERY version row, not just version 0 -- the same trap recorded for the delve zone_exp_multiplier
+-- work (§38): zone config is loaded per (zone, version), so updating one row leaves the others gating.
+UPDATE zone SET min_level = 0 WHERE short_name = 'hateplaneb';
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does
