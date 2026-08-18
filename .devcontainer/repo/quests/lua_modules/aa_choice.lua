@@ -17,6 +17,16 @@
 
 local aapool = require("aa_pool")
 local era    = require("era_system")   -- AAs are gated by the server-wide unlocked expansion era
+-- ⚠️⚠️ TWO IDS MIRRORED FROM aotv4_tutorial, DELIBERATELY NOT A `require`. That module now
+-- requires THIS one (the Keeper banks a point through `M.grant_picks`), so requiring it back
+-- would be a cycle. Nothing checks these agree with its `M.ORIGIN_AA` and `M.FIRST_TASK +
+-- M.ORIGIN_STEP`; change them together.
+local ORIGIN_AA          = 331        -- mirrors M.ORIGIN_AA
+local ORIGIN_LESSON_TASK = 2000606    -- mirrors M.FIRST_TASK + M.ORIGIN_STEP
+
+local function origin_lesson_active(client)
+	return client and client:IsTaskActive(ORIGIN_LESSON_TASK) or false
+end
 
 local M = {}
 
@@ -94,6 +104,9 @@ end
 -- the player has trained what they require -- so dependency chains unlock progressively.
 local function gather_affordable(client, level, budget)
 	local out = {}
+	-- ⚠️ Hoisted out of the loop below: it is a task lookup, and the loop runs once per pool
+	-- entry (88 today) on every offer.
+	local lesson = origin_lesson_active(client)
 	for lv = 1, level do
 		local list = aapool[lv]
 		if list then
@@ -110,10 +123,35 @@ local function gather_affordable(client, level, budget)
 				-- ⚠️ RANK_BUDGET = 0 disables the per-AA investment cap entirely -- see the note on the
 				-- constant for why it must stay off under the current pricing.
 				local within_cap  = (RANK_BUDGET <= 0) or (next_rank * cost <= RANK_BUDGET)
-				if cost <= budget and within_rank and within_cap and prereqs_met(client, aa) then
+				-- ⚠️⚠️ ORIGIN IS OFFERED ONLY TO SOMEBODY HOLDING THE LESSON THAT PROMISES IT.
+				-- The Titan Hall's Death Book step (aotv4_tutorial step 6) tells the player to open this
+				-- window and claim Origin, so it has to BE there for them -- and must never be a blind
+				-- roll for anyone else, because a random copy makes that lesson's reward a silent no-op
+				-- (the grant is refused against an ability already owned, and says so to nobody).
+				-- ⚠️ Gated HERE rather than by dropping the row from `aa_pool.lua`: that generator is the
+				-- only place an AA's name, cost, rank count and description are assembled, so excluding
+				-- the row removes the DATA as well as the roll and the lesson then points at something
+				-- the picker cannot show at all. That was tried for a day; this is the fix.
+				local taught = (aa.id == ORIGIN_AA) and not lesson
+				if not taught and cost <= budget and within_rank and within_cap and prereqs_met(client, aa) then
 					out[#out + 1] = aa
 				end
 			end
+		end
+	end
+
+	-- ⚠️⚠️ WHILE THE DEATH BOOK LESSON IS ACTIVE, ORIGIN IS THE ONLY THING OFFERED. The lesson
+	-- says "open the Death Book and claim Origin", and a window showing it alongside two random
+	-- alternatives invites the player to spend their point elsewhere -- on a server where the
+	-- first point takes until roughly level 20 to earn, that is a costly wrong turn taken on the
+	-- quest's own advice.
+	-- ⚠️ Narrowed only when Origin ACTUALLY made it into the list. If it did not -- already
+	-- owned (mr = 1, so the next rank is out of range), unaffordable, prereqs unmet -- this
+	-- falls through to the normal set rather than returning an empty offer and leaving the
+	-- player with a window that shows nothing and no way to spend the point.
+	if lesson then
+		for _, aa in ipairs(out) do
+			if aa.id == ORIGIN_AA then return { aa } end
 		end
 	end
 	return out
@@ -182,6 +220,22 @@ local function resend_stored_offer(client)
 		return false
 	end
 
+	-- ⚠️⚠️ A SET ROLLED BEFORE THE DEATH BOOK LESSON IS ALSO DISCARDED. The offer is sticky by design,
+	-- so without this a player who already had three AAs pending would take the lesson, be told Origin
+	-- is in this window, and open it to find the same three -- with no way to reach Origin short of
+	-- spending the point on something else first. Same reasoning as the partial offer above: nothing
+	-- has been spent yet, so re-rolling costs nothing.
+	-- ⚠️ Conditioned on NOT already owning Origin, and that guard is what stops this churning. Once it
+	-- is owned the lesson may still be active for a moment, and without the guard every open would
+	-- discard a set that can never contain Origin (mr = 1 puts the next rank out of range) and reroll
+	-- forever, quietly destroying the stickiness for everyone in that state.
+	if origin_lesson_active(client)
+		and (client:GetAAByAAID(ORIGIN_AA) or 0) == 0
+		and not (#choices == 1 and choices[1].id == ORIGIN_AA) then
+		eq.set_data(choice_key(client), "")
+		return false
+	end
+
 	if #choices == 0 then return false end
 	send_offer(client, get_num(bank_key(client)), choices)
 	return true
@@ -210,6 +264,12 @@ end
 
 -- Adds `points` to the bank and then offers. Used by the DEATH LUMP path (AoT:LiveAAExp off), which
 -- is the one route where Lua is still the thing granting the points.
+-- Read-only view of the bank. Exists so another module can ask "has this player a point to
+-- spend?" without learning the bucket's name -- this file owns that key.
+function M.banked(client)
+	return get_num(bank_key(client))
+end
+
 function M.grant_picks(e, points)
 	local client = e.self
 	points = tonumber(points) or 0

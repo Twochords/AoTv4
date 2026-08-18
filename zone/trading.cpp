@@ -1525,7 +1525,7 @@ std::string Client::SearchDetail(std::string kind, uint32 id, bool include_sourc
 		auto r = database.QueryDatabase(fmt::format(
 			"SELECT name, mana, cast_time, classes8, buffduration, recast_time, `range`, resisttype, "
 			"effect_base_value1, effect_base_value2, effect_base_value3, effect_base_value4, "
-			"max1, max2, max3, max4 FROM spells_new WHERE id = {}", id));
+			"max1, max2, max3, max4, descnum FROM spells_new WHERE id = {}", id));
 		if (!r.Success() || r.RowCount() == 0) return "";
 		auto row = r.begin();
 		auto I   = [&](int col) { return row[col] ? Strings::ToInt(row[col]) : 0; };
@@ -1552,7 +1552,18 @@ std::string Client::SearchDetail(std::string kind, uint32 id, bool include_sourc
 
 		// human-readable description (db_str type 6) with #N / @N placeholders filled from the effect
 		// base/max values, then word-wrapped so the scrollable detail panel shows all of it.
-		auto dr = database.QueryDatabase(fmt::format("SELECT value FROM db_str WHERE id = {} AND type = 6", id));
+		// ⚠️⚠️ THE KEY IS `spells_new.descnum`, **NOT** THE SPELL ID -- and keying it on the id meant
+		// EVERY STOCK SPELL SHOWED NO DESCRIPTION AT ALL. Reported from play against `Salve`, which is
+		// spell 5011 with descnum 200: `db_str` holds its text at 200 and has nothing at 5011, so the
+		// lookup found nothing and the pane printed only the mana/cast/resist lines.
+		// ⚠️⚠️ IT LOOKED CORRECT BECAUSE THE AoTv4 CUSTOM SPELLS ALL SET `descnum = id` by convention
+		// (§44) -- so every spell anyone tested while writing this happened to work, and the ~2,000
+		// stock spells that are the actual reward pool silently did not. The native spell window was
+		// showing the real text the whole time, which is what made it obvious it existed somewhere.
+		// 📌 Same shape as §6's AA note: `title_sid` and `desc_sid` are independent there too, and 22
+		// of 23 hosts having them equal is exactly what made the one that did not so expensive.
+		const int descnum = I(16) ? I(16) : id;
+		auto dr = database.QueryDatabase(fmt::format("SELECT value FROM db_str WHERE id = {} AND type = 6", descnum));
 		if (dr.Success() && dr.RowCount() && dr.begin()[0] && dr.begin()[0][0]) {
 			std::string desc = dr.begin()[0];
 			int base[5] = { 0, I(8),  I(9),  I(10), I(11) };

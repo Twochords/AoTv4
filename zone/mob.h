@@ -1230,6 +1230,10 @@ public:
 	// ⚠️ A plain float rather than an entity variable (the delve_noloot pattern) because CheckWillAggro
 	// runs per creature per client on a timer; a string map lookup there is not free.
 	inline const float GetAggroRangeZ() const { return (pAggroRangeZ < 0.0f) ? GetAggroRange() : pAggroRangeZ; }
+	// AoTv4: lull/harmony hardness. -1 = stock (flat 15 initial resist, and a resisted lull gets one
+	// more charisma-modified check before it aggroes). >= 0 replaces that flat 15 AND removes the
+	// second chance, so a lull that fails always pulls. Set per creature via ModifyNPCStat.
+	inline int GetLullResist() const { return pLullResist; }
 	inline const float GetAssistRange() const { return (spellbonuses.AssistRange == -1) ? pAssistRange : spellbonuses.AssistRange; }
 
 
@@ -1972,6 +1976,7 @@ protected:
 	uint32 maxLastFightingDelayMoving;
 	float pAggroRange = 0;
 	float pAggroRangeZ = -1.0f;   // AoTv4: -1 = follow pAggroRange (stock)
+	int   pLullResist  = -1;      // AoTv4: -1 = stock lull handling
 	float pAssistRange = 0;
 	std::unique_ptr<Timer> AI_think_timer;
 	std::unique_ptr<Timer> AI_movement_timer;

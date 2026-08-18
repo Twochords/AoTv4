@@ -17,6 +17,8 @@
 -- `Handle_OP_PickZone` is also a bare stub in this codebase and nothing has ever sent the window
 -- packet. The dll intercepts "/pick" and opens our own window instead.
 
+local class_scale = require("aotv4_npc_class_scale")
+
 local M = {}
 
 -------------------------------------------------------------------- the ladder
@@ -46,13 +48,27 @@ local M = {}
 -- makes the top tier a slog rather than a threat, and raising it linearly with health makes Inferno
 -- one-shot people at the level cap.
 M.LEVELS = {
+	-- ⚠️⚠️ DAMAGE AND HEALTH ARE DELIBERATELY ON DIFFERENT CURVES, AND THIS IS THE THIRD TUNING PASS.
+	-- Health is the dial a player feels safely: a longer fight is harder without ever being unfair.
+	-- Damage is the dial that kills people, and it now compounds with the CLASS SHAPE that every
+	-- creature carries in the open world (`aotv4_npc_class_scale`) -- so a Rogue creature is already
+	-- `max_hit` x2 before any difficulty is chosen.
+	-- 📌 At dmg 1.5/2.0/2.5 the two multiplied out to x5 on an Inferno Rogue, which is one-shot
+	-- territory and was rejected on sight. The tier now adds an INCREMENTAL step -- the same
+	-- 1.15/1.30/1.45 curve `ac`, `atk` and `resist` already use in this table -- so Normal is normal,
+	-- each tier is a real but survivable increase, and the class shape stays the thing that says how
+	-- a creature fights.
+	-- ⚠️ HEALTH IS UNCHANGED at 1/1.5/2/2.5 (owner's numbers). It does not one-shot anybody, and it
+	-- is what makes a tier feel like a tier.
+	-- ⚠️ These multiply MELEE only (`min_hit`/`max_hit`). NPC spell damage is `spellscale`, which
+	-- nothing here touches -- so a caster creature's nukes are identical on every difficulty.
 	[0] = { name = "Normal",    hp = 1.0, lvl = 0, dmg = 1.00, ac = 1.00, atk = 1.00, resist = 1.00,
 	        blurb = "The world as it is. No instance, no changes." },
-	[1] = { name = "Nightmare", hp = 2.0, lvl = 2, dmg = 1.20, ac = 1.15, atk = 1.15, resist = 1.15,
+	[1] = { name = "Nightmare", hp = 1.5, lvl = 2, dmg = 1.15, ac = 1.15, atk = 1.15, resist = 1.15,
 	        blurb = "A harder cut of the world you already know. The gentlest step up." },
-	[2] = { name = "Hell",      hp = 3.0, lvl = 4, dmg = 1.50, ac = 1.30, atk = 1.30, resist = 1.30,
+	[2] = { name = "Hell",      hp = 2.0, lvl = 4, dmg = 1.30, ac = 1.30, atk = 1.30, resist = 1.30,
 	        blurb = "Creatures take real effort to put down, and the worst of them are marked." },
-	[3] = { name = "Inferno",   hp = 4.0, lvl = 6, dmg = 2.10, ac = 1.45, atk = 1.45, resist = 1.45,
+	[3] = { name = "Inferno",   hp = 2.5, lvl = 6, dmg = 1.45, ac = 1.45, atk = 1.45, resist = 1.45,
 	        blurb = "The deep end. Everything here hits hard enough to end a careless pull." },
 }
 M.MAX = 3
@@ -78,12 +94,16 @@ M.MAX = 3
 M.AFFIXES = {
 	[0] = {},
 	[1] = { "AWAKE: nothing here is fooled by invisibility, sneak or hide",
+	        "WARDED: lull and harmony often fail, and what shrugs one off comes for you",
 	        "UNBINDABLE: nothing can be mezzed, charmed, rooted or snared",
 	        "Worn Tomes of Insight drop from creatures that con white or better" },
-	[2] = { "CHAMPIONS: one creature in five carries a permanent affix -- it glows and is tagged under its name: Armored, Hardened, Mending, Frenzied, Barbed, Draining or Leeching",
+	[2] = { "WARDED: lull and harmony usually fail, and what shrugs one off comes for you",
+	        "CHAMPIONS: one creature in five carries a permanent affix -- it glows and is tagged under its name: Armored, Hardened, Mending, Frenzied, Draining or Leeching",
 	        "WARY: about half of what you pull is not fooled by feigning death",
 	        "Etched Tomes of Insight drop instead of Worn" },
-	[3] = { "VIGILANT: creatures notice you from twice as far away -- there is no clean approach",
+	[3] = { "WARDED: lull and harmony rarely land at all, and what shrugs one off comes for you",
+	        "VIGILANT: creatures notice you from twice as far away -- there is no clean approach",
+	        "PACK: they answer each other's fights from half again as far -- expect company",
 	        "WARY: about three in four are not fooled by feigning death",
 	        "Radiant Tomes of Insight drop instead of Etched" },
 }
@@ -198,10 +218,86 @@ M.CC_IMMUNITIES = {
 -- 📌 x2 is calibrated against the data rather than picked: the most common authored `aggroradius` is
 -- 55 (15,514 creatures) and 100 already exists naturally on 3,083 more, so this puts an ordinary
 -- creature roughly where a naturally alert one already sits instead of inventing a new extreme.
+-- ⚠️⚠️ HOW MUCH OF THE CLASS SHAPE TO APPLY, 0.0 to 1.0. It exists because the two systems MULTIPLY:
+-- a Rogue creature is `max_hit` x2 from its class and x2.5 on Inferno, which is x5 -- and section 24
+-- records damage already one-shotting players through spells at x2. At 1.0 the class table is used
+-- exactly as written; lower it to soften the shape without touching the difficulty ladder, which is
+-- the knob to reach for first if Inferno starts deleting people from full health.
+-- 📌 A weight rather than an edit to the generated table: that file mirrors the DB and is meant to be
+-- regenerated, so a hand-tuned copy of it would drift.
+M.CLASS_WEIGHT = 1.0
+
+-- Blend a multiplier toward 1.0 by CLASS_WEIGHT. 1.0 returns it unchanged; 0.0 returns 1.0 (no-op).
+function M.weigh(mult)
+	if not mult or mult == 1.0 then return 1.0 end
+	return 1.0 + (mult - 1.0) * M.CLASS_WEIGHT
+end
+
+-- Current value for a ModifyNPCStat key. ⚠️ There is no generic getter -- these are the only stats
+-- the class table touches, and anything unmapped returns nil so `scale` skips it rather than guessing.
+function M.stat_of(npc, key)
+	if     key == "str"     then return npc:GetSTR()
+	elseif key == "sta"     then return npc:GetSTA()
+	elseif key == "dex"     then return npc:GetDEX()
+	elseif key == "agi"     then return npc:GetAGI()
+	elseif key == "int"     then return npc:GetINT()
+	elseif key == "wis"     then return npc:GetWIS()
+	elseif key == "cha"     then return npc:GetCHA()
+	elseif key == "ac"      then return npc:GetAC()
+	elseif key == "min_hit" then return npc:GetMinDMG()
+	elseif key == "max_hit" then return npc:GetMaxDMG()
+	elseif key == "mr"      then return npc:GetMR()
+	elseif key == "fr"      then return npc:GetFR()
+	elseif key == "cr"      then return npc:GetCR()
+	elseif key == "pr"      then return npc:GetPR()
+	elseif key == "dr"      then return npc:GetDR()
+	end
+	return nil
+end
+
 M.AGGRO_MULT = 2.0
 -- ⚠️ A ceiling, because a few creatures ship with `aggroradius` 10000 (whole-zone aggro) and doubling
 -- that is meaningless noise. Well clear of the highest ordinary authored value.
 M.AGGRO_CAP  = 250
+
+-- Inferno also widens ASSIST range -- how far a creature will answer a neighbour's fight. Noticing
+-- you from further away is only half of "vigilant"; the other half is that what you pull brings help.
+--
+-- ⚠️⚠️ DELIBERATELY GENTLER THAN THE AGGRO MULTIPLIER (1.5 against 2.0), AND THE CAP IS LOWER. Aggro
+-- radius decides how far away a fight STARTS; assist radius decides HOW MANY creatures are in it, and
+-- the two do not scale the same way. Doubling a 75 assist radius to 150 in a packed dungeon room does
+-- not make a pull 2x harder -- it can pull the whole room, because every creature that answers is
+-- itself inside the next one's assist range. Treat this number as compounding and move it in small
+-- steps, with `Combat:NPCAssistCap` as the real backstop on a runaway chain.
+--
+-- ⚠️⚠️ THIS ONE **DOES** REACH THROUGH FLOORS AND CANNOT BE SPLIT FROM LUA. `AIYellForHelp` measures
+-- with `DistanceSquared` (npc.cpp:3571) -- the 3D form, z included -- whereas aggro uses
+-- `DistanceSquaredNoZ` and got the `aggro_z` split (an AoTv4 C++ addition) for exactly this reason.
+-- There is no equivalent hook for assist, so a creature a floor above genuinely can answer a fight
+-- below it. That is why the multiplier is 1.5 and not 2: the vertical bleed is real and unguarded.
+-- 📌 The fix, if this proves annoying in a multi-level dungeon, is to mirror `aggro_z` in C++ --
+-- switch that call to `DistanceSquaredNoZ` plus a separate vertical test.
+M.ASSIST_MULT = 1.5
+M.ASSIST_CAP  = 200
+
+-- How hard a creature is to lull/pacify (Harmony, Lull, Calm, Soothe, Pacify), per difficulty.
+--
+-- ⚠️⚠️ RAISING A CREATURE'S RESISTS DOES NOTHING TO A LULL, WHICH IS WHY THIS EXISTS. The initial
+-- cast throws the target's real resists away and uses a **flat 15** (`Mob::ResistSpell`,
+-- zone/spells.cpp) -- "Live parses confirm this" per the stock comment -- so Inferno's x1.45 resists
+-- left Harmony landing exactly as reliably as it does on Normal. `lull_resist` replaces that flat
+-- number per creature; -1 is stock and every creature outside a shard keeps it.
+-- 📌 The scale is the same one the flat 15 sits on, so these read directly: 15 is stock, 40 is
+-- "usually resists", 60 is "rarely lands". Nightmare is deliberately still possible.
+--
+-- ⚠️⚠️ AND A FAILED LULL NOW ALWAYS PULLS. Stock gives a resisted lull a SECOND, charisma-modified
+-- check and stays quiet if that one passes -- so the common outcome was a resist you never noticed.
+-- Any creature carrying `lull_resist` skips that second chance: if the lull fails, it comes for you.
+-- That is the half that makes pulling a decision rather than a free retry.
+-- 📌 Set on EVERY difficulty above Normal, not just Inferno -- the resist number is what separates
+-- them. Lull being a coin flip with no downside is the same "all of the reward, none of the fight"
+-- shape the swap cooldown exists to stop.
+M.LULL_RESIST = { [1] = 35, [2] = 50, [3] = 65 }
 
 -------------------------------------------------------------------- Hell: creature affixes
 -- Roughly one creature in five spawns carrying a permanent affix -- a champion in all but name. It
@@ -254,7 +350,6 @@ M.MOB_AFFIXES = {
 	-- entity variable on any creature already spawned.
 	{ key = "knitting",  word = "Mending",     stat = { regen = M.KNIT_PER_LV } },
 	{ key = "frenzied",  word = "Frenzied",    stat = { haste = 0.7 } },   -- attack_delay x0.7
-	{ key = "barbed",    word = "Barbed",      mark = true },  -- reflects half its level per melee hit
 	{ key = "draining",  word = "Draining",    mark = true },  -- its hits take mana and endurance
 	{ key = "leeching",  word = "Leeching",    mark = true },  -- heals itself for a share of its damage
 }
@@ -453,9 +548,40 @@ function M.send(client)
 	client:Message(MT.NPCQuestSay, string.format("DIFFDATA %d^%s", cur, table.concat(parts, "^")))
 end
 
+-- ⚠️⚠️ ONE PREDICATE FOR BOTH THE SOLO AND THE GROUP PATH. Every gate below is asked exactly once,
+-- here, and answers in two registers: a SHORT reason for the "who is holding the group up" list, and
+-- a LONG one for the player who pressed the button. Writing the group checks as a second copy is how
+-- the two silently drift -- a gate tightened on the solo path and forgotten on the group path becomes
+-- a way to have a groupmate move you somewhere you could not have moved yourself.
+-- Returns nil when the client may shift.
+local function shift_blocker(c, diff)
+	if (c:GetAggroCount() or 0) > 0 then
+		return "is in combat", "Not while something is hunting you. Break away first."
+	end
+
+	local last = tonumber(eq.get_data("zdiff_cd_" .. c:CharacterID())) or 0
+	local left = M.SWAP_COOLDOWN_SECS - (os.time() - last)
+	if last > 0 and left > 0 then
+		-- ⚠️⚠️ THE COOLDOWN IS CHECKED PER MEMBER, NOT ONLY ON WHOEVER PRESSED. Skipping it for members
+		-- would make a group port a COOLDOWN BYPASS: shift, then have a groupmate shift the party back,
+		-- and the 5 minutes that exists to stop difficulty being a per-pull tactic never applies to
+		-- anyone in a group.
+		return string.format("must wait %ds", left), string.format(
+			"The world is still settling around you. %d second%s before you can shift again.",
+			left, (left == 1) and "" or "s")
+	end
+
+	local ok_d, dungeon = pcall(require, "aotv4_dungeon")
+	if ok_d and dungeon.current_run and dungeon.current_run(c) then
+		return "is in a delve", "Not while you are in a delve. Leave it first."
+	end
+
+	return nil
+end
+
 -- Change difficulty. Takes effect immediately, by moving you into the matching copy of the zone you
--- are standing in.
-function M.set(client, diff)
+-- are standing in. `group` brings the whole party.
+function M.set(client, diff, group)
 	if not client or not client.valid then return false end
 	if not M.LEVELS[diff] then
 		client:Message(MT.Red, "That is not a difficulty.")
@@ -486,40 +612,58 @@ function M.set(client, diff)
 		return false
 	end
 
-	-- ⚠️⚠️ REFUSED IN COMBAT, and for the same reason the delve refuses (section 24): switching
-	-- difficulty is a zone change, so without this it is a free escape from any losing fight -- and a
-	-- better one than Gate, because it breaks every hate list at once with no cast time and no
-	-- reagent. GetAggroCount, not IsEngaged: it counts the creatures holding you on their hate list,
-	-- so it stays true while something is chasing you after you have stopped fighting, which is
-	-- exactly when the escape is worth the most.
-	if (client:GetAggroCount() or 0) > 0 then
-		client:Message(MT.Red, "Not while something is hunting you. Break away first.")
-		return false
+	-- Combat, cooldown and delve -- see `shift_blocker`, which is also what the group pass asks.
+	-- ⚠️⚠️ REFUSED IN COMBAT for the same reason the delve refuses (section 24): switching difficulty
+	-- is a zone change, so without it this is a free escape from any losing fight, and a better one
+	-- than Gate -- it breaks every hate list at once with no cast time and no reagent.
+	-- ⚠️⚠️ COOLDOWN, so difficulty is a decision and not a per-pull tactic. Without it the optimal play
+	-- is to clear a camp on Normal and flip to Inferno for the last creature that might carry a tome.
+	-- ⚠️⚠️ NEVER WHILE IN A DELVE -- moving the player out from here strands the run: the run bucket
+	-- still claims they are inside and `aotv4_dungeon.on_enter_zone` then fails it for being elsewhere.
+	do
+		local _, why = shift_blocker(client, diff)
+		if why then client:Message(MT.Red, why); return false end
 	end
 
-	-- ⚠️⚠️ COOLDOWN, so difficulty is a decision and not a per-pull tactic. Without it the optimal
-	-- play is to clear a camp on Normal and flip to Inferno for the last creature of anything that
-	-- might carry a tome -- all of the reward, none of the fight.
-	-- ⚠️ Checked BEFORE the delve test purely so the message a player sees names the thing they can
-	-- actually wait out; both refusals are cheap and the order only affects which one they read.
-	local cdk  = "zdiff_cd_" .. client:CharacterID()
-	local last = tonumber(eq.get_data(cdk)) or 0
-	local left = M.SWAP_COOLDOWN_SECS - (os.time() - last)
-	if last > 0 and left > 0 then
-		client:Message(MT.Red, string.format(
-			"The world is still settling around you. %d second%s before you can shift again.",
-			left, (left == 1) and "" or "s"))
-		return false
-	end
-
-	-- ⚠️⚠️ NEVER WHILE IN A DELVE. A delve is its own instance with its own scaling, its own task and
-	-- its own teardown; moving the player out of it from here would strand the run -- the run bucket
-	-- would still claim they are inside, and `aotv4_dungeon.on_enter_zone` would then fail the run
-	-- for being somewhere else. Leave the delve first.
-	local ok_d, dungeon = pcall(require, "aotv4_dungeon")
-	if ok_d and dungeon.current_run and dungeon.current_run(client) then
-		client:Message(MT.Red, "Not while you are in a delve. Leave it first.")
-		return false
+	-- ⚠️⚠️ THE WHOLE GROUP IS CHECKED BEFORE ANYONE MOVES, AND ONE REFUSAL STOPS ALL OF IT. Moving the
+	-- members who qualify and leaving the rest behind is the worst outcome available: it splits the
+	-- party across two copies of the same zone, where they can neither see nor help each other, and
+	-- nothing on screen explains why. Naming who is holding it up is what makes that recoverable.
+	-- ⚠️ A member NOT IN THIS ZONE cannot come. The shard is a private copy of the zone you are
+	-- standing in, so there is nothing coherent to move them into -- `GetClientByID` returning nil is
+	-- both the "different zone" test and the reason it is safe (§24's Lua_Mob trap).
+	-- 📌 A member already on this difficulty is NOT a blocker -- they simply need no move. Only the
+	-- person who pressed gets the "you are already playing on X" refusal, above.
+	local party = nil
+	if group then
+		local grp = client:GetGroup()
+		if not grp or not grp.valid then
+			client:Message(MT.Red, "You are not in a group.")
+			return false
+		end
+		party = {}
+		local blockers = {}
+		for i = 0, (grp:GroupCount() or 0) - 1 do
+			local m = grp:GetMember(i)
+			if m and m.valid then
+				local mc = eq.get_entity_list():GetClientByID(m:GetID())
+				if not mc or not mc.valid then
+					blockers[#blockers + 1] = string.format("%s is not in this zone", m:GetCleanName() or "a member")
+				elseif mc:CharacterID() ~= client:CharacterID() then
+					local short = shift_blocker(mc, diff)
+					if short then
+						blockers[#blockers + 1] = string.format("%s %s", mc:GetCleanName(), short)
+					else
+						party[#party + 1] = mc
+					end
+				end
+			end
+		end
+		if #blockers > 0 then
+			client:Message(MT.Red, "Your group cannot shift together yet:")
+			for _, b in ipairs(blockers) do client:Message(MT.Red, "  " .. b) end
+			return false
+		end
 	end
 
 	-- ⚠️⚠️ RESOLVE THE SHARD BEFORE COMMITTING ANYTHING -- the §24 gate-order lesson, in the other
@@ -536,16 +680,38 @@ function M.set(client, diff)
 		return false
 	end
 
-	eq.set_data(pkey(client), tostring(diff))
-	-- ⚠️ Stamped on EVERY successful shift, including back down to Normal. A free trip home would let
-	-- a player alternate Inferno and Normal at will, which is the behaviour the cooldown exists to
-	-- stop -- and it would make dropping to Normal the cheapest possible combat escape.
-	eq.set_data(cdk, tostring(os.time()))
+	-- ⚠️⚠️ EVERY MOVED CHARACTER GETS THE SAME THREE WRITES -- bucket, cooldown stamp, move -- through
+	-- one helper. A member who is moved without the bucket write lands in the shard while every read
+	-- of their difficulty still says Normal, which is the exact desynced state §43 records as leaving
+	-- a player locked out of correcting it ("it said I was already there, but I'm not").
+	-- ⚠️ Stamped on EVERY successful shift, including back down to Normal. A free trip home would let a
+	-- player alternate Inferno and Normal at will, which is what the cooldown exists to stop -- and it
+	-- would make dropping to Normal the cheapest possible combat escape.
+	local now = tostring(os.time())
+	local function commit(c)
+		eq.set_data(pkey(c), tostring(diff))
+		eq.set_data("zdiff_cd_" .. c:CharacterID(), now)
+		c:Message(MT.Yellow, string.format("The world shifts around you. You are now playing on %s.",
+			M.LEVELS[diff].name))
+		place(c, want)
+		M.send(c)
+	end
 
-	client:Message(MT.Yellow, string.format("The world shifts around you. You are now playing on %s.",
-		M.LEVELS[diff].name))
-	place(client, want)
-	M.send(client)
+	commit(client)
+
+	-- ⚠️ Members move AFTER the player who pressed, and each is placed independently rather than with
+	-- a single group move. `cross_zone_move_player_by_group_id` is the wrong tool here: it takes a zone
+	-- NAME and cannot name an instance, so it would drop the party into the ordinary zone instead of
+	-- the shard. `place()` is the only thing that registers a character on the instance first, which
+	-- §24 records as the difference between arriving and being silently redirected to a safe return.
+	if party then
+		for _, mc in ipairs(party) do
+			if mc and mc.valid then
+				commit(mc)
+				mc:Message(MT.Yellow, string.format("%s shifted your group.", client:GetCleanName()))
+			end
+		end
+	end
 	return true
 end
 
@@ -558,9 +724,12 @@ function M.handle_say(e)
 		return true
 	end
 
-	local n = msg:match("^diffset%s+(%d+)%s*$")
+	-- ⚠️ The group flag is OPTIONAL in the pattern, so an older dll sending "diffset 2" still works and
+	-- simply shifts that player alone. A required argument would break every client that has not been
+	-- updated, which is the one failure a server-side change must never cause.
+	local n, g = msg:match("^diffset%s+(%d+)%s*(%d*)%s*$")
 	if n then
-		M.set(e.self, tonumber(n))
+		M.set(e.self, tonumber(n), g == "1")
 		return true
 	end
 
@@ -624,6 +793,34 @@ function M.on_enter_zone(e)
 	M.send(c)
 end
 
+-- The class shape from `npc_class_scale`: a creature fights like its class. Applied to every open
+-- world spawn AND inside a shard, so Normal and Nightmare differ by the TIER alone and the shape is
+-- constant between them.
+--
+-- ⚠️⚠️ ONE WRITE PER STAT, AND max_hp SEPARATELY. `ModifyNPCStat("max_hp")` runs CalcMaxHP(), and it
+-- clamps DOWN only -- raising the maximum does not raise current health, so the explicit SetHP is
+-- what stops the creature spawning at its old health against a new maximum.
+-- ⚠️ The caller has already excluded AoTv4 npcs, owned npcs and non-difficulty instances.
+function M.apply_class_shape(npc)
+	local cls = class_scale.stats(npc:GetClass())
+	if not cls then return end
+
+	for key, mult in pairs(cls) do
+		if key ~= "hp" then
+			local cur, m = M.stat_of(npc, key), M.weigh(mult)
+			if cur and cur > 0 and m ~= 1.0 then
+				npc:ModifyNPCStat(key, tostring(math.max(1, math.floor(cur * m))))
+			end
+		end
+	end
+
+	local hp = M.weigh(class_scale.hp_mult(npc:GetClass()))
+	if hp ~= 1.0 then
+		npc:ModifyNPCStat("max_hp", tostring(math.floor((npc:GetMaxHP() or 1) * hp)))
+		npc:SetHP(npc:GetMaxHP())
+	end
+end
+
 -- Make the creatures in a difficulty shard harder. Runs for EVERY npc spawn on the server, so the
 -- instance test is first and the common case pays one integer compare.
 --
@@ -634,7 +831,6 @@ end
 -- health leaves what makes a creature itself intact.
 function M.on_npc_spawn(e)
 	local diff = here()
-	if diff == 0 then return end
 
 	local npc = e.self
 	if not npc or not npc.valid then return end
@@ -644,6 +840,21 @@ function M.on_npc_spawn(e)
 	-- knows nothing about, and doubling a player's pet health is not a difficulty setting.
 	if (npc:GetNPCTypeID() or 0) >= 2000000 then return end
 	if (npc:GetOwnerID() or 0) > 0 then return end
+
+	-- ⚠️⚠️ THE CLASS SHAPE IS THE WORLD BASELINE, NOT A DIFFICULTY STEP -- so it runs at diff 0 too.
+	-- A Rogue creature hits harder than a Cleric one everywhere, including Normal; that is what
+	-- "NPCs fight like their class" means and it is the same in the open world as in a shard.
+	-- ⚠️⚠️ AND IT MUST NOT RUN IN A NON-DIFFICULTY INSTANCE. A delve rescales every creature wholesale
+	-- through `ScaleNPC` (section 24), which rewrites stats from npc_scale_global_base and would
+	-- discard whatever this wrote -- so applying it there is at best wasted work and at worst a
+	-- difference between two runs of the same layer. `here()` returns 0 for a delve, so the instance
+	-- test is what separates "open world" from "some other instance".
+	local in_open_world = (eq.get_zone_instance_id() or 0) == 0
+	if in_open_world or diff > 0 then
+		M.apply_class_shape(npc)
+	end
+
+	if diff == 0 then return end
 
 	local L = M.LEVELS[diff]
 	if not L then return end
@@ -716,6 +927,27 @@ function M.on_npc_spawn(e)
 			npc:ModifyNPCStat("aggro_z", tostring(cur))
 			npc:ModifyNPCStat("aggro", tostring(math.floor(math.min(M.AGGRO_CAP, cur * M.AGGRO_MULT))))
 		end
+
+		-- ⚠️⚠️ ASSIST RANGE IS A SEPARATE NUMBER AND DID NOT FOLLOW THE AGGRO WIDEN. `assistradius` is
+		-- how far a creature will answer a NEIGHBOUR'S fight (`NPC::AIYellForHelp`), and it is loaded
+		-- once from `npc_types`; the runtime aggro change above does not touch it. So Inferno was
+		-- noticing you from twice as far and then still pulling one at a time, which is the opposite
+		-- of what "vigilant" should mean -- you got the drawback with none of the character.
+		-- 📌 **64,613 of 66,000+ npc_types ship `assistradius = 0`**, and 0 means "use my aggro radius"
+		-- (`zonedb.cpp:1776`, applied at LOAD from the ORIGINAL value). So for almost every creature
+		-- the base to multiply is its stock aggro radius, which is what GetNPCStat("assist") returns.
+		local a = npc:GetNPCStat("assist") or 0
+		if a > 0 then
+			npc:ModifyNPCStat("assist", tostring(math.floor(math.min(M.ASSIST_CAP, a * M.ASSIST_MULT))))
+		end
+	end
+
+	-- ---------------------------------------------------------------- lull hardness (every tier)
+	-- ⚠️ Applied on ALL difficulties above Normal, so it sits outside the `vigilant` block above.
+	-- Setting it is also what removes the second, quiet resist check -- see M.LULL_RESIST.
+	local lull = M.LULL_RESIST[diff]
+	if lull then
+		npc:ModifyNPCStat("lull_resist", tostring(lull))
 	end
 
 	-- ⚠️ Feign resistance is NOT applied here. It is a per-creature roll taken when the player actually
@@ -730,10 +962,10 @@ function M.on_npc_spawn(e)
 		npc:AddNimbusEffect(AFFIX_NIMBUS)
 
 		-- ⚠️⚠️ A TAG UNDER THE NAME, NOT A RENAME. `ChangeLastName` drives the same line a player's
-		-- guild renders on (OP_GMLastName), so a champion reads as "a gnoll pup" with `<Barbed>`
+		-- guild renders on (OP_GMLastName), so a champion reads as "a gnoll pup" with `<Frenzied>`
 		-- beneath it -- which is legible at a glance and, unlike a rename, leaves the creature's real
 		-- name intact for hails, quests, tracking and `#peekloot`.
-		-- ⚠️ It replaced `TempName("a barbed gnoll pup")`, which mangled the name itself: TempName
+		-- ⚠️ It replaced `TempName("a frenzied gnoll pup")`, which mangled the name itself: TempName
 		-- needs underscores for the wire, so every champion also lost the spacing in its own name.
 		-- ⚠️⚠️ THIS REQUIRES THE AoTv4 CHANGE TO `NPC::ChangeLastName` (zone/npc.cpp) THAT MAKES IT
 		-- PERSIST. Stock only broadcasts a packet to whoever is already in range, and a shard
@@ -757,6 +989,7 @@ function M.on_npc_spawn(e)
 	-- the delve warden.
 	-- ⚠️ LAST, and ONE call: ModifyNPCStat("max_hp") runs CalcMaxHP(), so the difficulty multiple and
 	-- the "hardened" affix are multiplied together first and written once.
+	-- ⚠️ THREE multipliers, ONE write: the difficulty tier, the class shape and the "hardened" affix.
 	local hp_mult = L.hp * ((affix and affix.stat and affix.stat.hp) or 1.0)
 	if hp_mult > 1.0 then
 		npc:ModifyNPCStat("max_hp", tostring(math.floor((npc:GetMaxHP() or 1) * hp_mult)))
@@ -765,27 +998,12 @@ function M.on_npc_spawn(e)
 end
 
 -------------------------------------------------------------------- affix behaviour
--- The three affixes that cannot be a stat. Each is a couple of lines, and each runs on a hook that
--- fires for EVERY damage event on the server -- so both handlers early-out before doing anything
--- that touches an entity variable.
-
--- A player hit a creature. `barbed` reflects half the creature's level back at them.
---
--- ⚠️ Melee only: `e.spell_id` is set for spell damage, and a damage shield that fires on spells is
--- not a damage shield, it is a tax on casting.
-function M.on_damage_given(e)
-	if not traits(here()).champions then return end
-	local dmg = e.damage or 0
-	if dmg <= 0 then return end
-	if e.spell_id and e.spell_id > 0 and e.spell_id < 65535 then return end
-
-	local npc = e.other
-	if not npc or not npc.valid or npc:IsClient() then return end
-	if npc:GetEntityVariable(AFFIX_VAR) ~= "barbed" then return end
-
-	local back = math.floor((npc:GetLevel() or 2) / 2)
-	if back > 0 then e.self:Damage(npc, back, 0, 4, false) end
-end
+-- The two affixes that cannot be a stat. This runs on a hook that fires for EVERY damage event on
+-- the server, so it early-outs before touching an entity variable.
+-- 📌 There were three. `barbed` (reflect half the creature's level on melee) was removed on
+-- 2026-08-18 by owner decision, and its handler went with it rather than being left as a dead
+-- branch -- it hung off `event_damage_given`, which is the hottest hook here, and a check that can
+-- never match is pure cost on every swing every player makes.
 
 -- A creature hit a player. `draining` takes resources, `leeching` heals the creature.
 --

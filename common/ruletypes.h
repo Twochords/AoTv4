@@ -1237,6 +1237,7 @@ RULE_INT(AoT, DCOverpowerMultHardCap, 		400,	"Maximum Heroic Charisma considered
 RULE_REAL(AoT, DamageShieldPotencyMultiplier, 0.5,	"Potency effectiveness multiplier for damage shields.")
 RULE_REAL(AoT, DamageShieldResistMultiplier, 1.0,	"Resist effectiveness multiplier against damage shields.")
 RULE_REAL(AoT, DamageShieldDCMultiplier, 	0.5,	"Difficulty Class effectiveness multiplier for damage shields.")
+RULE_BOOL(AoT, BackstabAnyWeapon,        	true,	"Backstab works with ANY weapon, not only 1H Piercing. Backstab is handed out as a level-up reward to classes with no piercing skill, so the stock restriction made the reward unusable for them.")
 RULE_BOOL(AoT, ShieldAnyClass,          	true,	"/shield works for every class, not just Warriors. Damage splitting is a core group tactic here, not a Warrior perk.")
 RULE_INT(AoT, ShieldMinLevel,           	1,	"Level required to use /shield (stock is 30).")
 RULE_BOOL(AoT, ShieldPermanent,         	true,	"/shield lasts until the pair separate or one dies, instead of the stock 12 seconds.")

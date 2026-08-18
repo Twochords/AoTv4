@@ -1423,6 +1423,7 @@ public:
 		return TaskManager::Instance()->SaveClientState(this, task_state);
 	}
 	inline bool IsTaskStateLoaded() { return task_state != nullptr; }
+	void AoTv4TutorialMark(int task_id);   // AoTv4: tick a Titan Hall objective from a C++-swallowed command
 	inline bool IsTaskActive(int task_id) { return task_state != nullptr && task_state->IsTaskActive(task_id); }
 	inline bool IsTaskActivityActive(int task_id, int activity_id)
 	{

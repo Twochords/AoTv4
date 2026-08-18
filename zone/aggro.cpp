@@ -1734,6 +1734,14 @@ bool Mob::PassCharismaCheck(Mob* caster, uint16 spell_id) {
 	{
 		// Assume this is a harmony/pacify spell
 		// If 'Lull' spell resists, do a second resist check with a charisma modifier AND regular resist checks. If resists agian you gain aggro.
+		//
+		// AoTv4: ⚠️⚠️ RETURNING TRUE HERE MEANS **NO AGGRO** -- the caller is
+		// `else if (!spelltar->PassCharismaCheck(...)) { AddToHateList(...) }` (spells.cpp), so `true`
+		// is "the lull held". Stock gives a failed lull a SECOND chance to pass quietly; a creature
+		// carrying `lull_resist` does not get it, so a lull that fails on it always pulls.
+		if (GetLullResist() >= 0) {
+			return false;
+		}
 		resist_check = ResistSpell(spells[spell_id].resist_type, spell_id, caster, false,0,true);
 		if (resist_check == 100)
 			return true;

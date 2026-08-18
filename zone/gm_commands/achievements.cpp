@@ -13,4 +13,10 @@
 void command_ach(Client *c, const Seperator *sep)
 {
 	achievement_manager.HandleCommand(c, sep);
+
+	// ⚠️ Titan Hall induction step 4 ("Deeds Remembered"). `#ach` is a COMMAND, not a say, so no Lua
+	// hook can see it -- this is the only place that objective can be completed.
+	if (c) {
+		c->AoTv4TutorialMark(2000604);
+	}
 }

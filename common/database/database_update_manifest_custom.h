@@ -5529,6 +5529,1709 @@ UPDATE zone SET min_level = 0 WHERE short_name = 'hateplaneb';
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 60,
+		.description = "2026_08_14_aotv4_zone_xp_realign",
+		// The Allaclone "Zone XP" tab was showing PRE-REBALANCE level ranges. `aotv4_zone_xp` was
+		// hand-authored (§3 records that deliberately -- a computed percentile disagreed with the
+		// owner's list and the authored one shipped), but the npc rebalance then moved every zone's
+		// actual creature levels according to `zone_scaling`, so the authored list stopped describing
+		// the world. 61 of 62 rows disagreed -- Greater Faydark read 1-6 against a real 1-35, the
+		// Dreadlands 5-24 against 3-35.
+		//
+		// 📌 `zone_scaling` is now the authority BECAUSE IT IS THE INPUT THE REBALANCE USED
+		// (aotv4_scaling/npc_level_adjust_main.py remaps each zone's spread onto its min/max), so this
+		// is not swapping an authored list for a guess -- it is pointing the display at the same table
+		// the world was built from.
+		//
+		// ⚠️⚠️ RE-RUN THIS AFTER ANY FUTURE REBALANCE, or the tab silently goes stale again. It is the
+		// standing cost of caching a derived answer in its own table. The alternative -- deriving in
+		// `Client::SearchList` at query time -- would never drift, and is worth doing if this recurs.
+		// ⚠️ Zones with NO `zone_scaling` row keep their authored range (Butcherblock Mountains is the
+		// only one). The join, not a LEFT JOIN, is what protects them.
+		// ⚠️ `label` is untouched. The ten city zones still render as "City" -- §3's point stands that a
+		// level range for a zone with five huntable spawns is noise -- and the numbers behind the label
+		// are simply not displayed.
+		// ⚠️⚠️ DELVE ZONES AND THE RESPLENDENT HUB ARE EXCLUDED EXPLICITLY, NOT INCIDENTALLY. Neither is
+		// in `aotv4_zone_xp` today, so the join alone would already spare them -- but `zone_scaling`
+		// DOES carry all seven (the six DoN maps at 1-10, Resplendent at 90-95), so the moment anyone
+		// adds one to the browse list this migration would start writing a fixed range onto it. §3 is
+		// explicit that delve maps must stay out: their creatures are scaled to the PLAYER, so any
+		// fixed range is not merely wrong, it is actively misleading.
+		// 📌 Keyed on `zone_regions.region_id = 0` ("Always Available") rather than a list of zone ids,
+		// so all 39 delve maps are covered -- the 33 LDoN ones as well as the 6 DoN -- and any future
+		// delve map is covered the day it is added to that region.
+		.check       = R"(SELECT x.zone_id FROM aotv4_zone_xp x
+                          JOIN zone_scaling s ON s.zoneid = x.zone_id
+                          WHERE (x.lo <> s.min_level OR x.hi <> s.max_level)
+                            AND x.zone_id <> 729
+                            AND NOT EXISTS (SELECT 1 FROM zone_regions zr
+                                            WHERE zr.zone_id = x.zone_id AND zr.region_id = 0)
+                          LIMIT 1)",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE aotv4_zone_xp x
+JOIN zone_scaling s ON s.zoneid = x.zone_id
+SET x.lo = s.min_level,
+    x.hi = s.max_level
+WHERE x.zone_id <> 729
+  AND NOT EXISTS (SELECT 1 FROM zone_regions zr
+                  WHERE zr.zone_id = x.zone_id AND zr.region_id = 0);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 61,
+		.description = "2026_08_15_aotv4_travel_marker_npc",
+		// ⚠️⚠️ THE HIDDEN TRAVEL WAYPOINTS DO NOT EXIST ON LIVE WITHOUT THIS, AND THEY FAIL SILENTLY.
+		// `aotv4_travel.lua` and `quests/global/2000500.lua` shipped weeks ago, but the npc_types row
+		// they spawn was only ever a HAND EDIT in the dev database -- it is in no migration and no
+		// custom/sql script. On live `eq.spawn2(2000500, ...)` finds no such npc, returns nothing, and
+		// `spawn_markers` quietly does nothing: no markers, no discovery, no error in any log.
+		// Reported from play as "the waypoints aren't discoverable on the live server".
+		// 📌 The general shape, worth remembering: shipping a FEATURE is code plus data. Everything in
+		// `.devcontainer/repo/quests` travels with a git push; a row typed into this database does not.
+		//
+		// ⚠️ CLONED VIA A TEMP TABLE from `#aemc_trigger` (289045) rather than hand-listing ~100
+		// columns -- the rule CLAUDE.md section 5 records for the custom spell lines. That NPC is also
+		// the appearance reference the marker was matched to field for field: race 240, gender 2,
+		// bodytype 11, size 0, texture 0, both weapon slots 0.
+		// ⚠️⚠️ GENDER 2 IS THE ONE THAT MATTERS. A modelless race still has to be drawn as something,
+		// and at gender 0 the client falls back to a HUMAN MALE -- which is what four rounds of
+		// "the waypoints look like men" screenshots were. Cloning preserves it; do not re-type it.
+		//
+		// ⚠️ `npc_types` is NOT shared memory -- it loads at zone boot, so this needs a zone restart
+		// but no `./shared_memory` rebuild.
+		.check       = "SELECT id FROM npc_types WHERE id = 2000500",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+CREATE TEMPORARY TABLE aotv4_marker_tmp LIKE npc_types;
+INSERT INTO aotv4_marker_tmp SELECT * FROM npc_types WHERE id = 289045;
+
+UPDATE aotv4_marker_tmp SET
+  id                = 2000500,
+  name              = 'a_forgotten_waypoint',
+  lastname          = '',
+  level             = 1,
+  hp                = 11,
+  mana              = 0,
+  mindmg            = 1,
+  maxdmg            = 8,
+  -- ⚠️ aggroradius 0: a marker must never pull. #aemc_trigger ships 45.
+  aggroradius       = 0,
+  assistradius      = 0,
+  -- ⚠️ untargetable 1 so nobody can select it; bodytype 11 already suppresses the name.
+  untargetable      = 1,
+  trackable         = 0,
+  runspeed          = 0,
+  special_abilities = '',
+  npc_faction_id    = 0,
+  loottable_id      = 0,
+  npc_spells_id     = 0;
+
+INSERT INTO npc_types SELECT * FROM aotv4_marker_tmp;
+DROP TEMPORARY TABLE aotv4_marker_tmp;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 62,
+		.description = "2026_08_15_aotv4_remove_butcher_docks_book",
+		// Butcherblock had TWO Plane of Knowledge books -- doorid 78 by the Kaladim zone line, and
+		// doorid 179 at the Docks. The Docks one was removed in dev when the discoverable travel
+		// waypoint replaced it (see pok_travel.book_override), but that was a hand edit and never
+		// reached live, so live players still have both the book and the waypoint for one destination.
+		//
+		// ⚠️⚠️ THE DESTINATION IS NOT LOST. `butcherdocks` stays in `pok_portals` and is still granted
+		// by the hub book's `grant_sets`, so nobody loses the waypoint -- only the way to FIND it in
+		// the field changes, from clicking a book to walking over the hidden spot.
+		//
+		// ⚠️⚠️ IT MUST NEVER DELETE THE LAST BOOK IN THE ZONE. Doorid 78 is the Kaladim book and is
+		// staying; the EXISTS clause makes that structural rather than a matter of getting the doorid
+		// right. If live's doors were ever renumbered and 179 is something else, the condition simply
+		// does not match and this does nothing -- which is the correct failure direction for a DELETE.
+		// 📌 The mirror of migration v57's problem, which had to avoid ADDING a second book on live and
+		// keyed on the zone rather than a doorid for the same reason: door ids are not reliable across
+		// environments, because some of these were placed by hand.
+		//
+		// ⚠️ Doors load from the DB at ZONE BOOT, not shared memory -- a zone restart applies this.
+		.check       = "SELECT id FROM doors WHERE zone = 'butcher' AND doorid = 179 AND dest_zone = 'poknowledge'",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM doors
+WHERE zone = 'butcher'
+  AND doorid = 179
+  AND dest_zone = 'poknowledge'
+  AND EXISTS (
+        SELECT 1 FROM (SELECT zone, doorid, dest_zone FROM doors) AS keep
+        WHERE keep.zone = 'butcher' AND keep.dest_zone = 'poknowledge' AND keep.doorid <> 179
+      );
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 63,
+		.description = "2026_08_15_aotv4_clamp_specializations",
+		// One-off cleanup for the spell-specialization reset. `global_player.max_skills_for_level` used
+		// to raise skills 66-70 to their cap along with everything else, and the caps here run to
+		// 300-525 for all sixteen classes -- so every caster ended up with FIVE specializations above
+		// 50. `Client::GetMaxSkillAfterSpecializationRules` (zone/client.cpp:3512) permits exactly one,
+		// and when it finds more it does not clamp, it RESETS ALL FIVE TO 1 mid-combat with a red
+		// message. Reported from play as specializations "resetting randomly" at level 23.
+		//
+		// The Lua no longer raises them (they rise by casting, as on live), but characters who already
+		// hold several above 50 would each take that reset once more on their next cast. This demotes
+		// every specialization except the strongest back to 50, which is exactly what the engine would
+		// have capped them at, so nobody sees the message and nobody loses their real specialization.
+		//
+		// ⚠️ TIES ARE BROKEN BY THE LOWEST skill_id. Without that, two specializations sitting at the
+		// same top value both stay above 50 and the reset fires anyway -- the cleanup would look like it
+		// had run while changing nothing for the very characters it exists to protect.
+		// 📌 Specializations are wiped on death by design: `skill_caps` has no row below level 5, so
+		// MaxSkill is 0 at level 1 and max_skills_for_level's zeroing branch clears them. This migration
+		// only matters for characters mid-run when the fix lands.
+		.check       = R"(SELECT id FROM character_skills WHERE skill_id BETWEEN 66 AND 70 AND value > 50
+                          GROUP BY id HAVING COUNT(*) > 1 LIMIT 1)",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+CREATE TEMPORARY TABLE aotv4_spec_keep AS
+SELECT c.id AS char_id, MIN(c.skill_id) AS keep_skill
+FROM character_skills c
+JOIN (
+    SELECT id, MAX(value) AS top FROM character_skills
+    WHERE skill_id BETWEEN 66 AND 70 GROUP BY id
+) t ON t.id = c.id AND c.value = t.top
+WHERE c.skill_id BETWEEN 66 AND 70
+GROUP BY c.id;
+
+UPDATE character_skills c
+JOIN aotv4_spec_keep k ON k.char_id = c.id
+SET c.value = 50
+WHERE c.skill_id BETWEEN 66 AND 70
+  AND c.value > 50
+  AND c.skill_id <> k.keep_skill;
+
+DROP TEMPORARY TABLE aotv4_spec_keep;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 64,
+		.description = "2026_08_16_aotv4_travel_marker_portal",
+		// The travel waypoints become VISIBLE PORTALS instead of invisible triggers.
+		//
+		// Copied from `a_giant_portal` (209117, Bastion of Thunder): race **329** (Race::Portal),
+		// gender 2, size 20, texture 0, **bodytype 11**. That NPC is the proof the combination works --
+		// it is stock, it uses this exact race WITH bodytype 11, and 11 is NoTarget: no name plate and
+		// nothing to target, so the marker renders and still cannot be attacked or killed.
+		// ⚠️ bodytype 11 does NOT hide it. Invisibility is "body types above 64" (common/bodytypes.h);
+		// 11 only suppresses the name and the target. That is exactly the pair we want here.
+		//
+		// ⚠️⚠️ THE MODEL DOES NOT EXIST IN MOST ZONES WITHOUT A CLIENT FILE. A race only renders where
+		// the zone's `_chr` archive carries it, and race 329 lives in `bothunder_chr` -- Bastion of
+		// Thunder is the ONLY zone that spawns it. `aotv4_client_install/Resources/GlobalLoad_chr.txt`
+		// gains a `bothunder,bothunder_chr` line (18 entries -> 19) so it loads everywhere.
+		// 📌 No .s3d has to be distributed: RoF2 ships every zone, so the archive is already on each
+		// player's disk. Only the small text file changes.
+		// ⚠️ WITHOUT that client file the marker renders as NOTHING and the waypoints silently stop
+		// being visible -- the same failure class as the missing npc row in v61.
+		.check       = "SELECT id FROM npc_types WHERE id = 2000500 AND race <> 329",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE npc_types SET
+  race         = 329,
+  gender       = 2,
+  size         = 20,
+  texture      = 0,
+  helmtexture  = 0,
+  bodytype     = 11,
+  untargetable = 1,
+  trackable    = 0,
+  d_melee_texture1 = 0,
+  d_melee_texture2 = 0
+WHERE id = 2000500;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 65,
+		.description = "2026_08_16_aotv4_travel_marker_bonfire",
+		// FINAL appearance for the travel waypoints: a campfire, not the portal v64 set.
+		// Race **567** (Race::Campfire), gender 2, **size 6** (the stock size), bodytype 11.
+		// v64's race 329 portal worked, but the bonfire was preferred once both were seen side by side;
+		// v64 is left in history rather than edited so the sequence stays honest.
+		//
+		// ⚠️ bodytype 11 is what makes it unkillable -- NoTarget, so no name plate and nothing to
+		// target. It does NOT hide the model: invisibility is "body types above 64"
+		// (common/bodytypes.h). Visible AND untargetable is exactly the pair a marker wants.
+		// ⚠️ gender 2. A modelless or mis-gendered race falls back to a HUMAN MALE, which is what four
+		// rounds of "the waypoints look like men" screenshots were.
+		//
+		// ⚠️⚠️ REQUIRES `guildlobby,guildlobby_chr` IN THE CLIENT'S Resources\GlobalLoad_chr.txt.
+		// A race only draws where the zone's own `_chr` archive carries it, and of the 37 zones that
+		// spawn race 567 only TWO are S3D era -- `guildlobby` (expansion 9) and our own `resplendent`.
+		// The other 35 are HoT/VoA/RoF, which ship as EQG and which this loader silently ignores.
+		// 📌 No .s3d is distributed: RoF2 ships every zone, so the archive is already on each player's
+		// disk. Only the text file changes.
+		// ⚠️ Without that file the marker draws as a HUMAN MALE -- not as nothing -- so a player with a
+		// stale client sees a man standing in a field and nothing anywhere reports a problem.
+		.check       = "SELECT id FROM npc_types WHERE id = 2000500 AND (race <> 567 OR size <> 6)",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE npc_types SET
+  race         = 567,
+  gender       = 2,
+  size         = 6,
+  texture      = 0,
+  helmtexture  = 0,
+  bodytype     = 11,
+  untargetable = 1,
+  trackable    = 0,
+  d_melee_texture1 = 0,
+  d_melee_texture2 = 0
+WHERE id = 2000500;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 66,
+		.description = "2026_08_16_aotv4_clear_iceclad_waypoint_camp",
+		// The Iceclad travel waypoint lands arrivals inside a camp. Four spawn points sit 34-48 units
+		// from it -- `a_shadow_guardian` (level 18) and `#pulsating_icestorm` (level 19) -- and they
+		// were killing players the moment they stepped through. Reported from play.
+		//
+		// ⚠️⚠️ KEYED ON DISTANCE FROM THE WAYPOINT, NOT ON spawn2 IDS. Those ids are not guaranteed to
+		// match between this database and live, and deleting a hardcoded id list there could remove
+		// four completely unrelated spawn points in another part of the zone. The coordinates are the
+		// stable handle -- they come from `aotv4_travel.M.SPOTS.iceclad`.
+		//
+		// ⚠️ 60 units is deliberately tight. The next spawn point out is at **160**, so the radius sits
+		// in a real gap rather than cutting an arbitrary line through a populated area -- it removes
+		// the four on top of the arrival and nothing else.
+		// 📌 This is STOCK VELIOUS CONTENT being deleted, in a zone banded 9-25 where level 18-19 is
+		// perfectly appropriate. The alternative was moving the waypoint instead, which costs no
+		// content -- worth remembering if more of these turn up, because deleting a camp per waypoint
+		// does not scale and the owner picked these coordinates deliberately.
+		//
+		// ⚠️ Only `spawn2` rows are removed -- the spawn POINTS. `spawnentry` and `spawngroup` are left
+		// alone because a group can be shared by other points elsewhere in the zone, and an orphaned
+		// group is inert. The npc_types rows are untouched, so the creatures still exist everywhere
+		// else they spawn.
+		// ⚠️ Doors and spawns load at ZONE BOOT, not shared memory: a zone restart applies this.
+		.check       = R"(SELECT id FROM spawn2 WHERE zone = 'iceclad'
+                          AND SQRT(POW(x - 2831.24, 2) + POW(y - 1715.48, 2)) < 60 LIMIT 1)",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spawn2
+WHERE zone = 'iceclad'
+  AND SQRT(POW(x - 2831.24, 2) + POW(y - 1715.48, 2)) < 60;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 67,
+		.description = "2026_08_16_aotv4_heal_lines",
+		// Three heal lines the pool did not have below the level cap. Measured before writing:
+		// of everything learnable at 1-30, there were **2** fast single-target heals, **1** group
+		// heal-over-time, and the lowest group heal was `Word of Health` at level **30** -- the cap --
+		// so group healing effectively did not exist on this server at all.
+		//
+		//   44530-44535  Mending Touch I-VI    fast single heal   (clone of 3684 Light of Life)
+		//   44536-44541  Circle of Health I-VI group heal         (clone of 135 Word of Health)
+		//   44542-44547  Circle of Renewal I-VI group heal/tick   (clone of 137 Pack Regeneration)
+		//
+		// ⚠️⚠️ CLONED VIA A TEMP TABLE, never by hand-listing the ~236 columns -- CLAUDE.md §5's rule
+		// for every custom spell line here.
+		// ⚠️⚠️ **formula1 = 100 AND max1 = 0 ON EVERY TIER.** A clone inherits its template's damage
+		// formula, and formula 1-99 means `base + caster_level * formula`. `Word of Health` ships
+		// formula 7 / max 485, so an uncorrected clone would heal for hundreds more than its number
+		// says and climb with level -- which destroys a hand-tuned ladder. §5 records the Sinew line
+		// losing a day to exactly this.
+		// 📌 The templates were chosen partly because two of the three are ALREADY static: Light of
+		// Life and Pack Regeneration are formula 100. Only Word of Health needed correcting -- but all
+		// three are forced, so a future re-clone from a different template cannot reintroduce it.
+		//
+		// ⚠️ Group only, as asked. `Word of Health` is targettype 3 and `Pack Regeneration` is 41;
+		// `SpellFinished` falls both through to the same ST_Group case, so neither reaches non-group.
+		// ⚠️ Levels 8/18/28/38/48/58 to match the existing custom lines. Tiers IV-VI are unreachable at
+		// today's cap of 30 and are deliberately built anyway, for when the cap rises.
+		// ⚠️ Opened to all sixteen classes, like every other pool spell (§14).
+		//
+		// ⚠️⚠️ `spells_new` IS SHARED MEMORY. World applying this at boot is NOT enough -- stop the
+		// stack, run ./shared_memory, restart, or no zone can see these rows.
+		// ⚠️⚠️ AND THEY ARE NOT OFFERED UNTIL THE GENERATOR KNOWS THE BAND. gen_stock_pool.pl pulls
+		// 43300-43349 wholesale; 44530-44599 is added there in the same commit. Without it these are
+		// three perfect spell lines nobody can ever roll.
+		.check       = "SELECT id FROM spells_new WHERE id = 44547",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+CREATE TEMPORARY TABLE aotv4_heal_tmp LIKE spells_new;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 3684;
+UPDATE aotv4_heal_tmp SET
+  id = 44530, `name` = 'Mending Touch I', descnum = 44530,
+  effect_base_value1 = 45, formula1 = 100, max1 = 0,
+  mana = 25, classes1=classes1*0+8, classes2=8, classes3=8, classes4=8,
+  classes5=8, classes6=8, classes7=8, classes8=8, classes9=8, classes10=8,
+  classes11=8, classes12=8, classes13=8, classes14=8, classes15=8, classes16=8;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 3684;
+UPDATE aotv4_heal_tmp SET
+  id = 44531, `name` = 'Mending Touch II', descnum = 44531,
+  effect_base_value1 = 100, formula1 = 100, max1 = 0,
+  mana = 55, classes1=classes1*0+18, classes2=18, classes3=18, classes4=18,
+  classes5=18, classes6=18, classes7=18, classes8=18, classes9=18, classes10=18,
+  classes11=18, classes12=18, classes13=18, classes14=18, classes15=18, classes16=18;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 3684;
+UPDATE aotv4_heal_tmp SET
+  id = 44532, `name` = 'Mending Touch III', descnum = 44532,
+  effect_base_value1 = 150, formula1 = 100, max1 = 0,
+  mana = 85, classes1=classes1*0+28, classes2=28, classes3=28, classes4=28,
+  classes5=28, classes6=28, classes7=28, classes8=28, classes9=28, classes10=28,
+  classes11=28, classes12=28, classes13=28, classes14=28, classes15=28, classes16=28;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 3684;
+UPDATE aotv4_heal_tmp SET
+  id = 44533, `name` = 'Mending Touch IV', descnum = 44533,
+  effect_base_value1 = 220, formula1 = 100, max1 = 0,
+  mana = 130, classes1=classes1*0+38, classes2=38, classes3=38, classes4=38,
+  classes5=38, classes6=38, classes7=38, classes8=38, classes9=38, classes10=38,
+  classes11=38, classes12=38, classes13=38, classes14=38, classes15=38, classes16=38;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 3684;
+UPDATE aotv4_heal_tmp SET
+  id = 44534, `name` = 'Mending Touch V', descnum = 44534,
+  effect_base_value1 = 300, formula1 = 100, max1 = 0,
+  mana = 180, classes1=classes1*0+48, classes2=48, classes3=48, classes4=48,
+  classes5=48, classes6=48, classes7=48, classes8=48, classes9=48, classes10=48,
+  classes11=48, classes12=48, classes13=48, classes14=48, classes15=48, classes16=48;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 3684;
+UPDATE aotv4_heal_tmp SET
+  id = 44535, `name` = 'Mending Touch VI', descnum = 44535,
+  effect_base_value1 = 450, formula1 = 100, max1 = 0,
+  mana = 260, classes1=classes1*0+58, classes2=58, classes3=58, classes4=58,
+  classes5=58, classes6=58, classes7=58, classes8=58, classes9=58, classes10=58,
+  classes11=58, classes12=58, classes13=58, classes14=58, classes15=58, classes16=58;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 135;
+UPDATE aotv4_heal_tmp SET
+  id = 44536, `name` = 'Circle of Health I', descnum = 44536,
+  effect_base_value1 = 35, formula1 = 100, max1 = 0,
+  mana = 40, classes1=classes1*0+8, classes2=8, classes3=8, classes4=8,
+  classes5=8, classes6=8, classes7=8, classes8=8, classes9=8, classes10=8,
+  classes11=8, classes12=8, classes13=8, classes14=8, classes15=8, classes16=8;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 135;
+UPDATE aotv4_heal_tmp SET
+  id = 44537, `name` = 'Circle of Health II', descnum = 44537,
+  effect_base_value1 = 80, formula1 = 100, max1 = 0,
+  mana = 90, classes1=classes1*0+18, classes2=18, classes3=18, classes4=18,
+  classes5=18, classes6=18, classes7=18, classes8=18, classes9=18, classes10=18,
+  classes11=18, classes12=18, classes13=18, classes14=18, classes15=18, classes16=18;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 135;
+UPDATE aotv4_heal_tmp SET
+  id = 44538, `name` = 'Circle of Health III', descnum = 44538,
+  effect_base_value1 = 120, formula1 = 100, max1 = 0,
+  mana = 140, classes1=classes1*0+28, classes2=28, classes3=28, classes4=28,
+  classes5=28, classes6=28, classes7=28, classes8=28, classes9=28, classes10=28,
+  classes11=28, classes12=28, classes13=28, classes14=28, classes15=28, classes16=28;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 135;
+UPDATE aotv4_heal_tmp SET
+  id = 44539, `name` = 'Circle of Health IV', descnum = 44539,
+  effect_base_value1 = 175, formula1 = 100, max1 = 0,
+  mana = 210, classes1=classes1*0+38, classes2=38, classes3=38, classes4=38,
+  classes5=38, classes6=38, classes7=38, classes8=38, classes9=38, classes10=38,
+  classes11=38, classes12=38, classes13=38, classes14=38, classes15=38, classes16=38;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 135;
+UPDATE aotv4_heal_tmp SET
+  id = 44540, `name` = 'Circle of Health V', descnum = 44540,
+  effect_base_value1 = 240, formula1 = 100, max1 = 0,
+  mana = 290, classes1=classes1*0+48, classes2=48, classes3=48, classes4=48,
+  classes5=48, classes6=48, classes7=48, classes8=48, classes9=48, classes10=48,
+  classes11=48, classes12=48, classes13=48, classes14=48, classes15=48, classes16=48;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 135;
+UPDATE aotv4_heal_tmp SET
+  id = 44541, `name` = 'Circle of Health VI', descnum = 44541,
+  effect_base_value1 = 350, formula1 = 100, max1 = 0,
+  mana = 420, classes1=classes1*0+58, classes2=58, classes3=58, classes4=58,
+  classes5=58, classes6=58, classes7=58, classes8=58, classes9=58, classes10=58,
+  classes11=58, classes12=58, classes13=58, classes14=58, classes15=58, classes16=58;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 137;
+UPDATE aotv4_heal_tmp SET
+  id = 44542, `name` = 'Circle of Renewal I', descnum = 44542,
+  effect_base_value1 = 15, formula1 = 100, max1 = 0,
+  mana = 35, classes1=classes1*0+8, classes2=8, classes3=8, classes4=8,
+  classes5=8, classes6=8, classes7=8, classes8=8, classes9=8, classes10=8,
+  classes11=8, classes12=8, classes13=8, classes14=8, classes15=8, classes16=8, buffduration = 4, buffdurationformula = 100;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 137;
+UPDATE aotv4_heal_tmp SET
+  id = 44543, `name` = 'Circle of Renewal II', descnum = 44543,
+  effect_base_value1 = 35, formula1 = 100, max1 = 0,
+  mana = 80, classes1=classes1*0+18, classes2=18, classes3=18, classes4=18,
+  classes5=18, classes6=18, classes7=18, classes8=18, classes9=18, classes10=18,
+  classes11=18, classes12=18, classes13=18, classes14=18, classes15=18, classes16=18, buffduration = 4, buffdurationformula = 100;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 137;
+UPDATE aotv4_heal_tmp SET
+  id = 44544, `name` = 'Circle of Renewal III', descnum = 44544,
+  effect_base_value1 = 50, formula1 = 100, max1 = 0,
+  mana = 125, classes1=classes1*0+28, classes2=28, classes3=28, classes4=28,
+  classes5=28, classes6=28, classes7=28, classes8=28, classes9=28, classes10=28,
+  classes11=28, classes12=28, classes13=28, classes14=28, classes15=28, classes16=28, buffduration = 4, buffdurationformula = 100;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 137;
+UPDATE aotv4_heal_tmp SET
+  id = 44545, `name` = 'Circle of Renewal IV', descnum = 44545,
+  effect_base_value1 = 75, formula1 = 100, max1 = 0,
+  mana = 190, classes1=classes1*0+38, classes2=38, classes3=38, classes4=38,
+  classes5=38, classes6=38, classes7=38, classes8=38, classes9=38, classes10=38,
+  classes11=38, classes12=38, classes13=38, classes14=38, classes15=38, classes16=38, buffduration = 4, buffdurationformula = 100;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 137;
+UPDATE aotv4_heal_tmp SET
+  id = 44546, `name` = 'Circle of Renewal V', descnum = 44546,
+  effect_base_value1 = 100, formula1 = 100, max1 = 0,
+  mana = 260, classes1=classes1*0+48, classes2=48, classes3=48, classes4=48,
+  classes5=48, classes6=48, classes7=48, classes8=48, classes9=48, classes10=48,
+  classes11=48, classes12=48, classes13=48, classes14=48, classes15=48, classes16=48, buffduration = 4, buffdurationformula = 100;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+INSERT INTO aotv4_heal_tmp SELECT * FROM spells_new WHERE id = 137;
+UPDATE aotv4_heal_tmp SET
+  id = 44547, `name` = 'Circle of Renewal VI', descnum = 44547,
+  effect_base_value1 = 150, formula1 = 100, max1 = 0,
+  mana = 380, classes1=classes1*0+58, classes2=58, classes3=58, classes4=58,
+  classes5=58, classes6=58, classes7=58, classes8=58, classes9=58, classes10=58,
+  classes11=58, classes12=58, classes13=58, classes14=58, classes15=58, classes16=58, buffduration = 4, buffdurationformula = 100;
+INSERT INTO spells_new SELECT * FROM aotv4_heal_tmp; TRUNCATE aotv4_heal_tmp;
+DROP TEMPORARY TABLE aotv4_heal_tmp;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 68,
+		.description = "2026_08_16_aotv4_clear_freeporttheater",
+		// Empties `freeporttheater` so it can be rebuilt as a tradeskill hub. It ships as an undead
+		// theatre: 22 npc_types (390000-390021), levels 66-71, across 42 spawn2 rows -- zombies,
+		// skeletal musicians, maidens of the night, a shadowy figure and two walking disasters.
+		//
+		// ⚠️⚠️ THE SPAWN ROWS GO, THE `npc_types` STAY. Deleting the types would be the destructive
+		// half of a reversible change: it loses the record of what the zone was, and this migration
+		// could never be undone. Nothing else references them -- VERIFIED that all 22 appear in no
+		// other zone's spawn table -- so leaving them costs 22 unused rows and buys the revert.
+		//
+		// ⚠️ Deletes spawn2 FIRST, then the now-orphaned spawnentry/spawngroup rows, keyed off the
+		// spawngroupIDs the zone owned. Reversing that order loses the key before it is used.
+		// ⚠️ Scoped by `spawn2.zone`, never by the npc_types id band: an id range is a guess about
+		// what lives where, the zone column is the fact.
+		//
+		// ⚠️⚠️ A ZONE READS ITS SPAWNS AT BOOT, so this does nothing to a zone process already
+		// running -- `#repop` in the zone, or let it idle out and reboot. That is also why applying
+		// this by hand while standing in the theatre appears to do nothing until one of the two.
+		//
+		// 📌 The zone still needs two GATES before a player can walk in, and neither is done here
+		// because both are placement decisions: a `zone_regions` row (it sits in region 99 "Unused")
+		// and `bypass_expansion_check = 1` (it is expansion 11 against CurrentExpansion 0). CLAUDE.md
+		// section 24 records that exact pair blocking the whole LDoN half of the delve ladder, and
+		// section 41 records the GM flag hiding the second one twice -- test as a NON-GM.
+		.check       = "SELECT id FROM spawn2 WHERE zone = 'freeporttheater'",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+CREATE TEMPORARY TABLE aotv4_fpt_sg AS
+  SELECT DISTINCT spawngroupID FROM spawn2 WHERE zone = 'freeporttheater';
+DELETE FROM spawn2 WHERE zone = 'freeporttheater';
+DELETE FROM spawnentry WHERE spawngroupID IN (SELECT spawngroupID FROM aotv4_fpt_sg);
+DELETE FROM spawngroup WHERE id IN (SELECT spawngroupID FROM aotv4_fpt_sg);
+DROP TEMPORARY TABLE aotv4_fpt_sg;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 69,
+		.description = "2026_08_16_aotv4_hub_guards",
+		// Twenty placeable guards for the freeporttheater tradeskill hub, ids 2000600-2000619.
+		//
+		// ⚠️⚠️ TWENTY SEPARATE npc_types, NOT ONE PLACED TWENTY TIMES -- and that is the whole point.
+		// `#npcedit` writes the npc_types row, so twenty spawns of one type re-skin as a single unit;
+		// twenty rows can each be given their own race, texture and size. The cost is twenty rows to
+		// maintain, which is the right trade for guards that are meant to be dressed individually.
+		//
+		// ⚠️⚠️ CLONED VIA A TEMP TABLE from `Guardian_Vaehan` (202096), never by hand-listing ~100
+		// columns -- CLAUDE.md section 5's rule. That NPC is PoK's own guard: level 99, class 1,
+		// 10791 hp, runspeed 1.25. Level 99 is deliberate here (a hub guard should not be killable)
+		// and is unrelated to the "no level 99 loot hosts" rule, which is about drop sources.
+		//
+		// ⚠️ `npc_faction_id = 0` -- no faction, so they neither aggro anyone nor are aggroed. A hub
+		// guard that picks fights is worse than no guard. `aggroradius`/`assistradius` 0 for the same
+		// reason. loottable/merchant/spells cleared so a stray kill drops nothing.
+		//
+		// ⚠️⚠️ RACE 570 IS A STEAM SUIT, AND ITS ARCHIVE IS NOT STOCK. A model only renders
+		// in a zone whose `_chr` archive carries it, and 467 lives in `illsalin_chr` and
+		// `devastation_chr`, both already in `Resources/GlobalLoad_chr.txt`. The swinetor race 696
+		// asked for first is expansion 16-18, the same era as the five archives that were tried for
+		// the delve wardens and FAILED -- so it is very likely to render as an untextured placeholder,
+		// silently, with nothing wrong server side. Re-skin freely, but check the archive first.
+		// 📌 Other proven-loadable options: 458 Deep Orc (size 7.6), 489 Takish (6.0).
+		.check       = "SELECT id FROM npc_types WHERE id = 2000619",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+CREATE TEMPORARY TABLE aotv4_guard_tmp LIKE npc_types;
+INSERT INTO aotv4_guard_tmp SELECT * FROM npc_types WHERE id = 202096;
+UPDATE aotv4_guard_tmp SET
+  race = 570, gender = 2, texture = 3, helmtexture = 3, size = 10, lastname = 'Guard',
+  npc_faction_id = 0, loottable_id = 0, merchant_id = 0, npc_spells_id = 0,
+  aggroradius = 0, assistradius = 0;
+UPDATE aotv4_guard_tmp SET id = 2000600, `name` = 'Fizzwick_Cogsprocket';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000601, `name` = 'Bimbly_Gearhart';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000602, `name` = 'Nizzle_Boltwrench';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000603, `name` = 'Grimble_Steamcog';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000604, `name` = 'Tannik_Pistonwhistle';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000605, `name` = 'Zeppo_Ironbellows';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000606, `name` = 'Wimbly_Sprocketfuse';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000607, `name` = 'Dandik_Coilspring';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000608, `name` = 'Pemblo_Brasscasing';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000609, `name` = 'Krinkle_Valveturner';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000610, `name` = 'Jonnik_Gearlock';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000611, `name` = 'Vizzik_Steamvent';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000612, `name` = 'Bobbik_Rivetclank';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000613, `name` = 'Snerdle_Copperbolt';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000614, `name` = 'Tinwick_Flywheel';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000615, `name` = 'Podge_Hammerclank';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000616, `name` = 'Wexler_Sootgear';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000617, `name` = 'Mimbik_Torquewell';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000618, `name` = 'Rennik_Axlegrind';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+UPDATE aotv4_guard_tmp SET id = 2000619, `name` = 'Zaffle_Boilerplate';
+INSERT INTO npc_types SELECT * FROM aotv4_guard_tmp;
+DROP TEMPORARY TABLE aotv4_guard_tmp;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 70,
+		.description = "2026_08_17_aotv4_origin",
+		// Turns the stock AA `Origin` (331) into the hub-return ability: teleports to the artisan hub
+		// in freeporttheater, out of combat only, 18 minute reuse, cost 0, single rank.
+		//
+		// ⚠️⚠️ IT WAS `enabled = 0`, WHICH MEANS THE AA DOES NOT EXIST AT RUNTIME. `zone/aa.cpp:1823`
+		// loads only enabled rows, so before this it could be offered, granted, and silently refused
+		// with nothing logged anywhere (CLAUDE.md section 32 records the same trap on the masteries).
+		//
+		// ⚠️⚠️ SPA 322 CANNOT BE AIMED. `GateToHomeCity` is hardcoded to `GoToBind(4)`
+		// (`spell_effects.cpp:2696`) and carries no destination fields at all, so effect 1 becomes
+		// SPA 83 `Teleport`, which reads its target off the base values.
+		// ⚠️⚠️ AND THE COORDINATE ORDER IS SWAPPED TWICE OVER. `SE_Teleport` reads
+		// `x = base_value[1]; y = base_value[0]` (`spell_effects.cpp:563`), so effect_base_value1 is
+		// **Y** and 2 is **X**; in-game `/loc` also prints Y,X,Z (section 11). Both swaps cancel here,
+		// but writing either in the obvious order lands the player tens of units away. Verified
+		// against the native ring spells (530 Ring of Karana, 531 Ring of Commons).
+		//
+		// ⚠️ OUT OF COMBAT is native, not code: `InCombat = 0, OutofCombat = 1` is enforced by
+		// `Mob::CheckCastRestrictions` (`zone/spells.cpp:601`) against `GetAggroCount()`, the same
+		// predicate delve entry and the difficulty shift use. ⚠️ That check only fires on a
+		// BENEFICIAL spell -- Origin is goodEffect 1 so it bites; the same columns on a detrimental
+		// spell do nothing at all.
+		//
+		// ⚠️ `level_req` 5 -> 1. Every other pool AA is level 1 (aotv4_aa_level1.sql); left at 5 a new
+		// character is refused with no message. `grant_only = 1` matches the rest of the pool and
+		// keeps it out of the native AA window, which is correct now that the picker owns AA (§45).
+		//
+		// ⚠️ The description is rewritten because it still said "transported back to your starting
+		// city". ⚠️⚠️ The CLIENT resolves that string from its own dbstr_us.txt, so this changes
+		// nothing in game until ./export_client_files runs and the file ships to players.
+		//
+		// ⚠️⚠️ `spells_new` IS SHARED MEMORY -- world down, ./shared_memory, restart. World applying
+		// this at boot is NOT enough. `aa_ability`/`aa_ranks`/`db_str` need only a zone restart.
+		// 📌 `aa_pool.lua` is regenerated in the same commit: an enabled AA missing from the pool is
+		// never offered, which is the silent inverse of the enabled=0 trap above.
+		.check       = "SELECT id FROM aa_ability WHERE id = 331 AND enabled = 1",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE aa_ability SET enabled = 1, grant_only = 1 WHERE id = 331;
+UPDATE aa_ranks SET level_req = 1 WHERE id = (SELECT first_rank_id FROM (SELECT first_rank_id FROM aa_ability WHERE id = 331) x);
+UPDATE spells_new SET effectid1 = 83, effect_base_value1 = -53, effect_base_value2 = -10,
+  effect_base_value3 = -27, effect_base_value4 = 0, teleport_zone = 'freeporttheater',
+  InCombat = 0, OutofCombat = 1
+WHERE id = 5824;
+UPDATE db_str SET value = 'Upon using this ability, you are transported to the Theater of the Tranquil, the artisan hub. Cannot be used in combat. This ability is usable every 18 minutes.'
+WHERE id = 1000 AND type = 4;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 71,
+		.description = "2026_08_17_aotv4_titan_hall_npcs",
+		// The ten Titan Hall induction quest givers in `freeporttheater`, one per button on the /aot
+		// menu (`lua_modules/aotv4_tutorial.lua`, HUB_TUTORIAL_DESIGN.md). ids 2000620-2000629, sitting
+		// directly above the twenty hub guards v69 created at 2000600-2000619.
+		//
+		// ⚠️⚠️ THESE EXISTED IN DEV ONLY, APPLIED BY HAND, AND WOULD NEVER HAVE REACHED LIVE. The rows
+		// were written straight into the dev database while `custom_version` had already advanced past
+		// this point, which is the section 2 trap exactly: the payload lands, the version does not, and
+		// nothing is visibly wrong until somebody plays on the other server. Section 25 states the rule
+		// this migration exists to obey -- prefer a condition-gated migration over a hand-run
+		// `custom/sql` script, because a migration applies itself when world boots on live and no-ops
+		// where the rows are already present.
+		//
+		// ⚠️ Cloned from stock 202096 Guardian_Vaehan VIA A TEMPORARY TABLE, the way v69 built the
+		// guards, so every npc_types column stays byte-identical to a working NPC; never hand-list the
+		// columns (section 5). Only EIGHT differ from the template, established by diffing the live dev
+		// rows against it: id, name, lastname, level, race, gender, texture, size, aggroradius.
+		//
+		// ⚠️ `aggroradius = 0` is what makes them safe to stand next to -- the template is a level 99
+		// guardian carrying a 70 unit radius. `npc_faction_id`, `loottable_id`, `merchant_id` and
+		// `npc_spells_id` are all already 0 on the template, so an induction NPC cannot end up KOS to
+		// anybody or open an empty merchant window -- the two failures section 11 records against the
+		// Resplendent hub NPCs.
+		//
+		// ⚠️⚠️ THIS DOES NOT SPAWN THEM. `npc_types` says only what an NPC IS; a
+		// spawngroup/spawnentry/spawn2 chain is what puts one in the world. Placement is being done by
+		// hand in game and captured separately, so until that lands these ten exist and are completely
+		// unreachable -- which is the state this migration was written in, not an oversight.
+		//
+		// ⚠️ INSERT IGNORE rather than INSERT, and the check keys on the LAST id created (section 44):
+		// a run interrupted part way then re-runs cleanly instead of aborting on the first duplicate.
+		.check       = "SELECT id FROM npc_types WHERE id = 2000629",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+CREATE TEMPORARY TABLE aotv4_hall_tmp LIKE npc_types;
+INSERT INTO aotv4_hall_tmp SELECT * FROM npc_types WHERE id = 202096;
+UPDATE aotv4_hall_tmp SET
+  lastname = 'Titan Hall', level = 70, race = 12, texture = 0, size = 3, aggroradius = 0;
+UPDATE aotv4_hall_tmp SET id = 2000620, `name` = 'Loremaster_Ythel', gender = 0;
+INSERT IGNORE INTO npc_types SELECT * FROM aotv4_hall_tmp;
+UPDATE aotv4_hall_tmp SET id = 2000621, `name` = 'Drillmaster_Kort', gender = 1;
+INSERT IGNORE INTO npc_types SELECT * FROM aotv4_hall_tmp;
+UPDATE aotv4_hall_tmp SET id = 2000622, `name` = 'Quartermaster_Bindle', gender = 0;
+INSERT IGNORE INTO npc_types SELECT * FROM aotv4_hall_tmp;
+UPDATE aotv4_hall_tmp SET id = 2000623, `name` = 'Broker_Sarine', gender = 0;
+INSERT IGNORE INTO npc_types SELECT * FROM aotv4_hall_tmp;
+UPDATE aotv4_hall_tmp SET id = 2000624, `name` = 'Chronicler_Vess', gender = 1;
+INSERT IGNORE INTO npc_types SELECT * FROM aotv4_hall_tmp;
+UPDATE aotv4_hall_tmp SET id = 2000625, `name` = 'Archivist_Talvo', gender = 0;
+INSERT IGNORE INTO npc_types SELECT * FROM aotv4_hall_tmp;
+UPDATE aotv4_hall_tmp SET id = 2000626, `name` = 'Keeper_of_Names', gender = 1;
+INSERT IGNORE INTO npc_types SELECT * FROM aotv4_hall_tmp;
+UPDATE aotv4_hall_tmp SET id = 2000627, `name` = 'Delvemaster_Rhun', gender = 0;
+INSERT IGNORE INTO npc_types SELECT * FROM aotv4_hall_tmp;
+UPDATE aotv4_hall_tmp SET id = 2000628, `name` = 'Warden_Ashka', gender = 1;
+INSERT IGNORE INTO npc_types SELECT * FROM aotv4_hall_tmp;
+UPDATE aotv4_hall_tmp SET id = 2000629, `name` = 'Pathfinder_Wynn', gender = 0;
+INSERT IGNORE INTO npc_types SELECT * FROM aotv4_hall_tmp;
+DROP TEMPORARY TABLE aotv4_hall_tmp;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 72,
+		.description = "2026_08_17_aotv4_titan_hall_tasks",
+		// The ten journal tasks behind the Titan Hall induction, ids 2000600-2000609, one activity
+		// each. Same story as v71: authored by hand in dev with no migration, so live would never have
+		// seen them.
+		//
+		// ⚠️⚠️ EVERY ACTIVITY IS AN INERT `Touch` (activitytype 11, goalcount 1), AND THAT IS THE WHOLE
+		// DESIGN. `TaskActivityType` (common/tasks.h) offers Deliver/Kill/Loot/SpeakWith/Explore/Touch
+		// and the rest -- there is no "used a UI window" type and there cannot be one, because our
+		// windows are chat-protocol overlays that live outside the task system entirely. Nothing in the
+		// game can complete a Touch with no switch behind it by accident, so each is driven to
+		// completion explicitly by `client:UpdateTaskActivity(task, 0, 1)` from `aotv4_tutorial.M.mark`
+		// when the matching /say arrives.
+		//
+		// ⚠️⚠️ THREE OF THE TEN ARE TICKED FROM C++, NOT LUA, AND NOTHING REPORTS IT IF THAT BREAKS.
+		// `Client::ChannelMessageReceived` intercepts the AdvLoot (`als*`) and Autoskill (`ask*`)
+		// commands and RETURNS TRUE, swallowing the line before EVENT_SAY can fire, and `#ach` is a
+		// command rather than a say -- so 2000601, 2000602 and 2000604 are marked by
+		// `Client::AoTv4TutorialMark` instead. Remove those call sites and those three steps become
+		// silently uncompletable.
+		//
+		// ⚠️ `zones` is left EMPTY on every activity, matching the delve tasks. `TaskActivity::CheckZone`
+		// returns true on an empty list, which is required here: half these objectives are completed
+		// inside a delve instance, a difficulty shard or another zone entirely, while the closing hail
+		// happens back in the hall.
+		//
+		// ⚠️ The reward columns are deliberately 0 / empty. Every reward is paid in Lua by
+		// `aotv4_tutorial.M.give`, because four of the ten -- an alternate currency, an AA grant, a
+		// random pick out of an augment id block, and an edit to the reroll counter -- cannot be
+		// expressed in this table at all. Wiring the other six here would split one mechanism across
+		// two places and guarantee drift.
+		//
+		// ⚠️ `repeatable = 0`, `min_level = 1`, no cap: the chain has to work for a level 1 character
+		// on a first run AND for a level 30 who has never pressed /aot. `AssignTask` is called with
+		// `enforce_level_requirement = false` for the same reason.
+		// ⚠️ These TASK ids share numbers with the GUARD NPC ids v69 created. Harmless -- different
+		// tables -- but it reads alarmingly; the induction NPCs are 2000620-2000629, not 2000600.
+		.check       = "SELECT taskid FROM task_activities WHERE taskid = 2000609",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+INSERT IGNORE INTO `tasks` (`id`, `type`, `duration`, `duration_code`, `title`, `description`, `reward_text`, `reward_id_list`, `cash_reward`, `exp_reward`, `reward_method`, `reward_points`, `reward_point_type`, `min_level`, `max_level`, `level_spread`, `min_players`, `max_players`, `repeatable`, `faction_reward`, `completion_emote`, `replay_timer_group`, `replay_timer_seconds`, `request_timer_group`, `request_timer_seconds`, `dz_template_id`, `lock_activity_id`, `faction_amount`, `enabled`) VALUES (2000600,0,0,0,'Rewards of the Titans','Every level you gain offers three rewards, and you choose one. Open the Spells window from the AoT menu and look at what waits for you.','Speak with Drillmaster Kort about your combat abilities.','',0,0,0,0,0,1,0,0,0,0,0,0,'Speak with Drillmaster Kort about your combat abilities.',0,0,0,0,0,-1,0,1);
+INSERT IGNORE INTO `tasks` (`id`, `type`, `duration`, `duration_code`, `title`, `description`, `reward_text`, `reward_id_list`, `cash_reward`, `exp_reward`, `reward_method`, `reward_points`, `reward_point_type`, `min_level`, `max_level`, `level_spread`, `min_players`, `max_players`, `repeatable`, `faction_reward`, `completion_emote`, `replay_timer_group`, `replay_timer_seconds`, `request_timer_group`, `request_timer_seconds`, `dz_template_id`, `lock_activity_id`, `faction_amount`, `enabled`) VALUES (2000601,0,0,0,'Muscle Memory','Your special attacks can swing themselves while you fight. Open the Autoskill window and enable one -- but only four may run at once.','Quartermaster Bindle handles what the dead leave behind.','',0,0,0,0,0,1,0,0,0,0,0,0,'Quartermaster Bindle handles what the dead leave behind.',0,0,0,0,0,-1,0,1);
+INSERT IGNORE INTO `tasks` (`id`, `type`, `duration`, `duration_code`, `title`, `description`, `reward_text`, `reward_id_list`, `cash_reward`, `exp_reward`, `reward_method`, `reward_points`, `reward_point_type`, `min_level`, `max_level`, `level_spread`, `min_players`, `max_players`, `repeatable`, `faction_reward`, `completion_emote`, `replay_timer_group`, `replay_timer_seconds`, `request_timer_group`, `request_timer_seconds`, `dz_template_id`, `lock_activity_id`, `faction_amount`, `enabled`) VALUES (2000602,0,0,0,'Spoils of War','Loot is yours alone here -- everyone rolls their own. Open the Adv Loot window and see how it is claimed.','Broker Sarine will show you how coin is made.','',0,0,0,0,0,1,0,0,0,0,0,0,'Broker Sarine will show you how coin is made.',0,0,0,0,0,-1,0,1);
+INSERT IGNORE INTO `tasks` (`id`, `type`, `duration`, `duration_code`, `title`, `description`, `reward_text`, `reward_id_list`, `cash_reward`, `exp_reward`, `reward_method`, `reward_points`, `reward_point_type`, `min_level`, `max_level`, `level_spread`, `min_players`, `max_players`, `repeatable`, `faction_reward`, `completion_emote`, `replay_timer_group`, `replay_timer_seconds`, `request_timer_group`, `request_timer_seconds`, `dz_template_id`, `lock_activity_id`, `faction_amount`, `enabled`) VALUES (2000603,0,0,0,'The Long Trade','You can sell while you sleep, from any city. Open the Trader window and set a price on something you carry.','Chronicler Vess keeps the record of great deeds.','',0,0,0,0,0,1,0,0,0,0,0,0,'Chronicler Vess keeps the record of great deeds.',0,0,0,0,0,-1,0,1);
+INSERT IGNORE INTO `tasks` (`id`, `type`, `duration`, `duration_code`, `title`, `description`, `reward_text`, `reward_id_list`, `cash_reward`, `exp_reward`, `reward_method`, `reward_points`, `reward_point_type`, `min_level`, `max_level`, `level_spread`, `min_players`, `max_players`, `repeatable`, `faction_reward`, `completion_emote`, `replay_timer_group`, `replay_timer_seconds`, `request_timer_group`, `request_timer_seconds`, `dz_template_id`, `lock_activity_id`, `faction_amount`, `enabled`) VALUES (2000604,0,0,0,'Deeds Remembered','Your deeds are counted, and some pay in ability points and gear. Open the Achievements window and see what is owed you.','Archivist Talvo can find anything, if you ask.','',0,0,0,0,0,1,0,0,0,0,0,0,'Archivist Talvo can find anything, if you ask.',0,0,0,0,0,-1,0,1);
+INSERT IGNORE INTO `tasks` (`id`, `type`, `duration`, `duration_code`, `title`, `description`, `reward_text`, `reward_id_list`, `cash_reward`, `exp_reward`, `reward_method`, `reward_points`, `reward_point_type`, `min_level`, `max_level`, `level_spread`, `min_players`, `max_players`, `repeatable`, `faction_reward`, `completion_emote`, `replay_timer_group`, `replay_timer_seconds`, `request_timer_group`, `request_timer_seconds`, `dz_template_id`, `lock_activity_id`, `faction_amount`, `enabled`) VALUES (2000605,0,0,0,'Ask the Archive','Every item, creature and spell in the world is catalogued. Open Allaclone and search for something.','The Keeper of Names remembers every death.','',0,0,0,0,0,1,0,0,0,0,0,0,'The Keeper of Names remembers every death.',0,0,0,0,0,-1,0,1);
+INSERT IGNORE INTO `tasks` (`id`, `type`, `duration`, `duration_code`, `title`, `description`, `reward_text`, `reward_id_list`, `cash_reward`, `exp_reward`, `reward_method`, `reward_points`, `reward_point_type`, `min_level`, `max_level`, `level_spread`, `min_players`, `max_players`, `repeatable`, `faction_reward`, `completion_emote`, `replay_timer_group`, `replay_timer_seconds`, `request_timer_group`, `request_timer_seconds`, `dz_template_id`, `lock_activity_id`, `faction_amount`, `enabled`) VALUES (2000606,0,0,0,'What Death Leaves','Death takes your spells and your levels, but never your ability points. Open the Death Book, then claim Origin -- it will carry you home to this hall.','Delvemaster Rhun guards the way below.','',0,0,0,0,0,1,0,0,0,0,0,0,'Delvemaster Rhun guards the way below.',0,0,0,0,0,-1,0,1);
+INSERT IGNORE INTO `tasks` (`id`, `type`, `duration`, `duration_code`, `title`, `description`, `reward_text`, `reward_id_list`, `cash_reward`, `exp_reward`, `reward_method`, `reward_points`, `reward_point_type`, `min_level`, `max_level`, `level_spread`, `min_players`, `max_players`, `repeatable`, `faction_reward`, `completion_emote`, `replay_timer_group`, `replay_timer_seconds`, `request_timer_group`, `request_timer_seconds`, `dz_template_id`, `lock_activity_id`, `faction_amount`, `enabled`) VALUES (2000607,0,0,0,'Into the Delve','Beneath us lie dungeons that scale to whoever enters. Open the Delve window and study the ladder.','Warden Ashka walks harder roads than most.','',0,0,0,0,0,1,0,0,0,0,0,0,'Warden Ashka walks harder roads than most.',0,0,0,0,0,-1,0,1);
+INSERT IGNORE INTO `tasks` (`id`, `type`, `duration`, `duration_code`, `title`, `description`, `reward_text`, `reward_id_list`, `cash_reward`, `exp_reward`, `reward_method`, `reward_points`, `reward_point_type`, `min_level`, `max_level`, `level_spread`, `min_players`, `max_players`, `repeatable`, `faction_reward`, `completion_emote`, `replay_timer_group`, `replay_timer_seconds`, `request_timer_group`, `request_timer_seconds`, `dz_template_id`, `lock_activity_id`, `faction_amount`, `enabled`) VALUES (2000608,0,0,0,'Harder Roads','The world can be made crueller, and pays better for it. Open the Difficulty window and read what Nightmare asks of you.','Pathfinder Wynn knows every road worth walking.','',0,0,0,0,0,1,0,0,0,0,0,0,'Pathfinder Wynn knows every road worth walking.',0,0,0,0,0,-1,0,1);
+INSERT IGNORE INTO `tasks` (`id`, `type`, `duration`, `duration_code`, `title`, `description`, `reward_text`, `reward_id_list`, `cash_reward`, `exp_reward`, `reward_method`, `reward_points`, `reward_point_type`, `min_level`, `max_level`, `level_spread`, `min_players`, `max_players`, `repeatable`, `faction_reward`, `completion_emote`, `replay_timer_group`, `replay_timer_seconds`, `request_timer_group`, `request_timer_seconds`, `dz_template_id`, `lock_activity_id`, `faction_amount`, `enabled`) VALUES (2000609,0,0,0,'Roads Remembered','Travel is earned. Find a waypoint and it is yours forever. Open the Travel window and see which roads you have already opened.','Your induction is complete. The hall is yours.','',0,0,0,0,0,1,0,0,0,0,0,0,'Your induction is complete. The hall is yours.',0,0,0,0,0,-1,0,1);
+INSERT IGNORE INTO `task_activities` (`taskid`, `activityid`, `req_activity_id`, `step`, `activitytype`, `target_name`, `goalmethod`, `goalcount`, `description_override`, `npc_match_list`, `item_id_list`, `item_list`, `dz_switch_id`, `min_x`, `min_y`, `min_z`, `max_x`, `max_y`, `max_z`, `skill_list`, `spell_list`, `zones`, `zone_version`, `optional`, `list_group`) VALUES (2000600,0,-1,1,11,'',0,1,'Open the Spells window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0);
+INSERT IGNORE INTO `task_activities` (`taskid`, `activityid`, `req_activity_id`, `step`, `activitytype`, `target_name`, `goalmethod`, `goalcount`, `description_override`, `npc_match_list`, `item_id_list`, `item_list`, `dz_switch_id`, `min_x`, `min_y`, `min_z`, `max_x`, `max_y`, `max_z`, `skill_list`, `spell_list`, `zones`, `zone_version`, `optional`, `list_group`) VALUES (2000601,0,-1,1,11,'',0,1,'Enable an ability in the Autoskill window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0);
+INSERT IGNORE INTO `task_activities` (`taskid`, `activityid`, `req_activity_id`, `step`, `activitytype`, `target_name`, `goalmethod`, `goalcount`, `description_override`, `npc_match_list`, `item_id_list`, `item_list`, `dz_switch_id`, `min_x`, `min_y`, `min_z`, `max_x`, `max_y`, `max_z`, `skill_list`, `spell_list`, `zones`, `zone_version`, `optional`, `list_group`) VALUES (2000602,0,-1,1,11,'',0,1,'Open the Adv Loot window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0);
+INSERT IGNORE INTO `task_activities` (`taskid`, `activityid`, `req_activity_id`, `step`, `activitytype`, `target_name`, `goalmethod`, `goalcount`, `description_override`, `npc_match_list`, `item_id_list`, `item_list`, `dz_switch_id`, `min_x`, `min_y`, `min_z`, `max_x`, `max_y`, `max_z`, `skill_list`, `spell_list`, `zones`, `zone_version`, `optional`, `list_group`) VALUES (2000603,0,-1,1,11,'',0,1,'Set a price in the Trader window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0);
+INSERT IGNORE INTO `task_activities` (`taskid`, `activityid`, `req_activity_id`, `step`, `activitytype`, `target_name`, `goalmethod`, `goalcount`, `description_override`, `npc_match_list`, `item_id_list`, `item_list`, `dz_switch_id`, `min_x`, `min_y`, `min_z`, `max_x`, `max_y`, `max_z`, `skill_list`, `spell_list`, `zones`, `zone_version`, `optional`, `list_group`) VALUES (2000604,0,-1,1,11,'',0,1,'Open the Achievements window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0);
+INSERT IGNORE INTO `task_activities` (`taskid`, `activityid`, `req_activity_id`, `step`, `activitytype`, `target_name`, `goalmethod`, `goalcount`, `description_override`, `npc_match_list`, `item_id_list`, `item_list`, `dz_switch_id`, `min_x`, `min_y`, `min_z`, `max_x`, `max_y`, `max_z`, `skill_list`, `spell_list`, `zones`, `zone_version`, `optional`, `list_group`) VALUES (2000605,0,-1,1,11,'',0,1,'Run a search in the Allaclone window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0);
+INSERT IGNORE INTO `task_activities` (`taskid`, `activityid`, `req_activity_id`, `step`, `activitytype`, `target_name`, `goalmethod`, `goalcount`, `description_override`, `npc_match_list`, `item_id_list`, `item_list`, `dz_switch_id`, `min_x`, `min_y`, `min_z`, `max_x`, `max_y`, `max_z`, `skill_list`, `spell_list`, `zones`, `zone_version`, `optional`, `list_group`) VALUES (2000606,0,-1,1,11,'',0,1,'Open the Death Book and claim the Origin ability','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0);
+INSERT IGNORE INTO `task_activities` (`taskid`, `activityid`, `req_activity_id`, `step`, `activitytype`, `target_name`, `goalmethod`, `goalcount`, `description_override`, `npc_match_list`, `item_id_list`, `item_list`, `dz_switch_id`, `min_x`, `min_y`, `min_z`, `max_x`, `max_y`, `max_z`, `skill_list`, `spell_list`, `zones`, `zone_version`, `optional`, `list_group`) VALUES (2000607,0,-1,1,11,'',0,1,'Open the Delve window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0);
+INSERT IGNORE INTO `task_activities` (`taskid`, `activityid`, `req_activity_id`, `step`, `activitytype`, `target_name`, `goalmethod`, `goalcount`, `description_override`, `npc_match_list`, `item_id_list`, `item_list`, `dz_switch_id`, `min_x`, `min_y`, `min_z`, `max_x`, `max_y`, `max_z`, `skill_list`, `spell_list`, `zones`, `zone_version`, `optional`, `list_group`) VALUES (2000608,0,-1,1,11,'',0,1,'Open the Difficulty window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0);
+INSERT IGNORE INTO `task_activities` (`taskid`, `activityid`, `req_activity_id`, `step`, `activitytype`, `target_name`, `goalmethod`, `goalcount`, `description_override`, `npc_match_list`, `item_id_list`, `item_list`, `dz_switch_id`, `min_x`, `min_y`, `min_z`, `max_x`, `max_y`, `max_z`, `skill_list`, `spell_list`, `zones`, `zone_version`, `optional`, `list_group`) VALUES (2000609,0,-1,1,11,'',0,1,'Open the Travel window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 73,
+		.description = "2026_08_17_aotv4_titan_hall_spawns",
+		// Puts the ten Titan Hall induction NPCs (v71) into `freeporttheater`. Generated by
+		// `custom/tools/gen_hub_spawns.pl 2000620 2000629` from the placement done by hand in game --
+		// regenerate with that script rather than editing the coordinates here.
+		//
+		// ⚠️⚠️ NO MIGRATION IN THIS FILE HAD EVER INSERTED A SPAWN ROW BEFORE THIS ONE. v71 creates the
+		// npc_types rows and v68 only DELETES the zone's old spawns, so up to now every hub NPC shipped
+		// to live as a definition with nothing standing in the world -- the same hand-applied dev-only
+		// gap section 2 describes, one table further along. The twenty guards v69 created still have
+		// this gap: 15 of them are placed in dev and none of that placement ships.
+		//
+		// ⚠️⚠️ THE LOCAL spawn2 / spawngroup IDS ARE DELIBERATELY NOT USED. They are AUTO_INCREMENT
+		// values that mean nothing on another database -- v66 already records this for the iceclad
+		// cleanup ("Those ids are not guaranteed to..."), and hardcoding them would either collide with
+		// unrelated live rows or silently overwrite them. The block is allocated at runtime instead.
+		//
+		// ⚠️⚠️ IT CLEARS THE GREATEST OF *BOTH* SEQUENCES, NOT spawn2's ALONE. `spawn2.id` and
+		// `spawngroup.id` are independent counters and drift apart: on the database this was verified
+		// against, spawn2 was at 157438 while spawngroup was at 4999. Allocating each from its own
+		// MAX would have handed the spawngroups ids in the 5000s that spawn2 rows already own, and the
+		// 1:1 id pairing every later lookup assumes would be broken.
+		//
+		// ⚠️ min_expansion / max_expansion are forced to -1 on BOTH spawnentry and spawn2. This server
+		// runs Classic (Expansion:CurrentExpansion = 0), so a real expansion number is content-filtered
+		// out and the NPC never appears, with nothing logged -- the reason the PoK books carry -1 too.
+		//
+		// ⚠️ NOT idempotent by itself, and it cannot be: the ids are computed, so a second run
+		// allocates a DIFFERENT block and duplicates all ten rather than colliding. The `.check` is
+		// what makes it safe, and it is scoped by ZONE and npc id -- a zone name is a fact about the
+		// data, where an id band is a guess about it.
+		.check       = "SELECT s2.id FROM spawn2 s2 JOIN spawnentry se ON se.spawngroupID = s2.spawngroupID WHERE s2.zone = 'freeporttheater' AND se.npcID BETWEEN 2000620 AND 2000629",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+-- AoTv4 hub spawns, generated by custom/tools/gen_hub_spawns.pl -- DO NOT HAND EDIT.
+-- npc ids 2000620-2000629, 10 spawn points, zone(s) 'freeporttheater'.
+CREATE TEMPORARY TABLE aotv4_hub_spawn (
+  n INT, npc INT, gname VARCHAR(50), zone VARCHAR(32), ver INT,
+  x FLOAT, y FLOAT, z FLOAT, h FLOAT, respawn INT, variance INT,
+  pathgrid INT, pwzi INT, cond_ INT, condval INT, anim INT
+);
+INSERT INTO aotv4_hub_spawn VALUES
+  (0,2000620,'freeporttheater_Loremaster_Ythel000_6754296','freeporttheater',0,-175.444855,-211.522110,-27.000296,509.250000,1200,0,0,0,0,1,0),
+  (1,2000621,'freeporttheater_Drillmaster_Kort000_6764929','freeporttheater',0,-155.740479,-210.784683,-27.000298,486.500000,1200,0,0,0,0,1,0),
+  (2,2000622,'freeporttheater_Quartermaster_Bindle000_6775260','freeporttheater',0,-137.457809,-204.589996,-27.000298,463.000000,1200,0,0,0,0,1,0),
+  (3,2000623,'freeporttheater_Broker_Sarine000_6798084','freeporttheater',0,-102.021210,-176.881180,-27.000298,442.000000,1200,0,0,0,0,1,0),
+  (4,2000624,'freeporttheater_Chronicler_Vess000_6808827','freeporttheater',0,-91.830421,-160.807465,-27.000296,417.750000,1200,0,0,0,0,1,0),
+  (5,2000625,'freeporttheater_Archivist_Talvo000_6818966','freeporttheater',0,-87.492653,-141.897537,-27.000296,398.250000,1200,0,0,0,0,1,0),
+  (6,2000626,'freeporttheater_Keeper_of_Names000_6849897','freeporttheater',0,-174.611404,-219.601685,-27.000296,243.000000,1200,0,0,0,0,1,0),
+  (7,2000627,'freeporttheater_Delvemaster_Rhun000_6858743','freeporttheater',0,-154.109665,-218.628616,-27.000298,234.000000,1200,0,0,0,0,1,0),
+  (8,2000628,'freeporttheater_Warden_Ashka000_6868223','freeporttheater',0,-133.854919,-210.162994,-27.000298,203.250000,1200,0,0,0,0,1,0),
+  (9,2000629,'freeporttheater_Pathfinder_Wynn000_6878767','freeporttheater',0,-96.315277,-181.715775,-27.000298,174.250000,1200,0,0,0,0,1,0);
+
+-- ⚠️⚠️ ONE ALLOCATION FOR ALL THREE TABLES. spawn2.id and spawngroup.id are independent
+-- AUTO_INCREMENT sequences, so the block has to clear the HIGHEST of the two or a spawngroup id can
+-- land on a spawn2 id that is already taken (and vice versa) on a database whose two sequences have
+-- drifted apart. Taking the greatest of both and using one offset keeps the pairing 1:1, which is
+-- what every later lookup assumes.
+SET @aotv4_base := (SELECT GREATEST(
+  (SELECT COALESCE(MAX(id), 0) FROM spawn2),
+  (SELECT COALESCE(MAX(id), 0) FROM spawngroup)
+) + 1);
+
+INSERT INTO spawngroup
+  (id, name, spawn_limit, dist, max_x, min_x, max_y, min_y, delay, mindelay, despawn, despawn_timer, wp_spawns)
+SELECT @aotv4_base + n, gname, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 FROM aotv4_hub_spawn;
+
+-- ⚠️ min_expansion / max_expansion -1 on BOTH spawnentry and spawn2. This server runs Classic
+-- (Expansion:CurrentExpansion = 0), so anything left at a real expansion number is content-filtered
+-- out and the NPC simply never appears -- with nothing logged. Same reason the PoK books carry -1.
+INSERT INTO spawnentry
+  (spawngroupID, npcID, chance, condition_value_filter, min_time, max_time, min_expansion, max_expansion, content_flags, content_flags_disabled)
+SELECT @aotv4_base + n, npc, 100, 1, 0, 0, -1, -1, '', '' FROM aotv4_hub_spawn;
+
+INSERT INTO spawn2
+  (id, spawngroupID, zone, version, x, y, z, heading, respawntime, variance, pathgrid, path_when_zone_idle, _condition, cond_value, animation, min_expansion, max_expansion, content_flags, content_flags_disabled)
+SELECT @aotv4_base + n, @aotv4_base + n, zone, ver, x, y, z, h, respawn, variance, pathgrid, pwzi, cond_, condval, anim, -1, -1, '', ''
+FROM aotv4_hub_spawn;
+
+DROP TEMPORARY TABLE aotv4_hub_spawn;
+
+-- guess about what a database contains, a zone name is a fact):
+--                "WHERE s2.zone = 'freeporttheater' AND se.npcID BETWEEN 2000620 AND 2000629"
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 74,
+		.description = "2026_08_17_aotv4_titan_hall_record",
+		// Task 2000610 "The Titan Hall Induction" -- ONE journal entry holding ten activities, one per
+		// Hall NPC, each naming who to find. Plus a rewrite of the ten individual tasks' pointer text.
+		//
+		// ⚠️⚠️ THE TEN STOPPED BEING A CHAIN IN THE SAME CHANGE. `aotv4_tutorial.M.hail` no longer
+		// checks that the previous step is done, so any teacher can be heard at any time. This task is
+		// what replaces the ordering: with the chain gone, nothing else on screen knows the set exists
+		// or which of it is outstanding.
+		//
+		// ⚠️⚠️ EVERY ACTIVITY CARRIES `step = 1`, AND A ZERO THERE WOULD SILENTLY REBUILD THE CHAIN.
+		// `tasks.h:398` -- "if all steps are 0 treat each as a separate step (previously called
+		// sequence mode)" -- so an all-zero table shows ONE activity at a time in order, which is
+		// exactly the behaviour being removed, arrived at by a completely different route and with
+		// nothing to indicate it. Non-zero AND all equal is what makes all ten active at once
+		// (`!sequence_mode && el.step <= current_step`, :419); `req_activity_id` is -1 for the same
+		// reason.
+		//
+		// ⚠️ Its activities are inert `Touch` rows like the individual ones -- nothing in the game
+		// completes them by accident, and `aotv4_tutorial.on_task_complete` mirrors each finished step
+		// onto this task with `UpdateTaskActivity`. Lose that call and the record can never complete,
+		// with no error anywhere. `M.ensure_umbrella` backfills already-finished steps on assignment,
+		// so a character part way through the old chain is not asked to repeat anything -- which it
+		// could not do, since each individual task is `repeatable = 0`.
+		//
+		// ⚠️⚠️ `reward_text` IS varchar(64) -- NOT the roomy column it looks like beside
+		// `completion_emote` (512) and `description` (TEXT). The first draft of the pointer text was
+		// 106 characters and MariaDB rejected the UPDATE outright ("Data too long"), which would have
+		// aborted the migration mid-way on live. The long wording lives in the emote; the short one
+		// here. Check the width before writing task prose.
+		//
+		// ⚠️ The old pointer text named the NEXT NPC ("Speak with Drillmaster Kort about your combat
+		// abilities"), which is simply wrong once order stops mattering -- so all ten are repointed at
+		// the record instead. Left alone, the game would be telling players to follow an order the
+		// code no longer enforces.
+		.check       = "SELECT taskid FROM task_activities WHERE taskid = 2000610",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+INSERT IGNORE INTO tasks (id,type,duration,duration_code,title,description,reward_text,reward_id_list,cash_reward,exp_reward,reward_method,reward_points,reward_point_type,min_level,max_level,level_spread,min_players,max_players,repeatable,faction_reward,completion_emote,replay_timer_group,replay_timer_seconds,request_timer_group,request_timer_seconds,dz_template_id,lock_activity_id,faction_amount,enabled) VALUES
+(2000610,0,0,0,'The Titan Hall Induction','The Theater of the Tranquil keeps ten teachers, one for each part of the AoT menu. Seek them out in any order you please; this record marks off those you have already heard.','The Hall has taught you all it can. Well met.','',0,0,0,0,0,1,0,0,0,0,0,0,'Every teacher in the Hall has been heard. The Hall thanks you.',0,0,0,0,0,-1,0,1);
+
+INSERT IGNORE INTO task_activities (taskid,activityid,req_activity_id,step,activitytype,target_name,goalmethod,goalcount,description_override,npc_match_list,item_id_list,item_list,dz_switch_id,min_x,min_y,min_z,max_x,max_y,max_z,skill_list,spell_list,zones,zone_version,optional,list_group) VALUES
+(2000610,0,-1,1,11,'',0,1,'Speak with Loremaster Ythel about the Spells window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0),
+(2000610,1,-1,1,11,'',0,1,'Speak with Drillmaster Kort about the Autoskill window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0),
+(2000610,2,-1,1,11,'',0,1,'Speak with Quartermaster Bindle about the Adv Loot window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0),
+(2000610,3,-1,1,11,'',0,1,'Speak with Broker Sarine about the Trader window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0),
+(2000610,4,-1,1,11,'',0,1,'Speak with Chronicler Vess about the Achievements window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0),
+(2000610,5,-1,1,11,'',0,1,'Speak with Archivist Talvo about the Allaclone window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0),
+(2000610,6,-1,1,11,'',0,1,'Speak with the Keeper of Names about the Death Book and the Origin ability','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0),
+(2000610,7,-1,1,11,'',0,1,'Speak with Delvemaster Rhun about the Delve window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0),
+(2000610,8,-1,1,11,'',0,1,'Speak with Warden Ashka about the Difficulty window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0),
+(2000610,9,-1,1,11,'',0,1,'Speak with Pathfinder Wynn about the Travel window','','','',0,0,0,0,0,0,0,'-1','0','',-1,0,0);
+
+UPDATE tasks SET reward_text = 'Your induction record lists who else waits in the Hall.', completion_emote = 'Your Titan Hall induction record lists whoever else still waits in the Hall. They may be met in any order.'
+WHERE id BETWEEN 2000600 AND 2000609;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 75,
+		.description = "2026_08_17_aotv4_titan_hall_faces",
+		// Gives the ten Titan Hall teachers a race each and renames their lastname to the /aot tab they
+		// teach. v71 created all ten as the same gnome with lastname 'Titan Hall', which read as
+		// placeholder art and told a player nothing about which teacher was which.
+		//
+		// ⚠️⚠️ THE LASTNAME IS THE LABEL UNDER THE NAME -- the line a player character's GUILD renders
+		// on. It is the only per-NPC text visible without hailing, so 'Titan Hall' was spending the one
+		// free label on something every NPC in the room already had in common. Now it names the lesson:
+		// Spells, Autoskill, Adv Loot, Trader, Achievements, Allaclone, Death Book, Delve, Difficulty,
+		// Travel. varchar(32), so the longest ('Achievements') has plenty of room.
+		//
+		// ⚠️⚠️ EVERY RACE IS A PLAYABLE ONE, AND THAT IS A RENDERING GUARANTEE RATHER THAN A THEME.
+		// v69 records the trap in the other direction: a model only renders in a zone whose `_chr`
+		// archive carries it, so race 570 needed `GlobalLoad_chr.txt` and a wrong pick draws NOTHING
+		// with nothing wrong server side. The 16 playable races are in the base client and load
+		// everywhere, so none of them can fail that way. Taken from `char_create_combinations`, which
+		// is what this server actually allows, rather than from the usual list of 16.
+		//
+		// ⚠️ Ten distinct races, no repeats -- the point is telling them apart at a glance. Assigned to
+		// suit each name and role rather than by RNG: a random draw happily makes the Delvemaster a
+		// halfling and the Pathfinder an ogre, which is varied but reads as arbitrary.
+		//
+		// ⚠️ `size` is set per race from what stock NPCs of that race actually use (Ogre 9, Troll 8,
+		// Dwarf 4, Halfling 3.5, Gnome 3...). They all inherited the gnome's size 3 from v71, and a
+		// size 3 barbarian is a child-sized barbarian -- the race change alone would have looked worse
+		// than leaving it. `texture` stays 0, which is the default set on every race.
+		//
+		// ⚠️ npc_types is NOT shared memory -- it is read at zone boot, so this needs a zone restart
+		// and no ./shared_memory run. The spawns themselves are untouched (v73 owns those).
+		.check       = "SELECT id FROM npc_types WHERE id = 2000629 AND lastname = 'Travel'",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE npc_types SET race = 5, gender = 1, size = 6.0, lastname = 'Spells' WHERE id = 2000620;   -- Loremaster_Ythel: High Elf
+UPDATE npc_types SET race = 2, gender = 0, size = 7.0, lastname = 'Autoskill' WHERE id = 2000621;   -- Drillmaster_Kort: Barbarian
+UPDATE npc_types SET race = 11, gender = 0, size = 3.5, lastname = 'Adv Loot' WHERE id = 2000622;   -- Quartermaster_Bindle: Halfling
+UPDATE npc_types SET race = 1, gender = 1, size = 6.0, lastname = 'Trader' WHERE id = 2000623;   -- Broker_Sarine: Human
+UPDATE npc_types SET race = 3, gender = 1, size = 6.0, lastname = 'Achievements' WHERE id = 2000624;   -- Chronicler_Vess: Erudite
+UPDATE npc_types SET race = 12, gender = 0, size = 3.0, lastname = 'Allaclone' WHERE id = 2000625;   -- Archivist_Talvo: Gnome
+UPDATE npc_types SET race = 6, gender = 1, size = 5.0, lastname = 'Death Book' WHERE id = 2000626;   -- Keeper_of_Names: Dark Elf
+UPDATE npc_types SET race = 8, gender = 0, size = 4.0, lastname = 'Delve' WHERE id = 2000627;   -- Delvemaster_Rhun: Dwarf
+UPDATE npc_types SET race = 128, gender = 1, size = 6.0, lastname = 'Difficulty' WHERE id = 2000628;   -- Warden_Ashka: Iksar
+UPDATE npc_types SET race = 4, gender = 0, size = 5.0, lastname = 'Travel' WHERE id = 2000629;   -- Pathfinder_Wynn: Wood Elf
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 76,
+		.description = "2026_08_17_aotv4_titan_hall_task_type",
+		// Moves the eleven Titan Hall tasks from TaskType::Task (0) to TaskType::Quest (2).
+		//
+		// ⚠️⚠️ TYPE 0 ALLOWS EXACTLY ONE ACTIVE TASK, SERVER WIDE, PER CHARACTER. `common/tasks.h:193`
+		// says it outright -- "Task = 0, // can have at max 1" -- and `task_client_state.cpp:2046`
+		// refuses anything further with MAX_ACTIVE_TASKS. All eleven shipped as type 0, so the moment
+		// v74's induction record took the single slot, NOT ONE of the ten lessons could ever be
+		// accepted again. Reported from play as "it says I have the maximum number of active tasks,
+		// but I only have 1" -- which was exactly right, and one is the limit.
+		//
+		// ⚠️⚠️ THE OLD CHAIN HID THIS. While the ten were strictly sequential a player could only ever
+		// hold one anyway, so a one-task cap and a one-task design agreed by accident. Removing the
+		// ordering and adding a permanent umbrella broke that agreement in the same change, which is
+		// why it surfaced only now.
+		// 📌 It was ALREADY half broken before the umbrella: the delve tasks are type 0 too, so holding
+		// any Hall lesson blocked entering a delve -- and step 7 is the lesson that asks for one.
+		//
+		// ⚠️ Quest allows 19 (`MAXACTIVEQUESTS`), so the record plus all ten lessons is 11 and fits
+		// with room for the player's own quests.
+		//
+		// ⚠️ IN-FLIGHT ROWS SURVIVE THIS, which is the only reason it is safe to change a live task's
+		// type. `TaskManager::LoadClientState` reads the type from the `tasks` table and NOT from
+		// `character_tasks` ("this used to be loaded from character_tasks / this should just load from
+		// the tasks table", task_manager.cpp:1345), then resolves the stored `slot` through
+		// `GetClientTaskInfo`. A Task always sits at slot 0, and for Quest any `index < 19` is valid --
+		// so an already-accepted record at slot 0 simply reloads into quest slot 0.
+		// ⚠️ `character_tasks.type` is written by the save path but not read by the load path. It is
+		// realigned anyway so the two never disagree for whoever reads that column next.
+		// ⚠️ The check asks whether the DESIRED state is already present, and "empty" means apply --
+		// the house pattern (v70 tests `enabled = 1`, not `enabled = 0`). Writing it the other way
+		// round, as `type <> 2` + "empty", inverts the whole thing: in a database that still needs the
+		// fix that query returns eleven rows, the condition reads false, and the migration silently
+		// skips on exactly the servers it was written for.
+		.check       = "SELECT id FROM tasks WHERE id = 2000610 AND type = 2",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE tasks SET type = 2 WHERE id BETWEEN 2000600 AND 2000610;
+UPDATE character_tasks SET type = 2 WHERE taskid BETWEEN 2000600 AND 2000610;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 77,
+		.description = "2026_08_17_aotv4_titan_hall_step6_text",
+		// Rewrites the Death Book lesson's text so it describes what the step actually is.
+		//
+		// ⚠️⚠️ IT PROMISED SOMETHING THE WINDOW COULD NOT SHOW. The text read "Open the Death Book,
+		// then claim Origin", while Origin had been excluded from `aa_pool.lua` to keep it out of the
+		// random rotation -- so the picker could never offer it and the instruction was impossible to
+		// follow. Reported from play as "it says to claim origin, but its not there". The pool
+		// exclusion is reverted; `aa_choice.gather_affordable` now hides Origin from everyone EXCEPT a
+		// player holding this task, so it is absent from ordinary rolls and guaranteed here.
+		//
+		// ⚠️⚠️ AND THE WINDOW IS EMPTY WITH NOTHING BANKED, WHICH IS THE OTHER HALF OF THE SAME REPORT.
+		// `aa_choice.M.offer` returns at `budget < 1` (:273), so a player with no AA point sees no
+		// offers at all and the old wording gave them no way to tell that apart from a broken quest.
+		// The text now says a point must be banked first.
+		// 📌 That makes this the one lesson with a real prerequisite: section 45 puts a fresh
+		// character's first point around level 20. Acceptable only because the ten are no longer a
+		// chain (v74) -- the other nine can be finished immediately and this one waits.
+		//
+		// ⚠️ The objective is "spend an ability point", not "spend it ON Origin": the mark comes from
+		// the `aapick` say, which carries no indication of WHICH ability was trained. Spending it on
+		// anything completes the lesson and the Keeper teaches Origin regardless, which is both
+		// truthful and kinder than failing someone for picking the wrong row.
+		.check       = "SELECT taskid FROM task_activities WHERE taskid = 2000606 AND activityid = 0 AND description_override = 'Spend an ability point in the Death Book'",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE tasks SET description = 'Death takes your spells and your levels, but never your ability points. Those accrue as you play. Once one is banked, open the Death Book, spend it, and I will teach you Origin -- it will carry you home to this hall.' WHERE id = 2000606;
+UPDATE task_activities SET description_override = 'Spend an ability point in the Death Book' WHERE taskid = 2000606 AND activityid = 0;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 78,
+		.description = "2026_08_17_aotv4_hub_arrival_point",
+		// Points the Origin AA (spell 5824) at the hub's authored arrival point, so Origin and the PoK
+		// book land in the SAME spot -- the induction doorstep, where the ten teachers stand.
+		//
+		// ⚠️⚠️ effect_base_value1 IS Y AND value2 IS X. `SE_Teleport` reads `x = base_value[1];
+		// y = base_value[0]` (spell_effects.cpp:563), so the pair is stored swapped relative to how it
+		// reads. v70 records the same trap; getting it backwards lands the player tens of units away,
+		// or outside the zone entirely, with nothing logged.
+		// ⚠️ The columns are int(11) -- the authored point is (73.52, -391.28, -14.98) and rounds to
+		// (74, -391, -15). Fractions are silently truncated, not rejected.
+		//
+		// ⚠️ `pok_portals.lua` carries the same coordinates for the book route and is edited in the
+		// same commit. That table normally DERIVES a landing 30 units in front of the book; this entry
+		// deliberately does not, because the arrival point is authored rather than book-relative -- so
+		// rotating the book no longer moves where players arrive.
+		//
+		// ⚠️⚠️ `spells_new` IS SHARED MEMORY. World applying this at boot is NOT enough: stop the
+		// stack, run ./shared_memory, restart. Without it every zone keeps the old destination and the
+		// change is invisible.
+		.check       = "SELECT id FROM spells_new WHERE id = 5824 AND effect_base_value1 = -391",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE spells_new SET effect_base_value1 = -391, effect_base_value2 = 74, effect_base_value3 = -15
+WHERE id = 5824;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 79,
+		.description = "2026_08_17_aotv4_fellowships",
+		// The fellowship system: registrar + component vendor at the Resplendent hub, the two
+		// components, the campfire model, and the two buff fires. Logic is
+		// `lua_modules/aotv4_fellowship.lua`; spec is FELLOWSHIP_DESIGN.md.
+		//
+		// ⚠️⚠️ EQEmu IMPLEMENTS NO PART OF THIS. `OP_FellowshipUpdate` is an opcode with no handler,
+		// `Class::FellowshipMaster` (69) is defined and unused, and there are NO fellowship tables.
+		// Nothing here switches a feature on -- it is buckets, a say protocol and NPCs, like every
+		// other AoTv4 system.
+		//
+		// ⚠️⚠️ THE STOCK FELLOWSHIP NPCs ARE UNREACHABLE AND ARE NOT USED. Randall_of_the_Fellows and
+		// the four flaggers (202396-202400) all spawn in `poknowledge` REGION 99 "Unused" -- the set
+		// fenced off from the whole server -- so registration goes to the Resplendent hub instead,
+		// beside the three NPCs already there.
+		//
+		// ⚠️⚠️ THE CAMPFIRE MODEL IS RACE 75, THE CLASSIC SUMMONED-FIRE PET, AND THAT IS A RENDERING
+		// GUARANTEE. Classic races live in `global_chr` and load in every zone; an expansion race
+		// lives in a zone `_chr` archive and draws NOTHING outside it, silently. Race 494 failed
+		// exactly that way this session before race 64 fixed it.
+		//
+		// ⚠️ The campfire is immune to melee/magic/aggro (`19,1^20,1^24,1^25,1`, the stock trigger
+		// set) and `show_name = 0` -- it is scenery, and scenery you can kill is broken scenery.
+		//
+		// ⚠️⚠️ THE BUFF ROWS ARE FORCED TO `formula 100 / max 0`. The clone source (65 Major Shielding)
+		// carries `formula1 = 102, max1 = 75`, and section 5 records that inheriting a stock damage
+		// formula is what broke the Sinew line: a level-scaled formula would make the campfire buff
+		// climb with the CASTER's level, and the caster here is a campfire.
+		// 📌 The values (200 HP, 5 regen a tick) are DERIVED for a level 30 cap, not copied: live's
+		// health fire is ~1500 HP, which at our ~1,500 HP characters would be a doubling.
+		//
+		// ⚠️ NOT IDEMPOTENT, and it cannot be -- the spawn ids are computed at runtime (above whatever
+		// the target database already uses, clearing BOTH sequences), and `spawngroup.name` is UNIQUE
+		// so a second run collides. The `.check` is what makes it safe, exactly as v73.
+		//
+		// ⚠️⚠️ `items` AND `spells_new` ARE SHARED MEMORY. Applying this at world boot is not enough:
+		// stop the stack, run ./shared_memory, restart, or no zone sees the components or the buffs.
+		// 📌 The two hub NPCs still need adding to `custom/sql/aotv4_resplendent_npc_lock.sql` -- that
+		// file uses DELIMITER, which the migration runner does not honour, and section 11 records the
+		// hub NPCs being clobbered TWICE by full imports without those triggers.
+		.check       = "SELECT id FROM npc_types WHERE id = 2000412",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+-- ---- NPCs: registrar, vendor, campfire  (clone via temp table so all columns stay valid) ----
+CREATE TEMPORARY TABLE aotv4_fs_npc LIKE npc_types;
+INSERT INTO aotv4_fs_npc SELECT * FROM npc_types WHERE id = 2000400;
+UPDATE aotv4_fs_npc SET lastname='Fellowships', level=70, class=1, bodytype=1,
+  npc_faction_id=0, loottable_id=0, merchant_id=0, npc_spells_id=0, aggroradius=0, assistradius=0;
+UPDATE aotv4_fs_npc SET id=2000410, `name`='Fellowmaster_Denara', race=1,  gender=1, texture=11, helmtexture=11, size=6;
+INSERT IGNORE INTO npc_types SELECT * FROM aotv4_fs_npc;
+UPDATE aotv4_fs_npc SET id=2000411, `name`='Kindler_Bram', race=12, gender=0, texture=1, helmtexture=1, size=3,
+  lastname='Campfire Supplies', class=41, merchant_id=1000030;
+INSERT IGNORE INTO npc_types SELECT * FROM aotv4_fs_npc;
+-- the campfire model itself: race 75 is the classic summoned-fire pet, so it is in global_chr and
+-- renders in every zone -- the same rule that made race 64 safe and race 494 fail.
+UPDATE aotv4_fs_npc SET id=2000412, `name`='Fellowship_Campfire', lastname='', race=75, gender=2,
+  texture=0, helmtexture=0, size=3, class=1, merchant_id=0, runspeed=0, walkspeed=0,
+  show_name=0, special_abilities='19,1^20,1^24,1^25,1';
+INSERT IGNORE INTO npc_types SELECT * FROM aotv4_fs_npc;
+DROP TEMPORARY TABLE aotv4_fs_npc;
+
+-- ---- components (platinum sink) ----
+CREATE TEMPORARY TABLE aotv4_fs_item LIKE items;
+INSERT INTO aotv4_fs_item SELECT * FROM items WHERE id = 13008;
+UPDATE aotv4_fs_item SET nodrop=1, norent=1, stackable=1, stacksize=20, slots=0,
+  classes=65535, races=65535, reqlevel=0, reclevel=0, deity=0, price=0;
+UPDATE aotv4_fs_item SET id=147970, Name='Campfire Kit',   icon=1113, price=150000;   -- 150p (price is COPPER)
+INSERT IGNORE INTO items SELECT * FROM aotv4_fs_item;
+UPDATE aotv4_fs_item SET id=147971, Name='Lumber Bundle',  icon=1114, price=150000;   -- 150p; a buff fire is 300p total
+INSERT IGNORE INTO items SELECT * FROM aotv4_fs_item;
+DROP TEMPORARY TABLE aotv4_fs_item;
+
+-- ---- campfire buffs ----
+CREATE TEMPORARY TABLE aotv4_fs_spell LIKE spells_new;
+INSERT INTO aotv4_fs_spell SELECT * FROM spells_new WHERE id = 65;
+UPDATE aotv4_fs_spell SET buffduration=30, buffdurationformula=7, targettype=6, goodEffect=1,
+  formula1=100, max1=0, formula2=100, max2=0, formula3=100, max3=0,
+  effectid2=254, effectid3=254, effect_base_value2=0, effect_base_value3=0;
+UPDATE aotv4_fs_spell SET id=44330, `name`='Fellowship of Health', effectid1=69, effect_base_value1=200;
+INSERT IGNORE INTO spells_new SELECT * FROM aotv4_fs_spell;
+UPDATE aotv4_fs_spell SET id=44331, `name`='Fellowship of Vigor',  effectid1=0,  effect_base_value1=5;
+INSERT IGNORE INTO spells_new SELECT * FROM aotv4_fs_spell;
+DROP TEMPORARY TABLE aotv4_fs_spell;
+
+-- ---- vendor stock ----
+INSERT IGNORE INTO merchantlist (merchantid, slot, item, faction_required, level_required, alt_currency_cost, classes_required, probability)
+VALUES (1000030,1,147970,-100,1,0,65535,100), (1000030,2,147971,-100,1,0,65535,100);
+
+-- ---- spawn the two hub NPCs beside Alessa (ids allocated above whatever the target DB uses) ----
+SET @fs_b := (SELECT GREATEST((SELECT COALESCE(MAX(id),0) FROM spawn2),(SELECT COALESCE(MAX(id),0) FROM spawngroup)) + 1);
+INSERT INTO spawngroup (id,name,spawn_limit,dist,max_x,min_x,max_y,min_y,delay,mindelay,despawn,despawn_timer,wp_spawns)
+VALUES (@fs_b,'resplendent_fellowmaster',0,0,0,0,0,0,0,0,0,0,0), (@fs_b+1,'resplendent_kindler',0,0,0,0,0,0,0,0,0,0,0);
+INSERT INTO spawnentry (spawngroupID,npcID,chance,condition_value_filter,min_time,max_time,min_expansion,max_expansion,content_flags,content_flags_disabled)
+VALUES (@fs_b,2000410,100,1,0,0,-1,-1,'',''), (@fs_b+1,2000411,100,1,0,0,-1,-1,'','');
+INSERT INTO spawn2 (id,spawngroupID,zone,version,x,y,z,heading,respawntime,variance,pathgrid,path_when_zone_idle,_condition,cond_value,animation,min_expansion,max_expansion,content_flags,content_flags_disabled)
+VALUES (@fs_b,  @fs_b,  'resplendent',0,-38.0,690.0,-26.2,128,1200,0,0,0,0,1,0,-1,-1,'',''),
+       (@fs_b+1,@fs_b+1,'resplendent',0,-22.0,690.0,-26.2,128,1200,0,0,0,0,1,0,-1,-1,'','');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 80,
+		.description = "2026_08_17_aotv4_campfire_items",
+		// Turns lighting a fellowship campfire into COMBINE-then-CLICK instead of a chat command:
+		// buy a Kit and a Lumber Bundle, combine them in an Artisan's Universal Kit, click the result
+		// and the fire drops at your feet. `fshiplight` survives as a fallback.
+		//
+		// ⚠️⚠️ THE ITEMS ARE CONSUMABLES, NOT A REUSABLE INSIGNIA, AND THAT IS THE WHOLE REASON LIVE'S
+		// DESIGN WAS NOT COPIED. A permanent enabling item in a player's bags is destroyed by the
+		// roguelite death wipe unless it is added to `death_loss.M.is_kept` -- exactly what cost the
+		// tradeskill tools permanently (section 32), since their achievements are `claim_once`. A
+		// consumable you simply buy again has nothing to lose.
+		//
+		// ⚠️⚠️ `clickeffect` MUST POINT AT A REAL SPELL OR THE CLIENT NEVER SENDS THE CLICK.
+		// `Handle_OP_ItemVerifyRequest` reads `item->Click.Effect` and will not raise the packet for
+		// an item it believes has no click -- so 44332 is an inert all-254 vehicle that exists purely
+		// to make the item clickable. Same trick the Tomes of Insight use.
+		// ⚠️ `maxcharges = -1` (unlimited), NOT 0. Section 32 records 0 reading as a SPENT consumable
+		// -- "Item is out of charges" -- which leaves the row looking perfectly configured and the
+		// item permanently dead. The quest script removes the item on a successful light instead.
+		//
+		// ⚠️⚠️ THE RECIPE ENTRIES ARE DELETED BEFORE INSERT. `tradeskill_recipe_entries` has an
+		// AUTO_INCREMENT primary key and NO unique key on (recipe_id, item_id), so INSERT IGNORE does
+		// NOT dedupe: a second run doubles every component count and the recipe quietly starts
+		// demanding two kits and four bundles. Caught on a scratch database -- a re-run produced 16
+		// entries where 8 were intended.
+		//
+		// ⚠️ Container is 990061 Artisan's Universal Kit, the container 19,469 stock recipes already
+		// use, so the combine works anywhere rather than needing one of the hub's tradeskill stations.
+		// 📌 The outputs have no gear-tier rows, so `GetTradeRecipe`'s always-yield-Mythic swap
+		// (section 10) is a no-op on them -- worth knowing, because a wearable output would silently
+		// come out as a Mythic.
+		//
+		// ⚠️⚠️ `items` AND `spells_new` ARE SHARED MEMORY -- stop the stack, ./shared_memory, restart.
+		.check       = "SELECT id FROM items WHERE id = 147974",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+-- inert click vehicle: the client will not even SEND the click packet for an item with no effect
+CREATE TEMPORARY TABLE aotv4_fc_spell LIKE spells_new;
+INSERT INTO aotv4_fc_spell SELECT * FROM spells_new WHERE id = 44330;
+UPDATE aotv4_fc_spell SET id=44332, `name`='Light Campfire', descnum=44332,
+  effectid1=254, effectid2=254, effectid3=254,
+  effect_base_value1=0, effect_base_value2=0, effect_base_value3=0,
+  buffduration=0, buffdurationformula=0, targettype=6, goodEffect=1, cast_time=0, recast_time=0;
+INSERT IGNORE INTO spells_new SELECT * FROM aotv4_fc_spell;
+DROP TEMPORARY TABLE aotv4_fc_spell;
+
+-- the three clickable campfires
+CREATE TEMPORARY TABLE aotv4_fc_item LIKE items;
+INSERT INTO aotv4_fc_item SELECT * FROM items WHERE id = 147970;
+UPDATE aotv4_fc_item SET stackable=0, stacksize=1, nodrop=1, norent=1, slots=0,
+  classes=65535, races=65535, reqlevel=0, reclevel=0, deity=0,
+  clickeffect=44332, clicktype=1, casttime=0, recastdelay=0, recasttype=-1, maxcharges=-1, icon=1113;
+UPDATE aotv4_fc_item SET id=147972, Name='Simple Campfire',   price=0;
+INSERT IGNORE INTO items SELECT * FROM aotv4_fc_item;
+UPDATE aotv4_fc_item SET id=147973, Name='Warded Campfire',   price=0;
+INSERT IGNORE INTO items SELECT * FROM aotv4_fc_item;
+UPDATE aotv4_fc_item SET id=147974, Name='Enduring Campfire', price=0;
+INSERT IGNORE INTO items SELECT * FROM aotv4_fc_item;
+DROP TEMPORARY TABLE aotv4_fc_item;
+
+-- combines, in the Artisan's Universal Kit (990061) -- the container 19,469 stock recipes use
+INSERT IGNORE INTO tradeskill_recipe (id,name,tradeskill,skillneeded,trivial,nofail,replace_container,notes,must_learn,learned_by_item_id,quest,enabled,min_expansion,max_expansion)
+VALUES (470120,'Warded Campfire',64,0,0,1,0,'AoTv4 fellowship',0,0,0,1,-1,-1),
+       (470121,'Enduring Campfire',64,0,0,1,0,'AoTv4 fellowship',0,0,0,1,-1,-1);
+-- ⚠️⚠️ DELETE FIRST. `tradeskill_recipe_entries` has an AUTO_INCREMENT primary key and NO unique
+-- key on (recipe_id, item_id), so INSERT IGNORE does not dedupe -- a second run doubles every
+-- component count and the recipe silently starts demanding two kits and four bundles. Caught on
+-- a scratch database, where a re-run produced 16 entries instead of 8.
+DELETE FROM tradeskill_recipe_entries WHERE recipe_id IN (470120,470121);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,successcount,failcount,componentcount,salvagecount,iscontainer) VALUES
+ (470120,990061,0,0,0,0,1), (470120,147970,0,0,1,0,0), (470120,147971,0,0,1,0,0), (470120,147973,1,0,0,0,0),
+ (470121,990061,0,0,0,0,1), (470121,147970,0,0,1,0,0), (470121,147971,0,0,2,0,0), (470121,147974,1,0,0,0,0);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 81,
+		.description = "2026_08_17_aotv4_campfire_item_types",
+		// Fixes the item TYPE and icons on the fellowship components and campfires.
+		//
+		// ⚠️⚠️ A CLONE INHERITS `itemtype`, AND itemtype 38 IS A DRINK. All five were cloned from
+		// 13008 Mead, so clicking a campfire answered "Glug, glug, glug... You take a swig of Enduring
+		// Campfire. Ahhh. That was refreshing." and consumed it as a beverage -- the quest script
+		// never ran. Reported from play. This is the same class of failure section 5 records for
+		// cloned damage formulas and section 44 for an inherited `descnum`: the columns that hurt are
+		// the ones with no obvious connection to what you changed.
+		// ⚠️ The clickables take itemtype 17, which is what the Tomes of Insight use and is proven to
+		// click. The two shop components take 58, which every STOCK Fellowship Kit and Lumber Bundle
+		// carries.
+		//
+		// ⚠️ Icons were kiln (1113) and oven (1114) leftovers from the same clone. 2022 and 2227 are
+		// the icons the stock fellowship components use, so a Lumber Bundle now looks like wood.
+		//
+		// ⚠️⚠️ `items` IS SHARED MEMORY -- stop the stack, ./shared_memory, restart, or every zone
+		// keeps serving the drink.
+		.check       = "SELECT id FROM items WHERE id = 147974 AND itemtype = 17",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+-- ⚠️⚠️ itemtype 38 IS A DRINK. Everything here was cloned from 13008 Mead and inherited it, so
+-- clicking a campfire answered "Glug, glug, glug... You take a swig" and consumed it as a beverage
+-- instead of running the script. The clickables take 17 (a plain component, what the Tomes of
+-- Insight use); the two shop components take 58, which is what every STOCK Fellowship Kit and
+-- Lumber Bundle uses.
+-- ⚠️ Icons were kiln/oven leftovers. 2022 and 2227 are the icons stock fellowship components carry.
+UPDATE items SET itemtype=58, icon=2022 WHERE id=147970;
+UPDATE items SET itemtype=58, icon=2227 WHERE id=147971;
+UPDATE items SET itemtype=17, icon=559  WHERE id IN (147972,147973,147974);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 82,
+		.description = "2026_08_18_aotv4_campfire_buff_duration",
+		// The campfire buffs lasted SIX SECONDS. See the SQL for the whole story: buffdurationformula
+		// 7 is "temp = level", so at the level 1 cap of a fresh character the buff expired before the
+		// 30 second proximity sweep could renew it.
+		// ⚠️ `spells_new` IS SHARED MEMORY -- stop the stack, ./shared_memory, restart.
+		.check       = "SELECT id FROM spells_new WHERE id = 44330 AND buffdurationformula = 300",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+-- ⚠️⚠️ buffdurationformula 7 IS "temp = level" (zone/spells.cpp:3261). On a level 1 character that
+-- is ONE TICK -- six seconds -- so the campfire buff landed and vanished before the 30 second sweep
+-- could re-apply it. Reported from play as "it pops and then its gone before it pops again".
+-- The clone source (65 Major Shielding) carried formula 3; 7 was my own wrong pick.
+-- ⚠️ 300 is the STATIC form: the default branch is `if (formula < 200) return 0; temp = formula;`
+-- so the value IS the tick count. `buffduration` then caps it (`if (duration && duration < temp)`),
+-- giving 30 ticks = 3 minutes -- six sweeps of headroom, and short enough that walking away from
+-- the fire drops the buff promptly.
+-- ⚠️ NOT formula 50 (permanent): section 36 records -1 escaping into the ramping-effect maths and
+-- breaking the magnitude while the icon persists.
+UPDATE spells_new SET buffdurationformula = 300, buffduration = 30 WHERE id IN (44330,44331);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 83,
+		.description = "2026_08_18_aotv4_fellowship_fire_is_an_npc",
+		// The campfire stops being a ground object and becomes an NPC, because a ground object can
+		// be neither un-clicked nor removed. Full reasoning in the SQL.
+		// ⚠️ npc_types is read at ZONE BOOT, not shared memory -- a zone restart is enough.
+		.check       = "SELECT id FROM npc_types WHERE id = 2000412 AND race = 567 AND bodytype = 11",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+-- ⚠️⚠️ RACE 567 IS THE CAMPFIRE MODEL. The fire was a GROUND OBJECT built from IT78_ACTORDEF, and
+-- that was wrong in three ways at once, all of them structural rather than cosmetic:
+--   1. Clicking it OPENED A CONTAINER WINDOW. `Object::HandleClick` (zone/object.cpp:582) branches
+--      only on `m_type == Temporary`; EVERY other type -- 0 included -- falls into the else branch,
+--      which sends OP_ClickObjectAction and opens the tradeskill/bag panel. There is no object type
+--      that is simply not clickable. Reported from play as "I can open a bag it seems?".
+--   2. IT COULD NOT BE REMOVED. Lua can CREATE a ground object or a door
+--      (`create_ground_object_from_model`, `create_door`) but there is NO binding that removes
+--      either -- only decay takes them down. So "destroy camp" said the fire was out and the model
+--      stayed lit. Reported as exactly that.
+--   3. IT78 is a generic item model and did not read as a fire at all.
+-- An NPC fixes all three: `Depop()` IS bound, `bodytype 11` (NoTarget) makes it unclickable, and
+-- race 567 is the model the stock campfires already use.
+-- 📌 Precedent: the delve chest (section 24) is likewise an object rendered as an NPC.
+-- ⚠️ Modelled on stock npc 700114 `Campfire` -- same race, gender, size and bodytype, so it renders
+-- exactly as the fires already in the world do.
+UPDATE npc_types
+SET race              = 567,   -- the campfire model
+    gender            = 2,     -- as stock 700114; an object model, not a sexed creature
+    texture           = 0,
+    size              = 5,     -- stock campfire size; 3 was a guess and read as a candle
+    bodytype          = 11,    -- ⚠️⚠️ NoTarget. This is what stops it being clicked at all.
+    level             = 1,
+    hp                = 13,
+    -- ⚠️ 13/14 immune to melee and magic, 21 no-harm-from-client (stock 700114's set), plus the
+    -- flee/aggro immunities already carried here. It cannot be attacked, pulled or killed.
+    special_abilities = '13,1^14,1^19,1^20,1^21,1^24,1^25,1'
+WHERE id = 2000412;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 84,
+		.description = "2026_08_18_aotv4_fellowship_insignia_and_lesson",
+		// The Fellowship Insignia (147975), its inert click spell (44329), and Fellowmaster Denara's
+		// lesson joining the Titan Hall induction as step 10.
+		// ⚠️⚠️ `items` AND `spells_new` ARE SHARED MEMORY -- world applying this at boot is NOT
+		// enough. Stop the stack, run ./shared_memory, restart, or the rows are invisible to zones.
+		// ⚠️ The item is only safe to hand out because `death_loss.M.is_kept` exempts it in the same
+		// commit. Removing that exemption silently makes it destructible on the first death.
+		.check       = "SELECT id FROM items WHERE id = 147975",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+-- The Fellowship Insignia, and Fellowmaster Denara's lesson in the Titan Hall induction.
+--
+-- ⚠️⚠️ THIS ITEM EXISTS ONLY BECAUSE IT IS EXEMPT FROM THE DEATH WIPE. An insignia was deliberately
+-- NOT built at first, for the reason section 32 records: `death_loss` destroys every carried item
+-- outside `death_loss.M.is_kept`, and the tradeskill tools were permanently lost that way -- their
+-- achievements are `claim_once = 1`, so once destroyed there was no path back. A fellowship whose
+-- travel item silently vanishes on the first death is worse than no item at all.
+-- 📌 So the item is added to `is_kept` IN THE SAME COMMIT. If that entry is ever removed, this row
+-- must go with it -- and Denara re-hands it on hail, which is the belt to that braces.
+
+-- ---------------------------------------------------------------- the click vehicle
+-- ⚠️ An inert spell is REQUIRED, not decoration: `Handle_OP_ItemVerifyRequest` reads
+-- `item->Click.Effect` and the client will not even SEND the click packet for an item it believes
+-- has no click. All behaviour is in the item script; this spell does nothing.
+-- ⚠️⚠️ CLONED VIA A TEMP TABLE so all ~236 columns stay byte-identical to a known-good custom row.
+-- Never hand-list them. ⚠️ And `descnum` MUST be repointed -- a clone inherits it, which is how the
+-- Tome of Insight ended up describing Shield Wall (migration v56).
+DROP TEMPORARY TABLE IF EXISTS aotv4_tmp_spell;
+CREATE TEMPORARY TABLE aotv4_tmp_spell AS SELECT * FROM spells_new WHERE id = 44328;
+UPDATE aotv4_tmp_spell SET id = 44329, name = 'Fellowship Insignia', descnum = 44329;
+DELETE FROM spells_new WHERE id = 44329;
+INSERT INTO spells_new SELECT * FROM aotv4_tmp_spell;
+DROP TEMPORARY TABLE aotv4_tmp_spell;
+
+-- ⚠️ The client resolves a spell description from its OWN dbstr_us.txt, not from this table, so this
+-- row does nothing in game until ./export_client_files runs and the file ships (section 6).
+-- ⚠️ No literal '%' -- the description path is printf-style and eats it as a format token.
+DELETE FROM db_str WHERE id = 44329 AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+	(44329, 6, 'Returns you to your fellowship''s campfire. You must be out of combat, outside any instance, and have opened the region you are travelling to.');
+
+-- ---------------------------------------------------------------- the item
+DROP TEMPORARY TABLE IF EXISTS aotv4_tmp_item;
+CREATE TEMPORARY TABLE aotv4_tmp_item AS SELECT * FROM items WHERE id = 147966;
+UPDATE aotv4_tmp_item SET
+	id          = 147975,
+	Name        = 'Fellowship Insignia',
+	icon        = 681,
+	clickeffect = 44329,
+	-- ⚠️⚠️ `nodrop = 0` MEANS NO DROP -- THE FLAG IS INVERTED (client_packet.cpp:10755). Inherited
+	-- correct from the tome; restated because getting it backwards makes an earned item tradeable.
+	nodrop      = 0,
+	norent      = 1,   -- ⚠️ opposite polarity again: 1 = permanent, 0 = deleted on logout
+	-- ⚠️⚠️ `maxcharges = -1` IS UNLIMITED. 0 reads as a SPENT consumable ("Item is out of charges")
+	-- and is the one value that makes a clicky permanently dead while the row still looks correct --
+	-- exactly what happened to the tradeskill masks in v30.
+	maxcharges  = -1,
+	clicktype   = 1,   -- ⚠️ NOT 4: type 4 is equip-only and this is a bag clicky (slots = 0)
+	stackable   = 0,   -- one is all anyone needs, and stacking makes the "already have one" test odd
+	loregroup   = -1   -- Lore: nothing to gain from hoarding them
+WHERE id = 147966;
+DELETE FROM items WHERE id = 147975;
+INSERT INTO items SELECT * FROM aotv4_tmp_item;
+DROP TEMPORARY TABLE aotv4_tmp_item;
+
+-- ---------------------------------------------------------------- the lesson
+-- ⚠️⚠️ TASK ID 2000611, NOT 2000610. The Hall numbers its lessons `FIRST_TASK + step`, and step 10
+-- would land on 2000610 -- which is `M.UMBRELLA_TASK`, the induction record itself. `task_of` in
+-- aotv4_tutorial.lua skips the umbrella id for exactly this reason; the two must agree.
+DROP TEMPORARY TABLE IF EXISTS aotv4_tmp_task;
+CREATE TEMPORARY TABLE aotv4_tmp_task AS SELECT * FROM tasks WHERE id = 2000609;
+UPDATE aotv4_tmp_task SET
+	id          = 2000611,
+	title       = 'Bonds of the Road',
+	description = 'No one walks Norrath alone for long. A fellowship binds up to twelve of you across every zone: one roster, one chat that reaches wherever your kin are standing, and a campfire any of you may return to. Speak with Fellowmaster Denara, then open the Fellowship window from the AoT menu.',
+	-- ⚠️ `reward_text` IS varchar(64). Longer text is REJECTED outright by MariaDB, not truncated --
+	-- a 106 character string failed here once already. The long form goes in completion_emote (512).
+	reward_text      = 'A Fellowship Insignia.',
+	completion_emote = 'Keep the insignia. Death cannot take it from you, and while a campfire burns it will carry you to your kin.'
+WHERE id = 2000609;
+DELETE FROM tasks WHERE id = 2000611;
+INSERT INTO tasks SELECT * FROM aotv4_tmp_task;
+DROP TEMPORARY TABLE aotv4_tmp_task;
+
+-- ⚠️⚠️ ACTIVITY TYPE 11 IS `Touch`, AND IT IS INERT ON PURPOSE. There is no "used a UI window"
+-- activity type and there cannot be -- our windows are chat overlays outside the task system -- so
+-- every Hall objective is a Touch nothing can complete by accident, driven by
+-- `client:UpdateTaskActivity` from `M.mark`.
+-- ⚠️ Cloned through a temp table like everything else here. `task_activities` has 25 columns and a
+-- COMPOUND key, so hand-listing them is both fragile and easy to get wrong -- a first pass named
+-- `delivertonpc`, which does not exist on this schema, and would have failed at apply time.
+DROP TEMPORARY TABLE IF EXISTS aotv4_tmp_act;
+CREATE TEMPORARY TABLE aotv4_tmp_act AS
+	SELECT * FROM task_activities WHERE taskid = 2000609 AND activityid = 0;
+UPDATE aotv4_tmp_act SET taskid = 2000611, description_override = 'Open the Fellowship window';
+DELETE FROM task_activities WHERE taskid = 2000611;
+INSERT INTO task_activities SELECT * FROM aotv4_tmp_act;
+DROP TEMPORARY TABLE aotv4_tmp_act;
+
+-- ---------------------------------------------------------------- the induction record grows
+-- ⚠️⚠️ THE UMBRELLA'S ACTIVITIES MUST ALL CARRY THE SAME NON-ZERO `step`. tasks.h:398 reads "if all
+-- steps are 0 treat each as a separate step", so a zero here silently puts the whole record back
+-- into SEQUENCE mode and shows one activity at a time -- the chain this design removed, by another
+-- route. Cloning activity 9 inherits its step 1 rather than restating it.
+DROP TEMPORARY TABLE IF EXISTS aotv4_tmp_umb;
+CREATE TEMPORARY TABLE aotv4_tmp_umb AS
+	SELECT * FROM task_activities WHERE taskid = 2000610 AND activityid = 9;
+UPDATE aotv4_tmp_umb SET activityid = 10,
+	description_override = 'Speak with Fellowmaster Denara about fellowships';
+DELETE FROM task_activities WHERE taskid = 2000610 AND activityid = 10;
+INSERT INTO task_activities SELECT * FROM aotv4_tmp_umb;
+DROP TEMPORARY TABLE aotv4_tmp_umb;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 85,
+		.description = "2026_08_18_aotv4_clear_inherited_cast_messages",
+		// Two inert click vehicles were announcing a weapon buff they do not grant, inherited from
+		// their clone source. See the SQL.
+		// ⚠️ `spells_new` IS SHARED MEMORY -- stop the stack, ./shared_memory, restart.
+		.check       = "SELECT id FROM spells_new WHERE id = 44328 AND cast_on_you = ''",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+-- ⚠️⚠️ A CLONE INHERITS THE CAST MESSAGES, AND NOBODY THINKS TO LOOK AT THEM. 44328 `Insight` (the
+-- Tome of Insight's click vehicle) and 44329 `Fellowship Insignia` are both inert -- every effect
+-- slot is 254 and neither has a duration -- but both carried "The Call of Fire fills your weapons
+-- with power." / "'s weapons gleam." / "The Call of Fire leaves." from whatever row they were
+-- originally cloned from. An inert spell still LANDS, so those lines still print: clicking a Tome of
+-- Insight has been announcing a weapon buff that does not exist, to the player and to everyone
+-- nearby, since the tomes shipped.
+-- 📌 Same family as v56 (the tome inheriting `descnum` and describing Shield Wall) and section 5's
+-- damage-formula note: the columns that bite on a clone are the ones with no obvious connection to
+-- what you changed. Check the message fields on any future clone.
+-- ⚠️ Blanked rather than rewritten. Both spells are pure click vehicles whose real work happens in
+-- Lua, which prints its own feedback -- a second line from the spell engine would only duplicate it.
+UPDATE spells_new
+SET you_cast = '', other_casts = '', cast_on_you = '', cast_on_other = '', spell_fades = ''
+WHERE id IN (44328, 44329);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 86,
+		.description = "2026_08_18_aotv4_hub_door_ids_below_255",
+		// The hub's book (300) and campfire (301) sat above the uint8 door-id ceiling, which silently
+		// disabled `#door save` for the entire zone while the command still reported success. Full
+		// mechanism in the SQL.
+		// ⚠️ Doors load from the DB at ZONE BOOT, not shared memory -- a zone restart applies this.
+		.check       = "SELECT id FROM doors WHERE zone = 'freeporttheater' AND doorid > 254",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+-- ⚠️⚠️ A DOORID ABOVE 254 SILENTLY BREAKS `#door save` FOR THE WHOLE ZONE. `Doors::CreateDatabaseEntry`
+-- (zone/doors.cpp:842) opens with
+--     if (content_db.GetDoorsDBCountPlusOne(zone, version) - 1 >= 255) { return; }
+-- and despite the name, `GetDoorsDBCountPlusOne` returns **MAX(doorid) + 1**, NOT a count
+-- (doors.cpp:753). The hub's book was placed at doorid 300 and the campfire at 301, so that test read
+-- 301 >= 255 and EVERY save in freeporttheater returned before writing a row.
+--
+-- ⚠️⚠️ AND `#door save` STILL PRINTS "Door saved". The command calls a void function and messages
+-- unconditionally (gm_commands/door_manipulation.cpp:432), so the tool reports success on every
+-- attempt while nothing reaches the database. Reported from play as a placed and saved portal simply
+-- being gone; there is no error, no log line, and the AUTO_INCREMENT on `doors` never moved, which is
+-- what proved the row had never existed rather than having been deleted.
+--
+-- ⚠️⚠️ 254 IS A HARD CEILING, NOT A STYLE PREFERENCE: `Door_Struct.doorId` is **uint8**
+-- (common/eq_packet_structs.h:2909) and `Doors::m_door_id` is uint8 too (doors.h:105). 300 truncates
+-- to 44 on load AND on the wire, so the book kept working purely because both sides truncate
+-- identically -- and it would have collided invisibly with any real door at 44.
+-- 📌 So never allocate a "custom" door id in a high band the way NPC and item ids are allocated here.
+-- Doors have no room for one. Use the next free low id.
+--
+-- 12 and 13 are the next free ids (1-11 are the zone's own doors plus the eight sakura trees), and
+-- nothing keys off a doorid: `pok_travel` matches on `dest_zone = 'poknowledge'` and `grant_sets` on
+-- the ZONE, exactly as migration v57 records.
+-- ⚠️ skyshrine version 1 also carries 255-342, but that is STOCK data in a zone we do not author.
+-- Left alone: renumbering it would rewrite 88 rows of content to fix a tool nobody uses there.
+UPDATE doors SET doorid = 12 WHERE zone = 'freeporttheater' AND doorid = 300
+  AND NOT EXISTS (SELECT 1 FROM (SELECT doorid, zone FROM doors) d
+                  WHERE d.zone = 'freeporttheater' AND d.doorid = 12);
+UPDATE doors SET doorid = 13 WHERE zone = 'freeporttheater' AND doorid = 301
+  AND NOT EXISTS (SELECT 1 FROM (SELECT doorid, zone FROM doors) d
+                  WHERE d.zone = 'freeporttheater' AND d.doorid = 13);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 87,
+		.description = "2026_08_18_aotv4_hub_book_model",
+		// The hub's PoK book stops being a Freeport bulletin board. Full reasoning in the SQL.
+		// ⚠️⚠️ PAIRED WITH A CLIENT FILE. It is only correct once the repacked
+		// `aotv4_client_install/eqg/freeporttheater.eqg` (152 files) is installed -- the model does
+		// not exist in the stock zone archive, so applying this alone makes the book INVISIBLE.
+		// ⚠️ Doors load from the DB at ZONE BOOT, not shared memory -- a zone restart applies this.
+		.check       = "SELECT id FROM doors WHERE zone = 'freeporttheater' AND dest_zone = 'poknowledge' AND name = 'OBJ_POK_BOOK_'",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+-- The hub's Plane of Knowledge book becomes an actual book.
+--
+-- ⚠️⚠️ IT WAS `OBJ_FP_BBOARD` -- A FREEPORT BULLETIN BOARD -- AND NO OTHER NAME WOULD HAVE WORKED.
+-- A door's model is resolved against the ZONE'S OWN .eqg, and `freeporttheater.eqg` shipped with
+-- `obj_fp_bboard` and nothing book-like in it. Setting this column to the real book model resolved to
+-- NOTHING: the door is created, found and clickable, and draws an empty hole -- no error, no
+-- UIErrorLog entry, exactly the silent failure section 3 records for a mis-cased texture name. So the
+-- board was not a placeholder anyone forgot to change; it was the only model available.
+-- ⚠️⚠️ THIS ROW IS ONLY CORRECT ONCE THE REPACKED ARCHIVE IS INSTALLED. `obj_pok_book_.mod` and its
+-- nine textures were merged into freeporttheater.eqg from the client's standalone `pok_book.eqg`
+-- (aotv4_client_install/eqg/freeporttheater.eqg, 152 files). Apply this without shipping that file
+-- and the hub's book turns invisible for everyone.
+-- 📌 The model name is stored UPPERCASE like every other row in this table; the archive member is
+-- lowercase `obj_pok_book_.mod`. That asymmetry is normal here -- see the eight OBP_TREE_SAKURA rows
+-- against `obp_tree_sakura.mod`.
+--
+-- ⚠️ Keyed on `dest_zone`, not on the doorid: v86 renumbered this door from 300 to 12 and section 11
+-- records that nothing keys off a doorid precisely because they are not stable across environments.
+UPDATE doors
+SET name = 'OBJ_POK_BOOK_'
+WHERE zone = 'freeporttheater' AND dest_zone = 'poknowledge' AND name = 'OBJ_FP_BBOARD';
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 88,
+		.description = "2026_08_18_aotv4_hub_arrival_point_moved",
+		// Re-points Origin at the hub's new authored arrival point. Supersedes v78, which put it at
+		// (73.52, -391.28, -14.98). See the SQL for the two coordinate swaps involved.
+		// ⚠️ `pok_portals.lua` and `aotv4_tutorial.M.DROP` carry the same point and are edited in the
+		// same commit -- all three or none.
+		// ⚠️⚠️ `spells_new` IS SHARED MEMORY -- ./shared_memory with the stack down, or invisible.
+		.check       = "SELECT id FROM spells_new WHERE id = 5824 AND effect_base_value1 = -247",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+-- Move the hub's arrival point to the doorstep the owner chose: /loc (-246.67, -71.56, -27.10).
+--
+-- ⚠️⚠️ `effect_base_value1` IS **Y** AND `effect_base_value2` IS **X**. `SE_Teleport` reads
+-- `x = base_value[1]; y = base_value[0]` (zone/spell_effects.cpp:563), so the pair is stored SWAPPED
+-- relative to how it reads. Migrations v70 and v78 both record this trap; getting it backwards lands
+-- the player tens of units away, or outside the zone entirely, with nothing logged.
+-- ⚠️ In-game `/loc` prints **Y, X, Z**, which swaps them a SECOND time. The owner's
+-- (-246.67, -71.56, -27.10) is x = -71.56, y = -246.67, z = -27.10 -- so base1 = -247, base2 = -72.
+-- Two independent swaps that cancel out is exactly the shape of thing that gets "fixed" into a bug.
+-- ⚠️ The columns are int(11); fractions are silently TRUNCATED, not rejected. -246.67 -> -247.
+--
+-- ⚠️⚠️ THREE PLACES DEFINE THIS ONE POINT AND ALL THREE MOVE TOGETHER:
+--   * this spell        -- where Origin drops you
+--   * pok_portals.lua   -- where a PoK book port drops you  (edited in the same commit)
+--   * aotv4_tutorial.M.DROP -- where a newcomer is placed   (edited in the same commit)
+-- Leave one behind and players arrive by one route in a different place from another, which reads as
+-- the hub having two front doors.
+-- 📌 It is AUTHORED, not derived from the book's position -- so moving or rotating the book no longer
+-- moves where anyone arrives. That decoupling is deliberate and predates this change.
+--
+-- ⚠️⚠️ `spells_new` IS SHARED MEMORY. World applying this at boot is NOT enough: stop the stack, run
+-- ./shared_memory, restart. Without it every zone keeps the old destination and this is invisible.
+UPDATE spells_new
+SET effect_base_value1 = -247,   -- Y
+    effect_base_value2 = -72,    -- X
+    effect_base_value3 = -27     -- Z
+WHERE id = 5824;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 89,
+		.description = "2026_08_18_aotv4_open_the_artisan_hub",
+		// freeporttheater becomes reachable by everyone: min_status, the stock expansion check, and
+		// the region lock were all shut, and two of the three are GM-exempt. See the SQL.
+		// ⚠️ `zone` is read at boot by BOTH world and zone; `zone_regions` at zone boot. Restart both,
+		// no ./shared_memory.
+		// ⚠️ Paired with Lua: `aotv4_travel.M.BOOK_REGION` gains the hub at region 0 and every
+		// HasRegion gate moves to `M.is_open`, because HasRegion(0) is false by construction.
+		.check       = "SELECT short_name FROM zone WHERE short_name = 'freeporttheater' AND min_status = 0 AND bypass_expansion_check = 1",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+-- Open the artisan hub to everyone. THREE independent gates were shut, and two of them are exempt
+-- for a GM -- so it worked for every test character and refused every player.
+--
+-- ⚠️⚠️ GATE 1: `min_status = 80` -- GM only. Nobody else could enter at all.
+--
+-- ⚠️⚠️ GATE 2: the STOCK expansion check in `Client::ZonePC` (zone/zoning.cpp:367):
+--     if (CurrentExpansion >= Classic && !GetGM()) {
+--         if (z->expansion <= CurrentExpansion || z->bypass_expansion_check) { ...ok... }
+--     }
+-- freeporttheater is `zone.expansion = 11` and this server runs Classic
+-- (`Expansion:CurrentExpansion = 0`), so entry was refused with "part of an expansion that you do not
+-- yet own". Note the `!GetGM()`: section 41 records this exact flag hiding this exact bug TWICE
+-- before, on the DoN six and then the LDoN thirty-three.
+-- ⚠️ Fixed with `bypass_expansion_check`, NOT by rewriting `expansion`. That column is real metadata
+-- -- content filtering, zone listings and the era system all read it -- so setting it to 0 would make
+-- the hub claim to be Classic content everywhere else in the server. The bypass exempts ONLY the
+-- entry gate and leaves the zone honest about what it is.
+--
+-- ⚠️⚠️ GATE 3: region 99 "Unused" -- `RegionManager::CanEnterZone` would answer "You have not yet
+-- unlocked Unused." Moved to region 0 "Always Available", the same fix v27 applied to the LDoN delve
+-- maps.
+--
+-- ⚠️⚠️ UNLOCKING THIS GRANTS NO WORLD ACCESS, WHICH IS THE WHOLE SAFETY ARGUMENT. `zone_points` has
+-- ZERO rows targeting freeporttheater and ZERO leading out of it -- there is no way to WALK in or
+-- out. It is reachable only by the PoK book network and by Origin, both of which are ours. That is
+-- the same test v27 used, and the same reason `veksar` was excluded there: a zone with zone_points is
+-- world content, and unlocking it is a TRAVEL change rather than a hub change.
+UPDATE zone SET min_status = 0, bypass_expansion_check = 1 WHERE short_name = 'freeporttheater';
+
+-- ⚠️⚠️ DELETE THEN INSERT -- `REPLACE` DOES NOT MOVE A ZONE BETWEEN REGIONS HERE. The primary key is
+-- COMPOSITE, `(zone_id, region_id)`, so a REPLACE only replaces that exact PAIR: it left the region
+-- 99 row untouched and ADDED a second row, putting the hub in two regions at once. Caught on a
+-- scratch database before it reached anything.
+-- 📌 The composite key is deliberate -- a zone genuinely CAN belong to two regions (The Swamp of No
+-- Hope is reachable from both Firiona Vie and Cabilis, and is the one zone in the table that does).
+-- So this is not a schema oversight to route around; it is a table that models something this
+-- particular change does not want.
+-- ⚠️ Scoped to zone 390 only, so the legitimate multi-region zone is untouched.
+DELETE FROM zone_regions WHERE zone_id = 390;
+INSERT INTO zone_regions (zone_id, region_id) VALUES (390, 0);
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does
@@ -5539,4 +7242,5 @@ UPDATE zone SET min_level = 0 WHERE short_name = 'hateplaneb';
 // 	std::string condition{};   // condition or "match_type" - Possible values [contains|match|missing|empty|not_empty]
 // 	std::string match{};       // match field that is not always used, but works in conjunction with "condition" values [missing|match|contains]
 // 	std::string sql{};         // the SQL DDL that gets ran when the condition is true
+//
 // };

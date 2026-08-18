@@ -1540,7 +1540,7 @@ M.BOSS_CLASSES = {
 -- is not listed there renders as a HUMANOID PLACEHOLDER, and it fails only on the client -- the
 -- server reports the right race the whole time and nothing appears in any log.
 --
--- ⚠️⚠️ ONLY EXPANSION 10-11 ARCHIVES WORK. This was established by testing, not assumed, and it is
+-- ⚠️⚠️ EXPANSION 11 AND BELOW WORK; 13+ DO NOT. This was established by testing, not assumed, and it is
 -- the single most expensive thing learned here. A first attempt listed five archives from expansions
 -- 13-19 (sepulcher, beastdomain, pillarsalra, shardslanding, thulehouse2); race 700 was present in
 -- THREE of them and still drew as a humanoid every time. Retested with expansion 10-11 archives and
@@ -1549,8 +1549,14 @@ M.BOSS_CLASSES = {
 -- globals, expansions 10-11 are the last of the S3D zones, and expansion 13+ zones ship as EQG --
 -- which this loader appears not to handle. It fails SILENTLY, so a bad entry looks exactly like a
 -- correct one.
+-- 📌 UPDATED 2026-08-16: the boundary is lower than "10-11". `guildlobby_chr` (**expansion 9**) and
+-- `bothunder_chr` (**expansion 4**, Planes of Power) were both added for the travel waypoints and BOTH
+-- rendered correctly first time -- race 567 and race 329 respectively. So the working set is every S3D
+-- era archive, roughly expansion 0-11, and the failure is specifically the EQG zones at 13+. The
+-- original "10-11" was simply the range that happened to be tested.
 -- 📌 DO NOT ADD AN EXPANSION 12+ ARCHIVE without spawning one of its races via `/say delveboss <race>`
--- first. That command exists for precisely this test.
+-- first. That command exists for precisely this test, and 12 itself is still untested in either
+-- direction -- it is the boundary nobody has probed.
 --
 -- Archives currently listed in GlobalLoad_chr.txt and the races each one buys:
 --     illsalin_chr      exp 10   460, 461, 462, 465, 467

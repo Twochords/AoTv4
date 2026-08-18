@@ -14274,6 +14274,19 @@ void Client::Handle_OP_RecipesSearch(const EQApplicationPacket *app)
 	// native Tradeskill Window mixes all skills. The window's dll-driven skill dropdown prepends this
 	// token to restrict the search to a single tradeskill; it's also typeable by hand for testing
 	// (e.g. Partial Name = "#57#" shows only Tinkering). Token is stripped so the rest is the real name.
+	// ⚠️⚠️ THE FILTER ONLY MEANS ANYTHING IN THE UNIVERSAL KIT, AND IS IGNORED EVERYWHERE ELSE.
+	// The search is already constrained to recipes linked to the OPEN container, and a native station
+	// links exactly ONE tradeskill -- an oven links only Baking. So picking Blacksmithing at a baking
+	// table asks for the intersection of two disjoint sets and correctly returns nothing, which reads
+	// as the dropdown being broken. Reported from play as exactly that.
+	// 📌 The Kit (item 990061) links 13 tradeskills across 19,471 recipes, which is the whole reason
+	// the dropdown exists. That contrast IS the rule, so it is expressed as the container id rather
+	// than as a list of stations to exclude.
+	// ⚠️ The token is still STRIPPED when it is ignored -- leaving it in would feed "#63#" to the
+	// `name rlike` clause and filter the station's own recipes down to nothing, which is a worse
+	// version of the bug being fixed.
+	const bool aotv4_is_universal_kit = (p_recipes_search_struct->some_id == 990061);
+
 	int aotv4_skill_filter = -1;
 	{
 		char *q = p_recipes_search_struct->query;
@@ -14285,12 +14298,39 @@ void Client::Handle_OP_RecipesSearch(const EQApplicationPacket *app)
 					if (!isdigit((unsigned char) *p)) { all_digits = false; break; }
 				}
 				if (all_digits) {
-					aotv4_skill_filter = atoi(q + 1);
+					if (aotv4_is_universal_kit) { aotv4_skill_filter = atoi(q + 1); }
 					memmove(q, end + 1, strlen(end + 1) + 1); // drop "#N#" prefix in place
 				}
 			}
 		}
+
+		// ⚠️⚠️ THE CLIENT DOES NOT SEND A CLEAN EMPTY SEARCH BOX. With the dropdown used and nothing
+		// typed, what arrives after the token is not "" but whatever was left in the client's 56-byte
+		// field -- control bytes. `query[0] != 0` then passed, and those bytes went into a `name rlike
+		// '...'` clause: they are unprintable, so the filter could never match anything, and combined
+		// with the missing space above they produced the syntax error outright.
+		// ⚠️ Escaping is NOT enough on its own. `DoEscapeString` makes the value quote-safe, which is
+		// what it is for -- it does not make it a sane REGEX, and rlike is a regex.
+		// 📌 Kept to a control-character strip rather than a whitelist: a name search legitimately
+		// contains spaces, apostrophes and hyphens, and stock lets the player type regex on purpose.
+		{
+			char *w = q;
+			for (char *r = q; *r; ++r) {
+				const unsigned char c = (unsigned char) *r;
+				if (c >= 0x20 && c != 0x7F) { *w++ = *r; }
+			}
+			*w = '\0';
+			// A term that was ONLY control bytes is an empty search, not a search for nothing.
+			bool any = false;
+			for (char *r = q; *r; ++r) { if (*r != ' ') { any = true; break; } }
+			if (!any) { q[0] = '\0'; }
+		}
 	}
+
+	// Presentation half: the dll shows the dropdown only while the Kit is open. ⚠️ This is a HINT,
+	// not the rule -- the rule is the container test above, so a modified client that un-hides the
+	// combo and sends a token at an oven simply has it ignored.
+	Message(Chat::NPCQuestSay, "TSKIT %d", aotv4_is_universal_kit ? 1 : 0);
 
 	LogTradeskills(
 		"Requested search recipes for object_type [{}] some_id [{}]",
@@ -14323,7 +14363,13 @@ void Client::Handle_OP_RecipesSearch(const EQApplicationPacket *app)
 
 	std::string search_clause;
 	if (aotv4_skill_filter >= 0) {
-		search_clause = StringFormat("tr.tradeskill = %d AND", aotv4_skill_filter); // AoTv4: dropdown skill filter
+		// ⚠️⚠️ THE TRAILING SPACE IS LOAD-BEARING. Stock only ever built ONE clause here, and the
+		// query template supplies the space before `tr.trivial` -- so a clause ending in "AND" was
+		// fine on its own. The moment this filter is combined with the name clause below, the two
+		// concatenate directly and produce `... = 63 ANDname rlike ...`, a hard MySQL syntax error
+		// (1064). It only fires when a skill is picked from the dropdown AND a search term survives,
+		// which is why it went unnoticed.
+		search_clause = StringFormat("tr.tradeskill = %d AND ", aotv4_skill_filter); // AoTv4: dropdown skill filter
 	}
 	if (p_recipes_search_struct->query[0] != 0) {
 		char buf[120];	//larger than 2X rss->query

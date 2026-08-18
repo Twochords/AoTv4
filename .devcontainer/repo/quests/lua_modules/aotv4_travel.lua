@@ -21,6 +21,18 @@ local regions = require("aotv4_regions")
 
 local M = {}
 
+-- ⚠️⚠️ DECLARED HERE, AT THE TOP, AND IT MUST STAY THERE. It used to sit beside `M.open_window`
+-- around line 714 -- 177 lines BELOW `M.request`, which calls it. A plain `local` is only visible to
+-- functions defined AFTER it: Lua closes over what is lexically in scope at DEFINITION time, so
+-- inside `M.request` the name resolved as a GLOBAL and was nil. Every travel request through the
+-- window died with "attempt to call global 'bookkey' (a nil value)" -- so the window's travel had
+-- never worked at all, and it only surfaced when the artisan hub became reachable and somebody
+-- finally used it.
+-- 📌 Exactly the trap `pok_travel.lua` records above its own `always_available` table. Two now, in
+-- the same subsystem: if a local is used by more than one function here, define it before ALL of
+-- them, or hang it off the M table, which is resolved at call time instead.
+local function bookkey(c) return "travel_book_" .. c:CharacterID() end
+
 -------------------------------------------------------------------- the spots
 -- ⚠️⚠️ COORDINATES ARE REAL SPAWN POINTS, NOT INVENTED AND NOT THE ZONE SAFE POINT.
 -- Each was taken from an actual `spawn2` row at roughly 60 percent of the zone's spawn spread from
@@ -85,32 +97,28 @@ M.SPOTS = {
 
 -- How close you must get. ⚠️ A PROXIMITY IS A BOX, NOT A SPHERE, so this is a half-width on each
 -- axis. Generous on purpose: the spot is meant to be found by walking through the area, not by
--- standing on an exact pixel, and the marker is invisible so there is nothing to aim at.
+-- standing on an exact pixel. It was sized when the marker was invisible and there was nothing to aim
+-- at; the portal is now visible, so this is more generous than it strictly needs to be -- left alone
+-- because walking THROUGH a portal should discover it, not brushing an exact edge.
 -- ⚠️ The Z half-width is SEPARATE and much tighter -- a fat Z box in a multi-level dungeon would fire
 -- from the floor above, which reads as the spot being in the wrong place.
 M.RADIUS_XY = 40.0
 M.RADIUS_Z  = 25.0
 
--- The invisible marker.
+-- The marker NPC. VISIBLE PORTAL as of migration v64 -- see make_marker below for the appearance and
+-- for why the client needs `bothunder_chr` in GlobalLoad_chr.txt.
 --
--- ⚠️⚠️ WHAT MADE IT VISIBLE WAS THE **WEAPONS**, NOT THE RACE -- and the race was blamed twice
--- before anybody looked at the equipment columns. It is cloned from `Animation1` (500), which ships
--- `d_melee_texture1 = 10653` and `d_melee_texture2 = 202`, so every waypoint stood in the field
--- holding a sword and a shield. Reported first as "they look like enchanter pets" and then, after the
--- race was changed, as a fully drawn human warrior. **A held weapon renders even when the body does
--- not**, and on a race with no model of its own the client draws a default humanoid to hang it on.
--- All six stock triggers (`Trigger` 674, `Puzzle_Trigger`, `croc_trigger`, `#Dragon_Trigger`,
--- `#daytrigger`, `Halloween_Trigger`) carry `0/0` there; ours now matches. `texture`, `helmtexture`,
--- the per-slot textures and the tints are zeroed for the same reason.
--- 📌 Race 240 is `Race::TeleportMan` and 127 is `Race::InvisibleMan` (`common/races.h`) -- BOTH are
--- used by stock triggers (five of the six are 240, Halloween_Trigger is 127), so neither is the
--- "wrong" one and swapping between them fixes nothing on its own. Do not go back to the race.
--- ⚠️ `SetInvisible(1)` is also called at spawn (see spawn_markers) rather than trusting the row
--- alone. Belt and braces: the marker exists to be walked through, and a visible one is not a hidden
--- waypoint, it is a signpost.
--- ⚠️ 2000500 is in the AoTv4 band, which matters twice over: the delve's spawn hook and the
--- difficulty system's scaler BOTH skip npc ids >= 2000000, so a marker is never scaled, never
--- rescaled and never given loot.
+-- ⚠️⚠️ HISTORY WORTH KEEPING, because it cost four rounds of screenshots: while this was an INVISIBLE
+-- trigger, what kept it visible was the **WEAPONS**, not the race. It was cloned from `Animation1`
+-- (500), which ships `d_melee_texture1 = 10653` and `d_melee_texture2 = 202`, so every waypoint stood
+-- in the field holding a sword and a shield -- reported first as "they look like enchanter pets" and
+-- then, after the race was changed, as a fully drawn human warrior. **A held weapon renders even when
+-- the body does not.** The race was blamed and changed twice before anyone read the equipment columns.
+-- 📌 The other half of that lesson: invisibility is the **bodytype**, not the race -- "body types above
+-- 64 make the mob invisible" (common/bodytypes.h). 11 is `NoTarget`, which only suppresses the name and
+-- the target, and is exactly why the marker can be a visible portal AND unkillable at the same time.
+-- ⚠️ 2000500 is in the AoTv4 band, which matters twice over: the delve's spawn hook and the difficulty
+-- system's scaler BOTH skip npc ids >= 2000000, so a marker is never scaled, rescaled or given loot.
 M.MARKER_NPC = 2000500
 local SPOT_VAR = "travel_spot"
 
@@ -154,7 +162,27 @@ end
 -- this table**, or a book will be filed under a region that no longer contains its destination.
 -- ⚠️ `felwithe` and `gfaydark` are BOTH zone 54 and both region 1. Not an error: felwithe is the
 -- second gfaydark book, by the Felwithe zone line (doorid 108) -- see pok_portals' own comment.
+-- ⚠️⚠️ REGION 0 MEANS "ALWAYS AVAILABLE" AND IS NOT SUBJECT TO THE UNLOCK GATE. It is the same
+-- convention `zone_regions` already uses (section 24: region 0 is Always Available, and
+-- `RegionManager::CanEnterZone` treats an unmapped zone as unrestricted) -- but `HasRegion` does NOT
+-- share it: `RegionManager::HasRegion` returns FALSE for region 0 outright (`if (!char_id ||
+-- !region_id) return false;`, zone/regions.cpp:166). So a region-0 destination must be gated through
+-- `M.is_open` and never by a bare HasRegion call, or the hub reads as locked to everybody.
+M.ALWAYS_REGION = 0
+M.ALWAYS_NAME   = "Always Available"
+
+-- ⚠️ EVERY gate on a destination goes through here. Three sites used to call HasRegion directly and
+-- must not: region 0 fails that test by construction.
+function M.is_open(c, region)
+	if region == M.ALWAYS_REGION then return true end
+	return (c:GetGM() or c:HasRegion(region)) and true or false
+end
+
 M.BOOK_REGION = {
+	-- ⚠️ The artisan hub is region 0: open to everyone from level 1, nothing to discover, nothing to
+	-- unlock. It is a DESTINATION as well as a source -- unlike resplendent, which `pok_travel` keeps
+	-- in `never_attune` because you return there by dying and a portal would skip the roguelite loop.
+	freeporttheater = 0,
 	butcher      = 1, butcherdocks = 1, felwithe = 1, gfaydark = 1,   -- Kelethin
 	ecommons     = 2, freportw     = 2, misty    = 2,                 -- Freeport
 	greatdivide  = 3,                                                 -- Thurgadin
@@ -282,34 +310,35 @@ local spawned = false
 -- ⚠️ Slots 0-6 are armour, **7 is primary and 8 is secondary** (`common/textures.h`). Clear all nine:
 -- armour on a bodyless race is invisible anyway, but it costs one loop and closes the same hole.
 --
--- ⚠️⚠️ **GENDER 2 IS LOAD BEARING, AND IT IS THE FIELD NOBODY LOOKS AT.** A modelless race still has
--- to be drawn as *something*, and at gender **0** the client falls back to a **human male** -- which
--- is exactly what every screenshot showed. Every stock trigger, and every stock campfire, is gender
--- **2** (neuter/object). Race and bodytype were each changed twice before this column was read.
--- ⚠️ **11 is `NoTarget`, which is NOT invisibility**: "no name, can't target this bodytype"
--- (`common/bodytypes.h`). That is what wrapped the name in PARENTHESES while the body kept
--- rendering, and a half-hidden marker reads like an invisibility setting that is almost working,
--- which is why it never came under suspicion. The file's own first line says invisibility is
--- *"body types above 64"* -- so 11 is doing nothing here except suppressing the name and the target.
--- 📌 Neither race is "the invisible one": **240 `TeleportMan` and 127 `InvisibleMan` both draw a
--- solid human** if the gender is wrong.
+-- ⚠️⚠️ THE MARKER IS A VISIBLE PORTAL, AND THE RUNTIME ASSERTION MUST MATCH THE ROW OR IT WINS.
+-- This used to force the marker invisible at spawn (race 240 + SetInvisible), which was correct while
+-- the waypoints were hidden triggers. They are portals now -- see migration v64 -- so the assertion
+-- pushes the PORTAL appearance instead. Leaving the old invisibility here would silently override the
+-- npc_types row on every spawn and nothing would render, which is the harder version of this bug to
+-- find: the data would look right and the world would not match it.
 --
--- 📌 THE CONFIGURATION BELOW IS COPIED FROM THE GAME'S OWN ANSWER rather than reasoned out: it is
--- `#aemc_trigger` (289045), byte-identical on every appearance column. That pattern -- race 240,
--- gender 2, bodytype 11, size 0, texture 0, both weapon slots 0 -- is the most widely deployed
--- trigger in the database (44 NPCs across 26 zones), and **not one of the ~190 stock trigger rows
--- carries a weapon**. If a marker is ever visible again, diff it against 289045 column by column
--- before changing anything; four rounds of guessing lost to what one diff answered.
+-- Race **567** (Race::Campfire), gender 2, size 6 -- the stock campfire size. A portal (race 329) was
+-- built first and worked; the bonfire was chosen once both were seen side by side.
+-- ⚠️⚠️ **GENDER 2 IS STILL LOAD BEARING.** A modelless or mis-gendered race falls back to a HUMAN MALE
+-- -- which is what four rounds of "the waypoints look like men" screenshots were. Every stock portal
+-- and every stock trigger is gender 2.
+-- ⚠️ **bodytype 11 is what makes it unkillable**: NoTarget, so no name plate and nothing to target.
+-- It does NOT hide the model -- invisibility is "body types above 64" (common/bodytypes.h) -- which is
+-- precisely why it can be a visible portal and still be untargetable.
+-- ⚠️ Weapon slots are still cleared. A held weapon renders even when the body does not, and cloning
+-- history means the row has carried one before.
 --
--- ⚠️⚠️ A VISIBLE MODEL WAS CONSIDERED AND REJECTED. A campfire (race 567) would be nicer to find,
--- but a zone only loads the models it ships with, and **zero of our 13 spot zones spawn race 567**
--- (it appears in 37 of 618 zones) -- so it would have to be added to the client's global model load
--- and shipped to every player. A trigger race needs none of that, because it draws nothing anywhere.
-local function make_invisible(npc)
+-- ⚠️⚠️ RACE 567 ONLY RENDERS IF `guildlobby_chr` IS IN THE CLIENT'S Resources\GlobalLoad_chr.txt.
+-- A race draws only where the zone's own `_chr` archive carries it. Of the 37 zones that spawn 567,
+-- only TWO are S3D era -- `guildlobby` (expansion 9) and our own `resplendent`; the other 35 are
+-- HoT/VoA/RoF, which ship as EQG and which that loader silently ignores (see aotv4_dungeon's
+-- BOSS_RACES note, where a first attempt at five EQG archives failed three times over).
+-- ⚠️ A player without the updated file sees a HUMAN MALE, not nothing -- the client falls back rather
+-- than drawing empty -- so it looks like a person standing in a field and reports nothing anywhere.
+local function make_marker(npc)
 	for slot = 0, 8 do npc:WearChange(slot, 0) end
 	npc:SetBodyType(11, true)
-	npc:SendIllusionPacket({ race = 240, gender = 2, texture = 0, helmtexture = 0, size = 0 })
-	npc:SetInvisible(1)
+	npc:SendIllusionPacket({ race = 567, gender = 2, texture = 0, helmtexture = 0, size = 6 })
 end
 
 function M.spawn_markers()
@@ -364,7 +393,7 @@ function M.spawn_markers()
 					-- variable, so a marker that spawned without it is invisible to the check and the
 					-- next call adds another one.
 					npc:SetEntityVariable(SPOT_VAR, sp.id)
-					make_invisible(npc)
+					make_marker(npc)
 					present[sp.id] = true
 				end
 			end
@@ -433,7 +462,7 @@ function M.may_travel(c, sp)
 		return false, string.format("%s has never found %s", c:GetCleanName(), sp.name)
 	end
 	-- GM exemption, matching RegionManager::CanEnterZone. See the note in M.travel.
-	if not c:GetGM() and not c:HasRegion(sp.region) then
+	if not M.is_open(c, sp.region) then
 		return false, string.format("%s has not opened %s", c:GetCleanName(),
 			regions.REGIONS[sp.region] or "that region")
 	end
@@ -519,6 +548,17 @@ end
 -- The window asks for a trip. `group` and `auto` come from its two checkboxes.
 function M.request(c, id, group, auto)
 	if not c or not c.valid then return false end
+
+	-- ⚠️⚠️ A BOOK MUST HAVE BEEN CLICKED. The window opens two ways -- from a Plane of Knowledge book
+	-- (which stamps `travel_book_<charid>`) and from the /aot launcher as a read-only map. The dll
+	-- hides the Travel button in the second case, but that is presentation: this is the rule.
+	-- Without it the launcher becomes travel-from-anywhere and the books stop mattering at all.
+	-- ⚠️ Checked BEFORE anything else so the refusal names the real reason rather than a downstream one.
+	local stamped = tonumber(eq.get_data(bookkey(c))) or 0
+	if stamped <= 0 or (os.time() - stamped) > M.BOOK_GRACE_SECS then
+		c:Message(MT.Red, "You must be reading a Plane of Knowledge book to travel. This is a map of what you have found.")
+		return false
+	end
 
 	local sp = M.spot(id)
 	if not sp then
@@ -629,6 +669,20 @@ function M.send_window(c)
 	-- from the region they are actually in.
 	local bfound = books_found(c)
 	local parts = {}
+
+	-- ⚠️⚠️ EMITTED BY HAND BECAUSE `ipairs` STARTS AT 1. `regions.REGIONS` is a 1-based array, so the
+	-- loop below can never reach index 0 -- an always-available region would pass every gate and have
+	-- no row in the window: reachable, and invisible.
+	do
+		local f0, b0 = 0, 0
+		for _, sp in ipairs(M.list(c)) do if sp.region == M.ALWAYS_REGION then f0 = f0 + 1 end end
+		for _, sp in ipairs(bfound)    do if sp.region == M.ALWAYS_REGION then b0 = b0 + 1 end end
+		-- ⚠️ Unknown is always 0 here: nothing in this region is discoverable, and a denominator would
+		-- advertise destinations that do not exist and can never be found.
+		parts[#parts + 1] = string.format("%d|%s|%d|%d|%d",
+			M.ALWAYS_REGION, M.ALWAYS_NAME, 1, f0 + b0, 0)
+	end
+
 	for id, rname in ipairs(regions.REGIONS) do
 		local found = 0
 		for _, sp in ipairs(M.list(c)) do
@@ -642,7 +696,7 @@ function M.send_window(c)
 		-- "still out there to find", and the player has no reason to care which kind a row will be.
 		local unknown = M.unknown_count(c, id) + math.max(0, books_total(id) - bf)
 		parts[#parts + 1] = string.format("%d|%s|%d|%d|%d",
-			id, rname, (c:GetGM() or c:HasRegion(id)) and 1 or 0, found + bf, unknown)
+			id, rname, M.is_open(c, id) and 1 or 0, found + bf, unknown)
 	end
 
 	c:Message(MT.NPCQuestSay, string.format("TRAVELDATA %d^%s", #parts, table.concat(parts, "^")))
@@ -659,8 +713,19 @@ end
 
 -- Clicking a Plane of Knowledge book opens it. ⚠️ This is the ONLY way it opens -- see the note on
 -- M.handle_say about why there is no command.
+-- ⚠️⚠️ THIS IS THE ONLY PLACE A BOOK CLICK IS RECORDED, AND IT IS WHAT AUTHORISES TRAVEL.
+-- The window can also be opened from the /aot launcher as a read-only map, and the dll hides its
+-- Travel button there -- but that is PRESENTATION. A modified client can un-hide it and send
+-- `travelgo` from anywhere, so the rule has to live here: `M.request` refuses unless this stamp is
+-- recent. §16 records the same split for the Advanced Loot buttons.
+-- 📌 A stamp with a window, rather than "are you standing near a book". Travel already moves you the
+-- instant you confirm, and a proximity test would have to survive the confirmation popup round trip;
+-- a timestamp does not care where you drift to while reading the list.
+M.BOOK_GRACE_SECS = 180
+
 function M.open_window(c)
 	if not c or not c.valid then return end
+	eq.set_data(bookkey(c), tostring(os.time()))
 	c:Message(MT.NPCQuestSay, "TRAVELOPEN")
 	M.send_window(c)
 end
@@ -707,7 +772,7 @@ function M.handle_say_list(e)
 			local function header()
 				if not any then
 					c:Message(MT.Yellow, string.format("  %s%s", rname,
-						c:HasRegion(id) and "" or "  (not open to you)"))
+						M.is_open(c, id) and "" or "  (not open to you)"))
 					any = true
 				end
 			end

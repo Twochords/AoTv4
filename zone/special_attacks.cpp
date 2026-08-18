@@ -177,7 +177,14 @@ int Mob::GetBaseSkillDamage(EQ::skills::SkillType skill, Mob *target)
 			// until we get a better inv system for NPCs they get nerfed!
 			if (IsClient()) {
 				auto *inst = CastToClient()->GetInv().GetItem(EQ::invslot::slotPrimary);
-				if (inst && inst->GetItem() && inst->GetItem()->ItemType == EQ::item::ItemType1HPiercing) {
+				// AoTv4: ⚠️⚠️ THE WEAPON TYPE TEST HERE IS THE ONE THAT ACTUALLY HURTS. Lifting only the
+				// refusal in TryBackstab is not enough -- without this, a non-piercer falls through to
+				// `base = 3` and backstab does THREE points of damage. It would look like the ability
+				// working and being worthless, which is harder to report than a clean refusal.
+				// See RuleB(AoT, BackstabAnyWeapon).
+				const bool aotv4_any_weapon = RuleB(AoT, BackstabAnyWeapon);
+				if (inst && inst->GetItem() &&
+				    (aotv4_any_weapon || inst->GetItem()->ItemType == EQ::item::ItemType1HPiercing)) {
 					base = inst->GetItemBackstabDamage(true) + inst->GetItemWeaponDamage(true);
 
 					if (target) {
@@ -826,7 +833,14 @@ void Mob::TryBackstab(Mob *other, int ReuseTime) {
 	if (IsClient()) {
 		const EQ::ItemInstance *wpn = CastToClient()->GetInv().GetItem(EQ::invslot::slotPrimary);
 
-		if (!wpn || (wpn->GetItem()->ItemType != EQ::item::ItemType1HPiercing)){
+		// AoTv4: ⚠️ Backstab is a level-up REWARD here and is offered to classes that have no piercing
+		// skill at all, so the stock "1H Piercing only" rule made the reward unusable for exactly the
+		// people who rolled it. RuleB(AoT, BackstabAnyWeapon) opens it to any weapon.
+		// ⚠️ A weapon is still REQUIRED -- `!wpn` still refuses. "Any weapon" is not "no weapon", and
+		// the damage path reads the equipped item, so bare hands would fall back to the base of 3.
+		if (!wpn ||
+		    (!RuleB(AoT, BackstabAnyWeapon) &&
+		     wpn->GetItem()->ItemType != EQ::item::ItemType1HPiercing)) {
 			MessageString(Chat::Red, BACKSTAB_WEAPON);
 			return;
 		}

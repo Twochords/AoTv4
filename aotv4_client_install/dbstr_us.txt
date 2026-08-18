@@ -782,8 +782,8 @@
 115^6^A burst of holy power that inflicts between #1 and @1 damage to a summoned target.^0
 115^11^Clam^0
 115^12^Clams^0
-116^1^Steady Nerve^0
-116^4^This ability grants you a resistance bonus to fear type spells of 5, 10, and 25 percent. It also increases the chance of breaking fear earlier.^0
+116^1^Sinister Strikes^0
+116^4^Your weaker hand learns the same trick as your strong one. Your offhand weapon receives the damage bonus that normally only your primary weapon gets. This ability has a single rank -- the offhand either receives the bonus or it does not.^0
 116^5^The Planes^0
 116^6^A burst of holy power that inflicts between #1 and @1 damage to a summoned target.^0
 116^11^Seahorse^0
@@ -1489,8 +1489,8 @@
 254^6^Fills your hands with the force of flame, increasing your attack rating for %z.^0
 254^11^Solusek Ro Guard^0
 254^12^Solusek Ro Guards^0
-255^1^Run Them Down^0
-255^4^Nothing you have your hands on gets to leave. Enemies fighting you will not turn and run, however badly the fight is going for them.^0
+255^1^Blindside^0
+255^4^You strike from where they are not looking. Attacks with your offhand weapon are 15, 30, 45, 65 and 85 percent less likely to be riposted. It does nothing for your primary hand.^0
 255^6^Covers your skin in a light veil that renders you invisible to most animals.^0
 255^11^Bertoxxulous^0
 255^12^Bertoxxulouses^0
@@ -3510,7 +3510,7 @@
 999^6^Clears your target's mind, restoring mana.^0
 1000^1^Origin^0
 1000^2^Origin^0
-1000^4^Upon using this ability, you will be transported back to your starting city. This ability is usable every 18 minutes.^0
+1000^4^Upon using this ability, you are transported to the Theater of the Tranquil, the artisan hub. Cannot be used in combat. This ability is usable every 18 minutes.^0
 1000^30^Become a member.^0
 1000^31^There are many benefits to becoming a member.  You can keep more coin, create more characters, hold more bags, gain more loyalty points, use stronger mercenaries, create a guild, and have more tasks at once.  You can become a member through the marketplace.  Type /marketplace in your chat window,  click on the <c "#FFD700">SC</c> button on your screen, or the upgrade button on this window.^0
 1000^32^Upgrade^0
@@ -36844,6 +36844,7 @@
 43990^6^Grants you the custom title: the Truthkeeper^0
 43991^6^Grants you the custom title: the Eagle Eye^0
 44328^6^A moment of clarity. Offers three rewards to choose from, without granting a level.^0
+44329^6^Returns you to your fellowship's campfire. You must be out of combat, outside any instance, and have opened the region you are travelling to.^0
 44494^6^Grants the title ", Army of Light Regular"^0
 44495^6^Grants the title ", Obliteration Army Regular"^0
 44498^6^Clicking this item will offer you the chance to change your race and/or religion.  Once you complete the change, it is permanent.^0

@@ -81,6 +81,33 @@ function M.reroll_cost_after_cut(client, pct)
 	return REROLL_BASE_PLAT * (cut_count(reroll_count(client), pct) + 1) * 1000
 end
 
+-- Apply a cut to the counter. THE ONLY WRITE PATH ANY OTHER MODULE MAY USE.
+-- Returns `changed, before_cost, after_cost` (costs in copper) so the caller can word its own message.
+--
+-- ⚠️⚠️ IT DELIBERATELY DOES NOT MESSAGE OR REFUSE. `M.decline` has to refuse a cut that buys nothing,
+-- because by the time it runs the tome has ALREADY been destroyed and the player would be left with
+-- neither of the two things it can give. A caller that has spent nothing has no such problem, so the
+-- policy belongs at the call site -- `changed = false` simply means the counter was already at the
+-- floor, and the caller decides whether to pay something else instead.
+--
+-- ⚠️ Read the old price BEFORE writing, exactly as `M.decline` does: the cost derives from the bucket,
+-- so once it is written there is no way to say what it used to be.
+--
+-- ⚠️ This is the second writer of `rerollbuy_`. Both are in THIS file on purpose -- section 3 records
+-- the counter as owned here, and a module that wrote the bucket directly would be a second source of
+-- truth for the pricing ladder.
+function M.cut_rerolls(client, pct)
+	if not client or not pct or pct <= 0 then return false, 0, 0 end
+
+	local before      = reroll_count(client)
+	local after       = cut_count(before, pct)
+	local before_cost = M.reroll_cost(client)
+	if after == before then return false, before_cost, before_cost end
+
+	eq.set_data(reroll_key(client), tostring(after))
+	return true, before_cost, M.reroll_cost(client)
+end
+
 -- ---------------------------------------------------------------- offer tags
 -- A queue entry is normally just its tokens ("S:12,S:34,K:8"). An offer that came from a TOME is
 -- prefixed "B<tier>@" so the queue remembers where it came from -- that is what lets `decline` refuse
@@ -188,8 +215,18 @@ local function pick_random(list, n)
 end
 
 -- The skill value a reward grants at the player's current level.
+--
+-- ⚠️⚠️ NEVER ZERO -- a granted skill of 0 is INDISTINGUISHABLE FROM NEVER HAVING PICKED IT, and the
+-- pick is then lost forever. Several specials have no `skill_caps` row until a high level (Dragon
+-- Punch's first is level **25**), so `MaxSkill` is 0 below that and the 25 percent of it is 0 too.
+-- `global_player.max_skills_for_level` uses `have > 0` as its "has the picker granted this?" test, so
+-- a 0 grant is invisible to it: the skill would never be raised even after the character reached the
+-- level where its cap opens. The floor of 1 is what makes the reward survive to that point.
+-- 📌 It is only ever the seed. Auto-levelling raises every earned skill to its cap on the next level
+-- or zone, which is the intended design -- so SKILL_GRANT_PCT decides almost nothing now, and is kept
+-- only so a freshly picked skill is not sitting at 1 until the next ding.
 local function skill_target(client, id)
-	return math.floor((client:MaxSkill(id) or 0) * SKILL_GRANT_PCT)
+	return math.max(1, math.floor((client:MaxSkill(id) or 0) * SKILL_GRANT_PCT))
 end
 
 -- Combat skills worth offering: NOT native to this class, and not already earned.

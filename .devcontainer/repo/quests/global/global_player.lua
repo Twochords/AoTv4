@@ -20,6 +20,8 @@ local aotv4_reforge = require("aotv4_reforge")   -- race/class change at level 1
 local skill_pool      = require("skill_pool")       -- combat specials: which are native, which rotate
 local aotv4_aa_tank = require("aotv4_aa_tank")       -- marker AAs in the Tank tree
 local aotv4_difficulty = require("aotv4_difficulty") -- Normal/Nightmare/Hell/Inferno world shards (/pick)
+local aotv4_tutorial = require("aotv4_tutorial")     -- Titan Hall induction chain (freeporttheater)
+local aotv4_fellowship = require("aotv4_fellowship") -- 12-person social group, chat + travellable campfire
 
 -- AA-on-death tuning lives at the point of use, in event_death -- see the "RANDOM AA ON DEATH" block.
 -- ⚠️ A long comment here used to describe a two-regime, era-anchored scheme (DEATH_AA_AT_CAP 0.40 /
@@ -52,6 +54,14 @@ function event_enter_zone(e)
 	-- one may fail a run and move them, and this must see where they ACTUALLY ended up. It no-ops
 	-- for anyone on Normal standing in the open world, which is the overwhelmingly common case.
 	aotv4_difficulty.on_enter_zone(e)
+	-- Titan Hall: arriving in the hub hands out the induction record, the one journal entry that
+	-- shows which of the ten NPCs still owe you a lesson. ⚠️ Tests the zone short name before it
+	-- touches the client, so every arrival anywhere else costs one string compare.
+	aotv4_tutorial.on_enter_zone(e)
+	-- Fellowship: the first member into a zone holding a live campfire raises its model.
+	-- ⚠️ The fire is a BUCKET, not an NPC -- an idle zone self-terminates and would take a
+	-- spawned-only fire with it, which is exactly the case that matters for a travel target.
+	aotv4_fellowship.on_enter_zone(e)
 	-- Hidden travel waypoints: the first player into a zone boots its invisible markers.
 	-- ⚠️ Guarded internally to run ONCE per zone process and never inside an instance, so this costs
 	-- one boolean for every arrival after the first -- and nothing at all in a delve or a shard.
@@ -65,6 +75,7 @@ function event_enter_zone(e)
 	e.self:SetTimer("skillsync", 2)                 -- one-shot: re-reveal earned combat abilities after the UI builds (no jump)
 	e.self:SetTimer("worldbuff", aotv4_worldbuff.SWEEP_SECS)  -- repeating: catch players who never zone or relog
 	e.self:SetTimer("delvescale", aotv4_dungeon.RESCALE_SECS)  -- repeating: re-measure a delve runner and rescale un-pulled mobs
+	e.self:SetTimer("fshipfire", aotv4_fellowship.SWEEP_SECS)  -- repeating: campfire buff + keeps an ATTENDED fire alive
 
 	-- Gloomingdeep Guard (5150) is a Tutorial-only protective buff; strip it the moment you leave the
 	-- Tutorial so our permanent-buff rule doesn't carry it out into the world. (It stays while in tutorialb.)
@@ -455,6 +466,23 @@ end
 -- ⚠️ `MaxSkill(v) == 0` means "this class cannot have this skill at this level", which is why it is
 -- safe to use as the zeroing test -- but it is checked with CanHaveSkill too, because a class that
 -- gets a skill only at a higher level would otherwise be zeroed while merely being too low for it.
+-- ⚠️⚠️ SPELL SPECIALIZATIONS (66-70) ARE NEVER RAISED HERE, AND MAXING THEM WIPED THEM TO 1 IN
+-- COMBAT. `Client::GetMaxSkillAfterSpecializationRules` (zone/client.cpp:3512) allows exactly ONE
+-- specialization above 50, and when a second crosses it the engine does not clamp -- it RESETS ALL
+-- FIVE TO 1, prints a red message and saves. This function was setting all five to their cap, and
+-- the caps here run to 300-525 for all sixteen classes (§14 opened them), so every caster armed the
+-- trap the moment their cap passed 50 -- which is **level 10**, not 20. It then fired on the next
+-- cast, at some arbitrary later moment. Reported from play as specializations "resetting randomly",
+-- once at level 23; the delay between cause and symptom is why it read as random.
+-- 📌 They now rise the stock way -- by CASTING that school -- and the engine's own cap holds every
+-- non-primary at 50, so the reset branch can never be reached. One real specialization, earned.
+--
+-- ⚠️ THE ZEROING BRANCH STILL APPLIES TO THEM, DELIBERATELY. `skill_caps` has no row for these below
+-- level 5, so `MaxSkill` is 0 there and the `cap <= 0` branch clears them -- which is exactly the
+-- wanted behaviour on the roguelite death, since death returns you to level 1 and a specialization
+-- should not survive it. That is why the guard below skips only the RAISE, not the whole skill.
+local function is_specialization(id) return id >= 66 and id <= 70 end
+
 local function max_skills_for_level(c)
 	local is_tradeskill = {}
 	for _, v in ipairs(TRADESKILLS) do is_tradeskill[v] = true end
@@ -464,9 +492,26 @@ local function max_skills_for_level(c)
 			local cap  = c:MaxSkill(id) or 0
 			local have = c:GetRawSkill(id) or 0
 
-			if cap <= 0 or not c:CanHaveSkill(id) then
-				-- the new class cannot have it: drop whatever the old one left behind
+			if not c:CanHaveSkill(id) then
+				-- ⚠️ THE ONLY CASE THAT ZEROES: this class can NEVER have the skill, at any level.
+				-- `CanHaveSkill` asks skill_caps at the server's MAX level, so it answers "ever?" --
+				-- which is what a reforge cleanup needs, and nothing else.
 				if have > 0 then c:SetSkill(id, 0) end
+			elseif is_specialization(id) then
+				-- Never RAISED here: casting raises it and the engine caps non-primary at 50.
+				-- ⚠️ Zeroed only while the class is below the level where specializations exist at all
+				-- (skill_caps has no row below level 5). That IS the death wipe -- death returns you to
+				-- level 1 -- and it is written explicitly rather than inherited from the cap test below,
+				-- because that test no longer zeroes anything.
+				if cap <= 0 and have > 0 then c:SetSkill(id, 0) end
+			elseif cap <= 0 then
+				-- ⚠️⚠️ MERELY TOO LOW A LEVEL -- LEAVE IT ALONE. `MaxSkill` is the cap AT THIS LEVEL, so
+				-- 0 here means "not open yet", NOT "cannot have it". Zeroing on this test is what made
+				-- skills "reset randomly": Dragon Punch has no skill_caps row below level 25, so a
+				-- character who picked it as a reward had it wiped on EVERY ZONE until level 25, and
+				-- the same held for any specialised skill whose cap opens late. Reported repeatedly.
+				-- 📌 The old condition was `cap <= 0 or not CanHaveSkill(id)`; the `or` meant the first
+				-- half fired on its own and the CanHaveSkill guard beside it never protected anything.
 			elseif skill_pool.SKILLS[id] then
 				-- reward-gated: max it only if the picker has already granted it
 				if have > 0 and have < cap then c:SetSkill(id, cap) end
@@ -597,6 +642,14 @@ function event_timer(e)
 		-- would try to close every two minutes for the rest of the session.
 		e.self:StopTimer("delveclose")
 		aotv4_dungeon.on_close_timer(e.self)
+	elseif e.timer == "halldrop" then
+		-- Titan Hall newcomer drop. ⚠️ Deferred out of event_enter_zone on purpose: moving a client to
+		-- the zone it is still entering breaks the handshake and it never gets in.
+		aotv4_tutorial.on_drop_timer(e.self)
+	elseif e.timer == "fshipfire" then
+		-- Per CLIENT, so it only ever reads this player's own fellowship and fire -- which is what
+		-- makes the campfire buff fellowship-only by construction rather than by a filter.
+		aotv4_fellowship.proximity_tick(e.self)
 	elseif e.timer == "worldbuff" then
 		-- Catches the player who is parked somewhere and never zones or relogs -- the one hole the
 		-- connect and enter-zone hooks leave. Per CLIENT, so it only ever touches this one player.
@@ -907,6 +960,14 @@ function event_death(e)
     client:RemoveTaskByTaskID(tid)   -- active task -> gone from memory + DB (no fail popup / lockout)
     client:UncompleteTask(tid)       -- clear any completed record so it can be taken again
   end
+  -- Titan Hall induction: the same treatment for the ten lessons and their record, so a level 1
+  -- character can walk the Hall again. ⚠️ The module owns the band rather than it being listed in
+  -- TUTORIAL_TASKS above -- one place knows which ids the Hall uses, so adding an eleventh teacher
+  -- does not need an edit here as well.
+  -- ⚠️⚠️ THE TASKS RESET BUT THE REWARDS DO NOT: `aotv4_tutorial` keeps a permanent paid-once ledger,
+  -- because on a server where dying ends every run, a re-runnable chain paying 25p plus a tome plus
+  -- an augment each time is a farm rather than a tutorial.
+  aotv4_tutorial.reset_on_death(client)
   client:CancelAllTasks()
 
   -- ROGUELITE START: every death sends the player back to the Tutorial, whose refreshed quests + free
@@ -966,6 +1027,12 @@ function event_death_complete(e)
 end
 
 function event_say(e)
+  -- ⚠️ Titan Hall induction: watch for the /say a custom window sends and tick the matching
+  -- objective. Runs FIRST and never consumes the message -- every handler below still sees it.
+  -- 📌 It early-outs immediately when the player has no tutorial task active, so the cost on an
+  -- ordinary say is one bucket-free loop over ten booleans.
+  aotv4_tutorial.on_say(e.self, e.message)
+
   -- GM-only: buff every online player server-wide. Usage: /say buffall <spellid>
   -- world_wide_cast_spell casts the spell on all online clients across all zones (uses the spell's
   -- own duration). Gated to GM (status >= 80) so ordinary players can't buff the server.
@@ -989,6 +1056,7 @@ function event_say(e)
 
   -- Hidden waypoints: "travel" lists what you have found, "travelto <id>" goes there. Consumes the
   -- line so it never reaches chat or a quest, the same as the delve and difficulty commands above.
+  if aotv4_fellowship.handle_say(e) then return end
   if require("aotv4_travel").handle_say(e) then return end
 
   -- consume "spellpick <N>" from the level-up reward window (the only reward picker now)
@@ -1107,6 +1175,13 @@ function event_task_complete(e)
   -- Delve system: clearing a layer unlocks the next one and drops the reward chest where the last
   -- objective ticked over. Ignores every task that is not one of its six.
   aotv4_dungeon.on_task_complete(e)
+  -- Titan Hall induction: pays the step's reward. EVERY tutorial reward is paid here rather than
+  -- through the `tasks` reward columns -- four of the ten (currency, an AA, a random augment, the
+  -- reroll-counter cut) cannot be expressed in that table at all.
+  -- ⚠️ Both this and the delve's handler above are band guarded and each returns early on the
+  -- other's tasks. The delve additionally requires an ACTIVE run, so a hall completion cannot be
+  -- read as a cleared rung -- but the guards are what make sharing this event safe, not luck.
+  aotv4_tutorial.on_task_complete(e.self, e.task_id)
 end
 
 -- Feign Death, once per creature holding you on its hate list.
@@ -1151,7 +1226,6 @@ function event_damage_given(e)
   if not (override and override < 0) then
     aotv4_thirst.on_damage_given(e, e.self)
     aotv4_aa_tank.on_damage_given(e, e.self)   -- Bloodied Bash: Bash/Slam leeches
-    aotv4_difficulty.on_damage_given(e)        -- Hell: a `barbed` champion reflects half its level
   end
   return override
 end

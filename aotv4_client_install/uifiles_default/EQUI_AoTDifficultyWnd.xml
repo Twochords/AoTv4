@@ -72,15 +72,34 @@
 		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
 	</STMLbox>
 
+	<!-- Port Group.  A checkbox is a Button carrying Style_Checkbox; there is no Checkbox tag on this
+	     client build.  BDT_CheckboxWithText carries its own caption, so no separate Label is needed.
+	     The dll rewrites this caption to [X] / [  ] because the checked and unchecked art differ by
+	     little more than a tint, which was reported as unreadable on the Travel window. -->
+	<Button item="ZDF_Group">
+		<ScreenID>ZDF_Group</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>12</X><Y>234</Y></Location>
+		<Size><CX>155</CX><CY>18</CY></Size>
+		<Text>Port Group</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Style_Checkbox>true</Style_Checkbox>
+		<Template>BDT_CheckboxWithText</Template>
+		<TooltipReference>Shift your whole group.  Everyone must be in this zone, out of combat, off cooldown and not in a delve</TooltipReference>
+	</Button>
+
+	<!-- Travel.  120x22 is a stock EQ button size.  It was CX 388 in a 420 wide window: BDT_Normal is a
+	     small bitmap template and the UI engine SCALES it to whatever Size it is given, so a button
+	     three times its art's natural width blurs at every edge.  Nothing warns about this. -->
 	<Button item="ZDF_Travel">
 		<ScreenID>ZDF_Travel</ScreenID>
 		<RelativePosition>true</RelativePosition>
-		<Location><X>10</X><Y>234</Y></Location>
-		<Size><CX>388</CX><CY>24</CY></Size>
+		<Location><X>150</X><Y>258</Y></Location>
+		<Size><CX>120</CX><CY>22</CY></Size>
 		<Text>Travel</Text>
 		<TextColor><R>255</R><G>200</G><B>140</B></TextColor>
 		<Template>BDT_Normal</Template>
-		<TooltipReference>Move to the selected difficulty, here and in every zone you enter</TooltipReference>
+		<TooltipReference>Move to the selected difficulty in this zone.  Zoning anywhere else returns you to Normal</TooltipReference>
 	</Button>
 
 	<Screen item="AoTDifficultyWnd">
@@ -98,6 +117,7 @@
 		<Pieces>ZDF_Refresh</Pieces>
 		<Pieces>ZDF_List</Pieces>
 		<Pieces>ZDF_Desc</Pieces>
+		<Pieces>ZDF_Group</Pieces>
 		<Pieces>ZDF_Travel</Pieces>
 	</Screen>
 

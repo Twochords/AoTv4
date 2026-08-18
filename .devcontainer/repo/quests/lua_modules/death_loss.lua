@@ -48,6 +48,16 @@ end
 -- widening the reserved range there without widening it here silently makes the new items destructible.
 local TS_ITEM_FIRST, TS_ITEM_LAST = 147930, 147965   -- 12 head + 12 face + 12 hands
 
+-- ⚠️⚠️ THE FELLOWSHIP INSIGNIA IS EXEMPT, AND THE ITEM ONLY EXISTS BECAUSE IT IS. It is the only way
+-- to reach a fellowship campfire, so a character who lost it on death would be cut off from the
+-- feature entirely -- the same shape as the tradeskill tools above, and the reason an insignia was
+-- deliberately NOT built until this exemption existed.
+-- ⚠️ Denara re-hands it on hail, so losing it is recoverable even if this line is ever removed --
+-- but removing this line still means every death costs a trip back to the Hall for it.
+-- ⚠️ Kept in step with `aotv4_fellowship.M.INSIGNIA` and migration v84. A single id rather than a
+-- band, so the next kept item gets its own line rather than silently widening this one.
+local FSHIP_INSIGNIA = 147975
+
 function M.is_kept(inv, slot)
 	if not inv then return false end
 
@@ -56,6 +66,7 @@ function M.is_kept(inv, slot)
 
 	local iid = inst:GetID() or 0
 	if iid >= TS_ITEM_FIRST and iid <= TS_ITEM_LAST then return true end
+	if iid == FSHIP_INSIGNIA then return true end
 
 	return inst:IsEvolving() and true or false
 end

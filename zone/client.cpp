@@ -1200,6 +1200,20 @@ void Client::FastQueuePacket(EQApplicationPacket** app, bool ack_req, CLIENT_CON
 	return;
 }
 
+// ⚠️⚠️ AoTv4 Titan Hall induction: the ONLY way three of the ten steps can ever complete.
+// The tutorial's objectives are inert Touch activities driven by `UpdateTaskActivity` from Lua when
+// the window's /say arrives -- but AdvLoot and Autoskill are swallowed HERE, before EVENT_SAY fires,
+// and `#ach` is a command rather than a say, so Lua never sees any of the three. Without these calls
+// those steps are uncompletable and the chain dead-ends, with nothing reported anywhere.
+// 📌 Task ids are literals rather than a rule or a bucket because the chain is a fixed ten authored
+// in `lua_modules/aotv4_tutorial.lua` -- if that band moves, these move with it.
+void Client::AoTv4TutorialMark(int task_id)
+{
+	if (IsTaskActive(task_id)) {
+		UpdateTaskActivity(task_id, 0, 1);
+	}
+}
+
 void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_skill, const char* orig_message, const char* targetname, bool is_silent) {
 	char message[4096];
 	strn0cpy(message, orig_message, sizeof(message));
@@ -1209,11 +1223,13 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 	// AoTv4 Advanced Loot: the dll issues /say alspick|alslootall|alsrefresh|alsfilters|alsfilterdel.
 	// Handle + swallow them here (before EVENT_SAY / broadcast) so they never spam chat or reach quests.
 	if (chan_num == ChatChannel_Say && HandleAdvLootSay(message)) {
+		AoTv4TutorialMark(2000602);   // Titan Hall: "Spoils of War"
 		return;
 	}
 
 	// AoTv4 autoskill window: the dll issues /say askset|askrefresh. Same treatment.
 	if (chan_num == ChatChannel_Say && HandleAutoSkillSay(message)) {
+		AoTv4TutorialMark(2000601);   // Titan Hall: "Muscle Memory"
 		return;
 	}
 
@@ -1267,7 +1283,50 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 	        !strncasecmp(message, "openregion ",   11) ||
 	        !strncasecmp(message, "regions",        7) ||
 	        !strncasecmp(message, "reforgerace ",  12) ||
-	        !strncasecmp(message, "reforgeclass ", 13))) {
+	        !strncasecmp(message, "reforgeclass ", 13) ||
+	        // ⚠️⚠️ EVERY WINDOW BELOW WAS AUDIBLE TO EVERYONE NEARBY. Each of these is a native window
+	        // whose logic lives in Lua, so each needs this exact treatment -- fire the event, skip the
+	        // broadcast. They were simply never added as the windows landed one by one, so pressing a
+	        // button in any of them said it out loud: "Ashrem says, 'fshipdouse'". Reported from play
+	        // for the fellowship window; the other six had the same defect and are fixed together
+	        // rather than one report at a time.
+	        // 📌 The dll swallowing its own echo hides the line only from the sender. Both halves are
+	        // required, and this is the half that matters for everyone else in the zone.
+	        //
+	        // Fellowship (aotv4_fellowship). One prefix covers every verb: fshipform/inv/kick/leader/
+	        // leave/end/req/light/douse/go/motd/accept/decline, and the bare "fship" saylink view.
+	        !strncasecmp(message, "fship",          5) ||
+	        // ⚠️ Trailing space: "fsay" carries the message text, and without it a player saying a
+	        // word merely beginning "fsay" would be silently eaten.
+	        !strncasecmp(message, "fsay ",          5) ||
+	        // Travel window (aotv4_travel). ⚠️ NOT a bare "travel": that is a PLAYER command whose
+	        // printout is meant to be seen. Only the window's own two verbs.
+	        !strncasecmp(message, "travelwin",      9) ||
+	        !strncasecmp(message, "travelgo ",      9) ||
+	        // Difficulty window (aotv4_difficulty)
+	        !strncasecmp(message, "diffwin",        7) ||
+	        !strncasecmp(message, "diffset ",       8) ||
+	        // Delve window (aotv4_dungeon). The prefix also covers "delvepower", our own diagnostic.
+	        !strncasecmp(message, "delve",          5) ||
+	        // Spell window: the reward picker and the Known/Pool tabs (spell_choice, spell_journal)
+	        !strncasecmp(message, "spellpick ",    10) ||
+	        !strncasecmp(message, "spellreroll",   11) ||
+	        !strncasecmp(message, "spelldecline",  12) ||
+	        !strncasecmp(message, "sjpool ",        7) ||
+	        !strncasecmp(message, "sjinfo ",        7) ||
+	        !strncasecmp(message, "sjlevels",       8) ||
+	        // The retired GDI portal overlay still has a Lua half, and the no-mod saylink fallback
+	        // ("/say portals") is a real player route -- all three stay quiet.
+	        !strncasecmp(message, "portalgo ",      9) ||
+	        !strncasecmp(message, "portalreq",      9) ||
+	        !strncasecmp(message, "portals",        7) ||
+	        // Trader window (bazaar_broker) and the Death Book log request
+	        !strncasecmp(message, "shopopen",       8) ||
+	        !strncasecmp(message, "shopsetprice ", 13) ||
+	        !strncasecmp(message, "shopadd ",       8) ||
+	        !strncasecmp(message, "shoppull ",      9) ||
+	        !strncasecmp(message, "shoprefresh",   11) ||
+	        !strncasecmp(message, "lostlog",        7))) {
 		if (parse->PlayerHasQuestSub(EVENT_SAY)) {
 			parse->EventPlayer(EVENT_SAY, this, message, 0);
 		}

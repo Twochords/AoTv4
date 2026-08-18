@@ -16,6 +16,21 @@
 #    `era <= current`, so 0 always passes. Kept as a field so aa_choice needs no edit.
 # ⚠️ Do NOT name a helper `q` -- that is Perl's quote operator and cannot be overridden; doing so
 #    silently turns the SQL into a literal string and the generator emits a near-empty pool.
+#
+# ⚠️ ONE EXCLUSION: anything handed out by a `grant_aa` achievement reward (the tradeskill mastery
+# ladders, §32). An AA that is TAUGHT must not also be ROLLED -- a random copy makes the lesson's
+# reward a silent no-op, because the grant is refused against an ability already owned and reports
+# that to nobody.
+# ⚠️⚠️ `grant_only = 1` DOES NOT DO THIS. It keeps an AA out of the NATIVE window, but the picker
+# grants with `ignore_cost` -> `CanPurchase(check_grant=false)` (§6), so a grant_only AA left in this
+# pool is still offered at random.
+#
+# ⚠️⚠️ **331 ORIGIN IS DELIBERATELY *IN* THE POOL AND MUST STAY THERE.** It was excluded here for one
+# day and that was wrong twice over: this file is the only place an AA's name, cost, rank count and
+# description are assembled, so removing the row removed the DATA as well as the roll -- and the
+# Titan Hall step that says "open the Death Book and claim Origin" then pointed at something the
+# picker could never show. Origin is kept out of ORDINARY offers by `aa_choice.gather_affordable`,
+# which skips it unless that lesson is actually active. Gate the OFFER, never the pool row.
 # =============================================================================================
 use strict;
 use warnings;
@@ -42,7 +57,7 @@ FROM aa_ability a JOIN aa_ranks r ON r.id=a.first_rank_id
 LEFT JOIN rc ON rc.aa_id=a.id
 LEFT JOIN db_str t ON t.id=r.title_sid AND t.type=1
 LEFT JOIN db_str d ON d.id=r.desc_sid AND d.type=4
-WHERE a.enabled=1 ORDER BY a.id
+WHERE a.enabled=1 AND a.id NOT IN (SELECT reward_id FROM custom_achievement_rewards WHERE reward_type = 0x6772616e745f6161) ORDER BY a.id
 SQL
 
 my $sql_prereqs = <<'SQL';

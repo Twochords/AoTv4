@@ -5825,8 +5825,14 @@ float Mob::ResistSpell(uint8 resist_type, uint16 spell_id, Mob *caster, bool use
 
 	//Lull spells DO NOT use regular resists on initial cast, instead they use a flat +15 modifier. Live parses confirm this.
 	//Regular resists are used when checking if mob will aggro off of a lull resist.
-	if(!CharismaCheck && IsHarmonySpell(spell_id))
-		target_resist = 15;
+	// AoTv4: ⚠️⚠️ THIS FLAT 15 IS WHY RAISING A CREATURE'S RESISTS DOES NOTHING AGAINST LULL. The
+	// initial cast throws the target's real resist away, so a world difficulty that multiplies every
+	// resist still let Harmony land exactly as often as it does on Normal. `lull_resist` replaces the
+	// flat value per creature; -1 leaves stock behaviour untouched for everything else in the world.
+	if(!CharismaCheck && IsHarmonySpell(spell_id)) {
+		const int aotv4_lull = GetLullResist();
+		target_resist = (aotv4_lull >= 0) ? aotv4_lull : 15;
+	}
 
 	//Add our level, resist and -spell resist modifier to our roll chance
 	resist_chance += level_mod;

@@ -44,6 +44,8 @@ return {
   ["butcher"]={id=68,x=-523.00,y=1726.00,z=-1.00,h=45,long="Kaladim"},                          -- butcher book doorid 78 (by the Kaladim zone line)
   ["butcherdocks"]={id=68,x=2934.99,y=1238.97,z=-2.26,h=356,long="Butcherblock Docks"},           -- SECOND butcher book, doorid 179 (the docks); land ~35u inland of the book, facing it
   ["crescent"]={id=394,x=-2635.00,y=-1240.00,z=-150.60,h=149,long="Crescent Reach"},
+  ["freeporttheater"]={id=390,x=-71.56,y=-246.67,z=-27.10,h=0,long="Theater of the Tranquil"},    -- ARTISAN HUB. ⚠️ NOT derived from the book: this is the zone's AUTHORED arrival point, shared
+                                                                                                 -- with the Origin AA (spell 5824) so every way in lands in the same place.
   ["ecommons"]={id=22,x=-196.96,y=-1526.81,z=3.13,h=0,long="Commonlands"},                       -- book doorid 71; land just S of the (south-facing) book, facing N at it
   ["everfrost"]={id=30,x=-31.00,y=2835.00,z=-62.00,h=453,long="Everfrost Peaks"},
   ["feerrott"]={id=47,x=-163.00,y=908.00,z=-9.00,h=248,long="The Feerrott"},

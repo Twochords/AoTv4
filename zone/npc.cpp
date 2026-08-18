@@ -2407,6 +2407,9 @@ void NPC::ModifyNPCStat(const std::string& stat, const std::string& value)
 		pAggroRangeZ = Strings::ToFloat(value);
 	} else if (stat_lower == "assist") {
 		pAssistRange = Strings::ToFloat(value);
+	} else if (stat_lower == "lull_resist") {
+		// AoTv4: how hard this creature is to lull/pacify. -1 restores stock.
+		pLullResist = Strings::ToInt(value);
 	} else if (stat_lower == "slow_mitigation") {
 		slow_mitigation = Strings::ToInt(value);
 	} else if (stat_lower == "loottable_id") {
@@ -2533,6 +2536,8 @@ float NPC::GetNPCStat(const std::string& stat)
 		return pAggroRange;
 	} else if (stat_lower == "aggro_z") {
 		return pAggroRangeZ;
+	} else if (stat_lower == "lull_resist") {
+		return pLullResist;
 	} else if (stat_lower == "assist") {
 		return pAssistRange;
 	} else if (stat_lower == "slow_mitigation") {

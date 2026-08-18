@@ -55,10 +55,31 @@ local grant_sets = {
 	tutorialb   = { "butcherdocks", "ecommons", "qeytoqrg" },
 }
 
+-- ⚠️⚠️ ALWAYS AVAILABLE, NEVER DISCOVERED. The artisan hub has to be reachable by EVERY character
+-- from level 1, with no book to find first -- so it is unioned into the found list below rather than
+-- written into `pok_found_<charid>`. Writing it into the bucket instead would only reach characters
+-- who existed after the change, and would need a backfill for everyone else.
+-- ⚠️ `attune` refuses these too, so clicking the hub's own book does not add a duplicate to the
+-- bucket or print an "you attune to..." line for something the player already had.
+-- 📌 It is NOT in `never_attune`: this hub is a legitimate DESTINATION. That rule exists for
+-- resplendent, where you are BOUND and return by dying -- a portal there would skip the roguelite
+-- loop. Nobody binds or respawns in the artisan hub, so travelling to it skips nothing.
+-- ⚠️ DECLARED ABOVE `get_found`, AND IT MUST STAY THERE. It is a plain local, so a use inside a
+-- function defined EARLIER in the file sees nil, not the table -- "bad argument #1 to 'pairs'
+-- (table expected, got nil)" on the first zone-in. Lua closes over what is lexically in scope at
+-- DEFINITION time; the M-table indirection used elsewhere in this project is the other way out.
+local always_available = {
+	freeporttheater = true,
+}
+
 -- discovered zones the player has, de-duped and validated against the portal table (so only real
 -- PoK-book zones count -- "discovered zones that also have a poknowledge book").
 local function get_found(client)
 	local out, seen = {}, {}
+	-- seed with the always-available hubs before anything the player actually discovered
+	for s in pairs(always_available) do
+		if portals[s] then seen[s] = true; out[#out + 1] = s end
+	end
 	for s in (eq.get_data(found_key(client)) or ""):gmatch("([^,]+)") do
 		if portals[s] and not seen[s] then seen[s] = true; out[#out + 1] = s end
 	end
@@ -74,6 +95,7 @@ end
 -- in pok_portals, so nothing can attune it. That is exactly why the rule is written down HERE as
 -- well: the accident quietly disappears the moment somebody regenerates the portal table or adds a
 -- book to the zone, and the failure would be silent (a new travel destination nobody intended).
+
 local never_attune = {
 	resplendent = true,
 }
@@ -81,7 +103,7 @@ local never_attune = {
 -- Add one portal short to the player's discovered set. Returns true only if it was newly added
 -- (so re-clicking a known book doesn't spam or re-push the list).
 local function attune(client, short)
-	if not short or never_attune[short] or not portals[short] then return false end
+	if not short or never_attune[short] or always_available[short] or not portals[short] then return false end
 	local key  = found_key(client)
 	local data = eq.get_data(key) or ""
 	for s in data:gmatch("([^,]+)") do if s == short then return false end end   -- already known

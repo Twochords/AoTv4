@@ -81,7 +81,16 @@ my @stock = mysql(q{
       AND s.classes8 BETWEEN 1 AND 100
     ORDER BY s.classes8, s.id});
 
-# Kept customs, ONE band: 43300-43349 -- custom spells written to fill gaps in native lines (e.g.
+# Kept customs, TWO bands: 43300-43349 and 44530-44599.
+#
+# ⚠️⚠️ 43300-43349 IS FULL -- the eight existing lines fill it to 43347, leaving two ids. The heal
+# lines added 2026-08-16 (Mending Touch, Circle of Health, Circle of Renewal -- 44530-44547) therefore
+# live in a SECOND band, with room to 44599 and helpers/triggers at 44600+.
+# ⚠️ Any future line needs a band listed HERE as well as rows in the database. A band the generator
+# does not pull is a spell nobody can ever be offered, and nothing reports it -- the rows exist, the
+# spell works if cast, and it simply never appears among the three choices.
+#
+# Kept customs, first band: 43300-43349 -- custom spells written to fill gaps in native lines (e.g.
 # the low-level Skin of the Reptile tiers, custom/sql/aotv4_reptile_line.sql). These DO use effect
 # slots. Put helper / trigger spells at 43350+ so they are never offered.
 #
@@ -108,7 +117,7 @@ my @custom = mysql(q{
          OR 108 IN (effectid1,effectid2,effectid3,effectid4,effectid5,effectid6,effectid7,effectid8,effectid9,effectid10,effectid11,effectid12)) AS is_pet
     FROM spells_new s LEFT JOIN db_str d ON d.id = s.descnum AND d.type = 6
     WHERE s.classes8 BETWEEN 1 AND 100
-      AND s.id BETWEEN 43300 AND 43349
+      AND (s.id BETWEEN 43300 AND 43349 OR s.id BETWEEN 44530 AND 44599)
     ORDER BY s.classes8, s.id});
 
 # ---------------------------------------------------------------- blacklist

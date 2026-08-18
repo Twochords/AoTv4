@@ -1,4 +1,4 @@
-18
+21
 liz,liz_chr
 skn,skn_chr
 mos,mos_chr
@@ -17,3 +17,6 @@ elddar,elddar_chr
 theater,theater_chr
 devastation,devastation_chr
 westkorlachc,westkorlachc_chr
+guildlobby,guildlobby_chr
+resplendent,resplendent_chr
+mechanotus,mechanotus_chr
