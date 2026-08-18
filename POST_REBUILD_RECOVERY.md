@@ -64,7 +64,7 @@ gzip -dc /src/peq_recovered.sql.gz | sudo mariadb     # then the grants in step 
   already applied*: gear tiers 27k Hallowed + 27k Mythic, spelldmg rule, 7 characters incl. Ashrem,
   login accounts) **predates the achievement system entirely** — seeding from it costs the achievement
   catalog, the 43xxx spells and the class auras. Use it only if `peq_recovered.sql.gz` is unavailable.
-  ⚠️ `/src/Deez.sql` has been BOTH the pre-migration dump and (later) a full copy — do not trust its
+  ⚠️ `/src/backups/Deez.sql` has been BOTH the pre-migration dump and (later) a full copy — do not trust its
   name. Whatever you seed from, verify with step 4.
 - The world pre-migration auto-backups in `/src/build/bin/backups/*.tar.gz` — a useful mid-point
   fallback (e.g. `peq-2026-07-23.tar.gz`, 223 tables, taken just before the achievement migration).
@@ -157,7 +157,7 @@ grep -iE 'fatal|malloc|Cannot continue' /src/build/bin/logs/world_manual.log && 
 
 ## Gotchas / fallbacks
 - **`zone` won't launch** (missing lib after image change): `cd /src/build && ninja zone`, then redo step 5+.
-- **Snapshot import errors**: fall back to `sudo mariadb < /src/Deez.sql` (Jul 10), then re-apply the
+- **Snapshot import errors**: fall back to `sudo mariadb < /src/backups/Deez.sql` (Jul 10), then re-apply the
   two migrations, then rebuild shared memory:
   ```bash
   sudo mariadb --database peq < /src/.devcontainer/custom/sql/aotv4_item_spelldmg_healamt.sql

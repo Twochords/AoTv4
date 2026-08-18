@@ -172,3 +172,14 @@ custom/spell_usage.csv
 # textures plus a repack script and let the build produce the archive, exactly as
 # aotv4_client_install/gen_choice_xml.pl generates the picker XML from spell_icons.lua.
 /*.s3d
+
+# ⚠️ Local database snapshots and recovery points. Moved out of the repo root 2026-08-18 -- it held
+# 626MB of these and 98 entries, which made the tree unreadable. They are NOT in git and must not be:
+# CLAUDE.md section 25 treats them as the recovery path when the stale-database trap bites, so they are
+# valuable ON DISK and worthless in a clone. ⚠️ Nothing prunes this directory; it grows until you do.
+/backups/
+
+# ⚠️⚠️ vcpkg MANIFEST-MODE OUTPUT -- 5,233 files that were tracked by accident until 2026-08-18.
+# Regenerated from vcpkg.json, which pins `builtin-baseline`, so a clone reproduces it exactly.
+# Never commit it: it is build output, it is platform-specific, and it dwarfs the actual source.
+/vcpkg_installed/
