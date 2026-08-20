@@ -1,0 +1,17 @@
+[core]
+	repositoryformatversion = 0
+	filemode = false
+	bare = false
+	logallrefupdates = true
+	ignorecase = true
+[remote "Dinput"]
+	url = https://github.com/Twochords/Dinput.git
+	fetch = +refs/heads/*:refs/remotes/Dinput/*
+[branch "main"]
+	vscode-merge-base = Dinput/main
+	remote = Dinput
+	merge = refs/heads/main
+[branch "aotv4-advloot-module"]
+	vscode-merge-base = Dinput/main
+	remote = Dinput
+	merge = refs/heads/aotv4-advloot-module

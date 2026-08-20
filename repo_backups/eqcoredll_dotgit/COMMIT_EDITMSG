@@ -1,0 +1,36 @@
+Difficulty, Fellowship and Travel windows, plus this session's fixes
+
+Three whole features had never been committed anywhere -- core_difficulty,
+core_fellowship and core_travel were untracked, so the only copy was in the dev
+container. That is the same exposure CLAUDE.md section 0 records for the Lua in
+2026-07.
+
+New translation units, each its own module with no detours of its own, calling
+in through the dsp_chat / InterpretCmd / ProcessGameEvents hooks this dll
+already owns:
+
+  core_difficulty  the /pick window for Normal / Nightmare / Hell / Inferno
+  core_fellowship  the fellowship roster, invites and campfires
+  core_travel      the region travel window
+
+Fixes in this session's modified files:
+
+  core_travel      WriteChatColor is a GUARANTEED crash in this dll -- with
+                   isMQInjectsEnabled false the chat hook is never installed, so
+                   the trampoline keeps its DETOUR_TRAMPOLINE_EMPTY body, which
+                   is a deliberate null dereference. Pressing Travel with nothing
+                   selected took the client down every time. Now sets the
+                   ATW_Hint label the XML already shipped.
+  core_fellowship  the echo matcher keyed on "says, '" which does not match
+                   "You say, '" -- so it swallowed the command on everyone
+                   ELSE's screen and left it on the presser's, the wrong way
+                   round. Now tests both whole strings.
+  core_bazaar.h    /shield was the only rewritten command with no entry in the
+                   echo list, so it announced itself to everyone in earshot.
+  core_aotmenu     the launcher re-expanded on every zone. Now loads and stores
+                   its ini state so a closed or minimised menu stays that way.
+  EQClasses.cpp    FUNCTION_AT_ADDRESS thunks for CSidlScreenWnd LoadIniInfo and
+                   StoreIniInfo -- declared and offset-mapped but never bound,
+                   which only surfaced as an unresolved external at link time.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>

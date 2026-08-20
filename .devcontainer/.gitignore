@@ -37,5 +37,6 @@ repo/eq-core-dll/**/*.ipch
 repo/eq-core-dll/**/Browse.VC.db
 repo/eq-core-dll/**/*.VC.db
 repo/maps/
+# repo/eqemu-definitions/  -- clone removed 2026-08-20; rule kept commented so a re-clone is ignored again
 repo/eqemu-definitions/
 cache/

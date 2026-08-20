@@ -47,9 +47,7 @@
             ],
             "settings": {
                 "Lua.runtime.version": "Lua 5.1",
-                "Lua.workspace.library": [
-                    "/src/repo/eqemu-definitions"
-                ],
+                "// Lua.workspace.library": "REMOVED 2026-08-20 with the eqemu-definitions clone. It was a nested repo providing EQEmu Lua definitions for autocomplete only -- never a build input -- and this path was already wrong (the clone lived at /src/.devcontainer/repo/, not /src/repo/), so it had been resolving to nothing. To get autocomplete back: git clone https://github.com/xackery/eqemu-definitions .devcontainer/repo/eqemu-definitions and point this at the real path.",
                 "Lua.diagnostics.disable": ["lowercase-global"]
             }
         }
