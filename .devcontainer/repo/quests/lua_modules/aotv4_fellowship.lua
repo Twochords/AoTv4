@@ -151,6 +151,25 @@ function M.create(client, name)
 		client:Message(MT.Red, "Name your fellowship: /say fshipform <name>")
 		return
 	end
+	-- ⚠️⚠️ THE NAME MUST BE UNIQUE, AND NOT CHECKING IT PRODUCED THE WORST POSSIBLE SYMPTOM.
+	-- Two players each ran `fshipform Fellowship`, got fellowships 2 and 3 both named "Fellowship",
+	-- and every window then showed them the same title with only themselves in it -- which reads as
+	-- a shared fellowship that is broken, not as two separate ones. It was reported as bad data and
+	-- as being wrongly grouped together. A name is the ONLY handle a player has on a fellowship;
+	-- there is no visible id, so duplicates are indistinguishable from a bug.
+	-- 📌 Case-insensitive: "Fellowship" and "fellowship" are the same name to a reader.
+	local want = name:lower()
+	for i = 1, num(eq.get_data("fship_next")) do
+		local other = eq.get_data(name_key(i)) or ""
+		-- ⚠️ An empty name is a DISBANDED fellowship (M.leave blanks it), not a live one -- skip it,
+		-- or a name can never be reused after its fellowship ends.
+		if other ~= "" and other:lower() == want then
+			client:Message(MT.Red, string.format(
+				"A fellowship named '%s' already exists. Pick another name, or ask them to invite you.", name))
+			return
+		end
+	end
+
 	local fid = num(eq.get_data("fship_next")) + 1
 	eq.set_data("fship_next", tostring(fid))
 	eq.set_data(name_key(fid), name)

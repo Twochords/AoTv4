@@ -7232,6 +7232,379 @@ INSERT INTO zone_regions (zone_id, region_id) VALUES (390, 0);
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 90,
+		.description = "2026_08_18_aotv4_hub_guards_loadable_race",
+		// The 20 Titan Hall guards were race 570 (Exoskeleton), whose model archive no RoF2 client
+		// has -- so they rendered nothing and took the client down when enough of them came into
+		// range at once. Full diagnosis in the SQL.
+		// ⚠️ Paired with a CLIENT change: the eight archives added to Resources/GlobalLoad_chr.txt
+		// (mechanotus_chr and friends) all fail to open and are reverted in the same commit. Naming
+		// an archive there does not create it.
+		// ⚠️ npc_types is read at ZONE BOOT, not shared memory -- a zone restart applies this.
+		.check       = "SELECT id FROM npc_types WHERE id BETWEEN 2000600 AND 2000619 AND race = 570",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+-- ⚠️⚠️ THE HUB GUARDS HAD NO MODEL, AND THAT IS WHAT CRASHED THE CLIENT.
+-- They shipped as race 570 (Exoskeleton), whose models live in `mechanotus_chr`. That archive is NOT
+-- present in a RoF2 client -- `GlobalLoad_chr.txt` was extended to name it and the client log answers
+-- plainly:  "Loading mechanotus_chr" -> "Failed to open ...\mechanotus_chr.s3d."  (Every one of the
+-- eight archives added to that file fails the same way; they were never there to load.)
+--
+-- ⚠️⚠️ WHY IT LOOKED INTERMITTENT: zoning in from character select drops you at your SAVED location,
+-- which is usually out of render range of the guards. Travelling in by PoK book drops you on the
+-- induction doorstep, and SEVEN of them stand within 200 units of it -- the nearest at 86. So the
+-- same zone crashed by one route and not the other, which is what made this look like a zone file or
+-- a patcher problem rather than an NPC one.
+--
+-- Race 12 (Gnome) is classic: `globalGNM_chr` / `globalGNF_chr` are loaded by every client
+-- unconditionally, so it cannot fail this way. It also fits the names -- Fizzwick Cogsprocket,
+-- Bimbly Gearhart, Nizzle Boltwrench are gnome tinkerers, not exoskeletons.
+-- ⚠️ Size drops 10 -> 3. Ten was sized for a mechanical construct; on a gnome it is a giant.
+-- ⚠️ Gender 2 is "neuter", which is correct for an object model and wrong for a humanoid -- a
+-- humanoid race with gender 2 has no model to pick either. Set to 0 (male).
+-- 📌 If the construct look is wanted back, it needs a race whose archive the client actually has --
+-- check the client log for "Failed to open" before choosing one.
+UPDATE npc_types
+SET race = 12, gender = 0, size = 3
+WHERE id BETWEEN 2000600 AND 2000619 AND race = 570;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 91,
+		.description = "2026_08_18_aotv4_hub_guards_restore_steamsuit",
+		// Reverts v90 on request: the guards go back to the Steam Suit look they shipped with.
+		//
+		// ⚠️⚠️ v90 IS NOT EDITED IN PLACE, AND MUST NOT BE. It has already applied on the test
+		// database and may have applied on live, and a migration only ever runs once -- rewriting its
+		// body would leave every database that already took it sitting on gnomes with nothing left to
+		// correct them. A revert is a NEW version or it is nothing.
+		// 📌 On a fresh database the chain still lands correctly: v69 creates them at 570, v90 sets 12,
+		// v91 sets 570. Ordered and idempotent either way.
+		//
+		// ⚠️⚠️ THE RENDER QUESTION IS UNRESOLVED, AND THIS MIGRATION DOES NOT SETTLE IT. v90 was
+		// written on a client-log line reading "Failed to open ...\mechanotus_chr.s3d", i.e. the model
+		// archive was reported missing. Race 570 is the stock Steam Suit -- 15 npc_types use it in
+		// `mechanotus`, `steamfactory`, `guardian` and `mansion`, all Depths of Darkhollow zones, and
+		// DoD-era zones ship `.eqg` archives while `Resources/GlobalLoad_chr.txt` loads `_chr.s3d`.
+		// So "the archive is absent" and "we asked for it in the wrong container" look identical from
+		// the server, and neither can be told apart from inside the dev container.
+		// 📌 If they render as an untextured placeholder or not at all, that is this, not a bad revert
+		// -- and CLAUDE.md section 48 records 458 Deep Orc / 489 Takish as proven-loadable fallbacks.
+		//
+		// ⚠️ Gender 2 is "neuter", which is what an object model wants and what a humanoid race has no
+		// model for; size 10 suits a construct and is giant on a humanoid. Both go back WITH the race,
+		// because they were always one setting and not three.
+		// ⚠️ npc_types is read at ZONE BOOT, not shared memory -- a zone restart applies this.
+		.check       = "SELECT id FROM npc_types WHERE id BETWEEN 2000600 AND 2000619 AND race = 12",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE npc_types
+SET race = 570, gender = 2, size = 10
+WHERE id BETWEEN 2000600 AND 2000619 AND race = 12;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 92,
+		.description = "2026_08_19_aotv4_new_heal_descriptions",
+		// The eighteen heal spells added on 2026-08-16 (Mending Touch, Circle of Health, Circle of
+		// Renewal -- 44530-44547) shipped with rows in `spells_new` and NO `db_str` description at all,
+		// so every window that describes a spell rendered them BLANK. Reported from play.
+		//
+		// ⚠️⚠️ A SPELL WITH NO db_str ROW FAILS SILENTLY AND LOOKS LIKE A BROKEN WINDOW. `AoTv4SpellDesc`
+		// returns an empty string, the panel draws the name and then nothing, and there is no error
+		// anywhere -- the spell itself works perfectly when cast. Nothing in the pool generator or the
+		// SQL that creates a spell checks that a description exists, so this is easy to repeat.
+		// 📌 When adding a spell line, write its db_str type 6 rows IN THE SAME SCRIPT as the
+		// `spells_new` rows. The eight lines in 43300-43349 all did; this one did not.
+		//
+		// ⚠️ Type 6 is the SPELL description. Type 4 is the AA description -- a different space entirely
+		// (section 6), and writing the wrong one leaves the panel just as empty.
+		// ⚠️ No literal '%' -- the description path is printf-style and eats it as a format token
+		// (section 14). Written as "half a minute" rather than a percent or a placeholder for that reason.
+		// ⚠️⚠️ NO APOSTROPHES. "your target's wounds" is a syntax error inside a single-quoted SQL
+		// string, and the migration aborts mid-run -- caught only by dry-running the extracted SQL in a
+		// rolled-back transaction before committing it. Escaping works but then reads back as \' in
+		// every dump, which section 25 records as defeating a plain grep for the text.
+		// ⚠️ Numbers are LITERAL, matching the eight sibling lines. The #N/@N placeholders that
+		// `AoTv4SpellDesc` substitutes are a STOCK convention; every AoTv4 custom line spells the value
+		// out, and mixing the two makes the set inconsistent to edit.
+		// 📌 The client resolves descriptions from its OWN `dbstr_us.txt`, not from this table
+		// (section 6), so this migration alone changes nothing in game -- it needs
+		// `./export_client_files` and the regenerated file shipped to players.
+		.check       = "SELECT id FROM db_str WHERE id = 44547 AND type = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM db_str WHERE id BETWEEN 44530 AND 44547 AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+  (44530, 6, 'Closes the wounds of your target, healing 45 points at once.'),
+  (44531, 6, 'Closes the wounds of your target, healing 100 points at once.'),
+  (44532, 6, 'Closes the wounds of your target, healing 150 points at once.'),
+  (44533, 6, 'Closes the wounds of your target, healing 220 points at once.'),
+  (44534, 6, 'Closes the wounds of your target, healing 300 points at once.'),
+  (44535, 6, 'Closes the wounds of your target, healing 450 points at once.'),
+  (44536, 6, 'A circle of restoring light closes the wounds of everyone in your group, healing each of them 35 points at once.'),
+  (44537, 6, 'A circle of restoring light closes the wounds of everyone in your group, healing each of them 80 points at once.'),
+  (44538, 6, 'A circle of restoring light closes the wounds of everyone in your group, healing each of them 120 points at once.'),
+  (44539, 6, 'A circle of restoring light closes the wounds of everyone in your group, healing each of them 175 points at once.'),
+  (44540, 6, 'A circle of restoring light closes the wounds of everyone in your group, healing each of them 240 points at once.'),
+  (44541, 6, 'A circle of restoring light closes the wounds of everyone in your group, healing each of them 350 points at once.'),
+  (44542, 6, 'Renewing energy settles over your group, healing every member 15 points every six seconds for twenty-four seconds.'),
+  (44543, 6, 'Renewing energy settles over your group, healing every member 35 points every six seconds for twenty-four seconds.'),
+  (44544, 6, 'Renewing energy settles over your group, healing every member 50 points every six seconds for twenty-four seconds.'),
+  (44545, 6, 'Renewing energy settles over your group, healing every member 75 points every six seconds for twenty-four seconds.'),
+  (44546, 6, 'Renewing energy settles over your group, healing every member 100 points every six seconds for twenty-four seconds.'),
+  (44547, 6, 'Renewing energy settles over your group, healing every member 150 points every six seconds for twenty-four seconds.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 93,
+		.description = "2026_08_19_all_classes_all_weapon_skills",
+		// Submitted by: maintainer
+		// Weapon skills were trainable only by the classes stock EQ gave them to, so a reforge
+		.check       = "SELECT class_id FROM skill_caps WHERE class_id = 7 AND skill_id = 1 LIMIT 1",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+CREATE TEMPORARY TABLE aotv4_ref_skill AS
+SELECT class_id,
+       CAST(SUBSTRING_INDEX(GROUP_CONCAT(skill_id ORDER BY cap DESC, skill_id ASC), ',', 1) AS UNSIGNED) AS ref_skill
+FROM skill_caps
+WHERE level = 35 AND skill_id IN (0,1,2,3,36,28) AND cap > 0
+GROUP BY class_id;
+
+CREATE TEMPORARY TABLE aotv4_ref_curve AS
+SELECT r.class_id, sc.level, sc.cap
+FROM aotv4_ref_skill r
+JOIN skill_caps sc ON sc.class_id = r.class_id AND sc.skill_id = r.ref_skill;
+
+CREATE TEMPORARY TABLE aotv4_weap (skill_id TINYINT UNSIGNED PRIMARY KEY);
+INSERT INTO aotv4_weap VALUES (0),(1),(2),(3),(7),(28),(36),(51);
+
+INSERT INTO skill_caps (skill_id, class_id, level, cap, class_)
+SELECT w.skill_id, c.class_id, c.level, c.cap, 0
+FROM aotv4_weap w
+CROSS JOIN aotv4_ref_curve c
+WHERE NOT EXISTS (
+  SELECT 1 FROM skill_caps x
+  WHERE x.class_id = c.class_id AND x.skill_id = w.skill_id AND x.level = c.level
+);
+
+DROP TEMPORARY TABLE aotv4_weap; DROP TEMPORARY TABLE aotv4_ref_curve; DROP TEMPORARY TABLE aotv4_ref_skill;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 94,
+		.description = "2026_08_19_paladin_class_aas",
+		// Submitted by: maintainer
+		// Three Paladin-only activated AAs. Hosted on disabled native rows 45/55/79 because a NEW
+		.check       = "SELECT id FROM aa_ability WHERE id = 79 AND classes = 4 AND enabled = 1",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id BETWEEN 44600 AND 44602;
+
+-- 44600 Ardent Strike -- an INERT MARKER. The damage is STR-scaled with a level floor, which no SPA
+-- can express, so quests/global/spells/44600.lua pays it. Same pattern as the Thirst line.
+CREATE TEMPORARY TABLE aotv4_pal_tmp AS SELECT * FROM spells_new WHERE id = 2190;
+UPDATE aotv4_pal_tmp SET id = 44600, name = 'Ardent Strike', descnum = 44600,
+  targettype = 5, goodEffect = 0, mana = 0, cast_time = 0, recast_time = 0, recovery_time = 0,
+  buffduration = 0, buffdurationformula = 0, new_icon = 168,
+  effectid1 = 254, effect_base_value1 = 0, formula1 = 100, max1 = 0,
+  effectid2 = 254, effect_base_value2 = 0, effectid3 = 254, effect_base_value3 = 0;
+INSERT INTO spells_new SELECT * FROM aotv4_pal_tmp;
+DROP TEMPORARY TABLE aotv4_pal_tmp;
+
+-- 44601 Hand of Conviction -- SELF target on purpose: the heal is a percentage of the CASTER's max
+-- HP and lands on the whole group, neither of which a spell row can say, so the Lua walks the group.
+-- A group target type here would only duplicate what the script already does.
+CREATE TEMPORARY TABLE aotv4_pal_tmp AS SELECT * FROM spells_new WHERE id = 2190;
+UPDATE aotv4_pal_tmp SET id = 44601, name = 'Hand of Conviction', descnum = 44601,
+  targettype = 6, goodEffect = 1, mana = 0, cast_time = 0, recast_time = 0, recovery_time = 0,
+  buffduration = 0, buffdurationformula = 0, new_icon = 129,
+  effectid1 = 254, effect_base_value1 = 0, formula1 = 100, max1 = 0,
+  effectid2 = 254, effect_base_value2 = 0, effectid3 = 254, effect_base_value3 = 0;
+INSERT INTO spells_new SELECT * FROM aotv4_pal_tmp;
+DROP TEMPORARY TABLE aotv4_pal_tmp;
+
+-- 44602 Divine Reproach -- the stun is a REAL SPA 21, kept from Divine Stun (base 2000 = 2 seconds).
+-- Only the cooldown cut on Hand of Conviction is paid by Lua. Using the native effect means the
+-- engine handles resist, immunity and the stun message for free.
+CREATE TEMPORARY TABLE aotv4_pal_tmp AS SELECT * FROM spells_new WHERE id = 2190;
+UPDATE aotv4_pal_tmp SET id = 44602, name = 'Divine Reproach', descnum = 44602,
+  targettype = 5, goodEffect = 0, mana = 0, cast_time = 0, recast_time = 0, recovery_time = 0,
+  new_icon = 167;
+INSERT INTO spells_new SELECT * FROM aotv4_pal_tmp;
+DROP TEMPORARY TABLE aotv4_pal_tmp;
+
+-- ⚠️⚠️ NOT SCRIBABLE BY ANY CLASS. 255 in every class column keeps them out of the reward pool and
+-- out of spellbooks -- they are reachable ONLY through the AA that casts them.
+UPDATE spells_new SET classes1=255,classes2=255,classes3=255,classes4=255,classes5=255,classes6=255,
+  classes7=255,classes8=255,classes9=255,classes10=255,classes11=255,classes12=255,classes13=255,
+  classes14=255,classes15=255,classes16=255
+WHERE id BETWEEN 44600 AND 44602;
+
+-- spell descriptions (db_str type 6, keyed on descnum). No apostrophes, no percent signs.
+DELETE FROM db_str WHERE id BETWEEN 44600 AND 44602 AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+  (44600, 6, 'Strikes your target with righteous force. The blow grows with your Strength, and never falls below what your level alone can muster.'),
+  (44601, 6, 'Calls down aid on your whole group, healing each of them for a quarter of your own maximum hit points.'),
+  (44602, 6, 'Rebukes your target, stunning it briefly and hastening the return of Hand of Conviction by five seconds.');
+
+-- ============================ the three AAs ============================
+-- ⚠️⚠️ HOSTED ON NATIVE ROWS. A new aa_ability id is resolved by the server, passes every check, and
+-- is then SILENTLY DISCARDED by the client (section 10). Hosts 45 / 55 / 79 are disabled single-rank
+-- natives; their ids, rank ids and sids are kept and only the payload is replaced.
+-- ⚠️⚠️ `classes = 4` IS PALADIN AND THE SHIFT IS WHY. The loader does `a->classes = e.classes << 1`
+-- (zone/aa.cpp), so the DB bit 1<<(class-1) becomes 1<<class in memory, which is exactly what the
+-- stock gate `classes & (1<<GetClass())` tests. Paladin is class 3, so 1<<2 = 4. Do NOT write 8.
+UPDATE aa_ability SET enabled = 1, classes = 4, grant_only = 1, type = 1, category = -1,
+       charges = 0, reset_on_death = 0
+WHERE id IN (45, 55, 79);
+
+-- ⚠️⚠️ EVERY AA NEEDS ITS OWN `spell_type` -- IT IS THE SHARED TIMER NUMBER, NOT A CATEGORY.
+-- Two AAs on the same spell_type share one cooldown, so reusing a value here would make the stun and
+-- the group heal lock each other out. 100-102 are free (max in use is 99; the range runs to 1999).
+-- ⚠️ recast_time is in SECONDS.
+UPDATE aa_ranks SET spell = 44600, spell_type = 100, recast_time = 10,  level_req = 1, cost = 1 WHERE id = 144;
+UPDATE aa_ranks SET spell = 44601, spell_type = 101, recast_time = 120, level_req = 5, cost = 1 WHERE id = 158;
+UPDATE aa_ranks SET spell = 44602, spell_type = 102, recast_time = 15,  level_req = 10, cost = 1 WHERE id = 196;
+
+-- ⚠️⚠️ `aa_rank_effects` AND `aa_rank_prereqs` ARE SEPARATE TABLES AND BOTH MUST BE CLEARED. A hosted
+-- AA inherits its host's prerequisites and refuses to train WITH NO MESSAGE (section 10); clearing
+-- effects alone does nothing about it. Eight AAs were untrainable this way once.
+DELETE FROM aa_rank_effects WHERE rank_id IN (144, 158, 196);
+DELETE FROM aa_rank_prereqs WHERE rank_id IN (144, 158, 196);
+
+-- ⚠️⚠️ AN AA HAS THREE NAMES IN db_str AND THE HOTKEY ONE IS SPLIT ACROSS TWO ROWS (section 6):
+-- type 1 the window title, type 2 the hotkey UPPER line, type 3 its LOWER line, type 4 the
+-- description. Writing only 1 and 4 leaves the HOST's name on any hotkey made from the ability.
+DELETE FROM db_str WHERE id IN (144, 158, 196) AND type IN (1, 2, 3, 4);
+INSERT INTO db_str (id, type, value) VALUES
+  (144, 1, 'Ardent Strike'),      (144, 2, 'Ardent'),  (144, 3, 'Strike'),
+  (144, 4, 'Strikes your target with righteous force. The blow grows with your Strength, and never falls below what your level alone can muster. Reusable every 10 seconds.'),
+  (158, 1, 'Hand of Conviction'), (158, 2, 'Hand of'), (158, 3, 'Conviction'),
+  (158, 4, 'Calls down aid on your whole group, healing each of them for a quarter of your own maximum hit points. Reusable every 2 minutes.'),
+  (196, 1, 'Divine Reproach'),    (196, 2, 'Divine'),  (196, 3, 'Reproach'),
+  (196, 4, 'Rebukes your target, stunning it briefly. Each use hastens the return of Hand of Conviction by five seconds. Reusable every 15 seconds.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 95,
+		.description = "2026_08_19_paladin_aa_endurance",
+		// Submitted by: maintainer
+		// Makes the three Paladin class AAs cost endurance, the way combat specials do (section 22).
+		.check       = "SELECT id FROM spells_new WHERE id = 44602 AND EndurCost > 0",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE spells_new SET EndurCost = 25  WHERE id = 44600;   -- Ardent Strike      (10s)
+UPDATE spells_new SET EndurCost = 100 WHERE id = 44601;   -- Hand of Conviction (2m)
+UPDATE spells_new SET EndurCost = 40  WHERE id = 44602;   -- Divine Reproach    (15s)
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 96,
+		.description = "2026_08_19_paladin_aa_hotkey_sids",
+		// Submitted by: maintainer
+		// Points the three Paladin AAs' hotkey text at their db_str rows. Their hosts were disabled
+		.check       = "SELECT id FROM aa_ranks WHERE id = 196 AND upper_hotkey_sid > 0",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE aa_ranks SET upper_hotkey_sid = 144, lower_hotkey_sid = 144 WHERE id = 144;
+UPDATE aa_ranks SET upper_hotkey_sid = 158, lower_hotkey_sid = 158 WHERE id = 158;
+UPDATE aa_ranks SET upper_hotkey_sid = 196, lower_hotkey_sid = 196 WHERE id = 196;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 97,
+		.description = "2026_08_19_paladin_aa_timer_ids",
+		// Submitted by: maintainer
+		// Moves the three Paladin AAs onto timer ids the client can render. At 100-102 the AA window
+		.check       = "SELECT id FROM aa_ranks WHERE id = 196 AND spell_type = 84",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE aa_ranks SET spell_type = 82 WHERE id = 144;   -- Ardent Strike
+UPDATE aa_ranks SET spell_type = 83 WHERE id = 158;   -- Hand of Conviction
+UPDATE aa_ranks SET spell_type = 84 WHERE id = 196;   -- Divine Reproach
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 98,
+		.description = "2026_08_19_paladin_aa_visuals",
+		// Submitted by: maintainer
+		// Gives the three Paladin AAs distinct visuals. All three were cloned from Divine Stun in
+		.check       = "SELECT id FROM spells_new WHERE id = 44601 AND spellanim = 278",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE spells_new SET CastingAnim = 0, TargetAnim = 0, spellanim = 0, spell_category = 15
+WHERE id = 44600;
+
+-- 44601 Hand of Conviction -- the heal look, taken from 13 Complete Heal: CastingAnim 43 (the
+-- kneeling/hands-up heal cast), spellanim 278 (the healing burst), spell_category 20 (Heals).
+-- ⚠️ spell_category is what the client uses to colour and group the effect; 15 is Stuns, which is why
+-- a heal was rendering as one.
+UPDATE spells_new SET CastingAnim = 43, TargetAnim = 0, spellanim = 278, spell_category = 20
+WHERE id = 44601;
+
+-- 44602 Divine Reproach -- KEEPS the Divine Stun look. It really is a stun, so 44/13/103/15 is the
+-- correct inheritance here and is left alone deliberately; only the other two were wrong.
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 99,
+		.description = "2026_08_20_show_target_buffs",
+		// Submitted by: maintainer
+		// Players could not see debuffs on the mobs they were fighting. Turns target buff/debuff
+		.check       = "SELECT rule_value FROM rule_values WHERE rule_name = 'Spells:AlwaysSendTargetsBuffs' AND rule_value = 'true'",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE rule_values SET rule_value = 'true' WHERE rule_name = 'Spells:AlwaysSendTargetsBuffs';
+
+-- ⚠️ INSERT if the row is absent entirely: a database that has never had this rule written falls back
+-- to the compiled default (false), so the UPDATE above would match nothing and change nothing. Live
+-- may well be in that state.
+INSERT INTO rule_values (ruleset_id, rule_name, rule_value, notes)
+SELECT 1, 'Spells:AlwaysSendTargetsBuffs', 'true', 'AoTv4: target buff/debuff display for everyone'
+WHERE NOT EXISTS (SELECT 1 FROM rule_values WHERE rule_name = 'Spells:AlwaysSendTargetsBuffs');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 100,
+		.description = "2026_08_20_implied_targeting",
+		// Submitted by: maintainer
+		// Spells now pass through an inappropriate target to that target's target. Keep the mob
+		.check       = "SELECT rule_value FROM rule_values WHERE rule_name = 'Spells:UseSpellImpliedTargeting' AND rule_value = 'true'",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE rule_values SET rule_value = 'true' WHERE rule_name = 'Spells:UseSpellImpliedTargeting';
+
+-- ⚠️ INSERT when the row is absent: a database that never wrote this rule falls back to the compiled
+-- default (false) and the UPDATE above would match nothing at all.
+INSERT INTO rule_values (ruleset_id, rule_name, rule_value, notes)
+SELECT 1, 'Spells:UseSpellImpliedTargeting', 'true', 'AoTv4: pass spells through to the targets target'
+WHERE NOT EXISTS (SELECT 1 FROM rule_values WHERE rule_name = 'Spells:UseSpellImpliedTargeting');
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

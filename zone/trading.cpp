@@ -1230,8 +1230,19 @@ std::string Client::SearchList(std::string kind, std::string term)
 	} else if (kind == "spell") {
 		// only real, learnable spells (classes8 = Bard learn level 1..70), deduped by name -- drops the
 		// focus/AA/beta/click junk (classes8 254/255) and the many same-name rank rows.
+		// ⚠️⚠️ THE CUSTOM BANDS MUST BE LET THROUGH OR EVERY CUSTOM SPELL IS UNSEARCHABLE. A bare
+		// `id < 10000` was copied from the reward pool's filter without the pool's own carve-out, so
+		// all 48 offerable customs -- the reptile/sloth/moonfire/promised/kindred/mark/thirst/sinew
+		// lines AND the 2026-08-16 heals (Mending Touch, Circle of Health, Circle of Renewal) -- were
+		// missing from this window entirely. Reported from play as the new heals not showing in the
+		// Allaclone spell section. They are offerable as level-up rewards, so a player can be holding
+		// one and still be unable to look it up.
+		// ⚠️ Bands must match `gen_stock_pool.pl`: 43300-43349 and 44530-44599. Helpers and triggers
+		// sit ABOVE each band (43350+, 44600+) and are deliberately excluded -- they are never offered
+		// and a player has no reason to search for them.
 		query = fmt::format(
-			"SELECT MIN(id), name FROM spells_new WHERE name LIKE '%{}%' AND id < 10000 "
+			"SELECT MIN(id), name FROM spells_new WHERE name LIKE '%{}%' "
+			"AND (id < 10000 OR (id BETWEEN 43300 AND 43349) OR (id BETWEEN 44530 AND 44599)) "
 			"AND classes8 BETWEEN 1 AND 70 AND name NOT LIKE '%Rk.%' GROUP BY name ORDER BY name LIMIT 60", t);
 	} else if (kind == "recipe") {
 		// tradeskill recipes, deduped by name (same recipe often repeats per container).
@@ -1302,11 +1313,22 @@ static std::string AoTv4SpellDesc(uint32 sid)
 	if (sid == 0) return "";
 	auto r = database.QueryDatabase(fmt::format(
 		"SELECT effect_base_value1, effect_base_value2, effect_base_value3, effect_base_value4, "
-		"max1, max2, max3, max4 FROM spells_new WHERE id = {}", sid));
+		"max1, max2, max3, max4, descnum FROM spells_new WHERE id = {}", sid));
 	if (!r.Success() || r.RowCount() == 0) return "";
 	auto row = r.begin();
 	auto I   = [&](int c) { return row[c] ? Strings::ToInt(row[c]) : 0; };
-	auto dq  = database.QueryDatabase(fmt::format("SELECT value FROM db_str WHERE id = {} AND type = 6", sid));
+	// ⚠️⚠️ THE DESCRIPTION IS KEYED ON `descnum`, NOT ON THE SPELL ID, AND THEY DIVERGE OFTEN.
+	// 902 spells below id 10000 carry `descnum <> id`. Looking up db_str by the spell id therefore
+	// did one of two things, both silent: it found nothing and the panel rendered EMPTY (55 pool
+	// spells), or it found the row belonging to whichever OTHER spell uses that id as its descnum and
+	// showed that spell's text instead (9 pool spells). Reported from play as spell descriptions
+	// missing in the spell window and in Allaclone -- both funnel through this one function.
+	// 📌 `gen_stock_pool.pl` has always joined `ON d.id = s.descnum`, so the generator and the runtime
+	// disagreed; the pool file had the right text while the live panel did not. Same shape as the AA
+	// trap in section 6, where title_sid and desc_sid are independent and neither equals first_rank_id.
+	const int descnum = I(8);
+	auto dq  = database.QueryDatabase(fmt::format(
+		"SELECT value FROM db_str WHERE id = {} AND type = 6", descnum > 0 ? descnum : (int) sid));
 	if (!dq.Success() || dq.RowCount() == 0 || !dq.begin()[0] || !dq.begin()[0][0]) return "";
 	std::string desc = dq.begin()[0];
 	int base[5] = { 0, I(0), I(1), I(2), I(3) };

@@ -1622,6 +1622,13 @@ bool Lua_Client::GrantAlternateAdvancementAbility(int aa_id, int points, bool ig
 	return self->GrantAlternateAdvancementAbility(aa_id, points, ignore_cost);
 }
 
+// AoTv4: shorten an AA's recast by `seconds` and resend the timer to the client.
+// Returns false when the ability is unknown or already ready.
+bool Lua_Client::AoTv4ReduceAATimer(int aa_id, int seconds) {
+	Lua_Safe_Call_Bool();
+	return self->AoTv4ReduceAATimer(aa_id, seconds);
+}
+
 int Lua_Client::StartPlayerTrader(int default_mult) {
 	Lua_Safe_Call_Int();
 	return self->StartPlayerTrader(default_mult);
@@ -4347,6 +4354,7 @@ luabind::scope lua_register_client() {
 	.def("GrantAllAAPoints", (void(Lua_Client::*)(uint8,bool))&Lua_Client::GrantAllAAPoints)
 	.def("GrantAlternateAdvancementAbility", (bool(Lua_Client::*)(int, int))&Lua_Client::GrantAlternateAdvancementAbility)
 	.def("GrantAlternateAdvancementAbility", (bool(Lua_Client::*)(int, int, bool))&Lua_Client::GrantAlternateAdvancementAbility)
+	.def("AoTv4ReduceAATimer", (bool(Lua_Client::*)(int, int))&Lua_Client::AoTv4ReduceAATimer)
 	.def("StartPlayerTrader", &Lua_Client::StartPlayerTrader)
 	.def("GetTraderSatchelItemIDs", &Lua_Client::GetTraderSatchelItemIDs)
 	.def("StopPlayerTrader", &Lua_Client::StopPlayerTrader)

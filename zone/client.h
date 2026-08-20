@@ -1095,6 +1095,8 @@ public:
 	void SendAlternateAdvancementStats();
 	void PurchaseAlternateAdvancementRank(int rank_id);
 	bool GrantAlternateAdvancementAbility(int aa_id, int points, bool ignore_cost = false);
+	// AoTv4: shorten an AA's recast and resend it to the client. See aa.cpp for the traps.
+	bool AoTv4ReduceAATimer(int aa_id, int seconds);
 	void IncrementAlternateAdvancementRank(int rank_id);
 	void ActivateAlternateAdvancementAbility(int rank_id, int target_id);
 	void SendAlternateAdvancementPoints();

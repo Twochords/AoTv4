@@ -411,6 +411,41 @@ local function grant_native_combat_skills(c)
 	end
 end
 
+-- AoTv4: CLASS AAs -- activated abilities only one class can use, granted automatically at level.
+--
+-- ⚠️⚠️ GRANTED, NOT PURCHASED. Section 45 diverts every AA point into the picker's private bank, so
+-- `m_pp.aapoints` is always 0 and these could never be bought in the native window. They are also
+-- `grant_only = 1`, which hides them there entirely. Handing them out here is the only route in.
+-- ⚠️⚠️ THE THIRD ARGUMENT IS `ignore_cost` AND IT IS NOT OPTIONAL. The two-argument overload leaves
+-- it FALSE, which makes CanPurchaseAlternateAdvancementRank check the price against a pool that is
+-- permanently 0 -- the grant then fails silently and the Paladin simply never gets the ability.
+-- ⚠️ The engine gates on `level_req` in aa_ranks, so the level column here is documentation and a
+-- cheap early-out; the rank refuses on its own if this is ever wrong.
+-- 📌 Keyed by ABILITY id (GetAAByAAID), not rank id. Section 47 records the two being easy to
+-- confuse: character_alternate_abilities stores first_rank_id, and Mob::GetAA takes a RANK.
+local CLASS_AAS = {
+	-- class    = { {aa_id, level, name}, ... }
+	[3] = {   -- Paladin
+		{ 45,  1, "Ardent Strike"      },
+		{ 55,  5, "Hand of Conviction" },
+		{ 79, 10, "Divine Reproach"    },
+	},
+}
+
+local function grant_class_aas(c)
+	if not c then return end
+	local list = CLASS_AAS[c:GetClass()]
+	if not list then return end
+	for _, a in ipairs(list) do
+		local aa_id, lvl, name = a[1], a[2], a[3]
+		if c:GetLevel() >= lvl and (c:GetAAByAAID(aa_id) or 0) < 1 then
+			if c:GrantAlternateAdvancementAbility(aa_id, 1, true) then
+				c:Message(MT.Yellow, string.format("You have learned %s.", name))
+			end
+		end
+	end
+end
+
 -- AoTv4: every character keeps each TRADESKILL at a floor of 20. New characters start there on their
 -- first connect; existing characters are raised to 20 on login if lower. Only RAISES -- a tradeskill
 -- already trained above 20 is left alone. (Caps are 300 from level 1 for all of these, so the floor
@@ -602,6 +637,7 @@ function event_connect(e)
 
 	grant_free_skills(e.self)            -- level-1 chars get Dual Wield etc. now, not only after first ding
 	grant_native_combat_skills(e.self)  -- a Rogue has Backstab, a Monk its strikes; the rest are picker rewards
+	grant_class_aas(e.self)             -- Paladin's three class AAs, and anything added to CLASS_AAS
 	floor_tradeskills(e.self)           -- every tradeskill floored to 20 (new chars start there; existing raised on login)
 	max_skills_for_level(e.self)        -- ⚠️ AFTER the grants above: they lift a skill off 0 (which is what
 	                                    -- makes it "earned"), and this then takes it to the cap. Reversed,
@@ -764,6 +800,7 @@ function event_level_up(e)
   -- skills stay reward-gated (skill_pool.lua). Same grant used on connect. See grant_free_skills above.
   grant_free_skills(e.self)
   grant_native_combat_skills(e.self)   -- cap curves for some specials only open above level 1
+  grant_class_aas(e.self)              -- a class AA whose level_req just opened
   max_skills_for_level(e.self)         -- every skill to its new cap for this level (tradeskills excluded)
 
   -- ⚠️⚠️ AND TELL THE CLIENT, OR A SKILL GRANTED HERE STAYS INVISIBLE UNTIL THE NEXT LOGIN.

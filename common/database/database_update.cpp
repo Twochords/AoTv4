@@ -108,9 +108,54 @@ void DatabaseUpdate::CheckDbUpdates()
 	}
 }
 
+// ⚠️⚠️ SCHEMA CONDITIONS RESOLVE THEMSELVES AND IGNORE `check`. There was no way to ask "does this
+// table exist": a `SELECT ... FROM a_table_that_is_not_there` ERRORS, and GetQueryResult turns a
+// failed result set into an EMPTY STRING -- which `condition: empty` cannot tell apart from a table
+// that exists and simply has no rows. So a migration that CREATES a table had no honest check, and
+// the workaround was to hand-write an information_schema query and remember its exact form.
+// These four conditions take the object name in `match` and build that query here:
+//     .condition = "table_missing",  .match = "my_table"
+//     .condition = "table_exists",   .match = "my_table"
+//     .condition = "column_missing", .match = "my_table.my_column"
+//     .condition = "column_exists",  .match = "my_table.my_column"
+// 📌 `DATABASE()` rather than a hardcoded schema, so this is correct whether the entry runs
+// against the main or the content database (`content_schema_update`).
+static std::string AoTv4SchemaCheckQuery(const ManifestEntry &e)
+{
+	const bool is_column = (e.condition == "column_missing" || e.condition == "column_exists");
+	if (!is_column && e.condition != "table_missing" && e.condition != "table_exists") {
+		return {};
+	}
+
+	if (is_column) {
+		const auto parts = Strings::Split(e.match, '.');
+		if (parts.size() != 2) {
+			// ⚠️ Returns a query that finds nothing rather than falling back to `check`. A malformed
+			// match must not silently become "run the migration".
+			LogError("Migration [{}] uses [{}] but match [{}] is not table.column",
+					 e.description, e.condition, e.match);
+			return "SELECT NULL FROM DUAL WHERE FALSE";
+		}
+		return fmt::format(
+			"SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+			"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{}' AND COLUMN_NAME = '{}'",
+			parts[0], parts[1]
+		);
+	}
+
+	return fmt::format(
+		"SELECT TABLE_NAME FROM information_schema.TABLES "
+		"WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{}'",
+		e.match
+	);
+}
+
 std::string DatabaseUpdate::GetQueryResult(const ManifestEntry& e)
 {
-	auto results = (e.content_schema_update ? m_content_database : m_database)->QueryDatabase(e.check);
+	const std::string schema_query = AoTv4SchemaCheckQuery(e);
+	const std::string &query       = schema_query.empty() ? e.check : schema_query;
+
+	auto results = (e.content_schema_update ? m_content_database : m_database)->QueryDatabase(query);
 
 	std::vector<std::string> result_lines = {};
 
@@ -147,6 +192,14 @@ bool DatabaseUpdate::ShouldRunMigration(ManifestEntry &e, std::string query_resu
 		return r.empty();
 	}
 	else if (e.condition == "not_empty") {
+		return !r.empty();
+	}
+	// Schema conditions -- the query was built by AoTv4SchemaCheckQuery, so a non-empty result means
+	// the object is present. "missing" is the one a CREATE migration wants.
+	else if (e.condition == "table_missing" || e.condition == "column_missing") {
+		return r.empty();
+	}
+	else if (e.condition == "table_exists" || e.condition == "column_exists") {
 		return !r.empty();
 	}
 

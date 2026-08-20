@@ -938,8 +938,10 @@
 143^6^Calls down an intense sunbeam that blinds any creature near your target. This spell can only be cast outdoors.^0
 143^11^UNKNOWN RACE^0
 143^12^^0
-144^1^Enhanced Root^0
-144^4^This ability reduces the chance that a rooted NPC will be freed by your damage spells by 50 percent.^0
+144^1^Ardent Strike^0
+144^2^Ardent^0
+144^3^Strike^0
+144^4^Strikes your target with righteous force. The blow grows with your Strength, and never falls below what your level alone can muster. Reusable every 10 seconds.^0
 144^5^Humanoid^0
 144^6^Hastens your target's natural healing, regenerating #1 hit points every 6 seconds.^0
 144^11^Burynai^0
@@ -1025,8 +1027,10 @@
 157^6^Fills your target with pure nimbleness, increasing their dexterity for %z.^0
 157^11^Wyvern^0
 157^12^Wyverns^0
-158^1^Permanent Illusion^0
-158^4^This ability allows you to zone without losing your current illusion.^0
+158^1^Hand of Conviction^0
+158^2^Hand of^0
+158^3^Conviction^0
+158^4^Calls down aid on your whole group, healing each of them for a quarter of your own maximum hit points. Reusable every 2 minutes.^0
 158^5^Timer 16^0
 158^6^Fills your target with pure endurance, increasing their stamina for %z.^0
 158^11^Wurm^0
@@ -1225,8 +1229,10 @@
 195^6^Constricts your target's throat, causing between #1 and @1 damage initially and between #4 and @4 damage every six seconds for %z, as well as lowering their strength and agility.^0
 195^11^Dragon^0
 195^12^Dragons^0
-196^1^2 Hand Bash^0
-196^4^This ability will allow you to use your Bash skill while wielding any 2-handed weapon.^0
+196^1^Divine Reproach^0
+196^2^Divine^0
+196^3^Reproach^0
+196^4^Rebukes your target, stunning it briefly. Each use hastens the return of Hand of Conviction by five seconds. Reusable every 15 seconds.^0
 196^6^Commands an undead creature to do your bidding, temporarily bending them to your will.^0
 196^11^Dragon^0
 196^12^Dragons^0
@@ -36848,6 +36854,27 @@
 44494^6^Grants the title ", Army of Light Regular"^0
 44495^6^Grants the title ", Obliteration Army Regular"^0
 44498^6^Clicking this item will offer you the chance to change your race and/or religion.  Once you complete the change, it is permanent.^0
+44530^6^Closes the wounds of your target, healing 45 points at once.^0
+44531^6^Closes the wounds of your target, healing 100 points at once.^0
+44532^6^Closes the wounds of your target, healing 150 points at once.^0
+44533^6^Closes the wounds of your target, healing 220 points at once.^0
+44534^6^Closes the wounds of your target, healing 300 points at once.^0
+44535^6^Closes the wounds of your target, healing 450 points at once.^0
+44536^6^A circle of restoring light closes the wounds of everyone in your group, healing each of them 35 points at once.^0
+44537^6^A circle of restoring light closes the wounds of everyone in your group, healing each of them 80 points at once.^0
+44538^6^A circle of restoring light closes the wounds of everyone in your group, healing each of them 120 points at once.^0
+44539^6^A circle of restoring light closes the wounds of everyone in your group, healing each of them 175 points at once.^0
+44540^6^A circle of restoring light closes the wounds of everyone in your group, healing each of them 240 points at once.^0
+44541^6^A circle of restoring light closes the wounds of everyone in your group, healing each of them 350 points at once.^0
+44542^6^Renewing energy settles over your group, healing every member 15 points every six seconds for twenty-four seconds.^0
+44543^6^Renewing energy settles over your group, healing every member 35 points every six seconds for twenty-four seconds.^0
+44544^6^Renewing energy settles over your group, healing every member 50 points every six seconds for twenty-four seconds.^0
+44545^6^Renewing energy settles over your group, healing every member 75 points every six seconds for twenty-four seconds.^0
+44546^6^Renewing energy settles over your group, healing every member 100 points every six seconds for twenty-four seconds.^0
+44547^6^Renewing energy settles over your group, healing every member 150 points every six seconds for twenty-four seconds.^0
+44600^6^Strikes your target with righteous force. The blow grows with your Strength, and never falls below what your level alone can muster.^0
+44601^6^Calls down aid on your whole group, healing each of them for a quarter of your own maximum hit points.^0
+44602^6^Rebukes your target, stunning it briefly and hastening the return of Hand of Conviction by five seconds.^0
 45192^6^Summons a clockwork that knows how to party.^0
 45194^6^Pressing one of these buttons will do something.^0
 45195^6^Clicking this item will offer you the chance to change your name.  Once you change your name the change is permanent.^0

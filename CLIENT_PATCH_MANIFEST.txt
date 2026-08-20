@@ -1,0 +1,42 @@
+# AoTv4 client patch manifest
+# Generated 2026-08-18 07:10 UTC.  Verify with:  md5sum -c <this file>
+
+## -> <EQ>\  (game root)
+c89d56f2e9fddc4e287a983b2803316b  8431587      freeporttheater.eqg
+3fbe074c55074ffc9cd7e235d9546393  24360801     spells_us.txt
+a4af84ca4810311c6221620a6dfb4281  6349565      dbstr_us.txt
+b140dc8033fcaa64b6a75b1755e17d26  1332161      SkillCaps.txt
+878851da61b5b3d1ea4963fa9073f212  61817        BaseData.txt
+
+## -> <EQ>\Resources\
+2c58484eae90424816741491da16f5a4  159          GlobalLoad_chr.txt
+
+## -> <EQ>\uifiles\default\
+6666d3ac0d6c94613b73380d322bca1d  21102        EQUI_AAWindow.xml
+d4eec1f41900b95c6d24fb7a7f9b2803  10914        EQUI_AdvLootWnd.xml
+798fd10d89db7d74d42f667abda28f51  9304         EQUI_AoTAllacloneWnd.xml
+d080472affce2692fcac48352f96f201  4328         EQUI_AoTAutoSkillWnd.xml
+b3773d81c6348b9d0d5d8e63e49289a7  5699         EQUI_AoTDifficultyWnd.xml
+be9f10f2ad1540669419642a21d554e7  9450         EQUI_AoTDungeonWnd.xml
+bd404704c51065faad5cc64f8e229a9c  24081        EQUI_AoTFellowshipWnd.xml
+47c37144926f3fd94a3d4b6118547546  13814        EQUI_AoTLostWnd.xml
+41547c12772dd616058c70e293e0de9b  11725        EQUI_AoTMenuWnd.xml
+5fa96a7ded05300938b57144d18814a3  277407       EQUI_AoTSpellChoiceWnd.xml
+f91a9e2bb789e0992c8ff33b9305fb3f  5901         EQUI_AoTTravelWnd.xml
+62f1cea5a23bcc1e212cc8d1c8a64335  8928         EQUI_ShopWnd.xml
+96f03c9226d346c0515bbef4bb114855  12665        EQUI_NativeAchievementWnd.xml
+681271547d49daf4545848a484bfa55f  65580        Achievement_TitleBorders.tga
+eaae721469a5ba69a3a53b70adf88aee  131116       Achievement_Titlebar.tga
+7f372186ea1f1c9e30ac56b5d7413638  146          Achievement_account_unlock_color.tga
+f84d7d093557e2d4bc565db504f6fc69  4140         Achievement_achieved_color.tga
+8aecc70f9c40470137d1496d5490bf43  262188       Achievement_hunter_collect_base.tga
+287706b4cda843f66d3a0375f6f455a4  262188       Achievement_hunter_collect_mouseover.tga
+21beaf3bac1db9d3d50a9ed5a8d34e62  262188       Achievement_hunter_collect_selected.tga
+a59691027cefae829acbcf6f001a78ba  4140         Achievement_lock_color.tga
+a30f287e3cf4ec9fb217fab3c813254d  262188       Achievement_subcat_base.tga
+e0243bd367c8c45dd666fa17bd71ed3c  262188       Achievement_subcat_base01.tga
+929cf7bf5c4afa36b2ae2cfa89a19464  262188       Achievement_subcat_mouseover.tga
+f028150c8aa847103774efcd8c8109fe  262188       Achievement_subcat_mouseover01.tga
+fc76682a5ff2107b9e0fb3410ace7064  262188       Achievement_subcat_selected.tga
+e86cd1184be17c39c44b44dd220f557d  262188       Achievement_subcat_selected01.tga
+39d5912d0b5d0f1262cbbe0376860ca7  4140         Achievement_unlock_color.tga

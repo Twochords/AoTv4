@@ -525,17 +525,42 @@ local function do_travel(c, sp, with_group)
 	if with_group then
 		local grp = c:GetGroup()
 		if grp and grp.valid then
-			-- ⚠️ ONE CALL MOVES EVERY MEMBER, including any the engine knows about in other zones --
-			-- which is precisely why `group_blockers` refused those cases before we got here. The
-			-- eligibility check is the gate; this is only the delivery.
-			-- ⚠️ THE SIX-ARGUMENT FORM IS REAL, whatever the editor's Lua stubs claim. zone/lua_general.cpp
-			-- registers THREE overloads of this name -- (group, zone), (group, zone, x, y, z) and
-			-- (group, zone, x, y, z, heading). A linter warning of "expects a maximum of 2 arguments"
-			-- is its definitions file being incomplete, not the binding. Do NOT "fix" it by dropping
-			-- the coordinates: the two-argument form lands the whole group on the zone's SAFE POINT,
-			-- which for most of these zones is nowhere near the waypoint they paid to reach.
-			eq.cross_zone_move_player_by_group_id(grp:GetID(), sp.zone, sp.x, sp.y, sp.z, sp.h or 0)
+			-- ⚠️⚠️ MOVED LOCALLY, ONE MEMBER AT A TIME. This used to call
+			-- `eq.cross_zone_move_player_by_group_id`, which PRINTED THE MESSAGE AND MOVED NOBODY --
+			-- not the group, not even the caller. Reported from play as exactly that.
+			-- The binding is real and its six-argument form is real; the transport underneath is not.
+			-- `CZMove_Struct` (common/servertalk.h:1399) holds `client_name` and `zone_short_name` as
+			-- **std::string**, and `QuestManager::CrossZoneMove` casts a RAW packet buffer to that
+			-- struct and assigns them before sending it to another process. A std::string is a
+			-- pointer into this process's heap, so world receives a meaningless address and the
+			-- destination zone name arrives as nothing. It is stock EQEmu and it is broken for every
+			-- CZMove caller; `CZSetEntityVariable_Struct` beside it uses `char[256]` and works, which
+			-- is why fellowship chat is fine and this was not.
+			-- 📌 We do not need it at all: `M.group_blockers` REFUSES unless every member is already
+			-- in this zone, so a local MovePC -- the same call the solo path makes -- reaches all of
+			-- them. Do not "restore" the cross-zone call; it cannot work until that struct is fixed.
+			local others = {}
+			local me     = c:CharacterID()
+			local n      = grp:GroupCount() or 0
+			for i = 0, n - 1 do
+				local m = grp:GetMember(i)
+				if m and m.valid then
+					local mc = eq.get_entity_list():GetClientByID(m:GetID())
+					if mc and mc.valid and mc:CharacterID() ~= me then
+						others[#others + 1] = mc
+					end
+				end
+			end
+
+			-- ⚠️⚠️ THE CALLER MOVES LAST. Their MovePC is a zone change, which tears down the group
+			-- member pointers this loop is holding -- move them first and the rest of the group is
+			-- left standing there, which is the same silent half-failure in a new costume.
 			c:Message(MT.Yellow, string.format("The world folds, and your group steps through to %s.", sp.name))
+			for _, mc in ipairs(others) do
+				mc:Message(MT.Yellow, string.format("The world folds, and your group steps through to %s.", sp.name))
+				mc:MovePC(zid, sp.x, sp.y, sp.z, sp.h or 0)
+			end
+			c:MovePC(zid, sp.x, sp.y, sp.z, sp.h or 0)
 			return true
 		end
 	end

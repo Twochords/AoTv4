@@ -1040,6 +1040,55 @@ void Client::SendAlternateAdvancementTimer(int ability, int begin, int end) {
 	safe_delete(outapp);
 }
 
+// ⚠️⚠️ AoTv4: SHORTEN AN AA'S RECAST BY `seconds`, AND TELL THE CLIENT. Built for the Paladin's
+// Divine Reproach, which cuts Hand of Conviction's cooldown on every use -- there was no way to do
+// this from Lua at all: AA recast lives in `p_timers` at `rank->spell_type + pTimerAAStart` and
+// nothing exposed it. `ResetAlternateAdvancementTimer` only ever CLEARS, which would make the
+// reduction a full reset.
+// ⚠️⚠️ THE CLIENT MUST BE TOLD OR THE BUTTON LIES. The server would happily allow the recast while
+// the UI still showed it greyed out, so the player sees a dead button and concludes nothing
+// happened -- `SendAlternateAdvancementTimer` re-sends the window with the new start time.
+// ⚠️ `spell_type` is a SHARED timer number, not the ability id: several AAs can sit on one timer,
+// which is exactly how a shared cooldown is expressed. Reducing one reduces all of them, and that
+// is the engine's model, not a bug to work around.
+// 📌 Takes the ABILITY id (not a rank id) so callers match `GrantAlternateAdvancementAbility`.
+bool Client::AoTv4ReduceAATimer(int aa_id, int seconds)
+{
+	if (seconds <= 0) { return false; }
+
+	// ⚠⚠ `GetAA` TAKES A **RANK** ID; `GetAAByAAID` TAKES AN **ABILITY** ID. Passing the ability
+	// id to GetAA returns 0, the rank lookup then fails, and this silently returns false -- which in
+	// game looks exactly like the cooldown reduction not being implemented. Section 47 records the
+	// same confusion costing a whole investigation.
+	auto ar = zone->GetAlternateAdvancementAbilityAndRank(aa_id, GetAAByAAID(aa_id));
+	AA::Rank *rank = ar.second;
+	if (!rank) { return false; }
+
+	const pTimerType t = rank->spell_type + pTimerAAStart;
+
+	// ⚠️⚠️ `GetRemainingTime` RETURNS 0xFFFFFFFF WHEN THE TIMER EXISTS BUT IS DISABLED -- not 0.
+	// Unguarded, a READY ability reads as a 49-day cooldown and this would 'reduce' that. The same
+	// trap is recorded for the Autoskill window (CLAUDE.md section 19).
+	const uint32 remaining = p_timers.GetRemainingTime(t);
+	if (remaining == 0 || remaining == 0xFFFFFFFF) { return false; }   // already ready: nothing to cut
+
+	const uint32 cut = static_cast<uint32>(seconds);
+	if (remaining <= cut) {
+		// Fully consumed -- clear it and report it ready, rather than restarting a 0-length timer.
+		p_timers.Clear(&database, t);
+		SendAlternateAdvancementTimer(rank->spell_type, 0, static_cast<uint32>(time(nullptr)));
+		return true;
+	}
+
+	const uint32 left = remaining - cut;
+	p_timers.Start(t, left);
+	// begin/end are absolute seconds; the client renders the gap. Restating it from `left` keeps the
+	// packet honest whatever the original recast was.
+	const uint32 now = static_cast<uint32>(time(nullptr));
+	SendAlternateAdvancementTimer(rank->spell_type, now, now + left);
+	return true;
+}
+
 //sends all AA timers.
 void Client::SendAlternateAdvancementTimers() {
 	//we dont use SendAATimer because theres no reason to allocate the EQApplicationPacket every time

@@ -56,6 +56,22 @@ local function task_of(step)
 	return t >= M.UMBRELLA_TASK and t + 1 or t
 end
 
+-- ⚠️⚠️ THE INVERSE OF `task_of`, AND IT MUST STAY ITS EXACT MIRROR. `on_task_complete` used to invert
+-- it by plain subtraction (`task_id - M.FIRST_TASK`), which silently ignored the umbrella skip above:
+-- the fellowship lesson is task 2000611, so that gave step **11**, the guard `step >= M.STEPS` (11)
+-- rejected it, and the handler returned false. The consequences were both invisible -- no reward was
+-- paid for the lesson, and, far worse, the step was never mirrored onto the induction record, so
+-- **The Titan Hall Induction could never be completed by anyone**. Reported from play as finishing
+-- Denara's quest and getting no completion on the Induction.
+-- 📌 Nothing failed and nothing logged: returning false is exactly how this handler declines a task
+-- belonging to the delve, so a real step taking the same exit is indistinguishable from normal.
+-- ⚠️ Any future task inserted into the band needs the same treatment in BOTH directions.
+local function step_of_task(task_id)
+	local step = task_id - M.FIRST_TASK
+	if task_id > M.UMBRELLA_TASK then step = step - 1 end
+	return step
+end
+
 -- ⚠️⚠️ DENARA PREDATES THE HALL NUMBERING and is NOT `M.FIRST_NPC + 10`. The other ten NPCs were
 -- created as a block; she was built at 2000410 for the fellowship work and already stands in the
 -- Hall, so she is mapped rather than renumbered -- moving a live NPC id would orphan her spawn row
@@ -448,7 +464,7 @@ function M.on_task_complete(client, task_id)
 		return true
 	end
 
-	local step = task_id - M.FIRST_TASK
+	local step = step_of_task(task_id)
 	if step < 0 or step >= M.STEPS then return false end
 
 	pay(client, tostring(step), M.REWARDS[step],

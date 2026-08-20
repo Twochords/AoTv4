@@ -39,8 +39,22 @@ use warnings;
 
 my $SQL_OUT  = ".devcontainer/custom/sql/aotv4_spell_ranks.sql";
 my $LUA_OUT  = ".devcontainer/repo/quests/lua_modules/spell_ranks.lua";
-my $RANK_ID_FIRST = 43576;   # first id of the unbroken free run
-my $RANK_ID_LAST  = 44999;   # the RoF2 client ceiling is 45000, measured -- see SPELL_RANKS.md
+my $RANK_ID_FIRST = 43576;   # first id of the unbroken free run (STOCK ranks)
+my $RANK_ID_LAST  = 44327;   # last STOCK rank id -- 188 spells x 4. See the band note below.
+
+# ⚠️⚠️ CUSTOM SPELLS RANK IN THEIR OWN BAND, AND THAT IS WHAT KEEPS THE STOCK IDS STILL.
+# The 752 stock rank rows at 43576-44327 are LIVE ON PLAYER CHARACTERS -- `spellrank_<charid>` stores
+# the rank and `ranked_id()` resolves base -> owned rank id, so renumbering them silently changes what
+# people own. Appending customs to the single contiguous run would have done exactly that if the
+# selection order ever shifted. Two bands, assigned independently, cannot interfere.
+# ⚠️⚠️ IT CANNOT SIMPLY CONTINUE PAST 44327: 44328-44332 are Insight, Fellowship Insignia, Fellowship
+# of Health, Fellowship of Vigor and Light Campfire. 44530-44547 are the 2026-08-16 heal lines.
+# 44333-44399 is the largest genuinely free run below the ceiling; 15 qualifying customs need 60.
+my $CUSTOM_RANK_FIRST = 44333;
+my $CUSTOM_RANK_LAST  = 44399;
+# The offerable custom bands, matching gen_stock_pool.pl. Helpers/triggers sit above each (43350+,
+# 44600+) and are never ranked because they are never held by a player.
+my $CUSTOM_POOL_WHERE = '(id BETWEEN 43300 AND 43349 OR id BETWEEN 44530 AND 44599)';
 my $MAX_RANK      = 5;
 my $LEVEL_CAP     = 35;
 
@@ -75,16 +89,48 @@ my @spells = mysql(qq{
 });
 die "no qualifying spells found\n" unless @spells;
 
+# ⚠️⚠️ A SEPARATE QUERY, NOT AN `OR` WIDENING THE ONE ABOVE. Widening it would fold customs into the
+# same ORDER BY and the same contiguous run -- and while they happen to sort last today (43312 > 5225),
+# that is an accident of the id space, not a guarantee. One reordering and every stock rank id shifts.
+my @custom = mysql(qq{
+    SELECT id, name, mana
+    FROM   spells_new
+    WHERE  $CUSTOM_POOL_WHERE
+      AND  name NOT LIKE '% Rk. %'
+      AND  classes8 BETWEEN 1 AND $LEVEL_CAP
+      AND  ($qualifies)
+    ORDER  BY id
+});
+
 my $need = @spells * ($MAX_RANK - 1);
 my $room = $RANK_ID_LAST - $RANK_ID_FIRST + 1;
 die sprintf("need %d ids but only %d in %d-%d -- narrow the scope or pick another band\n",
             $need, $room, $RANK_ID_FIRST, $RANK_ID_LAST) if $need > $room;
 
+my $cneed = @custom * ($MAX_RANK - 1);
+my $croom = $CUSTOM_RANK_LAST - $CUSTOM_RANK_FIRST + 1;
+die sprintf("custom ranks need %d ids but only %d in %d-%d\n",
+            $cneed, $croom, $CUSTOM_RANK_FIRST, $CUSTOM_RANK_LAST) if $cneed > $croom;
+
 # ⚠️ Refuse to start if the band is not actually empty. Overwriting a live spell would be silent.
-my ($busy) = mysql("SELECT COUNT(*) FROM spells_new WHERE id BETWEEN $RANK_ID_FIRST AND "
+# ⚠️⚠️ THE GUARD ASKS "IS ANYTHING HERE THAT IS NOT OURS", NOT "IS ANYTHING HERE". Counting rows
+# outright made the script refuse to run a SECOND time -- the 752 rank rows it wrote itself looked
+# like an occupied band -- so it was single-use despite its header calling it re-runnable, and the
+# only way to regenerate was to delete rows by hand first. A rank row is identifiable by its name, so
+# the test excludes them: our own output is replaced by the DELETE below, anything else is a live
+# spell and must stop the run.
+# 📌 This is also the check that would have caught the real collision: 44328-44332 and 44530-44547 are
+# NOT rank rows, so had the old whole-run band still been in use, this now refuses instead of eating
+# five fellowship spells and eighteen heals.
+my $NOT_OURS = "name NOT LIKE '% Rk. %'";
+my ($busy) = mysql("SELECT COUNT(*) FROM spells_new WHERE $NOT_OURS AND id BETWEEN $RANK_ID_FIRST AND "
                    . ($RANK_ID_FIRST + $need - 1));
-die "band $RANK_ID_FIRST..".($RANK_ID_FIRST+$need-1)." is not empty ($busy->[0] rows) -- refusing\n"
+my ($cbusy) = $cneed ? mysql("SELECT COUNT(*) FROM spells_new WHERE $NOT_OURS AND id BETWEEN $CUSTOM_RANK_FIRST AND "
+                   . ($CUSTOM_RANK_FIRST + $cneed - 1)) : [0];
+die "band $RANK_ID_FIRST..".($RANK_ID_FIRST+$need-1)." holds $busy->[0] NON-rank rows -- refusing\n"
     if $busy->[0] > 0;
+die "custom band $CUSTOM_RANK_FIRST..".($CUSTOM_RANK_FIRST+$cneed-1)." holds $cbusy->[0] NON-rank rows -- refusing\n"
+    if $cbusy->[0] > 0;
 
 # ---------------------------------------------------------------- emit SQL
 my @ROMAN = ('', 'I', 'II', 'III', 'IV', 'V');
@@ -100,9 +146,17 @@ print $out <<"HEAD";
 -- ⚠️ Named "Rk. II".."Rk. V" so gen_stock_pool.pl's `name NOT LIKE '% Rk. %'` filter keeps them OUT
 -- of the level-up reward pool. They are obtainable only by upgrading.
 -- ⚠️ spells_new IS SHARED MEMORY: world down, ./shared_memory, restart, re-export client files.
--- Re-runnable: the DELETE below clears exactly the band this script owns.
+-- ⚠️⚠️ THE DELETE IS SCOPED TO THE TWO RANK BANDS AND MUST STAY THAT WAY. It used to read
+-- `BETWEEN 43576 AND 44999` -- "the band this script owns" -- and that band has since been colonised
+-- by other features: 44328-44332 (Insight, Fellowship Insignia, Fellowship of Health, Fellowship of
+-- Vigor, Light Campfire) and 44530-44547 (the Mending Touch / Circle of Health / Circle of Renewal
+-- heal lines). Re-running this script would have DELETED all 23 of them, silently, and the only
+-- symptom would have been spells vanishing from players' books.
+-- 📌 A re-runnable script's cleanup DELETE must name only the ids that script itself creates -- the
+-- same rule CLAUDE.md section 5 records after aotv4_moonfire_line.sql nearly ate the Sinew line.
 
-DELETE FROM spells_new WHERE id BETWEEN $RANK_ID_FIRST AND $RANK_ID_LAST;
+DELETE FROM spells_new WHERE id BETWEEN $RANK_ID_FIRST AND @{[$RANK_ID_FIRST + $need - 1]};
+DELETE FROM spells_new WHERE id BETWEEN $CUSTOM_RANK_FIRST AND @{[$CUSTOM_RANK_FIRST + $cneed - 1]};
 
 HEAD
 
@@ -138,7 +192,34 @@ for my $sp (@spells) {
     }
 }
 
-print $out "SELECT CONCAT('rank rows created: ', COUNT(*)) AS x FROM spells_new WHERE id BETWEEN $RANK_ID_FIRST AND $RANK_ID_LAST;\n";
+# ⚠️ Customs are emitted by the SAME loop body, only the id counter changes -- one code path so a
+# custom rank can never scale differently from a stock one.
+$next_id = $CUSTOM_RANK_FIRST;
+for my $sp (@custom) {
+    my ($base_id, $base_name) = ($sp->[0], $sp->[1]);
+    for my $rank (2 .. $MAX_RANK) {
+        my $id  = $next_id++;
+        my $out_mult  = 1.10 ** ($rank - 1);
+        my $mana_mult = 0.95 ** ($rank - 1);
+        my $name = substr("$base_name Rk. $ROMAN[$rank]", 0, 64);
+        push @{ $chain{$base_id} }, $id;
+        print $out "-- [custom] $base_name -> rank $rank\n";
+        print $out "CREATE TEMPORARY TABLE aotv4_tmp_rank AS SELECT * FROM spells_new WHERE id = $base_id;\n";
+        print $out "UPDATE aotv4_tmp_rank SET id = $id, name = " . dbq($name) . ",\n";
+        print $out "    `rank` = $rank, spellgroup = $base_id,\n";
+        printf $out "    mana = GREATEST(0, ROUND(mana * %.6f))", $mana_mult;
+        for my $s (1 .. 12) {
+            printf $out ",\n    effect_base_value$s = IF(effectid$s IN ($HP_SPA_IN), ROUND(effect_base_value$s * %.6f), effect_base_value$s)", $out_mult;
+            printf $out ",\n    max$s = IF(effectid$s IN ($HP_SPA_IN) AND max$s <> 0, ROUND(max$s * %.6f), max$s)", $out_mult;
+        }
+        print $out ";\n";
+        print $out "INSERT INTO spells_new SELECT * FROM aotv4_tmp_rank;\n";
+        print $out "DROP TEMPORARY TABLE aotv4_tmp_rank;\n\n";
+    }
+}
+
+print $out "SELECT CONCAT('stock rank rows: ', COUNT(*)) AS x FROM spells_new WHERE id BETWEEN $RANK_ID_FIRST AND @{[$RANK_ID_FIRST + $need - 1]};\n";
+print $out "SELECT CONCAT('custom rank rows: ', COUNT(*)) AS x FROM spells_new WHERE id BETWEEN $CUSTOM_RANK_FIRST AND @{[$CUSTOM_RANK_FIRST + $cneed - 1]};\n";
 close $out;
 
 sub dbq { my $s = shift; $s =~ s/\\/\\\\/g; $s =~ s/'/\\'/g; return "'$s'" }

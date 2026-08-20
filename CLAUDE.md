@@ -620,7 +620,11 @@ of which classes had a special natively -- the only surviving copy is `skill_poo
 > 104 Translocate. No travel spell lacks one.
 >
 > ⚠️ **`targettype = 3` was ALSO in the travel rule and is now REMOVED — do not add it back.**
-> ST_Group is 3, which is *every* group-target spell, not a group teleport: it was pruning **78
+> ⚠️⚠️ **CORRECTION (2026-08-19): 3 is `ST_GroupTeleport`; `ST_Group` is 41** (`common/spdat.h:999`,
+> `:1037`). Nothing ever broke because `case ST_GroupTeleport:` **falls through** to `case ST_Group:`
+> in `SpellFinished` (`zone/spells.cpp:2254`) — Circle of Health ships targettype 3 and group-heals
+> correctly — but the NAME below is wrong and a reader checking the enum will not find it.
+> The reasoning still stands: 3 is *every* group-target spell, not a group teleport, and it was pruning **78
 > ordinary group buffs** (Elixir of Divinity, Wave of Marr, Eriki's Psalm of Power, the group heal
 > lines) as if they were ports. Of the 150 `targettype=3` spells in the pool, the **72 that really
 > are travel all carry one of the SPAs above** and are caught anyway — the clause bought nothing.
@@ -1321,8 +1325,9 @@ quantity and add a priced item to your shop) / **My Shop** (pull a listing back)
       2. **Clicking a coin field clears the Listbox selection**, so at button-click `GetCurSel()` is −1 and any
          "apply to selected row" no-ops (symptom: Set Price never changes the price). Remember the row on
          list-click in `m_sel` and use `SelRow()` (single-item fallback), NOT live `GetCurSel()`.
-      3. `/echo` is NOT a valid EQ command (that's an MQ2 thing) — for in-window feedback use `WriteChatColor`
-         (MQ2Main.h / MQ2PluginHandler.cpp is in the build) or set a label; `/echo` returns "invalid command".
+      3. `/echo` is NOT a valid EQ command (that's an MQ2 thing) — `/echo` returns "invalid command".
+         ⚠️⚠️ **AND `WriteChatColor` IS NOT THE ALTERNATIVE — IT IS A GUARANTEED CRASH HERE.** This
+         line used to recommend it and that advice was wrong; see §49. **Set a label.**
     - **Stackable quantity (2026-07):** `Client::AddItemsToShop` (trading.cpp) lists a **partial stack**
       (`item_charges = list_qty`; `DeleteItemInInventory(slot, del_qty)` where `del_qty` 0 = whole stack) so you
       can list N of a stack and keep the rest. Client shows real Qty + has a `SHW_Qty` field (default = full
@@ -1882,6 +1887,11 @@ docker cp <ID>:/tmp/peq_recovered.sql.gz C:\AoTv3\AoTv4\peq_recovered.sql.gz
   dump from a started server instead of copying the datadir files.
 - Verify a dump before trusting it: `gzip -dc x.sql.gz | grep -c "^CREATE TABLE"` (expect **233** now — 223
   pre-achievements) and a `Dump completed on …` marker at the tail. **36 MB gzipped ≈ 341 MB SQL is normal.**
+- ⚠️⚠️ **OLDER DUMPS NOW LIVE IN `/src/backups/`, NOT THE REPO ROOT** (moved 2026-08-18). 626MB of
+  them had accumulated there, and with 98 entries the root was unreadable. `/backups/` is
+  **gitignored** and nothing prunes it. ⚠️ The three dumps that were already **tracked** stayed
+  put — `peq_recovered.sql.gz`, `peq_live_recovered.sql.gz`, `items_backup_pre_017.sql.gz` — so
+  the paths below are still correct. 📌 A new dump belongs in `backups/`.
 - **Canonical recovery point is now `/src/peq_recovered.sql.gz`** (Jul 24 23:18, full `peq`, achievements
   included), NOT the stale `/src/aotv4_current.sql` (Jul 21) that `POST_REBUILD_RECOVERY.md` used to point at.
 
@@ -2034,7 +2044,7 @@ effects" in any client-side description. The generator's clause that offered the
 - `aotv4_reactions.lua` — the four reaction branches (Divine Aura 43022, Blade Turn 43035,
   Counterattack 43056, Vengeful Aura 43059), their charge tables, tuning and `arm_`/`clear_` API.
 Full restore of all 202 original custom rows is `custom/sql/aotv4_custom_spells_backup.sql`; a
-targeted pre-delete dump of 43000-43199 is `peq_pre_43xxx_purge.sql.gz`.
+targeted pre-delete dump of 43000-43199 is `backups/peq_pre_43xxx_purge.sql.gz`.
 - ✅ **`on_damage_taken` got measurably cheaper**, which matters because it runs on **every damage
   event for every player**. It used to resolve `CastToClient` + `CharacterID` **and an
   `eq.get_entity_list():GetMobID()` lookup — an entity-list walk per hit** — before its first
@@ -5184,3 +5194,357 @@ Each is a balance decision rather than a bug, so all were left alone:
 - ⚠️ `#grantaa` grants **all** AAs (optionally skipping `grant_only`), not one, so it is the wrong tool
   for testing a single ability. These are `grant_only = 1`, so they cannot be bought in the native
   window at all — the picker (`aa_pool.lua`, ids 4-12) is the only route in play.
+
+## 48. ⚠️ AN NPC RACE WITH NO CLIENT MODEL ARCHIVE HAS NO MODEL — v90 — 2026-08-18
+
+> ⚠️⚠️ **THIS SECTION ORIGINALLY CLAIMED THESE GUARDS CRASHED THE CLIENT. THEY DO NOT — see §49
+> for the real cause, which is `WriteChatColor` in the Travel window.** The claim came from the
+> v90 migration's own comment and was written up here without being reproduced in play; the
+> reproduction, when it arrived, was a Travel window step that never touches these NPCs.
+> **The race fix below is still correct and still worth having** — race 570 genuinely has no
+> archive in a RoF2 client, so the guards genuinely had no model — but *modelless* is not the
+> same as *crashing*, and nothing here was ever measured against a crash.
+> 📌 The lesson is the expensive one §25 already records: **a symptom reported from play is the
+> authority, and a plausible mechanism found in a comment is not a diagnosis.** Two unrelated
+> faults were live in the same zone at once, and the first tidy explanation swallowed the report.
+
+
+The twenty Titan Hall guards (`npc_types` **2000600-2000619**, zone `freeporttheater`) shipped as
+**race 570 (Exoskeleton)**, whose models live in `mechanotus_chr`. **A RoF2 client does not have that
+archive**, so the guards had no model at all and the client died when enough of them came into render
+range at once. Fixed by migration **v90**: race **12 (Gnome)**, gender 0, size 3.
+
+- ⚠️⚠️ **NAMING AN ARCHIVE IN `Resources/GlobalLoad_chr.txt` DOES NOT CREATE IT.** That file was
+  extended from 13 to 21 entries to load `mechanotus_chr` and seven others, and the client log answers
+  plainly — `Loading mechanotus_chr` → **`Failed to open ...\mechanotus_chr.s3d.`** — for **every one
+  of the eight**. They were never in the client to load. The file is reverted to its 13 entries in the
+  same commit as v90, and the revert has to ship: a player who already took the 21-entry version is
+  still asking the client to open eight archives that are not there.
+  📌 **The client log is the diagnostic.** `Failed to open` names the archive outright; there is no
+  other signal, and nothing server-side can tell you a race has no model.
+- ⚠️⚠️ **IT LOOKED INTERMITTENT, AND THE ROUTE IS WHY.** Zoning in from character select drops you at
+  your **saved** location, usually out of render range. Arriving by PoK book drops you on the authored
+  doorstep (`pok_portals.lua` `freeporttheater` = −71.56 / −246.67 / −27.10), and **seven guards stand
+  within 200 units of it, the nearest at 86** (measured, not estimated). So the same zone crashed by
+  one route and not the other — which reads as a zone file or a patcher problem rather than an NPC one,
+  and that is where the diagnosis went first.
+- ⚠️ **Race 12 cannot fail this way**: `globalGNM_chr` / `globalGNF_chr` are loaded unconditionally by
+  every client. It also fits the names — Fizzwick Cogsprocket, Bimbly Gearhart, Nizzle Boltwrench are
+  gnome tinkerers, not exoskeletons.
+- ⚠️⚠️ **GENDER 2 IS "NEUTER" AND A HUMANOID RACE HAS NO MODEL FOR IT.** Correct for an object model,
+  wrong the moment the race becomes humanoid — so changing the race alone would have left them
+  modelless for a *second* reason. Set to 0. ⚠️ Size 10 was sized for a construct and is a giant on a
+  gnome; dropped to 3. **Race, gender and size are one change, not three.**
+- 📌 To restore a construct look, pick a race whose archive the client actually has — **grep the client
+  log for `Failed to open` before committing to one.**
+- ⚠️ `npc_types` is read at **zone boot**, not shared memory, so v90 needs only a zone restart — no
+  `./shared_memory`, no world down.
+- ⚠️ 20 rows are defined but only **15 are spawned**; the migration updates all 20 by id, which is
+  right — the unspawned five would otherwise be a landmine for whoever places them later.
+
+## 49. ⚠️⚠️ `WriteChatColor` IS A GUARANTEED CLIENT CRASH IN THIS DLL — 2026-08-18
+
+Reported from play as *"I hit Always Available on the travel window and don't pick Theater of the
+Tranquil and it crashes."* Exactly right, and it is not a travel bug — **any** call to
+`WriteChatColor` from this dll is an instant access violation. `core_travel.cpp` held the only live
+call in the entire codebase, on the Travel button's "nothing selected" branch.
+
+**The chain**, every link verified in the source:
+
+| # | where | what |
+|---|---|---|
+| 1 | `_options.h:17` | `isMQInjectsEnabled = false` |
+| 2 | `eqgame.cpp:771`, `:1100`, `MQ2Main.cpp:311` | **all three** `InitializeChatHook()` call sites sit inside `if (isMQInjectsEnabled)` |
+| 3 | `MQ2ChatHook.cpp:139` | so `EzDetour(CEverQuest__dsp_chat, …, &CChatHook::Trampoline)` **never runs** |
+| 4 | `MQ2ChatHook.cpp:118` | `Trampoline` keeps its `DETOUR_TRAMPOLINE_EMPTY` body |
+| 5 | `dependencies/detours/inc/detours.h:99` | that body is `xor eax,eax` / **`mov eax,[eax]`** — a deliberate null dereference |
+| 6 | `MQ2PluginHandler.cpp:12` | `WriteChatColor` → `dsp_chat_no_events` → `((CChatHook*)pEverQuest)->Trampoline(...)` → **boom** |
+
+- ⚠️⚠️ **THE NULL DEREFERENCE IS INTENTIONAL, WHICH IS WHY THERE IS NO SOFT FAILURE.** Detours writes
+  that stub so an **uninstalled** trampoline fails loudly instead of silently running a wrong body.
+  So this is not "usually fine, occasionally crashes" — it is 100 percent, first call, every time.
+- ⚠️⚠️ **CLAUDE.md §13 RECOMMENDED THIS CALL.** That advice has been corrected in place. It was
+  written when the shop window needed in-window feedback, reasoned from *"MQ2PluginHandler.cpp is in
+  the build"* — which is true and irrelevant: **being compiled is not being initialised.** The
+  file compiles, links and exports fine; only the runtime detour is missing.
+  📌 **The general trap: `isMQInjectsEnabled = false` disables NINE MQ2 subsystems** — chat, display,
+  commands, pulse, spawns, map, item display, labels, keybinds. Anything reaching into one of those is
+  a landmine, and none of it fails at compile time. Check what gates a helper before calling it.
+- ⚠️ **Use a LABEL** — the other half of §13's note, and what every sibling window already does
+  (`core_advloot.cpp:568`, *"Select an item in the list first."*).
+  📌 `EQUI_AoTTravelWnd.xml` **already shipped an `ATW_Hint` Label**, in `<Pieces>` and everything; the
+  dll simply never bound it. So the fix was pure C++ and needed **no client XML re-ship** — check for
+  an unbound widget before adding one.
+- ⚠️ The refusal text is reset to the label's default on region change and on a successful travel, or a
+  stale refusal outlives the selection it was about.
+
+### ⚠️ Why "Always Available" specifically, when the bug is not region-specific
+`M.BOOK_REGION` (`aotv4_travel.lua`) files exactly **one** destination under region 0 —
+`freeporttheater`. So that region's list has a single row, and "don't pick Theater of the Tranquil"
+*is* the nothing-selected case. It is also the **first** region row and auto-selected
+(`RefreshRegions`: `if (m_region_row < 0 && g_nregion > 0) { m_region_row = 0; }`), so it is where
+everyone lands. Clicking any **"Unknown"** row in any other region reaches the same branch — the
+report is one doorway into a general crash, not a special case.
+- ⚠️⚠️ **`zone_regions` REGION 0 HOLDS 41 ZONES AND IS *NOT* THE TRAVEL LIST.** 39 of them are the
+  LDoN/DoN delve maps put there by v27/v31 purely so `RegionManager::CanEnterZone` would stop refusing
+  a delve. §3 already records this trap for the Zone XP tab (*"DELVE ZONES ARE DELIBERATELY ABSENT and
+  must stay so"*). The travel module is safe **because it never queries that table** — destinations are
+  the curated `M.SPOTS` + `M.BOOK_REGION`, with the region baked onto each row. **Do not "fix" a
+  missing destination by enumerating `zone_regions`**; it would drag in 39 delve maps and
+  `resplendent`, which §11 requires never be a destination at all.
+
+## 50. ⚠️⚠️ TWO BUGS WITH THE SAME SHAPE: AN INVERSE THAT DID NOT MIRROR ITS FORWARD MAP — 2026-08-18
+
+Both reported from play in one message, both invisible from every direction, and both are the same
+mistake: **a second function that has to agree with a first one, written without re-reading it.**
+
+### (a) The Titan Hall Induction could never be completed by anyone
+*"Even after talking to Fellowmaster Denara and finishing the individual quest, I'm not getting
+completion on the Induction quest."*
+
+`aotv4_tutorial.lua` maps step → task with `task_of`, which **skips the umbrella id**: step 10 would
+land on 2000610 (`M.UMBRELLA_TASK`, the induction record itself), so the fellowship lesson is
+**2000611**. `M.on_task_complete` inverted that with plain subtraction —
+`local step = task_id - M.FIRST_TASK` — which gives **11** for that task, the guard
+`step >= M.STEPS` (11) rejected it, and the handler returned `false`.
+- ⚠️⚠️ **RETURNING `false` IS HOW THIS HANDLER LEGITIMATELY DECLINES A DELVE TASK**, so a real step
+  taking that exit is indistinguishable from normal operation. Nothing errored and nothing logged.
+- ⚠️⚠️ **THE VISIBLE SYMPTOM WAS THE SECOND-ORDER ONE.** The lost reward (a Fellowship Insignia) was
+  masked entirely, because Denara re-hands the insignia on hail whenever the player lacks it — that
+  recovery path exists for a different reason and happened to hide half the bug. What could not be
+  masked was the missing `UpdateTaskActivity(M.UMBRELLA_TASK, step, 1)` mirror, so the record sat one
+  activity short **forever**.
+- ⚠️ **Only step 10 was affected.** Steps 0-9 round-trip correctly under plain subtraction, which is
+  why this read as "the fellowship quest specifically" rather than as a mapping bug.
+- Fixed with `step_of_task`, the explicit inverse, sitting directly beneath `task_of`.
+  📌 **Any future task inserted into the 2000600 band needs the skip in BOTH directions.**
+
+### (b) The fellowship window announced every button press — to everyone EXCEPT the presser
+`FellowshipIsOurEcho` keyed on **`"says, '"`**. Your own speech echoes as **`You say, '…'`** and
+everybody else's as **`Bob says, '…'`** — and **`"You say, '"` does not contain `"says, '"`**, because
+there is no `s` after `say`. So the matcher swallowed the line on every *other* player's screen and
+left it on the screen of the person who pressed the button: the exact inverse of the intent.
+- ⚠️ Every sibling module already keyed on the literal **`"You say, '…"`** (`core_allaclone.cpp`,
+  `core_autoskill.cpp`). This one file did it differently and that is the whole bug.
+- ⚠️ Now written as two whole-string tests (`"You say, 'fship"` / `"says, 'fship"`) rather than
+  pointer arithmetic past the quote, so a player whose **name contains an apostrophe** cannot shift
+  the offset.
+- ⚠️⚠️ **`/shield` WAS LEAKING TOO, AND FOR A DIFFERENT REASON.** `core_bazaar.h` rewrites it to
+  `/say shieldwall`, which makes it a window command like any other — and it was the **only** rewritten
+  command with no entry in the literal list at the top of `SpellChat_Detour`. Added.
+- 📌 **How to check the whole set rather than one report**: extract every `"/say …"` the dll issues,
+  extract every matcher, and test each command against the chain in both the self and other-player
+  forms. That found `shieldwall` on top of the reported `fship*`, and cleared 54 others — including
+  `lostlog`, whose echo is swallowed inside `LostParseLog` rather than by an `IsOurEcho`, so a survey
+  of the `IsOurEcho` functions **alone** reports a false positive there.
+
+## 51. ⚠️⚠️ SPELL DESCRIPTIONS — THREE INDEPENDENT WAYS TO RENDER NOTHING — v92 — 2026-08-19
+
+Reported from play as descriptions missing in the spell window *and* absent from the Allaclone spell
+section. Three unrelated defects, all silent, all found together because **every window that
+describes a spell funnels through one function**: `Client::SearchDetail("spell", id)` →
+`AoTv4SpellDesc` (`zone/trading.cpp`). The picker, the Known/Pool tabs, Allaclone and the loot panel
+all use it, so one fault there shows up everywhere at once — and one fix repairs all of them.
+📌 That single funnel is also why §20's "descriptions are built CLIENT SIDE" note is **historical**:
+the dll's local SPA table could only label effects someone had added to it and printed `SPA 137: 0`
+for the rest, so it was replaced by asking the server.
+
+### (a) The description is keyed on `descnum`, NOT on the spell id
+`AoTv4SpellDesc` queried `db_str WHERE id = <spell id>`. **902 spells below id 10000 carry
+`descnum <> id`**, and for those it did one of two things, both silent:
+- found nothing → the panel drew the name and then **empty space** (55 pool spells), or
+- found the row belonging to whichever OTHER spell uses that id as *its* `descnum` → **the wrong
+  spell's text**, which is worse because it looks like a working panel (9 pool spells).
+- ⚠️⚠️ **`gen_stock_pool.pl` HAS ALWAYS JOINED `ON d.id = s.descnum`.** So the generator and the
+  runtime disagreed: `spell_desc.lua` held the right text while the live panel did not, which is
+  exactly the two-sources-of-truth failure this file warns about everywhere else. Same shape as the AA
+  trap in §6 — `title_sid` and `desc_sid` are independent and neither is guaranteed to equal
+  `first_rank_id`.
+- 📌 Pool coverage went 2,583 → **2,638** of 2,651.
+
+### (b) Allaclone's spell search excluded every custom spell
+`Client::SearchList`'s spell branch carried a bare **`AND id < 10000`**, copied from the reward pool's
+filter *without the pool's own carve-out*. All **48** offerable customs were unsearchable — the
+reptile / sloth / moonfire / promised / kindred / mark / thirst / sinew lines and the 2026-08-16 heals.
+- ⚠️⚠️ **They are OFFERABLE LEVEL-UP REWARDS**, so a player could be holding a spell the lookup window
+  swore did not exist. That is what made it read as a description bug rather than a search bug.
+- ⚠️ The bands must track `gen_stock_pool.pl`: **43300-43349** and **44530-44599**. Helpers and
+  triggers sit *above* each band (43350+, 44600+) and stay excluded — they are never offered.
+
+### (c) The 2026-08-16 heals had no `db_str` row at all
+**Mending Touch / Circle of Health / Circle of Renewal, 44530-44547.** Rows in `spells_new`, none in
+`db_str`, so `AoTv4SpellDesc` returned empty however it was keyed. Written by **v92**.
+- ⚠️⚠️ **NOTHING CHECKS THAT A SPELL HAS A DESCRIPTION.** Not the pool generator, not the SQL that
+  creates the line, not the server at boot. The spell casts perfectly; only the panel is blank.
+  **Write the `db_str` type 6 rows in the SAME script as the `spells_new` rows** — all eight lines in
+  43300-43349 did, and this one did not.
+- ⚠️ Type **6** is the spell description; type 4 is the **AA** description (§6). Wrong type, same blank.
+- ⚠️⚠️ **THE SECOND CUSTOM BAND IS EASY TO MISS.** 43300-43349 is FULL (the eight lines reach 43347),
+  so these heals live at 44530-44599. `gen_stock_pool.pl` says it outright: *"Any future line needs a
+  band listed HERE as well as rows in the database."* The same discipline was never applied to
+  `db_str`, to `SearchList`, or to anything else that enumerates spells — **grep for `43300` when
+  adding a band and fix every site that knows about the first one.**
+
+### ⚠️⚠️ DRY-RUN A MIGRATION'S SQL BEFORE COMMITTING IT — an apostrophe aborted v92
+`your target's wounds` is a syntax error inside a single-quoted SQL string, and a migration that dies
+part-way leaves the database between versions. Caught by extracting the `R"( … )"` body and running it
+inside `START TRANSACTION; … ROLLBACK;`, which costs a second and is now the habit.
+- ⚠️ Fixed by **rewriting without apostrophes**, not by escaping: §25 records `\'` in a mysqldump
+  defeating a plain grep for the text, which has already cost a session once.
+- ⚠️ Also no literal `%` — the description path is printf-style and eats it as a format token (§14).
+- ⚠️⚠️ **AND CHECK WHERE THE ENTRY LANDED.** A first pass appended it at the last `};` in the file,
+  which is inside the **trailing comment block** describing `ManifestEntry` — so it compiled as
+  garbage rather than joining the array. Anchor on the array's own close, never on "the last brace".
+
+## 52. Contributed database changes — the submission format and its merger — 2026-08-19
+
+**Nobody hand-edits `database_update_manifest_custom.h` or `version.h` any more.** A contributor
+writes one `.sql` file with a `-- @aotv4-migration` header; `custom/migrations/aotv4_migration.py`
+validates it, dry-runs it, allocates the next version, injects the `ManifestEntry` and bumps
+`CUSTOM_BINARY_DATABASE_VERSION`. Guide: **`custom/migrations/CONTRIBUTING_DB.md`**. The tool writes its own template with `--template`.
+
+- ⚠️⚠️ **IT IS ONE SELF-CONTAINED FILE AND IT IS MEANT TO BE SENT.** No repo, no database, no
+  packages: `--format` prints the spec, `--template` writes a starter, and the static checks run
+  anywhere. The DB-dependent checks (does the SQL execute, is it idempotent) are skipped with a
+  notice rather than being a hard requirement, so a contributor with nothing but python3 can still
+  submit something correct. `--apply` is the only mode needing the checkout, found via `--repo` /
+  `AOTV4_ROOT`; DB settings come from `AOTV4_DB_HOST`/`_USER`/`_PASS`/`_NAME`.
+  📌 The template lives INSIDE the tool, not beside it -- a `_TEMPLATE.sql` file next to it was a
+  second source of truth that would drift from the validator the first time a rule changed.
+- ⚠️⚠️ **THE VALIDATOR IS A LIST OF THINGS THAT HAVE ALREADY GONE WRONG HERE**, not a style checker.
+  It refuses: an unescaped apostrophe (aborted v92 mid-run), a literal `%` in a `db_str` description
+  (§14), `USE \`peq\`;` (§35 note 7 — damaged the test server), `DROP TABLE` (takes triggers with it,
+  §11), `TRUNCATE` on `trader` (real escrowed items, §13), a `DELETE` with no `WHERE` (§5), a spell id
+  ≥ 45000 or an item id ≥ 1,048,576 (both silent client-side truncations, §14/§10), and writes into a
+  band that is live on player characters. **When a new class of mistake costs a session, add it here**
+  — that is the point of the file.
+- ⚠️⚠️ **IT DRY-RUNS THE SQL IN A ROLLED-BACK TRANSACTION AND RE-RUNS THE `check` AFTERWARDS.** That is
+  what catches a **non-idempotent migration** — one whose check still says "run me" once the SQL has
+  run, which world would then re-apply on every boot forever. Nothing else detects that, and it is
+  invisible until the day it matters.
+- ⚠️ Bands carry a severity. `home` bands (`npc_types 2000000+`, `items 147500+`, `spells_new
+  44530-44599`) are where things *belong* and are reported, not blocked. `block` bands are refused
+  unless the submitter declares `band:` — chiefly **43576-44327 and 44333-44392, the spell ranks**,
+  which `spellrank_<charid>` resolves against, so renumbering silently changes what players own.
+- ⚠️⚠️ **THE INJECTOR ANCHORS ON `"\t},\n};\n"`, THE ARRAY'S CLOSE — NEVER ON "the last brace".** The
+  final `};` in that file is inside the trailing comment block documenting `ManifestEntry`, and an
+  entry appended there compiles as garbage. Cost a build cycle when v92 was added by hand.
+- 📌 The guide also states the two halves people forget: `items` and `spells_new` are **shared memory**
+  (migration alone changes nothing a zone can see), and a spell or description change needs
+  `./export_client_files` plus `spells_us.txt` / `dbstr_us.txt` **shipped to players** — a migration
+  cannot reach the client at all.
+
+## 53. ⚠️⚠️ THE DUPLICATE NPCs WERE `zone_state_spawns`, NOT THE SPAWN TABLES — 2026-08-19
+
+Reported over several turns as *"the NPCs are duplicating every time we do our changes"*, *"there was
+3 of each"*, and finally *"when I `#repop` resplendent it crashes"*. Every check of `spawn2`,
+`spawnentry`, `spawngroup` and `npc_types` came back **clean — one row per NPC** — and that was true
+and irrelevant: the duplication was never in the spawn tables.
+
+**`Zone:StateSavingOnShutdown` (stock EQEmu, default `true`) saves the live spawn list to
+`zone_state_spawns` on shutdown and restores it on boot INSTEAD of the normal spawn2 population**
+(`zone/spawn2.cpp:547` returns early when the load succeeds). The saved state had doubled, so each
+boot created two Spawn2 objects per spawn point, and the next cycle carried it further.
+
+### How the state doubled
+`Zone::SaveZoneState` (`zone/zone_save_state.cpp:724`) does **`DeleteWhere` then `InsertMany`** —
+idempotent when called once. It ran **twice in a single shutdown** (the log printed
+`Saved [1,932] zone state spawns` twice for one PID), and the two calls interleaved:
+
+```
+A: DELETE (removes nothing)   B: DELETE (removes nothing)   A: INSERT 107   B: INSERT 107
+```
+
+- 📌 **The row ids are the proof.** Zone 390's duplicate pairs sit exactly ~107 apart —
+  44467/44574, 44466/44573, 44465/44572 — i.e. two back-to-back batches, not two separate shutdowns.
+  ⚠️ `created_at` is NULL on every row despite `SaveZoneState` setting it, so **the timestamps cannot
+  date a duplicate; the id spacing is the only usable evidence.**
+- ⚠️ The duplicated rows carry **`npc_id = 0`** — empty spawn points awaiting respawn — with the SAME
+  `spawn2_id` and `spawngroup_id`. That is what makes them unmistakable: a legitimate second
+  placement would differ in `spawn2_id`.
+
+### Why every earlier hypothesis was wrong
+- ⚠️⚠️ **`#repop` NOT RESTORING THEM IS NORMAL AND SENT THE DIAGNOSIS SIDEWAYS.**
+  `command_repop` passes `is_forced = false` unless you type **`#repop force`**, and `Zone::Repop`
+  only calls `ClearSpawnTimers()` when forced — so with `respawntime 300` the NPCs are legitimately
+  gone for five minutes. That was read as "they are runtime-spawned, not in spawn2", which is the
+  opposite of the truth.
+- ⚠️ A hand-placed `spawn2` row was the other theory. It would have **survived** a repop, so the
+  symptom ruled it out; the real cause is memory/state, restored from a table nobody was looking at.
+- 📌 **The lesson: when the spawn tables are clean and NPCs still duplicate, look at
+  `zone_state_spawns` before anything else.** It is a whole second source of zone population, it is
+  stock, and nothing in this file mentioned it until now.
+
+### The fix
+`Zone:StateSavingOnShutdown = false`, and `DELETE FROM zone_state_spawns`.
+- ⚠️⚠️ **RULES ARE READ AT BOOT — RESTARTING ZONES IS NOT ENOUGH.** The table refilled after a
+  zone-only restart because the running **world** still held the old value. It needs the full
+  world + zones cycle (§10 records the same for `UseCurrentExpansionAAOnly`).
+- ⚠️ The table is transient by design — `LoadZoneState` clears it after loading and `Zone::Repop`
+  clears it outright — so deleting it destroys nothing. NPC corpses and mob positions no longer
+  survive a zone restart, which on a server of dynamic zones and roguelite runs is worth nothing.
+- 📌 **This disables a STOCK feature rather than fixing the double-call.** The re-entrancy in
+  `Zone::Shutdown` is still there; if state saving is ever wanted back, that is what must be fixed
+  first — and `SaveZoneState` should be made safe to call twice (a transaction around
+  delete+insert, or a guard flag) rather than relying on it never happening.
+
+### ⚠️⚠️ Schema conditions — `table_missing` / `column_missing` — added 2026-08-19
+The manifest's five stock conditions all read a query's **result text**, so there was **no way to ask
+"does this table exist"**: `SELECT ... FROM a_table_not_yet_created` ERRORS, and `GetQueryResult`
+turns a failed result set into an **empty string** — indistinguishable from a table that exists with
+no rows. Every `CREATE TABLE` migration therefore had a dishonest check.
+`common/database/database_update.cpp` now also accepts **`table_exists` / `table_missing` /
+`column_exists` / `column_missing`**, which take the object name in **`match`** (`my_table` or
+`my_table.my_column`), **ignore `check`**, and build the `information_schema` query themselves.
+- ⚠️⚠️ **`AoTv4SchemaCheckQuery` (C++) AND `schema_check_sql` (the merge tool) MUST STAY IDENTICAL.**
+  The tool dry-runs the migration and evaluates the condition exactly as the server will; if the two
+  forms drift, a submission validates clean and then behaves differently in production — worse than
+  having no check, because nothing reports it.
+- ⚠️ They use **`DATABASE()`**, not a hardcoded schema, so they are correct whether the entry runs
+  against the main or the content database (`content_schema_update`).
+- ⚠️ A malformed `column_*` match returns a query that finds **nothing** rather than falling back to
+  `check` — a bad match must never silently become "run the migration".
+- 📌 For a migration that creates a table **and** seeds it, `table_missing` is still correct: the
+  table's absence is what "not applied" means.
+
+## 54. ⚠️⚠️ `cross_zone_move_player_by_*` PRINTS AND MOVES NOBODY — the struct cannot cross a process — 2026-08-19
+
+Reported from play as *"I see the message for group port, but nothing happens to me or my group
+mates"*. Exactly right, and the message was the only part that ever worked.
+
+`eq.cross_zone_move_player_by_group_id` (and every sibling: `_by_char_id`, `_by_raid_id`,
+`_by_guild_id`, `_by_expedition_id`, and the `_instance` variants) routes through
+`QuestManager::CrossZoneMove` (`zone/questmgr.cpp`), which does:
+
+```cpp
+auto pack = new ServerPacket(ServerOP_CZMove, sizeof(CZMove_Struct));
+auto s    = (CZMove_Struct*) pack->pBuffer;      // raw bytes, no constructor ever ran
+s->zone_short_name = m.zone_short_name;          // ...assigning a std::string into them
+worldserver.SendPacket(pack);                    // ...and sending it to another PROCESS
+```
+
+⚠️⚠️ **`CZMove_Struct` HOLDS `std::string`** (`common/servertalk.h:1399`) — `client_name` and
+`zone_short_name`. A `std::string` is a pointer into *this* process's heap, so world receives a
+meaningless address and the destination zone name arrives as nothing. `GetGroupByID` then finds the
+group, walks its members, and calls `MoveZone("")` on each. Nothing moves, nothing errors.
+- 📌 **Assigning into the cast buffer is undefined behaviour before it is even a transport problem** —
+  those `std::string` objects were never constructed.
+- ⚠️⚠️ **THIS IS STOCK EQEmu, NOT AoTv4 CODE**, so it is broken for every caller and always has been.
+  The binding is real, all three overloads are real, and the six-argument form is real — the comment
+  that said so was correct and it did not help.
+- 📌 **`CZSetEntityVariable_Struct` sits directly beneath it using `char[256]` and works.** That is
+  why fellowship chat (`cross_zone_message_player_by_char_id`) is fine while this is not, and why the
+  failure looks selective rather than systemic. **Check the struct's field types before trusting any
+  `ServerOP_CZ*` call: `char[]` crosses a process, `std::string` does not.**
+
+### The fix — move them locally, and move the caller LAST
+`M.group_blockers` in `aotv4_travel.lua` already **refuses a group port unless every member is in the
+caster's own zone** (it names whoever is not). So the cross-zone call was never needed: a plain
+`MovePC` per member — the same call the working solo path makes — reaches all of them.
+- ⚠️⚠️ **COLLECT THE MEMBERS FIRST, MOVE THE CALLER LAST.** `MovePC` to another zone tears down the
+  group member pointers the loop is holding, so moving the caller mid-iteration leaves the rest of
+  the group standing there — the same silent half-failure in a new costume.
+- ⚠️ Each member gets the message too; previously only the caller did, which is why nobody else even
+  knew a port had been attempted.
+- 📌 **Do not "restore" the cross-zone call.** It cannot work until `CZMove_Struct` is changed to
+  fixed-width buffers, which is a stock-engine change affecting every CZMove caller.
