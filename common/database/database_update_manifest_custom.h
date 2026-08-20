@@ -7959,6 +7959,55 @@ REPLACE INTO `npc_class_scale` (`id`, `class_id`, `name`, `str_multiplier`, `sta
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 103,
+		.description = "2026_08_20_parcel_courier_unspawnable_cities",
+		// Submitted by: Claude
+		// counted those eight as served and skipped them.
+		.check       = "SELECT z.short_name FROM zone z JOIN spawn2 s ON s.zone = z.short_name JOIN spawnentry se ON se.spawngroupID = s.spawngroupID JOIN npc_types n ON n.id = se.npcID AND n.is_parcel_merchant = 1 WHERE z.version = 0 GROUP BY z.short_name HAVING SUM(CASE WHEN s.min_expansion <= 0 AND s.max_expansion <= 0 THEN 1 ELSE 0 END) = 0 LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+DROP TEMPORARY TABLE IF EXISTS aotv4_parcel_gap;
+CREATE TEMPORARY TABLE aotv4_parcel_gap (
+  n INT, short_name VARCHAR(32), x FLOAT, y FLOAT, z FLOAT
+);
+
+-- ⚠️ The temp table is materialised FIRST because the INSERTs below change what the query returns.
+-- Reading it live three times would give three different answers.
+INSERT INTO aotv4_parcel_gap
+SELECT ROW_NUMBER() OVER (ORDER BY t.short_name), t.short_name, t.safe_x, t.safe_y, t.safe_z
+FROM (
+  SELECT z.short_name, z.safe_x, z.safe_y, z.safe_z
+  FROM zone z
+  JOIN spawn2 s       ON s.zone = z.short_name
+  JOIN spawnentry se  ON se.spawngroupID = s.spawngroupID
+  JOIN npc_types n    ON n.id = se.npcID AND n.is_parcel_merchant = 1
+  WHERE z.version = 0
+  GROUP BY z.short_name, z.safe_x, z.safe_y, z.safe_z
+  HAVING SUM(CASE WHEN s.min_expansion <= 0 AND s.max_expansion <= 0 THEN 1 ELSE 0 END) = 0
+) t;
+
+SET @base = (SELECT COALESCE(MAX(id), 2000299) FROM spawngroup WHERE id BETWEEN 2000300 AND 2000350);
+
+INSERT INTO spawngroup (id, name, spawn_limit, dist, max_x, min_x, max_y, min_y, delay, mindelay)
+  SELECT @base + n, CONCAT('aotv4_parcel_courier_', short_name), 1, 0, 0, 0, 0, 0, 0, 0
+  FROM aotv4_parcel_gap;
+
+INSERT INTO spawnentry (spawngroupID, npcID, chance)
+  SELECT @base + n, 2000220, 100 FROM aotv4_parcel_gap;
+
+-- ⚠️⚠️ min_expansion / max_expansion MUST BE -1 -- that is the whole point of this migration.
+-- ⚠️ The column is `_condition` (leading underscore); `condition` is reserved.
+INSERT INTO spawn2 (spawngroupID, zone, version, x, y, z, heading, respawntime, variance, pathgrid,
+                    _condition, cond_value, min_expansion, max_expansion)
+  SELECT @base + n, short_name, 0, x, y, z, 0, 600, 0, 0, 0, 1, -1, -1
+  FROM aotv4_parcel_gap;
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_parcel_gap;
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

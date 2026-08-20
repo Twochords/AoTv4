@@ -68,6 +68,11 @@ INSERT INTO npc_types SELECT * FROM aotv4_npc_tmpl;
 DROP TEMPORARY TABLE IF EXISTS aotv4_npc_tmpl;
 
 -- ---------------------------------------------------------------- one per UNSERVED start city
+-- ⚠️⚠️ DRIVEN FROM `start_zones`, WHICH IS NO LONGER A LIST OF CITIES.
+-- aotv4_start_resplendent.sql repointed all 1,441 rows to `resplendent`, so this query now yields
+-- exactly ONE zone and re-running this script would place a courier nowhere useful. The nine
+-- couriers currently in the database predate that change. Migration v103 covers the eight cities
+-- this missed; if this script is ever needed again, give it an explicit city list first.
 -- Data driven from start_zones, minus every zone that already has a parcel merchant spawned. Placed
 -- at the zone SAFE POINT, which is guaranteed standable ground.
 DROP TEMPORARY TABLE IF EXISTS aotv4_parcel_zones;
@@ -81,11 +86,19 @@ INSERT INTO aotv4_parcel_zones
   FROM (SELECT DISTINCT start_zone FROM start_zones) sz
   JOIN zone z ON z.zoneidnumber = sz.start_zone
   WHERE z.short_name IS NOT NULL AND z.short_name <> ''
+    -- ⚠️⚠️ "ALREADY HAS ONE" MUST MEAN "HAS ONE THAT SPAWNS", NOT "HAS A ROW".
+    -- Written without the expansion test this skipped EIGHT cities whose only parcel merchant is
+    -- content-filtered out at zone boot -- South Qeynos (Ren_Pinemyer, min_expansion 5), Halas,
+    -- Oggok, Rivervale, Erudin Palace, North Felwithe, North Kaladim, Neriak Commons. Reported
+    -- from play as the Qeynos parcel vendor not working; it was never there.
+    -- 📌 The warning was already in this file, on the INSERT below. It just was not applied to the
+    -- test that decides where to insert. Fixed 2026-08-20 (migration v103).
     AND NOT EXISTS (
       SELECT 1 FROM spawn2 s
       JOIN spawnentry se ON se.spawngroupID = s.spawngroupID
       JOIN npc_types n   ON n.id = se.npcID
-      WHERE s.zone = z.short_name AND n.is_parcel_merchant = 1);
+      WHERE s.zone = z.short_name AND n.is_parcel_merchant = 1
+        AND s.min_expansion <= 0 AND s.max_expansion <= 0);
 
 INSERT INTO spawngroup (id, name, spawn_limit, dist, max_x, min_x, max_y, min_y, delay, mindelay)
   SELECT 2000299 + n, CONCAT('aotv4_parcel_courier_', short_name), 1, 0, 0, 0, 0, 0, 0, 0

@@ -5612,3 +5612,49 @@ compile, which is the useful part of the diagnosis — see below.
   submission says `Adventure_Recruiter`), and because the check reads as satisfied, **dev will keep
   the stale values while live gets the corrected ones**. Harmless while unused; re-check before
   writing code against these tables.
+
+## 56. ⚠️⚠️ A COVERAGE TEST MUST ASK "DOES IT SPAWN", NOT "DOES A ROW EXIST" — v103 — 2026-08-20
+
+Reported from play as *"parcel vendor in Qeynos is not working as intended"*. It was never there.
+South Qeynos's parcel merchant is stock **`Ren_Pinemyer` (1032)**, whose `spawn2` row carries
+`min_expansion = 5` (Luclin) — and this server runs `Expansion:CurrentExpansion = 0`, so
+`ContentFilterCriteria::apply()` (`zone/spawn2.cpp:519`) removes it at zone boot. The exclusion is
+unambiguous: `min_expansion(5) > -1 && current_expansion(0) < 5` → false
+(`common/content/world_content_service.cpp:161`).
+
+**Seven other cities are identical** — Halas, Oggok, Rivervale, Erudin Palace, North Felwithe, North
+Kaladim, Neriak Commons. Each has exactly one parcel merchant and it is expansion-blocked.
+
+- ⚠️⚠️ **`aotv4_parcel_merchants.sql` EXISTS TO PREVENT EXACTLY THIS AND SKIPPED ALL EIGHT.** It
+  places `#Parcel_Courier` (2000220) in every start city lacking one, and its coverage test was
+  `NOT EXISTS (… WHERE s.zone = z.short_name AND n.is_parcel_merchant = 1)` — **does a ROW exist**,
+  not **does it SPAWN**. A blocked merchant is indistinguishable from a working one in the tables and
+  invisible in game, so those eight counted as served.
+  📌 **The warning was already in that file, twenty lines below**, on the `INSERT`: *"min_expansion /
+  max_expansion MUST BE -1 or a Classic-locked server content-filters the spawn out at zone boot with
+  no error anywhere."* It was applied to the rows the script writes and not to the test that decides
+  where to write them. Same shape as §24's gear-bump clamp — the reasoning was one clause away.
+- ⚠️⚠️ **`start_zones` IS NO LONGER A LIST OF CITIES**, so re-running that script would not have fixed
+  it either. `aotv4_start_resplendent.sql` repointed all **1,441** rows to `resplendent` (§11), so the
+  query now yields **one** zone. The nine couriers currently placed predate that change. **Any script
+  driven off `start_zones` is now driven off a single row** — check for others.
+- ⚠️ **The fix does NOT clear `min_expansion` on the stock merchants.** Those are Luclin NPCs that
+  also carry real `merchantlist` rows (Ren has 16), so unblocking them would add shops to Classic
+  cities as a side effect of fixing parcels — a content change smuggled in behind a bug fix. v103
+  places couriers instead, which is the established pattern.
+- ⚠️ A parcel merchant needs three things, all enforced in `Handle_OP_ShopRequest`
+  (`zone/client_packet.cpp:15651`): **class 41** (it `return`s immediately otherwise — the window does
+  not open at all, rather than opening without the tab), **`is_parcel_merchant = 1`** (flips the tab
+  set to `SellBuyParcel`), and an **RoF2 client**. `merchant_id = 0` is fine and explicitly handled:
+  the window opens with the parcel tab and no wares.
+- 📌 v103 is driven off the live "unserved" query and is idempotent by construction — once a zone has
+  a spawnable courier it stops matching, so a second run inserts nothing.
+
+### ⚠️⚠️ AND `2>/dev/null` ON A `mysql` CALL MAKES A BAD COLUMN LOOK LIKE "NO ROWS"
+A query in this investigation named `s2.enabled`, which does not exist in this schema. With stderr
+suppressed the result was **empty output**, identical to a query that legitimately matched nothing —
+and it briefly read as "there is no parcel merchant in Qeynos at all", which is a different bug with a
+different fix. **Use `2>&1` when a query returns nothing unexpectedly**, before drawing any conclusion
+from the emptiness. The same trap is already recorded for `docker exec` without `-u root` (§17) and
+for `sudo` on the datadir (§25): a permissions or syntax failure that prints nothing is
+indistinguishable from a true negative.
