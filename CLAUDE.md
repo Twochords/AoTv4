@@ -5548,3 +5548,60 @@ caster's own zone** (it names whoever is not). So the cross-zone call was never 
   knew a port had been attempted.
 - 📌 **Do not "restore" the cross-zone call.** It cannot work until `CZMove_Struct` is changed to
   fixed-width buffers, which is a stock-engine change affecting every CZMove caller.
+
+## 55. ⚠️⚠️ A COMMITTED STASH RESOLUTION CAN DELETE WORKING CONTENT — resolve by RE-DERIVING — 2026-08-20
+
+Commit `8cb487fdb` ("NPCs are now tracked") arrived with **unresolved conflict markers committed**, in
+`common/version.h` (two competing `CUSTOM_BINARY_DATABASE_VERSION` defines, 89 and 56),
+`database_update_manifest_custom.h`, and a root-level copy of `aotv4_migration.py`. It does not
+compile, which is the useful part of the diagnosis — see below.
+
+- ⚠️⚠️ **THE MARKER COUNT UNDERSTATES THE DAMAGE. THE REGIONS WERE NESTED AND THOUSANDS OF LINES
+  WIDE** (5247 → 7341 → 7602), so the `Stashed changes` side had **deleted content that was never in
+  conflict**: the `aotv4_zone_xp` level-range rows (v33, §3), with v55/v56 mangled into one entry
+  carrying two descriptions and a raw mysqldump header embedded inside a migration's SQL. **Counting
+  markers tells you how much to delete; only diffing against the merge base tells you what was
+  lost.**
+  ```bash
+  BASE=$(git merge-base HEAD <theirs>)
+  git diff $BASE <theirs> -- <file> | grep -E '^-' | grep -v '^--'   # what THEY removed
+  ```
+- ⚠️⚠️ **DO NOT "RESOLVE THE MARKERS". TAKE YOUR SIDE WHOLESALE AND RE-DERIVE THEIRS.** Resolving a
+  region that wide is reconstructing someone else's intent by guesswork, in a file where a wrong
+  guess is a silently dropped migration. `git checkout --ours` on the manifest, then rebuild their
+  contribution from a source that is *known* good.
+- ✅ **HERE THAT SOURCE ALREADY EXISTED — `my_tabels.sql` WAS A VALID `@aotv4-migration` SUBMISSION.**
+  They had used the tool correctly and *then also* hand-edited the manifest; only the second half was
+  wrecked. So nothing needed guessing: the data came from the submission verbatim, and only the
+  `CREATE TABLE` half had to be lifted out of their manifest entry (stripping the `/*!40101 ... */`
+  mysqldump session pragmas, which have no business mutating session state inside world's connection).
+  📌 **Look for a submission file before attempting any manifest merge** — §CONTRIBUTING_DB exists
+  precisely so a contributor's work survives their git accidents.
+- ⚠️⚠️ **A COMMIT THAT DOES NOT COMPILE CANNOT HAVE BEEN DEPLOYED, AND THAT SETTLES THE RENUMBER
+  QUESTION.** Their v90/v91 collided with the hub-guard migrations, and renumbering is only dangerous
+  if theirs already ran somewhere (live would then re-run them). With two `CUSTOM_BINARY_DATABASE_VERSION`
+  defines, world does not build, so it cannot have applied anything anywhere. Renumbered to
+  **v101/v102** with no hazard. The tables existed in dev only because they were applied **by hand**,
+  which consumes no version — the §2 trap, harmless here precisely *because* the version was not
+  advanced.
+- ⚠️⚠️ **SPLIT DDL FROM DATA INTO TWO ENTRIES.** `CREATE TABLE` commits implicitly, so a combined
+  entry cannot be re-run safely: the tables would exist, the condition would read as satisfied, and
+  the inserts would be stranded with nothing to indicate why. v101 creates, v102 populates.
+- ⚠️⚠️ **BOTH SUBMITTED CHECKS TESTED THE FIRST OBJECT CREATED AND WERE CORRECTED TO THE LAST** —
+  `table_missing` on `npc_raid_scale` (not `npc_class_scale`), and `npc_class_scale` id **44** (not
+  `npc_race_stats` id 1). Keyed on the first, a run that died partway records itself as finished and
+  the remainder is never applied. The tool's own template warns about this and it was still submitted
+  that way twice, so **check it by hand on every submission**.
+- 📌 **The tool validated the data half against the live DB** (`dry run OK, rolled back`). It also
+  reported `REFUSED: ... would NOT run against the current database`, which is **not** a defect — it
+  is the tool correctly saying "already applied here". A skipped migration logs `[ok]`; `[missing]` is
+  the one that runs.
+- 📌 One duplicate was dropped: `aotv4_migration.py` existed at the repo root **and** under
+  `.devcontainer/custom/migrations/`, differing only by a trailing newline. The latter is canonical;
+  two copies of a validator drift exactly like `kIcons[]` did (§3).
+- 📌 **Nothing reads `npc_race_stats` / `npc_class_scale` / `npc_raid_scale` yet** — no C++ changed in
+  that commit. Applying v101/v102 changes no behaviour; it is groundwork.
+  ⚠️ The dev rows were hand-applied from a slightly older cut (`Adventure Recruiter` where the
+  submission says `Adventure_Recruiter`), and because the check reads as satisfied, **dev will keep
+  the stale values while live gets the corrected ones**. Harmless while unused; re-check before
+  writing code against these tables.
