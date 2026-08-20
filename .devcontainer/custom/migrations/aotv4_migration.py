@@ -278,14 +278,106 @@ def dry_run(meta, body):
     def should_run(res): return should_run_result(meta, res)
 
     if not should_run(before):
-        fail(f"the check/condition says this migration would NOT run against the current database "
-             f"(check returned {before!r}, condition '{meta['condition']}'). Either it is already "
-             f"applied, or the check is wrong.")
+        # ⚠️ "would not run here" is NOT automatically a defect. If the check ALSO says don't-run
+        # after applying, that is the signature of a migration that is simply already present in
+        # this database -- routine when a maintainer validates a submission against a dev DB the
+        # contributor already applied by hand. Reporting that as REFUSED reads as a broken
+        # submission and cost a real investigation (section 55). Only an inverted condition, where
+        # applying the SQL would flip the check to "run me", is an actual error.
+        if not should_run(after):
+            print(f"  NOTE: already applied here -- the check reads {before!r} and the SQL does not "
+                  f"change that.\n        The SQL itself dry-ran cleanly. Nothing is wrong with the "
+                  f"submission;\n        it just has nothing left to do against THIS database.")
+            print("  idempotency OK: would not run again")
+            return
+        fail(f"the condition looks INVERTED: the check says don't-run now ({before!r}) but would say "
+             f"run-me after applying ({after!r}), condition '{meta['condition']}'. "
+             f"A CREATE almost always wants `table_missing`; a data load wants `empty`.")
     if should_run(after):
         fail(f"NOT IDEMPOTENT: after applying, the check still says 'run me' (returned {after!r}). "
              f"World would re-run this on every boot. Make the check test for the thing the SQL "
              f"CREATES -- e.g. the LAST id it inserts.")
     print("  idempotency OK: would run now, would not run again")
+
+# ----------------------------------------------------------------- check target
+
+WRITE_RE = re.compile(
+    r"^\s*(?P<kind>CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?|INSERT\s+INTO|REPLACE\s+INTO|UPDATE)"
+    r"\s+`?(?P<table>[A-Za-z0-9_]+)`?", re.I | re.M)
+
+def write_targets(body):
+    """Ordered (kind, table) for every statement that creates or writes rows.
+    CREATE TEMPORARY is excluded by WRITE_RE; temp tables are scratch, never the check target."""
+    out = []
+    for m in WRITE_RE.finditer(body):
+        if re.match(r"^\s*--", m.group(0)): continue
+        kind = "create" if m.group("kind").upper().startswith("CREATE") else "write"
+        out.append((kind, m.group("table").lower()))
+    return out
+
+def check_target_check(meta, body):
+    """⚠️⚠️ THE CHECK MUST TEST THE **LAST** OBJECT THE SQL CREATES, NOT THE FIRST.
+
+    Keyed on the first, a run that dies partway records itself as finished and the remainder is
+    never applied -- silently, because world writes the new version and moves on. The dry run
+    CANNOT catch this: it applies the whole body, so a first-object check looks perfectly
+    idempotent. Only this static comparison catches it, which is why it exists.
+
+    Both halves of the 2026-08-18 npc_scaling submission were wrong this way (CLAUDE.md section 55)
+    even though the template warns about it in prose."""
+    tgt = write_targets(body)
+    if not tgt: return
+
+    if meta["condition"] in SCHEMA_CONDITIONS:
+        creates = [t for k, t in tgt if k == "create"]
+        if not creates: return
+        want = creates[-1]
+        got  = meta["match"].split(".")[0].lower()
+        if got != want and got in creates:
+            fail(f"`match: {meta['match']}` names `{got}`, but this SQL creates {len(creates)} tables "
+                 f"and `{want}` is the LAST one.\n"
+                 f"    Keyed on an earlier table, a run that died partway would be recorded as\n"
+                 f"    FINISHED and the rest would never be created. Use `match: {want}`.\n"
+                 f"    (creates, in order: {', '.join(creates)})")
+        return
+
+    writes = [t for k, t in tgt if k == "write"]
+    if not writes: return
+    want = writes[-1]
+    m = re.search(r"\bFROM\s+`?([A-Za-z0-9_]+)`?", meta.get("check", ""), re.I)
+    if not m: return
+    got = m.group(1).lower()
+    if got != want and got in writes:
+        fail(f"the check reads from `{got}`, but the LAST table this SQL writes is `{want}`.\n"
+             f"    Keyed on an earlier table, a run that died partway would be recorded as\n"
+             f"    FINISHED and the remaining inserts would never be applied.\n"
+             f"    Point the check at the last row written to `{want}`.\n"
+             f"    (writes, in order: {', '.join(dict.fromkeys(writes))})")
+
+def split_check(meta, body):
+    """⚠️⚠️ DDL AND DATA CANNOT SHARE ONE ENTRY. CREATE TABLE commits implicitly, so a combined
+    migration cannot be re-run: the tables exist, the condition reads as satisfied, and the inserts
+    are stranded behind it with nothing to indicate why. Submit two files."""
+    tgt = write_targets(body)
+    creates = [t for k, t in tgt if k == "create"]
+    writes  = [t for k, t in tgt if k == "write"]
+    if creates and writes:
+        fail("mixes CREATE TABLE with INSERT/REPLACE/UPDATE in one migration.\n"
+             f"    creates: {', '.join(dict.fromkeys(creates))}\n"
+             f"    writes:  {', '.join(dict.fromkeys(writes))}\n"
+             "    CREATE TABLE commits immediately, so this can never be re-run safely -- the\n"
+             "    tables would exist, the condition would read satisfied, and the inserts would be\n"
+             "    stranded. Split into two submissions: one that creates, one that populates.")
+
+def hygiene_check(body):
+    if re.search(r"^(<<<<<<<|=======|>>>>>>>)", body, re.M):
+        fail("contains git conflict markers. Resolve them before submitting -- a committed stash "
+             "resolution has already destroyed working migrations here (section 55).")
+    if re.search(r"^\s*/\*!\d+\s+SET\b", body, re.M):
+        fail("contains mysqldump session pragmas (`/*!40101 SET ... */`).\n"
+             "    These run inside WORLD's own connection and mutate its session state (NAMES,\n"
+             "    SQL_MODE, FOREIGN_KEY_CHECKS, TIME_ZONE). Strip them -- keep only the statements\n"
+             "    that do the work.")
 
 # ----------------------------------------------------------------- inject
 def next_version():
@@ -374,6 +466,17 @@ Creating a table or a column?  Use a SCHEMA condition.
   They IGNORE `check:` and build their own information_schema query from `match:`, so you neither
   write one nor get its form subtly wrong.
 
+Creating tables AND filling them?  That is TWO submissions, and the tool enforces it.
+  CREATE TABLE commits immediately and cannot be undone, so a combined migration can never be re-run:
+  the tables would already exist, the condition would read as satisfied, and your inserts would be
+  stranded behind it with nothing on screen to say why. Send one file that creates and one that fills.
+
+Point the check at the LAST thing your SQL touches, not the first.
+  If it creates three tables, `match:` the third. If it fills three tables, check a row in the third.
+  Keyed on the first, a run that dies halfway records itself as FINISHED and the rest is never
+  applied -- silently. The dry run cannot catch this (it applies the whole file), so the tool
+  compares your check against the order of your own statements instead.
+
 The one rule that matters:  your migration must be safe to run twice. Either the check stops the
 second run, or the second run changes nothing.
 
@@ -388,6 +491,10 @@ Refused automatically, because each has cost this project real time:
   - an item id >= 1048576          (chat link renders as a different item)
   - writing into a live id band    (spell ranks are resolved per character)
   - a non-idempotent check         (would re-run on every world boot forever)
+  - a check on the FIRST object    (a half-applied run records itself as finished)
+  - CREATE TABLE mixed with data   (cannot be re-run; split it into two files)
+  - mysqldump /*!40101 SET ... */  (mutates world's own connection session state)
+  - git conflict markers           (a committed stash resolution has destroyed work here)
 """
 
 def main():
@@ -417,6 +524,9 @@ def main():
     print(f"submission: {a.file}")
     print(f"  description: {meta['description']}")
     validate(meta, body)
+    hygiene_check(body)
+    split_check(meta, body)
+    check_target_check(meta, body)
     band_check(meta, body)
     ceiling_check(body)
     dry_run(meta, body)

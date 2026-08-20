@@ -253,3 +253,38 @@ first closes the gap before any zone looks at it.
 
 Confirm with `SELECT custom_version FROM db_version;` and by finding
 `Custom | database [N] binary [N] up to date` in a zone log.
+
+
+## Two rules the tool now enforces, added 2026-08-20
+
+Both came out of a real submission that was correct in every other way.
+
+### Creating tables and filling them is TWO files
+
+`CREATE TABLE` commits immediately and cannot be rolled back. A migration that creates *and*
+populates therefore can never be re-run: the tables already exist, the condition reads as
+satisfied, and the inserts sit stranded behind it with nothing on screen to say why. Send one
+submission that creates and one that fills, and let the second check a row it inserts.
+
+### Point the check at the LAST thing your SQL touches
+
+If your SQL creates three tables, `match:` the **third**. If it fills three tables, check a row in
+the **third**. Keyed on the first, a run that dies halfway records itself as finished and the
+remainder is never applied — silently, because the server writes the new version and moves on.
+
+The dry run cannot catch this: it applies the whole file, so a first-object check looks perfectly
+idempotent. The tool therefore reads the order of your own statements and compares. It is the one
+check with no runtime equivalent, which is why it is worth understanding rather than working around.
+
+### And a message that is not an error
+
+`NOTE: already applied here` means the maintainer's database already contains your change — usually
+because it was applied by hand while testing. Your submission is fine; it simply has nothing left to
+do against that particular database. Only `REFUSED` stops a merge.
+
+## Do not hand-edit the manifest
+
+`--apply` writes the entry, allocates the version and bumps `CUSTOM_BINARY_DATABASE_VERSION` for
+you. Editing `database_update_manifest_custom.h` by hand is how you get a conflict on the one file
+every contributor touches — and a conflict resolved carelessly there deletes other people's
+migrations without leaving a mark on the lines it removed.
