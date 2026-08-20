@@ -24,7 +24,14 @@ are NOT in it — they are independent nested clones with their own remotes and 
 |---|---|---|
 | `/src` (server C++, SQL, docs) | this repo | `aotv4-spell-rebuild` |
 | `.devcontainer/repo/eq-core-dll` (the **dll**) | `Twochords/Dinput` | `aotv4-advloot-module` |
-| `.devcontainer/repo/quests` (**all Lua**) | clone of `ProjectEQ/projecteqquests` | `aotv4` |
+| `.devcontainer/repo/quests` (**all Lua**) | ⚠️ **NO LONGER SEPARATE — tracked by `/src` itself** | `master` |
+
+⚠️⚠️ **CORRECTION (2026-08-20): THE LUA IS NOW IN THIS REPO.** `repo/quests` was un-ignored and
+its nested `.git` moved to `/src/repo_backups/quests_dotgit`, so the tree is stored as FILES and a
+clone or `git pull` of `Twochords/AoTv4` **does** carry every quest and lua_module. Only
+**`eq-core-dll` is still a separate repo** — and it builds a *client* artifact, so it is shipped to
+players as `dinput8.dll`, never deployed to a server. 📌 That makes a live deploy one pull plus a
+rebuild, not three. The paragraph below is history for the dll and **wrong for the Lua**:
 
 ⚠️ **`git status` in `/src` tells you NOTHING about the dll or the Lua.** As of 2026-07-25 every AoTv4
 Lua module (`spell_choice`, `aa_choice`, `aa_pool`, `era_system`, `pok_travel`, `bazaar_broker`, the
