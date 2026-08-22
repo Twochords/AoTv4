@@ -370,6 +370,14 @@ INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = {r['tmpl']};
 UPDATE aotv4_disc_tmpl SET
     id = {r['id']}, name = '{r['name']}', descnum = {r['id']},
     EndurCost = 1, EndurTimerIndex = {timer}, recast_time = {recast}, recovery_time = 0,
+    -- WARNING: EndurUpkeep MUST BE 0, AND THE BUFF TEMPLATE 4499 CARRIES 10.
+    -- It is a PER TICK drain, not a one-off cost: Client::DoEndurance (client_process.cpp:2076)
+    -- walks every buff each tick, subtracts endurance_upkeep, and BuffFadeBySlot's the buff the
+    -- moment the bar cannot pay. On a level 5 Druid, Wildgrowth's 10 a tick over 10 ticks is 100
+    -- endurance against a pool of about 100 -- the entire bar, and then the heal over time dies
+    -- early. Every one of these already charges its real cost in Lua, scaled by level and paid in
+    -- the CLASS's own resource, so any native upkeep on top is double charging in the wrong currency.
+    EndurUpkeep = 0,
     cast_time = 0, mana = 0, skill = 98, targettype = {r['tt']}, goodEffect = {r['good']},
     new_icon = {r['icon']}, spellanim = {anim}, CastingAnim = {cast_anim},
     -- ⚠️⚠️ `IsDiscipline` IS A COLUMN AND IT IS NOT THE SAME THING AS THE IsDiscipline() FUNCTION.

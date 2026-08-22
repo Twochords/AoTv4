@@ -10290,6 +10290,19 @@ UPDATE rule_values SET rule_value = '0' WHERE rule_name = 'Combat:MinRangedAttac
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 128,
+		.description = "2026_08_22_class_ability_endur_upkeep",
+		// Submitted by: Claude
+		// The 16 duration class abilities inherited EndurUpkeep 10 from the buff template and drained the whole bar.
+		.check       = "SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `spells_new` WHERE `id` BETWEEN 44700 AND 44755 AND `EndurUpkeep` <> 0",
+		.condition   = "match",
+		.match       = "pending",
+		.sql         = R"(
+UPDATE spells_new SET EndurUpkeep = 0 WHERE id BETWEEN 44700 AND 44755;
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

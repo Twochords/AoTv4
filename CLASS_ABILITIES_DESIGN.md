@@ -651,3 +651,48 @@ constraint.
 - ⚠️ **`TrainDiscBySpellID` validates nothing** — not class, not level, not whether you already know
   it (`effects.cpp:883`). It fills the first empty slot, so without a `HasDisciplineLearned` guard the
   same ability is listed twice.
+
+### ⚠️⚠️ EndurUpkeep IS A PER TICK DRAIN AND THE BUFF TEMPLATE CARRIES 10 (v128, 2026-08-22)
+
+Reported from play as a Druid's level 5 ability draining all of their endurance, and it was exact:
+Wildgrowth runs 10 ticks at 10 endurance a tick against a level 5 Druid's pool of about 100.
+
+`Client::DoEndurance` (`client_process.cpp:2076`) walks every buff each tick, subtracts
+`endurance_upkeep`, and **`BuffFadeBySlot`s the buff the moment the bar cannot pay** — so an
+inherited upkeep does two things and the second is silent: it bleeds the bar, and it **ends the
+ability early**, which reads as the ability being weak rather than as a cost.
+
+- ⚠️⚠️ **All 16 duration abilities had it**, inherited from template **4499 Defensive Discipline**,
+  which legitimately carries `EndurUpkeep 10`. The 32 without a duration were unaffected because the
+  column is inert with nothing to tick.
+- ⚠️⚠️ **It is double charging in the wrong currency.** Every one of these already pays its real cost
+  in `M.charge`, scaled by level and taken from the **class's** resource — mana for a Druid, who has
+  no way to regain endurance at all.
+- 📌 **This is the FIFTH column this feature inherited and had to repair after the fact** — cast
+  messages (v119), the `IsDiscipline` column (v120), `player_1` (v121), the icons (v104), now this.
+  None of them affected whether the ability *worked*, which is exactly why each one shipped.
+  **After cloning a row, diff it against a row of the shape you want, not against the template.**
+- `gen_class_abilities.py` now writes `EndurUpkeep = 0` explicitly, so a regen cannot reintroduce it.
+
+### ⚠️⚠️ EVERY PRESS PRINTS WHAT IT DID — and that is a diagnostic, not a courtesy
+
+A swing already printed its own damage through `DoSpecialAttackDamage`, but the **rider** — the
+leech, the heal, the cooldown cut, how many targets an AoE actually found — printed nothing. So an
+ability that fired and found nothing was **indistinguishable on screen from one that never fired**.
+
+That ambiguity is what made *"Harrowing does not do an AoE lifetap"* unanswerable by reading: the
+payload was correct, `M.sweep` was correct, and the only way to tell was to print what it hit.
+
+- `M.tell(c, text)` is the single entry point, on **Chat::Yellow (15)** — matching what this module
+  already used, and deliberately **not** `Chat::Skills (270)`, where a player filtering skill-up spam
+  would lose their ability feedback along with it.
+- ⚠️ **The tier-2 cooldown cut announces itself inside `M.cut_tier2`**, not at each call site.
+  Seventeen abilities cut it and seventeen copies of that line would drift.
+- ⚠️⚠️ **`M.fire` guarantees a line.** `said` is cleared before the payload and set by `M.tell`, so a
+  payload that early-returns — no target, nothing in range, no bow, nothing afflicting — still
+  explains itself. The ten abilities whose row does all the work have no payload at all and take
+  their line from **`M.NOTE`**; anything else reaching the fallback early-returned without saying
+  why, which is a bug in that payload rather than in the net.
+- 📌 **Harrowing is working as designed.** `M.sweep` takes only creatures already fighting you plus
+  your current target — the §2 rule every AoE here obeys, so that a tier 3 cannot pull a room — which
+  means Harrowing on a lone target is a single drain by design. It now says so.

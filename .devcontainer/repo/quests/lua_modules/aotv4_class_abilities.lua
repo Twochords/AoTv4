@@ -105,10 +105,36 @@ function M.refund(c, tier)
 	return c:AoTv4ReduceDisciplineTimer(M.TIMER[tier], 100000)
 end
 
+-- ---------------------------------------------------------------------------------------------
+-- Feedback
+--
+-- ⚠️⚠️ EVERY PRESS MUST SAY SOMETHING, AND THAT IS A DIAGNOSTIC REQUIREMENT AS MUCH AS A PLAYER
+-- ONE. A weapon swing already prints its own damage through DoSpecialAttackDamage, but the RIDER --
+-- the leech, the heal, the cooldown cut, the number of targets an AoE actually found -- was
+-- invisible. So an ability that fired and found nothing looked exactly like one that never fired,
+-- which is what made "Harrowing does not do an AoE lifetap" unanswerable by reading the code: the
+-- payload was correct and the only way to tell was to print what it hit.
+-- 📌 Chat::Yellow (15), matching the messages this module already used. Deliberately NOT
+-- Chat::Skills (270) -- a player filtering skill-up spam would lose their ability feedback with it.
+local MSG = 15
+local said = false
+
+function M.tell(c, text)
+	said = true
+	if c then c:Message(MSG, text) end
+end
+
 -- Shorten this character's tier-2 cooldown. ⚠️ Takes the TIMER id, not the spell id.
+-- ⚠️ The cut is announced HERE rather than at each call site: seventeen abilities cut the tier 2
+-- recast and every one of them would otherwise need its own copy of this line to drift out of step.
 function M.cut_tier2(c, seconds)
 	if not seconds or seconds <= 0 then return false end
-	return c:AoTv4ReduceDisciplineTimer(M.TIMER[2], seconds)
+	local ok = c:AoTv4ReduceDisciplineTimer(M.TIMER[2], seconds)
+	if ok then
+		local t2 = eq.get_spell_name(M.spell_id(c:GetClass(), 2)) or "your second ability"
+		M.tell(c, string.format("%s will be ready %d seconds sooner.", t2, seconds))
+	end
+	return ok
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -361,6 +387,24 @@ M.SPEC = {
 }
 
 -- ---------------------------------------------------------------------------------------------
+-- NOTE: the line printed for an ability whose spell ROW does everything, so it has no payload below
+-- and would otherwise be the only kind of ability that says nothing at all when pressed.
+-- ⚠️ Keep this in step with the payload table: an id with neither an entry here nor a payload falls
+-- back to a bare "You use X", which is not wrong but tells the player nothing.
+M.NOTE = {
+	[44704] = "You raise a sanctuary over your group.",
+	[44716] = "Wildgrowth takes root in your target, mending it over time.",
+	[44719] = "You settle into a void stance, slipping the next blows aimed at you.",
+	[44722] = "Your crescendo restores your group's endurance.",
+	[44725] = "You rupture your target. It will bleed.",
+	[44727] = "You weave a foresight rune. Anything striking through it is slowed.",
+	[44728] = "You wrap your group in crippling spirits.",
+	[44737] = "An elemental swarm answers your call.",
+	[44739] = "Tashania strips your target's resistances.",
+	[44740] = "You gift your group clearer thought.",
+}
+
+-- ---------------------------------------------------------------------------------------------
 -- PAYLOAD: everything an ability does beyond its own spell effects. Nil = the row does it all.
 local P = {}
 M.PAYLOAD = P
@@ -371,10 +415,12 @@ P[44700] = function(c, t)                                    -- Cleaving Blow
 	-- Threat is added EXPLICITLY: AoT:SpecialBonusThreat floors the bonus hate of every non-Bash
 	-- special to a token 1 inside DoSpecialAttackDamage, so a hate_override would be overwritten.
 	t:AddToHateList(c, c:GetLevel() * 6)
+	M.tell(c, string.format("Your cleave seizes %s's attention.", t:GetCleanName()))
 end
 P[44701] = function(c)                                       -- Bulwark
 	c:SetEntityVariable(BULWARK_VAR, tostring(BULWARK_CHARGES))
-	c:Message(15, "You set yourself behind your guard.")
+	M.tell(c, string.format("You set yourself behind your guard, turning aside the next %d attacks.",
+		BULWARK_CHARGES))
 end
 P[44702] = function(c)                                       -- Broad Cleave
 	local hit = M.sweep(c, 30, true)
@@ -385,7 +431,12 @@ P[44702] = function(c)                                       -- Broad Cleave
 		M.weapon_blow(c, m, 15)
 	end
 	-- ⚠️⚠️ THE CUT IS EARNED BY HITTING SOMETHING, NOT BY PRESSING THE BUTTON.
-	if #hit > 0 then M.cut_tier2(c, math.min(#hit * 3, 9)) end
+	if #hit > 0 then
+		M.tell(c, string.format("Your cleave sweeps through %d foes.", #hit))
+		M.cut_tier2(c, math.min(#hit * 3, 9))
+	else
+		M.tell(c, "Your cleave finds nothing in front of you.")
+	end
 end
 
 -- ============================================================== 2 CLERIC
@@ -393,11 +444,15 @@ P[44703] = function(c, t)                                    -- Templar Strike
 	if not M.weapon_blow(c, t, 10) then return end
 	-- ⚠️ DoSpecialAttackDamage returns void, so the damage actually dealt is unknowable from Lua.
 	-- Every "a share of the damage" rider in this file is therefore a LEVEL-scaled flat amount.
-	c:HealDamage(c:GetLevel() * 2, c)
+	local mend = c:GetLevel() * 2
+	c:HealDamage(mend, c)
+	M.tell(c, string.format("Your templar strike mends you for %d hit points.", mend))
 end
 P[44705] = function(c, t)                                    -- Condemn
 	-- bodytype 3 is Undead. The nuke itself is on the spell row; this is only the cut.
-	M.cut_tier2(c, (t and t:GetBodyType() == 3) and 10 or 5)
+	local undead = t and t:GetBodyType() == 3
+	M.tell(c, undead and "Your condemnation burns the undead." or "Your condemnation strikes home.")
+	M.cut_tier2(c, undead and 10 or 5)
 end
 
 -- ============================================================== 3 PALADIN
@@ -429,6 +484,8 @@ P[44706] = function(c, t)                                    -- Ardent Strike
 		t:Damage(c, bonus, 0, 10, false)
 	end
 	t:AddToHateList(c, c:GetLevel() * 8)
+	M.tell(c, string.format("Your ardent strike sears %s for %d and holds its attention.",
+		t:GetCleanName(), bonus))
 end
 
 P[44707] = function(c)                                       -- Hand of Conviction
@@ -440,7 +497,7 @@ P[44707] = function(c)                                       -- Hand of Convicti
 		-- Solo heals the Paladin. An ability worth nothing without a group would be dead weight for
 		-- most of a run, and soloing is normal here.
 		c:HealDamage(amount, c)
-		c:Message(15, string.format("Your conviction restores %d hit points.", amount))
+		M.tell(c, string.format("Your conviction restores %d hit points.", amount))
 		return
 	end
 
@@ -457,7 +514,7 @@ P[44707] = function(c)                                       -- Hand of Convicti
 			end
 		end
 	end
-	c:Message(15, string.format("Your conviction restores %d hit points to %d in your group.",
+	M.tell(c, string.format("Your conviction restores %d hit points to %d in your group.",
 		amount, healed))
 end
 
@@ -468,6 +525,7 @@ P[44708] = function(c, t)                                    -- Divine Reproach
 	-- Same limitation as the Monk's crit-doubled cut. It cuts on a landed swing instead.
 	if not M.weapon_blow(c, t, 15) then return end
 	t:AddToHateList(c, c:GetLevel() * 6)
+	M.tell(c, string.format("Your reproach rebukes %s.", t:GetCleanName()))
 	M.cut_tier2(c, 5)
 end
 
@@ -475,20 +533,27 @@ end
 P[44709] = function(c, t)                                    -- Twin Slash
 	M.weapon_blow(c, t, 10, 0.6)
 	M.weapon_blow(c, t, 10, 0.6)
+	M.tell(c, string.format("You slash %s twice.", t and t:GetCleanName() or "your target"))
 end
 P[44710] = function(c)                                       -- Volley
-	for _, m in ipairs(M.sweep(c, 60, true)) do
+	local hit = M.sweep(c, 60, true)
+	for _, m in ipairs(hit) do
 		M.weapon_blow(c, m, 120, 0.8, SKILL_ARCHERY)
 	end
+	M.tell(c, #hit > 0
+		and string.format("Your volley falls on %d foes.", #hit)
+		or "Your volley finds no mark.")
 end
 P[44711] = function(c, t)                                    -- Point Blank Shot
 	if M.has_bow(c) then
 		-- ⚠️ RangedAttack needs a bow AND ammunition; with either missing it simply does nothing,
 		-- which is why the fallback below exists rather than a bare refusal.
 		c:RangedAttack(t)
+		M.tell(c, "You loose an arrow at point blank range.")
 		M.cut_tier2(c, 10)
 	else
 		M.weapon_blow(c, t, 15, 1.2)
+		M.tell(c, "With no bow to hand, you drive the blow home instead.")
 		M.cut_tier2(c, 5)
 	end
 end
@@ -498,33 +563,56 @@ local SK_VOW = 44753
 P[44712] = function(c, t)                                    -- Reaving Strike
 	if not M.weapon_blow(c, t, 10) then return end
 	local leech = c:GetLevel() * 2
-	if c:FindBuff(SK_VOW) then
+	local vowed = c:FindBuff(SK_VOW)
+	if vowed then
 		leech = leech * 2
 		c:BuffFadeBySpellID(SK_VOW)          -- the vow is spent on one strike, as promised
 	end
 	c:HealDamage(leech, c)
+	M.tell(c, string.format("Your reaving strike drains %d life%s.", leech,
+		vowed and ", your vow spent" or ""))
 end
 P[44713] = function(c)                                       -- Harrowing
+	-- ⚠️⚠️ THE SWEEP ONLY TAKES CREATURES ALREADY FIGHTING YOU, plus your current target. That is
+	-- the section 2 rule every AoE here obeys, and it means Harrowing on a lone target is a single
+	-- drain by design rather than a broken AoE. Reported from play as "does not do an AoE lifetap";
+	-- the payload was correct and there was simply nothing on screen saying how many it had found.
 	local hit = M.sweep(c, 40, false)
 	for _, m in ipairs(hit) do M.weapon_blow(c, m, 120, 0.7) end
-	if #hit > 0 then c:HealDamage(#hit * c:GetLevel() * 2, c) end
+	if #hit > 0 then
+		local leech = #hit * c:GetLevel() * 2
+		c:HealDamage(leech, c)
+		M.tell(c, string.format("Your harrowing tears through %d %s, draining %d life.",
+			#hit, #hit == 1 and "foe" or "foes", leech))
+	else
+		M.tell(c, "Your harrowing finds nothing fighting you.")
+	end
 end
 P[44714] = function(c, t)                                    -- Reaving Vow
 	if not M.weapon_blow(c, t, 15) then return end
 	c:ApplySpellBuff(SK_VOW)
+	M.tell(c, "You swear a reaving vow. Your next reaving strike drains double.")
 	M.cut_tier2(c, 6)
 end
 
 -- ============================================================== 6 DRUID
-P[44715] = function(c, t) M.weapon_blow(c, t, 10) end        -- Thorned Strike (SPA 121 is on the row)
+P[44715] = function(c, t)                                    -- Thorned Strike (SPA 121 is on the row)
+	if not M.weapon_blow(c, t, 10) then return end
+	M.tell(c, string.format("Thorns wreathe %s. It will wound itself on every blow it lands.",
+		t:GetCleanName()))
+end
 P[44717] = function(c, t)                                    -- Sunflare
 	-- ⚠️ There is no "is it standing still" test in the engine, so stationary means ROOTED, MEZZED,
 	-- STUNNED or carrying our own snare -- the whole definition, deliberately.
 	local held = t and (t:IsRooted() or t:IsMezzed() or t:IsStunned() or t:FindBuff(44724))
 	if held then
-		t:Damage(c, c:GetLevel() * 6, 44717, 24, false)
+		local bonus = c:GetLevel() * 6
+		t:Damage(c, bonus, 44717, 24, false)
+		M.tell(c, string.format("Your sunflare catches %s helpless, searing it for %d more.",
+			t:GetCleanName(), bonus))
 		M.cut_tier2(c, 10)
 	else
+		M.tell(c, "Your sunflare blazes, but your target is not held fast.")
 		M.cut_tier2(c, 5)
 	end
 end
@@ -536,17 +624,23 @@ P[44718] = function(c, t)                                    -- Iron Palm
 	local _, _, delay = M.weapon_profile(c)
 	local dmg = math.max(1, math.floor(delay * (0.2 + c:GetLevel() * 0.035)))
 	c:DoSpecialAttackDamage(t, SKILL_HAND_TO_HAND, dmg, 1, -1, 10)
+	c:CheckIncreaseSkill(SKILL_HAND_TO_HAND, t, 10)
+	M.tell(c, string.format("Your iron palm lands with the weight of your weapon (%d).", dmg))
 end
 P[44720] = function(c, t)                                    -- Pressure Point
 	if not M.weapon_blow(c, t, 15, 1.6) then return end
 	t:AddToHateList(c, c:GetLevel() * 4)
+	M.tell(c, string.format("You strike a pressure point on %s.", t:GetCleanName()))
 	-- 📌 The design asked for a doubled cut on a CRIT. DoSpecialAttackDamage returns void, so
 	-- whether the blow critted is not knowable from Lua -- the cut is a flat 6 until that is.
 	M.cut_tier2(c, 6)
 end
 
 -- ============================================================== 8 BARD
-P[44721] = function(c, t) M.weapon_blow(c, t, 10) end        -- Discordant Strike (SPA 1 is on the row)
+P[44721] = function(c, t)                                    -- Discordant Strike (SPA 1 is on the row)
+	if not M.weapon_blow(c, t, 10) then return end
+	M.tell(c, string.format("Discord rattles %s, weakening its armor.", t:GetCleanName()))
+end
 P[44723] = function(c, t)                                    -- Cadence Strike
 	-- 📌 GetInstrumentMod is Bard-only and is NOT Lua-bound, so "instrument scaled" is expressed as
 	-- a flat bonus for holding one rather than as the real multiplier.
@@ -557,25 +651,40 @@ P[44723] = function(c, t)                                    -- Cadence Strike
 		if it >= 23 and it <= 26 then mult = 1.5 end     -- 23-26 are the instrument item types
 	end
 	if not M.weapon_blow(c, t, 15, mult) then return end
+	M.tell(c, mult > 1.2
+		and "Your cadence rings through your instrument."
+		or "Your cadence strikes true, though you carry no instrument.")
 	M.cut_tier2(c, 5)
 end
 
 -- ============================================================== 9 ROGUE
-P[44724] = function(c, t) M.weapon_blow(c, t, 10) end        -- Vital Strike (SPA 3 snare is on the row)
+P[44724] = function(c, t)                                    -- Vital Strike (SPA 3 snare is on the row)
+	if not M.weapon_blow(c, t, 10) then return end
+	M.tell(c, string.format("Your vital strike hobbles %s.", t:GetCleanName()))
+end
 P[44726] = function(c, t)                                    -- Exploit Weakness
 	local bleeding = t and t:FindBuff(44725)
 	if not M.weapon_blow(c, t, 15, bleeding and 1.5 or 1.0) then return end
+	M.tell(c, bleeding
+		and "You exploit the wound you opened, striking half again as hard."
+		or "You find no open wound to exploit.")
 	M.cut_tier2(c, 5)
 end
 
 -- ============================================================== 10 SHAMAN
 P[44729] = function(c, t)                                    -- Malaise
 	local slowed = t and (t:FindBuff(44751) or t:FindBuff(44752))
+	M.tell(c, slowed
+		and "Your malaise settles deep into an already sluggish foe."
+		or "Your malaise saps your target.")
 	M.cut_tier2(c, slowed and 10 or 5)
 end
 
 -- ============================================================== 11 NECROMANCER
-P[44730] = function(c, t) M.weapon_blow(c, t, 10) end        -- Withering Touch (the DoT is on the row)
+P[44730] = function(c, t)                                    -- Withering Touch (the DoT is on the row)
+	if not M.weapon_blow(c, t, 10) then return end
+	M.tell(c, string.format("Your touch withers %s.", t:GetCleanName()))
+end
 
 -- ⚠️⚠️ "REMAINING DoT DAMAGE" IS NOT FULLY KNOWABLE FROM LUA. A buff's ticsremaining has no binding
 -- (only FindBuff/FindBuffBySlot/BuffCount exist), so remaining damage is approximated as three ticks
@@ -610,9 +719,12 @@ end
 P[44731] = function(c, t)                                    -- Soul Harvest
 	if not t or not t.valid then return end
 	local total, found = dot_pool(t, c:GetLevel())
-	if total <= 0 then c:Message(15, "Nothing is afflicting your target.") return end
+	if total <= 0 then M.tell(c, "Nothing is afflicting your target.") return end
 	t:Damage(c, total, 44731, 24, false)
-	c:HealDamage(math.floor(total / 2), c)
+	local healed = math.floor(total / 2)
+	c:HealDamage(healed, c)
+	M.tell(c, string.format("You harvest %d afflictions for %d damage, drawing %d life.",
+		#found, total, healed))
 	-- The afflictions are CONSUMED -- that is the whole ability, and it is also what stops it being
 	-- pressed twice on the same pool.
 	for _, sid in ipairs(found) do t:BuffFadeBySpellID(sid) end
@@ -620,9 +732,12 @@ end
 P[44732] = function(c, t)                                    -- Toll of the Dead
 	if not t or not t.valid then return end
 	local total = dot_pool(t, c:GetLevel())
-	if total <= 0 then c:Message(15, "Nothing is afflicting your target.") return end
+	if total <= 0 then M.tell(c, "Nothing is afflicting your target.") return end
 	local share = (total >= (t:GetHP() or 0)) and 25 or 5
-	t:Damage(c, math.max(1, math.floor(total * share / 100)), 44732, 24, false)
+	local toll = math.max(1, math.floor(total * share / 100))
+	t:Damage(c, toll, 44732, 24, false)
+	M.tell(c, string.format("Death's toll claims %d%s.", toll,
+		share == 25 and " -- your afflictions alone would already have killed it" or ""))
 	M.cut_tier2(c, 15)
 end
 
@@ -636,54 +751,85 @@ P[44733] = function(c, t)                                    -- Arcane Fist
 	-- DoSpecialAttackDamage returns void and the damage dealt is not knowable here.
 	local back = c:GetLevel() * 2
 	c:SetMana(math.min((c:GetMana() or 0) + back, c:GetMaxMana() or 0))
+	M.tell(c, string.format("Your arcane fist returns %d mana.", back))
 end
 P[44734] = function(c, t)                                    -- Overload
 	-- The nuke is on the row; this is the recoil and the Ley Tap payoff.
 	local stacks = tonumber(c:GetEntityVariable(LEYTAP_VAR) or "") or 0
 	if stacks > 0 and t and t.valid then
-		t:Damage(c, math.floor(c:GetLevel() * 20 * 0.15 * stacks), 44734, 24, false)
+		local bonus = math.floor(c:GetLevel() * 20 * 0.15 * stacks)
+		t:Damage(c, bonus, 44734, 24, false)
 		c:SetEntityVariable(LEYTAP_VAR, "0")
+		M.tell(c, string.format("Your overload discharges %d ley threads for %d more damage.",
+			stacks, bonus))
+	else
+		M.tell(c, "Your overload discharges, with no ley threads gathered.")
 	end
+	M.tell(c, "The recoil leaves you reeling.")
 	c:Stun(2000)
 end
 P[44735] = function(c)                                       -- Ley Tap
 	local stacks = math.min((tonumber(c:GetEntityVariable(LEYTAP_VAR) or "") or 0) + 1, LEYTAP_MAX)
 	c:SetEntityVariable(LEYTAP_VAR, tostring(stacks))
-	c:Message(15, string.format("Ley threads gathered: %d.", stacks))
+	M.tell(c, string.format("Ley threads gathered: %d of %d.", stacks, LEYTAP_MAX))
 	M.cut_tier2(c, 5)
 end
 
 -- ============================================================== 13 MAGICIAN
 P[44736] = function(c, t)                                    -- Elemental Fist
-	M.weapon_blow(c, t, 10)
-	if M.ensure_pet(c, 44754) then c:Message(15, "An elemental guardian answers.") end
+	if not M.weapon_blow(c, t, 10) then return end
+	if M.ensure_pet(c, 44754) then
+		M.tell(c, "Your elemental fist lands, and an elemental guardian answers.")
+	else
+		M.tell(c, "Your elemental fist lands.")
+	end
 end
 P[44738] = function(c, t)                                    -- Cinder Blast
 	local p = c:GetPet()
 	local pt = (p and p.valid) and p:GetTarget() or nil
 	if t and t.valid and pt and pt.valid and pt:GetID() == t:GetID() then
-		t:Damage(c, c:GetLevel() * 3, 44738, 24, false)     -- doubles the row's own damage
+		local bonus = c:GetLevel() * 3
+		t:Damage(c, bonus, 44738, 24, false)                -- doubles the row's own damage
+		M.tell(c, string.format("Your companion is already on that target -- the blast flares for %d more.",
+			bonus))
+	else
+		M.tell(c, "Your cinder blast strikes, though your companion fights elsewhere.")
 	end
 	M.cut_tier2(c, 7)
 end
 
 -- ============================================================== 14 ENCHANTER
-P[44741] = function(c) M.cut_tier2(c, 5) end                 -- Mind Fray (SPA 286 is on the row)
+P[44741] = function(c)                                       -- Mind Fray (SPA 286 is on the row)
+	M.tell(c, "Your mind frays, sharpening what you cast next.")
+	M.cut_tier2(c, 5)
+end
 
 -- ============================================================== 15 BEASTLORD
 P[44742] = function(c, t)                                    -- Feral Swipe
-	M.weapon_blow(c, t, 10)
-	if M.ensure_pet(c, 44755) then c:Message(15, "A feral companion answers.") end
+	if not M.weapon_blow(c, t, 10) then return end
+	if M.ensure_pet(c, 44755) then
+		M.tell(c, "Your feral swipe lands, and a feral companion answers.")
+	else
+		M.tell(c, "Your feral swipe lands.")
+	end
 end
 P[44743] = function(c)                                       -- Feral Frenzy
 	local p = c:GetPet()
 	-- ⚠️ The row is targettype 6 (self), so the pet half has to be applied by hand. ApplySpellBuff
 	-- puts the buff straight on without a cast, which is what "and your companion" needs.
-	if p and p.valid then p:ApplySpellBuff(44743) end
+	if p and p.valid then
+		p:ApplySpellBuff(44743)
+		M.tell(c, "You and your companion fall into a feral frenzy.")
+	else
+		M.tell(c, "You fall into a feral frenzy, with no companion to share it.")
+	end
 end
 P[44744] = function(c, t)                                    -- Bloodscent
 	local wounded = t and t.valid and (t:GetHPRatio() or 100) <= 50
 	if not M.weapon_blow(c, t, 15, wounded and 1.8 or 1.0) then return end
+	M.tell(c, wounded
+		and "You scent blood and tear into the wound."
+		or "You find your quarry still whole.")
 	M.cut_tier2(c, wounded and 10 or 5)
 end
 
@@ -694,15 +840,21 @@ P[44745] = function(c, t)                                    -- Reckless Cleave
 	-- nobody presses. SetHP, not Damage: Damage would put the Berserker on their own hate list.
 	local bleed = math.max(1, math.floor(c:GetMaxHP() * 0.01))
 	c:SetHP(math.max(1, c:GetHP() - bleed))
+	M.tell(c, string.format("You cleave recklessly, tearing %d from yourself.", bleed))
 end
 P[44746] = function(c, t)                                    -- Frenzied Onslaught
 	for _ = 1, 5 do M.weapon_blow(c, t, 120, 0.5) end
+	M.tell(c, string.format("You rain five blows on %s.", t and t:GetCleanName() or "your target"))
 end
 P[44747] = function(c, t)                                    -- Blood Frenzy
 	if not M.weapon_blow(c, t, 15) then return end
 	-- 2 seconds per tenth of health missing: fully wounded is the full 18, untouched is nothing.
 	local missing = 100 - (c:GetHPRatio() or 100)
-	M.cut_tier2(c, math.floor(missing / 10) * 2)
+	local cut = math.floor(missing / 10) * 2
+	M.tell(c, cut > 0
+		and "Your own wounds feed the frenzy."
+		or "You are unhurt, and the frenzy finds nothing to feed on.")
+	M.cut_tier2(c, cut)
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -801,8 +953,20 @@ function M.fire(spell_id, e)
 		end
 	end
 
+	-- ⚠️⚠️ EVERY PRESS ANSWERS FOR ITSELF. `said` is cleared here and set by M.tell, so a payload
+	-- that early-returns -- no target, nothing in range, no bow, nothing afflicting -- still leaves
+	-- the player with a line explaining why. Without it "nothing happened" and "it fired and found
+	-- nothing" are the same on screen, which is exactly the ambiguity that made Harrowing look broken.
+	said = false
 	local fn = P[spell_id]
 	if fn then fn(caster, target, e) end
+	if not said then
+		-- The ten abilities whose spell row does all the work have no payload at all, so their line
+		-- lives in M.NOTE. Anything else reaching here early-returned without saying why, which is a
+		-- bug in that payload rather than in this fallback -- the generic line is the safety net.
+		M.tell(caster, M.NOTE[spell_id]
+			or string.format("You use %s.", eq.get_spell_name(spell_id) or "your ability"))
+	end
 	-- ⚠️ NO RETURN VALUE. Returning non-zero from EVENT_SPELL_EFFECT_* cancels the spell's own
 	-- effects (spell_effects.cpp:172), which would silently delete every native half of these rows.
 end
