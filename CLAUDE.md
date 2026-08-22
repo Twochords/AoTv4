@@ -3309,6 +3309,24 @@ easy to miss and easy to re-implement by accident.
 - Rule `Zone:ZoneShardQuestMenuOnly` (currently false) suppresses the automatic assignment so only
   quests surface the menu — i.e. makes sharding opt-in.
 
+### ⚠️⚠️ THE ZONE PORT RANGE DRIFTED BACK TO 7000-7010 AND ZONES SILENTLY FAILED TO BOOT (2026-08-22)
+Reported from play as *"I couldn't get in to Crushbone"*. Nothing was wrong with the zone: its row is
+Classic, `bypass_expansion_check = 1`, no `min_level`/`min_status`/`flag_needed`, and the character
+was a **GM** so region locking never applied (`RegionManager::CanEnterZone` returns true for a GM
+before any region test). The zone simply could not get a port.
+- `eqemu_config.json` `server.zones.ports` was **7000-7010** -- eleven ports -- against
+  `devcontainer.json` `appPort` of **7000-7029** and `launcher.zone.dynamics = 9`. §27 records the
+  range being widened to 7000-7029 on 2026-07-30 for exactly this reason; it had drifted back.
+- ⚠️⚠️ **THE TELL IS IN A *ZONE* LOG, NOT WORLD'S**, and it is one line:
+  `World did not have a port to assign from this server, the port range was not large enough.`
+  World itself logs nothing useful, and the player just cannot enter -- no error, no refusal message.
+  📌 The other tell is world assigning ports at the **ends** of the range (7001 and 7010) rather than
+  in sequence: a nearly-full pool. After the fix it hands out 7001, 7002, 7003 ... in order.
+- ⚠️ The config is a symlink to `.devcontainer/override/eqemu_config.json` -- edit the real file, and
+  the range is read at **world boot**, so world must be restarted (then eqlaunch, exactly one).
+- 📌 **Check this first for any "cannot enter a zone" report**, before regions, expansions or flags:
+  it presents identically to all of them and none of those log anything either.
+
 ### ⚠️⚠️ EVERY SHARD IS AN INSTANCE, SO EVERY SHARD COSTS A ZONE PROCESS AND A ZONE PORT
 This is the reason it is off. The port range was widened to **7000-7029** on 2026-07-30 because six
 was not enough for the `zone` launcher's **28 dynamics** (§0), and the Delve already burns an instance
