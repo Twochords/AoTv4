@@ -644,6 +644,17 @@ function M.on_popup(e)
 	local sp = M.spot(id)
 	if not sp then return true end
 
+	-- ⚠️⚠️ RE-CHECK THE BOOK GATE FIRST. The confirmation popup lingers on screen client-side, so it can
+	-- be answered after BOOK_GRACE_SECS has expired or after the player has walked away from the book --
+	-- and answering it must NOT travel them. Leaving this out was a clean bypass of the whole "only at a
+	-- book" rule: the popup ported you exactly when the window itself would have refused. Same check as
+	-- M.request; PENDING is already consumed above, so a stale popup cannot be reused.
+	local stamped = tonumber(eq.get_data(bookkey(c))) or 0
+	if stamped <= 0 or (os.time() - stamped) > M.BOOK_GRACE_SECS then
+		c:Message(MT.Red, "You must be reading a Plane of Knowledge book to travel. This is a map of what you have found.")
+		return true
+	end
+
 	-- ⚠️ RE-CHECK, do not trust the parked request. Time passed while the box was on screen: they may
 	-- have been pulled, or (in a group) somebody may have zoned out. The popup is a confirmation, not
 	-- a licence.
