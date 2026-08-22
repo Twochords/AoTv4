@@ -8833,6 +8833,12 @@ int Mob::GetPotencySoftCap()
 		+ GetHeroicINT() * RuleR(AoT, PotencyCapPerHInt);
 }
 
+int Mob::GetHealingPotencySoftCap()
+{
+	return RuleI(AoT, HealingPotencySoftCap)
+		+ GetHeroicWIS() * RuleR(AoT, HealingPotencyCapPerHWis);
+}
+
 int Mob::GetResistHardCap(RESISTTYPE resist_type)
 {
 	int heroic = 0;
@@ -8974,5 +8980,26 @@ uint64 Mob::ScaleSpellDamage(Mob* defender, uint64 base_damage, int resist_adjus
 	// computed 1.5 and dealt 1. The two exits now round the same way.
 	return static_cast<uint64>(
 		base_damage * mult / 100.0f
+	);
+}
+
+
+uint64 Mob::ScaleSpellHealing(Mob* target, uint64 base_healing)
+{
+	float potency = 0.0f;
+
+	potency += GetWIS() * RuleR(AoT, HealingPotencyPerWis);
+	potency += GetHeroicWIS() * RuleR(AoT, HealingPotencyPerHWis);
+	potency += GetHealAmt();
+
+	int softcap = GetHealingPotencySoftCap();
+
+	if (potency > softcap)
+	{
+		potency = softcap + (potency - softcap) * RuleR(AoT, HealingPotencyAfterCapReturns);
+	}
+	base_healing *= (100 + potency) / 100;
+	return static_cast<uint64>(
+		base_healing
 	);
 }

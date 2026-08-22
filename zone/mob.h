@@ -365,6 +365,13 @@ public:
 	int64 GetActSpellDamage(uint16 spell_id, int64 value, Mob* target = nullptr);
 	int64 GetActDoTDamage(uint16 spell_id, int64 value, Mob* target, bool from_buff_tic = true);
 	int64 GetActSpellHealing(uint16 spell_id, int64 value, Mob* target = nullptr, bool from_buff_tic = false);
+	// ⚠️⚠️ DECLARATIONS ADDED ON MERGE (2026-08-22). The healing-potency commit added these two
+	// definitions to mob.cpp but never touched mob.h, so the branch as pushed does NOT compile:
+	//   error: no declaration matches 'int Mob::GetHealingPotencySoftCap()'
+	//   error: no declaration matches 'uint64 Mob::ScaleSpellHealing(Mob*, uint64)'
+	// 📌 Nothing calls ScaleSpellHealing yet -- it is wired up but not yet used by any heal path.
+	int    GetHealingPotencySoftCap();
+	uint64 ScaleSpellHealing(Mob* target, uint64 base_healing);
 	int32 GetActSpellCost(uint16 spell_id, int32 cost);
 	virtual int32 GetActSpellDuration(uint16 spell_id, int32 duration);
 	int32 GetActSpellCasttime(uint16 spell_id, int32 casttime);
