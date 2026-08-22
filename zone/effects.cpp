@@ -531,7 +531,7 @@ int64 Mob::GetActSpellHealing(uint16 spell_id, int64 value, Mob* target, bool fr
 		value += GetFocusEffect(focusFcHealAmtCrit, spell_id); //SPA 396 Add before critical
 
 		//Using IgnoreSpellDmgLvlRestriction to also allow healing to scale
-		if (
+		/*if (
 			RuleB(Spells, IgnoreSpellDmgLvlRestriction) &&
 			!spells[spell_id].no_heal_damage_item_mod &&
 			GetHealAmt()
@@ -544,7 +544,8 @@ int64 Mob::GetActSpellHealing(uint16 spell_id, int64 value, Mob* target, bool fr
 			spells[spell_id].classes[(GetClass() % 17) - 1] >= GetLevel() - 5
 		) {
 			value += GetExtraSpellAmt(spell_id, GetHealAmt(), base_value); //Item Heal Amt Add before critical
-		}
+		}*/
+		value = ScaleSpellHealing(target, value);
 
 		if (target) {
 			value += value * target->GetHealRate() / 100; //SPA 120 modifies value after Focus Applied but before critical
@@ -587,7 +588,7 @@ int64 Mob::GetActSpellHealing(uint16 spell_id, int64 value, Mob* target, bool fr
 			extra_heal += GetSkillDmgAmt(spells[spell_id].skill);
 		}
 
-		if (RuleB(Spells, HOTsScaleWithHealAmt)) {
+		/*if (RuleB(Spells, HOTsScaleWithHealAmt)) {
 			if (
 				RuleB(Spells, IgnoreSpellDmgLvlRestriction) &&
 				!spells[spell_id].no_heal_damage_item_mod &&
@@ -602,7 +603,8 @@ int64 Mob::GetActSpellHealing(uint16 spell_id, int64 value, Mob* target, bool fr
 			) {
 				extra_heal += GetExtraSpellAmt(spell_id, GetHealAmt(), base_value);
 			}
-		}
+		}*/
+		base_value = ScaleSpellHealing(target, base_value);
 
 		if (extra_heal) {
 			if (RuleB(Spells, HOTBonusHealingSplitOverDuration)) {
