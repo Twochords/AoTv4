@@ -5141,10 +5141,27 @@ points** either way — this is a change of **timing, not of income**. §6 and �
   the cap has `set_exp` clamped back to where it already was, so the delta is 0 and no AA is earned.
   Compute the delta **before** the clamp and a capped character farms AA forever — which is exactly the
   v50 bug (deaths paying 7 points against an intended 2.32) reintroduced by another route.
-- ⚠️⚠️ **NO LEVEL SCALING, DELIBERATELY.** 1:1 is already steeply depth-weighted twice over: a higher
-  level mob grants more experience, *and* the curve is quadratic in cumulative terms. Levels 1-10 are
-  **11.6 percent** of a climb's AA and levels 20-30 are **55 percent**. A `(level/cap)` multiplier was
-  tried on the death payout and reverted for this reason; adding one here double-counts it a third time.
+- ⚠️⚠️ **NO LEVEL SCALING, DELIBERATELY.** The rate is a flat percentage and must stay one. It is
+  already steeply depth-weighted twice over: a higher level mob grants more experience, *and* the curve
+  is quadratic in cumulative terms. Levels 1-10 are **11.6 percent** of a climb's AA and levels 20-30
+  are **55 percent**. A `(level/cap)` multiplier was tried on the death payout and reverted for this
+  reason; adding one here double-counts it a third time.
+- ⚠️⚠️ **THE RATE IS `AoT:LiveAAExpPct` AND IT IS NO LONGER 1:1 — it is 130** (2026-08-22, owner
+  decision), so a full climb to the cap yields **3.02 points** against the 2.32 the death lump paid.
+  📌 **Scaling it in `exp.cpp` is the only correct place.** The obvious alternative — dividing
+  `AA:ExpPerPoint` by 1.3 — would silently disagree with the **hardcoded `AA_EXP_PER_POINT` copy in
+  `global_player.lua`** that §35 already records drifting ~120x, and would also change what a *spent*
+  point costs rather than what a kill *earns*.
+  ⚠️ It does **nothing while `LiveAAExp` is false**: the death-lump branch is Lua and divides `run_xp`
+  by that same hardcoded constant, so flipping the rule off reverts to the un-scaled rate.
+  ⚠️ Multiply before dividing — a small experience delta otherwise truncates to zero AA and low-level
+  kills silently pay nothing.
+- ⚠️⚠️ **`AoT:AAExpSlowdownEnabled` IS OFF** (migration **v126**, 2026-08-22). It braked *normal*
+  experience as AA accumulated; the header default was already `false` and a `rule_values` row was
+  overriding it, which is the §22 trap — **a header default is not what a live server runs.**
+  📌 It never touched AA per **level** (the applied experience needed to level is fixed), only AA per
+  **kill**, because it shrank the gain portion of each award. Turning it off therefore raises AA per
+  kill on top of the 130.
 - ⚠️ Not paid on **resurrection** experience — that is a refund of experience already earned once.
 - 📌 Dying is still the only way to keep earning: at the cap you stop gaining experience, so you stop
   gaining AA until a new run.

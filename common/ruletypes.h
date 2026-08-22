@@ -1200,6 +1200,13 @@ RULE_INT(AoT, AAExpMinLevel,            	1,    "Lowest level at which a characte
 // change, not an income change. It stops automatically at the level cap because a capped character's
 // applied experience is 0 (see the note in Client::SetEXP) -- which is what keeps the v50 fix intact.
 RULE_BOOL(AoT, LiveAAExp,               	true,  "Earn AA experience continuously at 1:1 with normal experience, instead of converting the run total to AA at death. Requires the matching global_player.lua change (drop the death lump) or AA is paid twice.")
+// The 1:1 above is the BASELINE, not a law: this scales it. 130 is a deliberate 30 percent income
+// increase (2026-08-22, owner decision), so a full climb to the cap yields 3.02 points rather than
+// 2.32. It scales AA income ONLY -- normal experience, the level curve and the cap are untouched.
+// WARNING: THIS DOES NOTHING WHEN LiveAAExp IS FALSE. The death-lump path is Lua and divides run_xp
+// by its own hardcoded AA_EXP_PER_POINT (global_player.lua), so flipping LiveAAExp off silently
+// reverts to the un-scaled rate. Change both or neither.
+RULE_INT(AoT, LiveAAExpPct,             	130,   "Percent of applied normal experience also paid as AA experience while LiveAAExp is on. 100 = the stock 1:1, 130 = 30 percent more AA per kill. Does not affect normal experience or the level cap.")
 // WARNING: WITHOUT THIS, LiveAAExp HANDS PLAYERS SPENDABLE POINTS IN THE NATIVE AA WINDOW, which
 // defeats the random picker entirely -- they could simply buy what they wanted directly.
 RULE_BOOL(AoT, AAPointsToPicker,        	true,  "Earned AA points go to the picker's private bank (aa_bank_<charid>) via EVENT_AA_GAIN and the native unspent pool is forced to 0, so AA can only be spent through the random picker.")

@@ -772,12 +772,16 @@ void Client::SetEXP(ExpSource exp_source, uint64 set_exp, uint64 set_aaxp, bool 
 	}
 	check_level--;
 
-	// AoTv4: AA EXPERIENCE IS EARNED 1:1 WITH THE EXPERIENCE ACTUALLY APPLIED.
+	// AoTv4: AA EXPERIENCE IS EARNED FROM THE EXPERIENCE ACTUALLY APPLIED, AT AoT:LiveAAExpPct.
 	//
 	// The roguelite already converted a run's experience into AA at exactly this rate, but only as a
 	// lump at death, so the AA bar sat dead for the whole run. This pays the same total continuously
-	// instead: a full climb to the cap is 464,000 experience = 2.32 points either way. It is a change
-	// of TIMING, not of income -- do not "balance" it by scaling the rate.
+	// instead: a full climb to the cap is 464,000 experience = 2.32 points at the stock 1:1 rate.
+	//
+	// The RATE IS A RULE, AoT:LiveAAExpPct, and it is 130 -- a deliberate 30 percent income increase
+	// (2026-08-22), so a full climb yields 3.02 points. Scaling it here is the ONLY correct place: it
+	// leaves normal experience, the level curve and the cap untouched, where changing AA:ExpPerPoint
+	// instead would silently disagree with the hardcoded AA_EXP_PER_POINT copy in global_player.lua.
 	//
 	// WARNING: THE CAP CLAMP MUST HAPPEN HERE, ABOVE THE AA AWARD BLOCK, AND THAT IS THE WHOLE REASON
 	// IT MOVED UP FROM ITS ORIGINAL POSITION FURTHER DOWN THIS FUNCTION. Deriving AA from the applied
@@ -803,7 +807,11 @@ void Client::SetEXP(ExpSource exp_source, uint64 set_exp, uint64 set_aaxp, bool 
 	}
 
 	if (RuleB(AoT, LiveAAExp) && !isrezzexp && set_exp > current_exp) {
-		set_aaxp += (set_exp - current_exp);
+		// AoT:LiveAAExpPct scales the 1:1 above (130 = 30 percent more AA per kill, 2026-08-22).
+		// Multiply BEFORE dividing, or a small experience delta truncates to zero AA and low level
+		// kills silently pay nothing -- the same trap as the Shield Wall split and the endurance cost.
+		const int aotv4_aa_pct = RuleI(AoT, LiveAAExpPct);
+		set_aaxp += ((set_exp - current_exp) * static_cast<uint64>(aotv4_aa_pct > 0 ? aotv4_aa_pct : 0)) / 100;
 	}
 
 	//see if we gained any AAs

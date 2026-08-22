@@ -10261,6 +10261,22 @@ REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_si
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 126,
+		.description = "2026_08_22_disable_aa_exp_slowdown",
+		// Submitted by: Claude
+		// Turns off the AA experience slowdown. Owner decision.
+		.check       = "SELECT `rule_value` FROM `rule_values` WHERE `rule_name` = 'AoT:AAExpSlowdownEnabled'",
+		.condition   = "match",
+		.match       = "true",
+		.sql         = R"(
+UPDATE rule_values SET rule_value = 'false' WHERE rule_name = 'AoT:AAExpSlowdownEnabled';
+
+-- 📌 The Base and Factor rows are left alone on purpose: they are inert while the switch is off, and
+-- keeping them preserves the tuning if it is ever turned back on.
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does
