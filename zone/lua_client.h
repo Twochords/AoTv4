@@ -366,6 +366,7 @@ public:
 	bool GrantAlternateAdvancementAbility(int aa_id, int points);
 	bool GrantAlternateAdvancementAbility(int aa_id, int points, bool ignore_cost);
 	bool AoTv4ReduceAATimer(int aa_id, int seconds);
+	bool AoTv4ReduceDisciplineTimer(int timer_id, int seconds);
 	int StartPlayerTrader(int default_mult);
 	std::string GetTraderSatchelItemIDs();
 	void StopPlayerTrader();

@@ -1316,6 +1316,7 @@ public:
 	uint32 GetDisciplineTimer(uint32 timer_id);
 	void ResetAllDisciplineTimers();
 	int GetDiscSlotBySpellID(int32 spellid);
+	bool AoTv4ReduceDisciplineTimer(uint32 timer_id, int seconds);
 	void ResetDisciplineTimer(uint32 timer_id);
 	void SendDisciplineUpdate();
 	void SendDisciplineTimer(uint32 timer_id, uint32 duration);

@@ -150,9 +150,19 @@ def validate(meta, body):
     for m in re.finditer(r"\b(?:VALUES\s*\(|id\s*=\s*)(\d{4,7})\b", body):
         pass  # id extraction is done in band_check with table context
 
-    if re.search(r"\bDELETE\s+FROM\b(?![\s\S]{0,200}?\bWHERE\b)", body, re.I):
-        fail("a DELETE with no WHERE. Scope it to exactly the ids this migration creates "
-             "(section 5: aotv4_moonfire_line.sql nearly ate the Sinew line).")
+    # ⚠️ Temporary tables this migration creates are EXEMPT. The clone-via-temp-table idiom used all
+    # over this project (`CREATE TEMPORARY TABLE x LIKE spells_new` ... `DELETE FROM x`) is how a row
+    # is cloned without hand-listing ~236 columns, and an unbounded DELETE against that scratch table
+    # is correct. Flagging it made a correct migration unsubmittable.
+    temps = {m.group(1).lower() for m in
+             re.finditer(r"CREATE\s+TEMPORARY\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?([A-Za-z0-9_]+)`?",
+                         body, re.I)}
+    for m in re.finditer(r"\bDELETE\s+FROM\s+`?([A-Za-z0-9_]+)`?([\s\S]{0,200})", body, re.I):
+        table, tail = m.group(1).lower(), m.group(2)
+        if table in temps: continue
+        if re.search(r"\bWHERE\b", tail, re.I): continue
+        fail(f"a DELETE with no WHERE on `{table}`. Scope it to exactly the ids this migration "
+             "creates (section 5: aotv4_moonfire_line.sql nearly ate the Sinew line).")
 
     if re.search(r"\b(items|spells_new)\b", body, re.I) and meta.get("shared-memory", "").lower() not in ("yes", "true"):
         warn("touches `items` or `spells_new`, which are SHARED MEMORY. Add `shared-memory: yes` so "

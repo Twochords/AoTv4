@@ -1048,6 +1048,55 @@ uint32 Client::GetDisciplineTimer(uint32 timer_id) {
 	return disc_timer;
 }
 
+// ⚠️⚠️ THE ONLY WAY TO SHORTEN A DISCIPLINE'S RECAST -- and it MUST key on timer_id, not spell_id.
+// A discipline's recast lives EXCLUSIVELY in the shared `pTimerDisciplineReuseStart + timer_id` slot:
+// CastSpell's per-spell branch (spells.cpp:2909) is guarded by `&& !spells[spell_id].is_discipline`,
+// so `pTimerSpellStart + spell_id` is NEVER started for one. Anything written against the spell id
+// silently does nothing and reads as "the cooldown reduction is broken".
+// 📌 Mirrors Client::AoTv4ReduceAATimer, including both of its traps.
+bool Client::AoTv4ReduceDisciplineTimer(uint32 timer_id, int seconds)
+{
+	if (seconds <= 0) {
+		return false;
+	}
+
+	// ⚠️ timer_id above 10 does not address a discipline slot at all -- pTimerDisciplineReuseEnd is 24
+	// and pTimerCombatAbility is 25, so 11 collides with Kick/Bash, 12 with Tiger Claw and 13 with
+	// Begging. Refuse rather than corrupting an unrelated persistent timer.
+	if (timer_id > (pTimerDisciplineReuseEnd - pTimerDisciplineReuseStart)) {
+		LogSpells("AoTv4ReduceDisciplineTimer: timer_id [{}] is out of the discipline range", timer_id);
+		return false;
+	}
+
+	const pTimerType t = pTimerDisciplineReuseStart + timer_id;
+
+	if (!GetPTimers().Enabled(t)) {
+		return false;
+	}
+
+	// ⚠️⚠️ GetRemainingTime returns 0xFFFFFFFF for a timer that EXISTS but is DISABLED, not 0.
+	// Unguarded, that reads as a 49-day cooldown and the subtraction below wraps.
+	const uint32 remaining = GetPTimers().GetRemainingTime(t);
+	if (remaining == 0 || remaining == 0xFFFFFFFF) {
+		return false;
+	}
+
+	const uint32 cut = static_cast<uint32>(seconds);
+
+	if (remaining <= cut) {
+		GetPTimers().Clear(&database, t);
+		// ⚠️ The client keeps its own countdown. Without this it stays greyed out while the server
+		// considers the ability ready -- the same trap the AA version documents.
+		SendDisciplineTimer(timer_id, 0);
+		return true;
+	}
+
+	const uint32 left = remaining - cut;
+	GetPTimers().Start(t, left);
+	SendDisciplineTimer(timer_id, left);
+	return true;
+}
+
 void Client::ResetDisciplineTimer(uint32 timer_id) {
 	pTimerType disc_timer_id = pTimerDisciplineReuseStart + timer_id;
 	if (GetPTimers().Enabled(disc_timer_id)) {

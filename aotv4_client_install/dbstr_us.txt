@@ -36875,6 +36875,60 @@
 44600^6^Strikes your target with righteous force. The blow grows with your Strength, and never falls below what your level alone can muster.^0
 44601^6^Calls down aid on your whole group, healing each of them for a quarter of your own maximum hit points.^0
 44602^6^Rebukes your target, stunning it briefly and hastening the return of Hand of Conviction by five seconds.^0
+44700^6^Cleave into your target with your equipped weapon, striking for weapon damage and seizing its attention.^0
+44701^6^Brace behind your guard. The next 5 melee attacks against you are each reduced by a tenth of your armor class, and any blow weaker than that is turned aside entirely.^0
+44702^6^Sweep everything in front of you. Each target struck shortens the recovery of Bulwark by 3 seconds, to a maximum of 9. Generates no additional threat.^0
+44703^6^Strike your target with your weapon and draw a measure of vigour back into yourself.^0
+44704^6^Shelter your group. Each member is healed for a sixth of their own maximum health at once, and again when the shelter lifts three ticks later.^0
+44705^6^Call down judgement. Shortens Sanctuary by 5 seconds, or by 10 against the undead.^0
+44706^6^A weapon blow carried by conviction rather than force, and it draws the eye of what you strike.^0
+44707^6^Spend your own vitality to mend your group. Each member is healed for a quarter of YOUR maximum health, which is why a Paladin who builds health heals harder.^0
+44708^6^A rebuke that halts your target briefly and fixes its attention on you. Shortens Hand of Conviction by 5 seconds.^0
+44709^6^Two swings in the time of one.^0
+44710^6^Loose a volley at everything in front of you.^0
+44711^6^Fire at a target already in your face. Shortens Volley by 5 seconds, or by 10 with a bow drawn.^0
+44712^6^A cruel swing that draws the life out of what it opens.^0
+44713^6^Tear the life from everything around you and take it for your own.^0
+44714^6^Swear the next wound to yourself: your next Reaving Strike drains twice as deeply. Shortens Harrowing by 6 seconds.^0
+44715^6^Drive thorns into your target. Every melee blow it lands wounds it in turn.^0
+44716^6^Growth closes wounds faster than they open, for a while.^0
+44717^6^A lance of light, brighter against something that cannot move. Shortens Wildgrowth by 5 seconds, or by 10 against a rooted or snared target.^0
+44718^6^An open hand driven through the guard, weighted by the pace of your weapon.^0
+44719^6^Stand in the space between blows. The next 4 melee attacks against you are far likelier to find nothing there.^0
+44720^6^One strike, placed where it is felt. Shortens Void Stance by 6 seconds.^0
+44721^6^A note struck wrong. Your target guards itself worse for it.^0
+44722^6^The music carries your group. Their second wind arrives early.^0
+44723^6^Set the beat of the fight. The next 5 blows landed on your target hurt it more. Shortens Crescendo by 5 seconds.^0
+44724^6^Open a leg. What you have cut cannot run.^0
+44725^6^A wound that will not close on its own.^0
+44726^6^Put a blade where it is already bleeding, for half as much again. Shortens Rupture by 5 seconds.^0
+44727^6^A ward that sees the blow coming. What strikes through it is slowed for its trouble.^0
+44728^6^The same ward, over your whole group, and it bites harder.^0
+44729^6^Sap what your target swings, thinks and commands with. Shortens Crippling Spirit by 5 seconds, or by 10 against something already slowed.^0
+44730^6^Your hand leaves rot behind it.^0
+44731^6^Call in every debt at once. Each affliction on your target is spent for damage and health.^0
+44732^6^Name the price of what is already killing your target. Shortens Soul Harvest by 15 seconds.^0
+44733^6^Strike with the hand that is not casting, and take a little power back from the impact.^0
+44734^6^Pour everything into one cast. The recoil leaves you reeling for a moment.^0
+44735^6^Draw off a thread of the ley. Each thread makes your next Overload land harder, up to three. Shortens Overload by 5 seconds.^0
+44736^6^A fist wrapped in flame, and a guardian at your shoulder if you have none.^0
+44737^6^Call a brief host of servants to fight beside your guardian.^0
+44738^6^A burst of cinders, twice as fierce on whatever your pet is already fighting. Shortens Elemental Swarm by 7 seconds.^0
+44739^6^Thin every ward your target has against magic.^0
+44740^6^Hand your group back the thoughts they have spent.^0
+44741^6^Fray your own mind against the working. Your spells land harder for three ticks. Shortens Gift of Thought by 5 seconds.^0
+44742^6^A raking blow, and a companion at your side if you have none.^0
+44743^6^You and your companion both move faster and mend faster.^0
+44744^6^You can smell the end of it. Far worse for a target below half health, and it shortens Feral Frenzy by 5 seconds, or by 10 on wounded prey.^0
+44745^6^Everything behind the swing and nothing behind the guard. It costs you a little blood.^0
+44746^6^Five swings, as fast as you can put them in.^0
+44747^6^The worse your own wounds, the sooner you can do that again. Shortens Frenzied Onslaught by 2 seconds for every tenth of your health that is gone.^0
+44750^6^The delayed half of Sanctuary.^0
+44751^6^The cold left behind by a warded blow.^0
+44752^6^The cold left behind by a warded blow.^0
+44753^6^Your next Reaving Strike drains twice as deeply.^0
+44754^6^The guardian granted by Elemental Fist.^0
+44755^6^The companion granted by Feral Swipe.^0
 45192^6^Summons a clockwork that knows how to party.^0
 45194^6^Pressing one of these buttons will do something.^0
 45195^6^Clicking this item will offer you the chance to change your name.  Once you change your name the change is permanent.^0

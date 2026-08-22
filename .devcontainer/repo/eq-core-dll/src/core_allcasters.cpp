@@ -9,6 +9,21 @@
 #include "MQ2Main.h"
 #include "core_allcasters.h"
 
+#include <cstdio>
+#include <cstdarg>
+
+// ⚠️⚠️ THE COMBAT ABILITIES WINDOW IS NEVER "ACTIVATED" FOR A CLASS THAT HAS NO DISCIPLINES ON LIVE,
+// and that one byte is why a Cleric saw a blacked-out icon on the Window Selector and got nothing
+// from Alt+C. See core_allcasters.h for the full trace. Both the selector button and the window's
+// own drawing read `CSidlScreenWnd+0x1d4`, so setting it fixes both at once.
+// ⚠️ Re-asserted every frame on purpose -- the client clears it on deactivate (0x864150) and a UI
+// reload rebuilds the window with it at 0. The cost is two pointer reads per frame.
+// HasCombatAbilities detour: "yes" for every class -> the Window Selector lights the Combat
+// Abilities icon and the window opens. Same one-line shape as IsSpellcaster, same reason.
+int __fastcall HasCombatAbilities_Trampoline(void* pThis);
+int __fastcall HasCombatAbilities_Detour(void* pThis) { return 1; }
+DETOUR_TRAMPOLINE_EMPTY(int __fastcall HasCombatAbilities_Trampoline(void* pThis));
+
 // IsSpellcaster detour: report "yes, a caster" for every class -> spellbook + gems + casting.
 int __fastcall EnableAllClassesCasters_Trampoline(void* pThis);
 int __fastcall EnableAllClassesCasters_Detour(void* pThis) { return 1; }
@@ -84,6 +99,12 @@ void EnableAllClassesCasters()
 		(((DWORD)EQ_Character__ManaGaugePredicate_addr - 0x400000) + baseAddress),
 		ManaGaugePredicate_Detour,
 		ManaGaugePredicate_Trampoline
+	);
+	// COMBAT ABILITIES: the predicate CSelectorWnd feeds into the combat button's state
+	EzDetour(
+		(((DWORD)EQ_Character__HasCombatAbilities_addr - 0x400000) + baseAddress),
+		HasCombatAbilities_Detour,
+		HasCombatAbilities_Trampoline
 	);
 	// SPELLS-NOT-SONGS: skill-gate the client's IsBardSong so skill-98 reward spells cast as spells
 	EzDetour(

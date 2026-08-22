@@ -772,8 +772,13 @@ GM `#resetaa aa` only *refunds* spent → unspent (doesn't zero the pool). The m
 - **Bard `skill_caps`** (`class_id=8`) raised so skills scale; client also needs the exported
   `SkillCaps.txt` (`export_client_files`) installed in the EQ root.
 - **Expansion lock:** `rule_values Expansion:CurrentExpansion = 0` (Classic).
-- Test char `Ashrem`: charid **1**, GM — **Warrior (class 1)** as of 2026-07-29, not Bard; it was
-  remade after the all-classes pivot (§14), so it also exercises the melee-as-caster path.
+- Test char `Ashrem`: charid **1**, GM — ⚠️⚠️ **PALADIN (class 3) as of 2026-08-21**, not the Warrior
+  this line claimed since 2026-07-29 and not the original Bard. Read the class out of the database
+  before planning a test around it.
+  ⚠️⚠️ **That makes Ashrem the WORST character on the server for testing class abilities (§30):
+  Paladin is the one class deliberately excluded** — its three are activated AAs — so it is granted
+  **no disciplines at all**, which looks exactly like the feature being broken. `Cexoos` (id 2) is
+  also a Paladin. Use `Aqqeroun` (Rogue) or `Apheyawus` (Shadowknight) instead.
   (Reset a char's combat skills via
   `UPDATE character_skills SET value=0 WHERE id=<charid> AND skill_id IN (...)` — only sticks
   while that char is at **character select**, else the live zone saves over it.)
@@ -3589,6 +3594,107 @@ in game at all** — the difficulty system in particular has a lot of first-gues
   native AA window shows **0 spendable** throughout, and that sitting **at the cap** earns nothing.
 - ⚠️ **Non-Bard songs (§46)** — a Monk with Largo's: cast once, no locked spell bar, and **camping
   works**. All three were separate failures of the previous approach.
+
+### ⚠️⚠️ The stock Combat Abilities window does NOT open for casters — the abilities live in OUR window (2026-08-21)
+All sixteen classes get three disciplines, but RoF2 only ever expected the melee classes to have any,
+and **Alt+C does nothing for a Cleric.** A detour was looked for first and not found: window creation
+(`0x498eba`), the constructor (`0x65b3c0`), the show dispatch (`0x487d72`) and
+`EQ_PC::GetCombatAbility` (`0x7c44f0`) all have **no class test**, and only two functions in the
+binary do a class jump-table lookup — one is `IsSpellcaster`. Binding
+`CMD_TOGGLE_COMBAT_ABILITY_WIN` and pressing it did not open it either. Same wall as §13's
+`CBazaarWnd`: exists everywhere, no findable gate, still will not render.
+✅ **The answer is a second tab on the Autoskill window**, which is ours and opens for anybody. It is
+retitled **"Combat Skills"** with tabs *Autoskill* and *Combat Skills*; the second lists the class
+abilities with their descriptions, recast state and a Use button. `/autoskill`, `/abilities` or
+`/ca`. ⚠️ The screen item is still `AoTAutoSkillWnd` — only the title changed, because renaming the
+item means renaming it in the dll, in `EQUI.xml` and in every saved UI ini at once.
+⚠️ **Needs a dll rebuild AND the updated XML** (it gained a `TabBox`) —
+`aotv4_client_install/AUTOSKILL_WINDOW_INSTALL.md`.
+⚠️⚠️ **YOU CANNOT DRAG OUT OF A CUSTOM SIDL LISTBOX.** The requirement was never "see them", it was
+"get them on a hotbar", and a Use button does not do that. **`/hotbutton` is the real answer** and it
+is in this client: `#ability` prints ready-to-paste lines like
+`/hotbutton CleavingBlow #ability 1`, and `global_player` says so once on login.
+
+### (superseded) The standalone Class Abilities window
+All sixteen classes get three disciplines, but RoF2 only ever expected the melee classes to have any,
+and **the client's own Combat Abilities window will not open for a Cleric or a Wizard.** A detour was
+looked for first and not found: window creation (`0x498eba`), its constructor (`0x65b3c0`), the
+window-id show dispatch (`0x487d72`) and `EQ_PC::GetCombatAbility` (`0x7c44f0`) all have **no class
+test**, and only two functions in the binary do a class jump-table lookup — one is `IsSpellcaster`.
+Binding `CMD_TOGGLE_COMBAT_ABILITY_WIN` and pressing it still did not open it.
+📌 Same wall as §13's `CBazaarWnd`: exists everywhere, no findable gate, still will not render
+because it was never **activated**. §13's answer was to ship our own window, and that is what
+`core_abilities.cpp` + `EQUI_AoTAbilityWnd.xml` are (`/abilities` or `/ca`).
+⚠️ **Needs a dll rebuild** — `aotv4_client_install/ABILITY_WINDOW_INSTALL.md`.
+✅ **`#ability 1|2|3` needs no dll at all** and is the fallback: bare `#ability` lists the three with
+their state, and `#ability 1` in a **social** makes a real hotbar button. Both routes go through
+`Client::UseDiscipline`, so every gate still applies.
+
+### Added 2026-08-21 — FIFTEEN classes of class abilities (v104-v119), built and never pressed
+45 disciplines at **44700-44747** plus 6 helper/trigger rows at **44750-44755**, one three-tier kit
+per class. Applied to the dev database (custom version **119**), shared memory rebuilt, client files
+exported. **Nobody has pressed any of them.** Design and per-class detail: `CLASS_ABILITIES_DESIGN.md`.
+- **Everything except Warrior is GENERATED** by `custom/tools/gen_class_abilities.py` — the 14 class
+  migrations, the cast-message migration, and all 45 Lua stubs come out of one spec table there.
+  ⚠️ Hand-editing a generated file is reverted by the next run, and the class migrations are already
+  merged, so **regenerating them would drift from the manifest**. That is why v119 exists separately.
+- **Every behaviour lives in `lua_modules/aotv4_class_abilities.lua`, keyed by spell id.** The spell
+  scripts are four-line stubs. 45 near-identical scripts would be 45 chances for the cost model, the
+  cooldown cut and the swing to drift.
+- ⚠️⚠️ **ALL SIXTEEN CLASSES ARE ON THE SAME MECHANISM AS OF 2026-08-21 (v122/v123).** Paladin was
+  the last holdout -- its three were activated AAs, so one class found its kit in the **AA window**
+  while fifteen found theirs in **Combat Abilities**. It now has disciplines 44706-44708 like
+  everyone else; v123 disables the AA hosts (45/55/79) and deletes the trained ranks.
+  ⚠️ The two migrations are a PAIR: the spells alone leave a Paladin holding each ability twice, the
+  retirement alone leaves them with none. `CLASS_AAS` in `global_player.lua` is now empty.
+  ⚠️ `character_alternate_abilities.aa_id` stores the **first_rank_id** (144/158/196), not the
+  ability id -- deleting by ability id matches nothing and silently leaves both versions in place.
+  📌 Spells 44600-44602, their rank rows and `lua_modules/aotv4_paladin.lua` are left DORMANT: they
+  cost nothing and are the only record of how the AA version was built.
+- ⚠️ Test each class as a **NON-GM** character (§41). The sharp per-class checks are in §30's Warrior
+  entry below; the ones unique to the other fourteen are: a **Magician** and a **Beastlord** getting a
+  pet from tier 1 that then **levels with them** (the rescale runs on level-up and on every press), a
+  **Necromancer** Soul Harvest consuming DoTs it did not cast, a **Ranger** firing Point Blank Shot
+  with and without a bow (it falls back to a heavier swing), and a **Wizard** stacking Ley Tap three
+  times before Overload.
+- ⚠️⚠️ **`IsDiscipline` IS A COLUMN, AND IT IS NOT THE `IsDiscipline()` FUNCTION.** The function is
+  derived (`mana == 0 && EndurCost > 0`) and was true for all 51 rows immediately; the COLUMN is
+  `spells_new` field 168, whose header comment is *"Will goto the combat window when cast"*, and a
+  clone inherits it. 32 of the 51 shipped with it **0** because they were cloned from templates that
+  are not disciplines, which is what made them read as spells rather than combat abilities. Stock
+  writes **-1**, never 1. Fixed by **v120**. 📌 Only **281** stock spells carry the column against
+  thousands that pass the function -- **read the column, not the function.**
+- ⚠️⚠️ **`player_1` IS THE PARTICLE/TRAIL GRAPHIC** and the instant template carries `BLUE_TRAIL`,
+  so 29 rows fired a blue projectile trail on sword swings. 263 of 281 stock disciplines are
+  `PLAYER_1` (no effect). Fixed by **v121**.
+- 📌 **Three of the five defects in this feature were the same bug wearing different columns**
+  (messages, `IsDiscipline`, `player_1`), and none of them affected whether the ability WORKED. After
+  cloning a row, diff it against a row of the shape you want, not against the template you cloned.
+- ⚠️⚠️ **The cast messages and icons were WRONG on first ship and are worth re-checking after any
+  future clone**: every row inherited its template's `cast_on_you`/`cast_on_other`/`spell_fades`,
+  so Sanctuary announced itself as *"You assume a defensive fighting style."* and every swing printed
+  *"You are hit by an invisible force."* v119 sets all 51 explicitly; swings are blanked on purpose.
+
+### Added 2026-08-21 — the Warrior class abilities (v104), built and never pressed
+The reference build for `CLASS_ABILITIES_DESIGN.md`: three **disciplines** at 44700-44702 (Cleaving
+Blow 1, Bulwark 5, Broad Cleave 10), `lua_modules/aotv4_class_abilities.lua`, three spell scripts,
+and `Client::AoTv4ReduceDisciplineTimer` + its Lua binding. It compiles, luachecks and the migration
+dry-runs clean; **nobody has cast any of it.**
+- ⚠️⚠️ **DEPLOY ORDER MATTERS**: the DB is at custom 103 and the binary at **104**, so every zone
+  refuses to boot until **world** applies the migration (§2's "Exiting due to pending database
+  updates"). Then, because `spells_new` is shared memory, the stack must come **down** for
+  `./shared_memory` before the rows are visible to any zone.
+- Test as a **Warrior** (§41 — and Ashrem already is one): the three abilities must appear in the
+  **Combat Abilities** window at levels 1/5/10, not in the spellbook.
+- ⚠️⚠️ The sharp test is that they are on **three separate cooldowns** (10 s / 120 s / 15 s). One
+  shared cooldown means `EndurTimerIndex` did not take, which is the correction the design doc's §1
+  now carries.
+- ⚠️ Then: Broad Cleave into **two** creatures must take **6 s** off Bulwark's recast and into empty
+  air must take **nothing**; Bulwark must absorb **five** hits, not four (the numhits trap); and
+  Cleaving Blow's damage message must read as an ordinary weapon hit rather than "you frenzy on".
+- ⚠️ Finally **die**, and confirm the abilities come back — the wipe untrains disciplines, so
+  `event_death_complete` re-grants them. This is the failure mode that has no in-game symptom until
+  the player looks for a button that is simply gone.
 
 ## 31. Individual loot — everybody gets their own roll — 2026-08-01
 

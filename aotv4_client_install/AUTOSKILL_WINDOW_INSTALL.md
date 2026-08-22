@@ -111,3 +111,54 @@ Also check **`<EQ>\UIErrorLog.txt`**: if the XML itself failed to parse it names
 - Auto-attack something → enabled skills fire, and their Ready In counts down and resets.
 - Close the window → no further chat traffic.
 - **No window at all** → the `<Include>` line, or an old dll.
+
+---
+
+## 2026-08-21: renamed "Combat Skills", and it now has TWO tabs
+
+The window's title is now **Combat Skills** and it carries two tabs:
+
+| tab | what it is |
+|---|---|
+| **Autoskill** | unchanged: turn each stock combat special on or off |
+| **Combat Skills** | the three CLASS abilities this class gets (44700-44747), with their description, recast state and a Use button |
+
+⚠️⚠️ **THIS IS WHY THE SECOND TAB EXISTS: the client's own Combat Abilities window will not open for
+every class.** RoF2 only ever expected the melee classes to have disciplines; here all sixteen get
+three, and **Alt+C does nothing for a Cleric**. So for most of the roster there was no stock window
+to find the abilities in, and nothing to drag to a hotbar.
+- A detour was looked for first and **not found** — disassembly of `eqgame.exe` shows no class test
+  at window creation (`0x498eba`), in the constructor (`0x65b3c0`), in the show dispatch
+  (`0x487d72`) or in `EQ_PC::GetCombatAbility` (`0x7c44f0`), and only two functions in the whole
+  binary do a class jump-table lookup (one is `IsSpellcaster`). Binding
+  `CMD_TOGGLE_COMBAT_ABILITY_WIN` and pressing it still did not open it.
+- 📌 Same wall as CLAUDE.md §13's `CBazaarWnd`. Putting the abilities in a window that is **ours**
+  sidesteps it entirely, and a tab in an existing window beats a second window: this is already
+  where a player looks for "what can I press".
+
+⚠️ **The screen item is still `AoTAutoSkillWnd`.** Only the visible title changed. Renaming the item
+would mean renaming it in `core_autoskill.cpp`, in `EQUI.xml` and in every character's saved UI ini
+at once, for a name the player never sees.
+
+### Install
+
+1. Rebuild the dll (`eq-core-dll-vs2022.vcxproj`). ⚠️ Close EQ first — it locks `dinput8.dll`.
+2. Copy the **updated** `EQUI_AoTAutoSkillWnd.xml` into `<EQ>\uifiles\default\`.
+   ⚠️ It gained a `TabBox` and a second page; the old flat copy will simply not have the tab.
+3. The `<Include>` line in `EQUI.xml` is unchanged — if the window worked before, it still resolves.
+
+### Opening it
+
+`/autoskill`, and **`/abilities` or `/ca`** now open the same window. Click the **Combat Skills** tab.
+📌 The dll does not select the tab for you: `CTabWnd::SetPage` is not something this build exposes
+reliably, and guessing at it is the kind of unverifiable client patch §13 warns about.
+
+### Still works with no dll at all
+
+**`#ability`** lists your three with their state and prints ready-to-paste `/hotbutton` lines:
+```
+/hotbutton CleavingBlow #ability 1
+```
+⚠️⚠️ **`/hotbutton` is the real answer to "how do I get it on my bar".** You cannot drag out of a
+custom SIDL listbox — ours or anyone's — so the Use button is for *using* an ability, not for
+*binding* one. `/hotbutton` builds the button from the command instead.

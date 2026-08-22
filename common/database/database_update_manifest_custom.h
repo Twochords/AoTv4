@@ -8008,6 +8008,2213 @@ DROP TEMPORARY TABLE IF EXISTS aotv4_parcel_gap;
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 104,
+		.description = "2026_08_21_warrior_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44702 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+-- ⚠️⚠️ EndurTimerIndex IS LOAD BEARING AND MUST NOT BE 0.
+-- A discipline's recast lives EXCLUSIVELY in `pTimerDisciplineReuseStart + timer_id`. CastSpell's
+-- per-spell branch is guarded by `&& !spells[spell_id].is_discipline`, so pTimerSpellStart is never
+-- started for one. Leaving this 0 would put every class ability on ONE shared cooldown, alongside
+-- the 87 stock discs that already use slot 0.
+-- ⚠️⚠️ ONLY 0-10 ARE VALID. pTimerDisciplineReuseEnd is 24 and pTimerCombatAbility is 25, so
+-- timer_id 11 collides with Kick/Bash, 12 with Tiger Claw, 13 with Begging.
+-- 📌 Slots chosen by how far the lowest stock discipline using them sits above our cap:
+--      tier 1 -> 5  (lowest stock disc there is level 68, only 19 rows)
+--      tier 2 -> 6  (level 66, 25 rows)
+--      tier 3 -> 2  (level 56, 39 rows)
+--    Not sequential on purpose. 1/4/7/8/9 all carry discs reachable at level 35 or below.
+-- 📌 Three slots serve all sixteen classes: a character is only ever one class, so no one can hold
+--    two tier 1s. Do NOT allocate per class -- there are only 11 slots in total.
+
+-- ⚠️ EndurCost is 1, not 0 and not the real cost. IsDiscipline requires mana = 0 AND EndurCost > 0,
+-- so 0 would leave the row out of the Combat Abilities window entirely. The real level-scaled cost
+-- is charged by Lua, because EndurCost is a flat int column and cannot express `N x level`.
+
+-- ⚠️ Scoped to exactly the three ids this migration creates, so a half-applied run (the check keys
+-- on the LAST thing written, the 44702 description) re-runs cleanly instead of dying on a duplicate
+-- key. Never widen it to the band: 44700-44747 is reserved for all sixteen classes.
+DELETE FROM spells_new WHERE id IN (44700, 44701, 44702);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- tier 1: Cleaving Blow
+-- Cloned from 4667 Rebuke of the Ikaav: single target, short recast, no buff.
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44700, name = 'Cleaving Blow', descnum = 44700,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, targettype = 5, skill = 98, mana = 0,
+    -- ⚠️ Presentation is set EXPLICITLY. A clone inherits new_icon, spellanim and
+    -- CastingAnim like every other column, so leaving them made two of these three share
+    -- icon 85 and fire the TEMPLATE's spell particle on what is meant to look like a swing.
+    new_icon = 87, spellanim = 0, CastingAnim = 44,
+    -- inert marker: the swing, its damage and its hate are paid by Lua through
+    -- DoSpecialAttackDamage, which is what gives it mitigation, avoidance and the section 22 charge.
+    effectid1 = 254, effectid2 = 254, effectid3 = 254,
+    effect_base_value1 = 0, effect_base_value2 = 0, effect_base_value3 = 0,
+    formula1 = 100, formula2 = 100, formula3 = 100, max1 = 0, max2 = 0, max3 = 0,
+    buffduration = 0, buffdurationformula = 0, numhits = 0, numhitstype = 0,
+    classes1 = 1,
+    classes2=255,classes3=255,classes4=255,classes5=255,classes6=255,classes7=255,classes8=255,
+    classes9=255,classes10=255,classes11=255,classes12=255,classes13=255,classes14=255,
+    classes15=255,classes16=255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- tier 3: Broad Cleave
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44702, name = 'Broad Cleave', descnum = 44702,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, targettype = 5, skill = 98, mana = 0,
+    -- ⚠️ Presentation is set EXPLICITLY. A clone inherits new_icon, spellanim and
+    -- CastingAnim like every other column, so leaving them made two of these three share
+    -- icon 85 and fire the TEMPLATE's spell particle on what is meant to look like a swing.
+    new_icon = 89, spellanim = 0, CastingAnim = 44,
+    effectid1 = 254, effectid2 = 254, effectid3 = 254,
+    effect_base_value1 = 0, effect_base_value2 = 0, effect_base_value3 = 0,
+    formula1 = 100, formula2 = 100, formula3 = 100, max1 = 0, max2 = 0, max3 = 0,
+    buffduration = 0, buffdurationformula = 0, numhits = 0, numhitstype = 0,
+    classes1 = 10,
+    classes2=255,classes3=255,classes4=255,classes5=255,classes6=255,classes7=255,classes8=255,
+    classes9=255,classes10=255,classes11=255,classes12=255,classes13=255,classes14=255,
+    classes15=255,classes16=255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- tier 2: Bulwark
+-- Cloned from 4499 Defensive Discipline: a self buff with a real duration.
+-- ⚠️⚠️ NO `numhits`, AND THAT IS DELIBERATE. numhitstype 6 (Incoming Hit Successes) would give a
+-- free client-side charge counter, but the engine spends the last charge and FADES THE BUFF inside
+-- CheckNumHitsRemaining (attack.cpp:4621), which runs BEFORE EVENT_DAMAGE_TAKEN (attack.cpp:4689) in
+-- the same Mob::CommonDamage call. The Lua payload would then find no buff on the fifth hit and
+-- absorb nothing -- an ability that advertises five and delivers four, silently. The charges are
+-- counted in aotv4_class_abilities.lua instead, which also fades the buff when they run out.
+-- 📌 buffduration is a CAP on the formula, not an alternative to it (spells.cpp:3300), so
+-- formula 11 with duration 10 is a flat 10 tics -- 60 seconds -- at every level. The charges are the
+-- real limit; the duration only stops it being pre-cast minutes before a pull.
+-- 📌 UseDiscipline refuses a self-buff discipline while any disc buff is already up
+-- (`HasDiscBuff()`, effects.cpp:977), so Bulwark cannot be refreshed to top its charges back up.
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44701, name = 'Bulwark', descnum = 44701,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, targettype = 6, skill = 98, mana = 0,
+    -- ⚠️ Presentation is set EXPLICITLY. A clone inherits new_icon, spellanim and
+    -- CastingAnim like every other column, so leaving them made two of these three share
+    -- icon 85 and fire the TEMPLATE's spell particle on what is meant to look like a swing.
+    new_icon = 1, spellanim = 0, CastingAnim = 44,
+    effectid1 = 254, effectid2 = 254, effectid3 = 254,
+    effect_base_value1 = 0, effect_base_value2 = 0, effect_base_value3 = 0,
+    formula1 = 100, formula2 = 100, formula3 = 100, max1 = 0, max2 = 0, max3 = 0,
+    buffduration = 10, buffdurationformula = 11, numhits = 0, numhitstype = 0,
+    classes1 = 5,
+    classes2=255,classes3=255,classes4=255,classes5=255,classes6=255,classes7=255,classes8=255,
+    classes9=255,classes10=255,classes11=255,classes12=255,classes13=255,classes14=255,
+    classes15=255,classes16=255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors -- eighteen heals shipped
+-- that way. Written in the same migration as the rows, deliberately.
+-- ⚠️ No literal percent sign: the description path is printf-style and eats it as a format token.
+DELETE FROM db_str WHERE id IN (44700, 44701, 44702) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44700, 6, 'Cleave into your target with your equipped weapon, striking for weapon damage and seizing its attention.'),
+ (44701, 6, 'Brace behind your guard. The next 5 melee attacks against you are each reduced by a tenth of your armor class, and any blow weaker than that is turned aside entirely.'),
+ (44702, 6, 'Sweep everything in front of you. Each target struck shortens the recovery of Bulwark by 3 seconds, to a maximum of 9. Generates no additional threat.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 105,
+		.description = "2026_08_21_cleric_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44750 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44703, 44704, 44705, 44750);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Templar Strike (44703)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44703, name = 'Templar Strike', descnum = 44703,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 88, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 1, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Sanctuary (44704)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44704, name = 'Sanctuary', descnum = 44704,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 41, goodEffect = 1,
+    new_icon = 99, spellanim = 278, CastingAnim = 43,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 3, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 147, effect_base_value1 = 17, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 289, effect_base_value2 = 44750, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 5, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Condemn (44705)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44705, name = 'Condemn', descnum = 44705,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 26, spellanim = 202, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 0, effect_base_value1 = -20, effect_limit_value1 = 0, formula1 = 4, max1 = 250,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 10, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Sanctuary Bloom (44750)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44750, name = 'Sanctuary Bloom', descnum = 44750,
+    EndurCost = 1, EndurTimerIndex = 0, recast_time = 0, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 6, goodEffect = 1,
+    new_icon = 99, spellanim = 278, CastingAnim = 43,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 147, effect_base_value1 = 17, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44703, 44704, 44705, 44750) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44703, 6, 'Strike your target with your weapon and draw a measure of vigour back into yourself.'),
+ (44704, 6, 'Shelter your group. Each member is healed for a sixth of their own maximum health at once, and again when the shelter lifts three ticks later.'),
+ (44705, 6, 'Call down judgement. Shortens Sanctuary by 5 seconds, or by 10 against the undead.'),
+ (44750, 6, 'The delayed half of Sanctuary.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 106,
+		.description = "2026_08_21_ranger_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44711 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44709, 44710, 44711);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Twin Slash (44709)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44709, name = 'Twin Slash', descnum = 44709,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 91, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 1,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Volley (44710)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44710, name = 'Volley', descnum = 44710,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 92, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 5,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Point Blank Shot (44711)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44711, name = 'Point Blank Shot', descnum = 44711,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 93, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 10,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44709, 44710, 44711) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44709, 6, 'Two swings in the time of one.'),
+ (44710, 6, 'Loose a volley at everything in front of you.'),
+ (44711, 6, 'Fire at a target already in your face. Shortens Volley by 5 seconds, or by 10 with a bow drawn.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 107,
+		.description = "2026_08_21_shadowknight_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44753 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44712, 44713, 44714, 44753);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Reaving Strike (44712)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44712, name = 'Reaving Strike', descnum = 44712,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 47, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 1, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Harrowing (44713)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44713, name = 'Harrowing', descnum = 44713,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 46, spellanim = 202, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 5, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Reaving Vow (44714)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44714, name = 'Reaving Vow', descnum = 44714,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 48, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 10, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Reaving Fervor (44753)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44753, name = 'Reaving Fervor', descnum = 44753,
+    EndurCost = 1, EndurTimerIndex = 0, recast_time = 0, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 6, goodEffect = 1,
+    new_icon = 48, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 3, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44712, 44713, 44714, 44753) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44712, 6, 'A cruel swing that draws the life out of what it opens.'),
+ (44713, 6, 'Tear the life from everything around you and take it for your own.'),
+ (44714, 6, 'Swear the next wound to yourself: your next Reaving Strike drains twice as deeply. Shortens Harrowing by 6 seconds.'),
+ (44753, 6, 'Your next Reaving Strike drains twice as deeply.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 108,
+		.description = "2026_08_21_druid_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44717 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44715, 44716, 44717);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Thorned Strike (44715)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44715, name = 'Thorned Strike', descnum = 44715,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 25, spellanim = 113, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 5, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 121, effect_base_value1 = -8, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 1, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Wildgrowth (44716)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44716, name = 'Wildgrowth', descnum = 44716,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 1,
+    new_icon = 30, spellanim = 278, CastingAnim = 43,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 10, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 0, effect_base_value1 = 12, effect_limit_value1 = 0, formula1 = 1, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 5, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Sunflare (44717)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44717, name = 'Sunflare', descnum = 44717,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 31, spellanim = 202, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 0, effect_base_value1 = -25, effect_limit_value1 = 0, formula1 = 4, max1 = 300,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 10, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44715, 44716, 44717) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44715, 6, 'Drive thorns into your target. Every melee blow it lands wounds it in turn.'),
+ (44716, 6, 'Growth closes wounds faster than they open, for a while.'),
+ (44717, 6, 'A lance of light, brighter against something that cannot move. Shortens Wildgrowth by 5 seconds, or by 10 against a rooted or snared target.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 109,
+		.description = "2026_08_21_monk_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44720 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44718, 44719, 44720);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Iron Palm (44718)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44718, name = 'Iron Palm', descnum = 44718,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 51, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 1, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Void Stance (44719)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44719, name = 'Void Stance', descnum = 44719,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 6, goodEffect = 1,
+    new_icon = 52, spellanim = 86, CastingAnim = 42,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 10, buffdurationformula = 11,
+    numhits = 4, numhitstype = 1,
+    effectid1 = 172, effect_base_value1 = 50, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 5, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Pressure Point (44720)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44720, name = 'Pressure Point', descnum = 44720,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 53, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 10, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44718, 44719, 44720) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44718, 6, 'An open hand driven through the guard, weighted by the pace of your weapon.'),
+ (44719, 6, 'Stand in the space between blows. The next 4 melee attacks against you are far likelier to find nothing there.'),
+ (44720, 6, 'One strike, placed where it is felt. Shortens Void Stance by 6 seconds.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 110,
+		.description = "2026_08_21_bard_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44723 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44721, 44722, 44723);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Discordant Strike (44721)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44721, name = 'Discordant Strike', descnum = 44721,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 60, spellanim = 113, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 5, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 1, effect_base_value1 = -25, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 1,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Crescendo (44722)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44722, name = 'Crescendo', descnum = 44722,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 41, goodEffect = 1,
+    new_icon = 61, spellanim = 278, CastingAnim = 43,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 189, effect_base_value1 = 100, effect_limit_value1 = 0, formula1 = 3, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 5,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Cadence Strike (44723)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44723, name = 'Cadence Strike', descnum = 44723,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 62, spellanim = 113, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 5, buffdurationformula = 11,
+    numhits = 5, numhitstype = 6,
+    effectid1 = 197, effect_base_value1 = 10, effect_limit_value1 = -1, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 10,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44721, 44722, 44723) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44721, 6, 'A note struck wrong. Your target guards itself worse for it.'),
+ (44722, 6, 'The music carries your group. Their second wind arrives early.'),
+ (44723, 6, 'Set the beat of the fight. The next 5 blows landed on your target hurt it more. Shortens Crescendo by 5 seconds.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 111,
+		.description = "2026_08_21_rogue_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44726 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44724, 44725, 44726);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Vital Strike (44724)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44724, name = 'Vital Strike', descnum = 44724,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 71, spellanim = 113, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 4, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 3, effect_base_value1 = -35, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 1, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Rupture (44725)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44725, name = 'Rupture', descnum = 44725,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 72, spellanim = 113, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 8, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 0, effect_base_value1 = -18, effect_limit_value1 = 0, formula1 = 1, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 5, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Exploit Weakness (44726)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44726, name = 'Exploit Weakness', descnum = 44726,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 73, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 10, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44724, 44725, 44726) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44724, 6, 'Open a leg. What you have cut cannot run.'),
+ (44725, 6, 'A wound that will not close on its own.'),
+ (44726, 6, 'Put a blade where it is already bleeding, for half as much again. Shortens Rupture by 5 seconds.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 112,
+		.description = "2026_08_21_shaman_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44752 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44727, 44728, 44729, 44751, 44752);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Spiritual Foresight (44727)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44727, name = 'Spiritual Foresight', descnum = 44727,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 1,
+    new_icon = 77, spellanim = 86, CastingAnim = 42,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 10, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 55, effect_base_value1 = 60, effect_limit_value1 = 0, formula1 = 3, max1 = 0,
+    effectid2 = 323, effect_base_value2 = 44751, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 1, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Crippling Spirit (44728)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44728, name = 'Crippling Spirit', descnum = 44728,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 41, goodEffect = 1,
+    new_icon = 78, spellanim = 86, CastingAnim = 42,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 10, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 55, effect_base_value1 = 120, effect_limit_value1 = 0, formula1 = 5, max1 = 0,
+    effectid2 = 323, effect_base_value2 = 44752, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 5, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Malaise (44729)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44729, name = 'Malaise', descnum = 44729,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 79, spellanim = 113, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 6, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 4, effect_base_value1 = -20, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 8, effect_base_value2 = -20, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 10, effect_base_value3 = -20, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 2, effect_base_value4 = -25, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 10, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Foresight Chill (44751)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44751, name = 'Foresight Chill', descnum = 44751,
+    EndurCost = 1, EndurTimerIndex = 0, recast_time = 0, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 77, spellanim = 113, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 2, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 11, effect_base_value1 = 85, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Crippling Chill (44752)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44752, name = 'Crippling Chill', descnum = 44752,
+    EndurCost = 1, EndurTimerIndex = 0, recast_time = 0, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 78, spellanim = 113, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 2, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 11, effect_base_value1 = 70, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44727, 44728, 44729, 44751, 44752) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44727, 6, 'A ward that sees the blow coming. What strikes through it is slowed for its trouble.'),
+ (44728, 6, 'The same ward, over your whole group, and it bites harder.'),
+ (44729, 6, 'Sap what your target swings, thinks and commands with. Shortens Crippling Spirit by 5 seconds, or by 10 against something already slowed.'),
+ (44751, 6, 'The cold left behind by a warded blow.'),
+ (44752, 6, 'The cold left behind by a warded blow.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 113,
+		.description = "2026_08_21_necromancer_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44732 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44730, 44731, 44732);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Withering Touch (44730)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44730, name = 'Withering Touch', descnum = 44730,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 41, spellanim = 113, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 6, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 0, effect_base_value1 = -10, effect_limit_value1 = 0, formula1 = 1, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 1, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Soul Harvest (44731)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44731, name = 'Soul Harvest', descnum = 44731,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 42, spellanim = 202, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 5, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Toll of the Dead (44732)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44732, name = 'Toll of the Dead', descnum = 44732,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 43, spellanim = 202, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 10, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44730, 44731, 44732) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44730, 6, 'Your hand leaves rot behind it.'),
+ (44731, 6, 'Call in every debt at once. Each affliction on your target is spent for damage and health.'),
+ (44732, 6, 'Name the price of what is already killing your target. Shortens Soul Harvest by 15 seconds.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 114,
+		.description = "2026_08_21_wizard_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44735 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44733, 44734, 44735);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Arcane Fist (44733)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44733, name = 'Arcane Fist', descnum = 44733,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 162, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 1,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Overload (44734)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44734, name = 'Overload', descnum = 44734,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 163, spellanim = 202, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 0, effect_base_value1 = -40, effect_limit_value1 = 0, formula1 = 20, max1 = 900,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 5,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Ley Tap (44735)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44735, name = 'Ley Tap', descnum = 44735,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 164, spellanim = 202, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 0, effect_base_value1 = -15, effect_limit_value1 = 0, formula1 = 3, max1 = 200,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 10,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44733, 44734, 44735) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44733, 6, 'Strike with the hand that is not casting, and take a little power back from the impact.'),
+ (44734, 6, 'Pour everything into one cast. The recoil leaves you reeling for a moment.'),
+ (44735, 6, 'Draw off a thread of the ley. Each thread makes your next Overload land harder, up to three. Shortens Overload by 5 seconds.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 115,
+		.description = "2026_08_21_magician_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44754 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44736, 44737, 44738, 44754);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Elemental Fist (44736)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44736, name = 'Elemental Fist', descnum = 44736,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 38, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 1, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Elemental Swarm (44737)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 3265;
+UPDATE aotv4_disc_tmpl SET
+    id = 44737, name = 'Elemental Swarm', descnum = 44737,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 6, goodEffect = 1,
+    new_icon = 105, spellanim = 80, CastingAnim = 43,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = 'ServantRo',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 152, effect_base_value1 = 1, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 5, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Cinder Blast (44738)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44738, name = 'Cinder Blast', descnum = 44738,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 106, spellanim = 202, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 0, effect_base_value1 = -30, effect_limit_value1 = 0, formula1 = 3, max1 = 250,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 10, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Elemental Guardian (44754)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 285;
+UPDATE aotv4_disc_tmpl SET
+    id = 44754, name = 'Elemental Guardian', descnum = 44754,
+    EndurCost = 1, EndurTimerIndex = 0, recast_time = 0, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 6, goodEffect = 1,
+    new_icon = 38, spellanim = 306, CastingAnim = 43,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = 'SumEarthR2',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 33, effect_base_value1 = 1, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44736, 44737, 44738, 44754) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44736, 6, 'A fist wrapped in flame, and a guardian at your shoulder if you have none.'),
+ (44737, 6, 'Call a brief host of servants to fight beside your guardian.'),
+ (44738, 6, 'A burst of cinders, twice as fierce on whatever your pet is already fighting. Shortens Elemental Swarm by 7 seconds.'),
+ (44754, 6, 'The guardian granted by Elemental Fist.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 116,
+		.description = "2026_08_21_enchanter_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44741 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44739, 44740, 44741);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Tashania (44739)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44739, name = 'Tashania', descnum = 44739,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 21, spellanim = 113, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 8, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 111, effect_base_value1 = -15, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 1, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Gift of Thought (44740)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44740, name = 'Gift of Thought', descnum = 44740,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 41, goodEffect = 1,
+    new_icon = 22, spellanim = 278, CastingAnim = 43,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 15, effect_base_value1 = 100, effect_limit_value1 = 0, formula1 = 3, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 5, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Mind Fray (44741)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44741, name = 'Mind Fray', descnum = 44741,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 6, goodEffect = 1,
+    new_icon = 23, spellanim = 113, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 3, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 286, effect_base_value1 = 30, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 10, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44739, 44740, 44741) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44739, 6, 'Thin every ward your target has against magic.'),
+ (44740, 6, 'Hand your group back the thoughts they have spent.'),
+ (44741, 6, 'Fray your own mind against the working. Your spells land harder for three ticks. Shortens Gift of Thought by 5 seconds.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 117,
+		.description = "2026_08_21_beastlord_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44755 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44742, 44743, 44744, 44755);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Feral Swipe (44742)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44742, name = 'Feral Swipe', descnum = 44742,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 108, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 1, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Feral Frenzy (44743)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4499;
+UPDATE aotv4_disc_tmpl SET
+    id = 44743, name = 'Feral Frenzy', descnum = 44743,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 6, goodEffect = 1,
+    new_icon = 109, spellanim = 86, CastingAnim = 42,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 10, buffdurationformula = 11,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 11, effect_base_value1 = 125, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 0, effect_base_value2 = 10, effect_limit_value2 = 0, formula2 = 1, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 5, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Bloodscent (44744)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44744, name = 'Bloodscent', descnum = 44744,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 110, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 10, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Feral Companion (44755)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 285;
+UPDATE aotv4_disc_tmpl SET
+    id = 44755, name = 'Feral Companion', descnum = 44755,
+    EndurCost = 1, EndurTimerIndex = 0, recast_time = 0, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 6, goodEffect = 1,
+    new_icon = 108, spellanim = 306, CastingAnim = 43,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = 'SpiritWolf224',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 33, effect_base_value1 = 1, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44742, 44743, 44744, 44755) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44742, 6, 'A raking blow, and a companion at your side if you have none.'),
+ (44743, 6, 'You and your companion both move faster and mend faster.'),
+ (44744, 6, 'You can smell the end of it. Far worse for a target below half health, and it shortens Feral Frenzy by 5 seconds, or by 10 on wounded prey.'),
+ (44755, 6, 'The companion granted by Feral Swipe.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 118,
+		.description = "2026_08_21_berserker_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44747 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44745, 44746, 44747);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Reckless Cleave (44745)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44745, name = 'Reckless Cleave', descnum = 44745,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 55, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 1;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Frenzied Onslaught (44746)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44746, name = 'Frenzied Onslaught', descnum = 44746,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 56, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 5;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Blood Frenzy (44747)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44747, name = 'Blood Frenzy', descnum = 44747,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 57, spellanim = 0, CastingAnim = 44,
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 255, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 10;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44745, 44746, 44747) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44745, 6, 'Everything behind the swing and nothing behind the guard. It costs you a little blood.'),
+ (44746, 6, 'Five swings, as fast as you can put them in.'),
+ (44747, 6, 'The worse your own wounds, the sooner you can do that again. Shortens Frenzied Onslaught by 2 seconds for every tenth of your health that is gone.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 119,
+		.description = "2026_08_21_class_ability_messages",
+		// Submitted by: Claude
+		// message already says what happened.
+		.check       = "SELECT `cast_on_you` FROM `spells_new` WHERE `id` = 44701",
+		.condition   = "missing",
+		.match       = "You set yourself behind your guard.",
+		.sql         = R"(
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44700;
+UPDATE spells_new SET cast_on_you = 'You set yourself behind your guard.', cast_on_other = ' sets himself behind his guard.', spell_fades = 'Your guard drops.' WHERE id = 44701;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44702;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44703;
+UPDATE spells_new SET cast_on_you = 'You are sheltered.', cast_on_other = ' is sheltered.', spell_fades = 'The shelter lifts.' WHERE id = 44704;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44705;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44709;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44710;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44711;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44712;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44713;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44714;
+UPDATE spells_new SET cast_on_you = 'Thorns tear at you.', cast_on_other = ' is wreathed in thorns.', spell_fades = 'The thorns wither.' WHERE id = 44715;
+UPDATE spells_new SET cast_on_you = 'Growth closes your wounds.', cast_on_other = ' is wreathed in growth.', spell_fades = 'The growth fades.' WHERE id = 44716;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44717;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44718;
+UPDATE spells_new SET cast_on_you = 'You stand in the space between blows.', cast_on_other = ' stands very still.', spell_fades = 'Your stance breaks.' WHERE id = 44719;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44720;
+UPDATE spells_new SET cast_on_you = 'Your guard falters.', cast_on_other = ' guards himself worse.', spell_fades = 'Your guard steadies.' WHERE id = 44721;
+UPDATE spells_new SET cast_on_you = 'Your second wind arrives early.', cast_on_other = ' catches a second wind.', spell_fades = '' WHERE id = 44722;
+UPDATE spells_new SET cast_on_you = 'You are struck on the beat.', cast_on_other = ' is struck on the beat.', spell_fades = 'The beat is lost.' WHERE id = 44723;
+UPDATE spells_new SET cast_on_you = 'Your leg gives under you.', cast_on_other = ' staggers.', spell_fades = 'Your leg steadies.' WHERE id = 44724;
+UPDATE spells_new SET cast_on_you = 'You are bleeding badly.', cast_on_other = ' is bleeding badly.', spell_fades = 'The bleeding stops.' WHERE id = 44725;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44726;
+UPDATE spells_new SET cast_on_you = 'A ward settles over you.', cast_on_other = ' is warded.', spell_fades = 'The ward gutters out.' WHERE id = 44727;
+UPDATE spells_new SET cast_on_you = 'A crippling ward settles over you.', cast_on_other = ' is warded.', spell_fades = 'The ward gutters out.' WHERE id = 44728;
+UPDATE spells_new SET cast_on_you = 'Your strength deserts you.', cast_on_other = ' sags.', spell_fades = 'Your strength returns.' WHERE id = 44729;
+UPDATE spells_new SET cast_on_you = 'Rot spreads through you.', cast_on_other = ' begins to rot.', spell_fades = 'The rot clears.' WHERE id = 44730;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44731;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44732;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44733;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44734;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44735;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44736;
+UPDATE spells_new SET cast_on_you = 'Servants answer the call.', cast_on_other = ' calls servants.', spell_fades = '' WHERE id = 44737;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44738;
+UPDATE spells_new SET cast_on_you = 'Your wards against magic thin.', cast_on_other = ' is stripped of wards.', spell_fades = 'Your wards close again.' WHERE id = 44739;
+UPDATE spells_new SET cast_on_you = 'Your thoughts come back to you.', cast_on_other = ' is given back his thoughts.', spell_fades = '' WHERE id = 44740;
+UPDATE spells_new SET cast_on_you = 'You fray your mind against the working.', cast_on_other = ' frays his own mind.', spell_fades = 'Your mind settles.' WHERE id = 44741;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44742;
+UPDATE spells_new SET cast_on_you = 'You move faster and mend faster.', cast_on_other = ' turns feral.', spell_fades = 'The frenzy passes.' WHERE id = 44743;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44744;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44745;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44746;
+UPDATE spells_new SET cast_on_you = '', cast_on_other = '', spell_fades = '' WHERE id = 44747;
+UPDATE spells_new SET cast_on_you = 'The shelter blooms.', cast_on_other = ' is healed by the shelter.', spell_fades = '' WHERE id = 44750;
+UPDATE spells_new SET cast_on_you = 'The cold slows you.', cast_on_other = ' slows.', spell_fades = 'The cold passes.' WHERE id = 44751;
+UPDATE spells_new SET cast_on_you = 'The cold slows you.', cast_on_other = ' slows.', spell_fades = 'The cold passes.' WHERE id = 44752;
+UPDATE spells_new SET cast_on_you = 'You swear the next wound to yourself.', cast_on_other = ' swears a vow.', spell_fades = 'The vow lapses.' WHERE id = 44753;
+UPDATE spells_new SET cast_on_you = 'A guardian answers.', cast_on_other = ' calls a guardian.', spell_fades = '' WHERE id = 44754;
+UPDATE spells_new SET cast_on_you = 'A companion answers.', cast_on_other = ' calls a companion.', spell_fades = '' WHERE id = 44755;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 120,
+		.description = "2026_08_21_class_ability_is_discipline",
+		// Submitted by: Claude
+		// its template. 32 of these 51 rows were cloned from spells that are not disciplines.
+		.check       = "SELECT `IsDiscipline` FROM `spells_new` WHERE `id` = 44700",
+		.condition   = "missing",
+		.match       = "-1",
+		.sql         = R"(
+UPDATE spells_new SET IsDiscipline = -1 WHERE id BETWEEN 44700 AND 44755;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 121,
+		.description = "2026_08_21_class_ability_particle",
+		// Submitted by: Claude
+		// presets were sampled from, nukes and heals included.
+		.check       = "SELECT `player_1` FROM `spells_new` WHERE `id` = 44700",
+		.condition   = "contains",
+		.match       = "BLUE_TRAIL",
+		.sql         = R"(
+UPDATE spells_new SET player_1 = 'PLAYER_1' WHERE id BETWEEN 44700 AND 44755;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 122,
+		.description = "2026_08_21_paladin_class_abilities",
+		// Submitted by: Claude
+		// Cloned via temp table from stock rows so all ~236 columns stay byte-identical.
+		.check       = "SELECT `value` FROM `db_str` WHERE `id` = 44708 AND `type` = 6",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id IN (44706, 44707, 44708);
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+CREATE TEMPORARY TABLE aotv4_disc_tmpl LIKE spells_new;
+
+-- ---------------------------------------------------------------- Ardent Strike (44706)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44706, name = 'Ardent Strike', descnum = 44706,
+    EndurCost = 1, EndurTimerIndex = 5, recast_time = 10000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 94, spellanim = 0, CastingAnim = 44,
+    -- ⚠️⚠️ `IsDiscipline` IS A COLUMN AND IT IS NOT THE SAME THING AS THE IsDiscipline() FUNCTION.
+    -- The function is DERIVED (mana == 0 AND EndurCost > 0) and was true for all of these from the
+    -- start; the COLUMN is spells_new field 168, loaded into spells[].is_discipline, and its own
+    -- header comment is "Will goto the combat window when cast". Cloning from a template that is not
+    -- a discipline leaves it 0 -- and 0 is what makes the client treat the row as a spell.
+    -- ⚠️ Stock writes -1, not 1. Strings::ToBool takes any non-zero number, but match stock.
+    IsDiscipline = -1,
+    -- ⚠️⚠️ `player_1` IS THE PARTICLE/TRAIL GRAPHIC, AND THE INSTANT TEMPLATE CARRIES `BLUE_TRAIL`.
+    -- Cloning 4667 put a blue projectile trail on every sword swing. 263 of the 281 stock
+    -- disciplines are `PLAYER_1`, which is the "no special effect" value, and so is every reference
+    -- spell used for the presets above -- including the nukes and heals. So it is PLAYER_1 for all
+    -- of these, not just the melee ones.
+    player_1 = 'PLAYER_1',
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 1, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Hand of Conviction (44707)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44707, name = 'Hand of Conviction', descnum = 44707,
+    EndurCost = 1, EndurTimerIndex = 6, recast_time = 120000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 6, goodEffect = 1,
+    new_icon = 95, spellanim = 278, CastingAnim = 43,
+    -- ⚠️⚠️ `IsDiscipline` IS A COLUMN AND IT IS NOT THE SAME THING AS THE IsDiscipline() FUNCTION.
+    -- The function is DERIVED (mana == 0 AND EndurCost > 0) and was true for all of these from the
+    -- start; the COLUMN is spells_new field 168, loaded into spells[].is_discipline, and its own
+    -- header comment is "Will goto the combat window when cast". Cloning from a template that is not
+    -- a discipline leaves it 0 -- and 0 is what makes the client treat the row as a spell.
+    -- ⚠️ Stock writes -1, not 1. Strings::ToBool takes any non-zero number, but match stock.
+    IsDiscipline = -1,
+    -- ⚠️⚠️ `player_1` IS THE PARTICLE/TRAIL GRAPHIC, AND THE INSTANT TEMPLATE CARRIES `BLUE_TRAIL`.
+    -- Cloning 4667 put a blue projectile trail on every sword swing. 263 of the 281 stock
+    -- disciplines are `PLAYER_1`, which is the "no special effect" value, and so is every reference
+    -- spell used for the presets above -- including the nukes and heals. So it is PLAYER_1 for all
+    -- of these, not just the melee ones.
+    player_1 = 'PLAYER_1',
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 254, effect_base_value1 = 0, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 5, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+-- ---------------------------------------------------------------- Divine Reproach (44708)
+INSERT INTO aotv4_disc_tmpl SELECT * FROM spells_new WHERE id = 4667;
+UPDATE aotv4_disc_tmpl SET
+    id = 44708, name = 'Divine Reproach', descnum = 44708,
+    EndurCost = 1, EndurTimerIndex = 2, recast_time = 15000, recovery_time = 0,
+    cast_time = 0, mana = 0, skill = 98, targettype = 5, goodEffect = 0,
+    new_icon = 96, spellanim = 0, CastingAnim = 44,
+    -- ⚠️⚠️ `IsDiscipline` IS A COLUMN AND IT IS NOT THE SAME THING AS THE IsDiscipline() FUNCTION.
+    -- The function is DERIVED (mana == 0 AND EndurCost > 0) and was true for all of these from the
+    -- start; the COLUMN is spells_new field 168, loaded into spells[].is_discipline, and its own
+    -- header comment is "Will goto the combat window when cast". Cloning from a template that is not
+    -- a discipline leaves it 0 -- and 0 is what makes the client treat the row as a spell.
+    -- ⚠️ Stock writes -1, not 1. Strings::ToBool takes any non-zero number, but match stock.
+    IsDiscipline = -1,
+    -- ⚠️⚠️ `player_1` IS THE PARTICLE/TRAIL GRAPHIC, AND THE INSTANT TEMPLATE CARRIES `BLUE_TRAIL`.
+    -- Cloning 4667 put a blue projectile trail on every sword swing. 263 of the 281 stock
+    -- disciplines are `PLAYER_1`, which is the "no special effect" value, and so is every reference
+    -- spell used for the presets above -- including the nukes and heals. So it is PLAYER_1 for all
+    -- of these, not just the melee ones.
+    player_1 = 'PLAYER_1',
+    resisttype = 0, `range` = 200, AEDuration = 0, pushback = 0, pushup = 0,
+    spellgroup = 0, `rank` = 0, teleport_zone = '',
+    buffduration = 0, buffdurationformula = 0,
+    numhits = 0, numhitstype = 0,
+    effectid1 = 21, effect_base_value1 = 1, effect_limit_value1 = 0, formula1 = 100, max1 = 0,
+    effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, formula2 = 100, max2 = 0,
+    effectid3 = 254, effect_base_value3 = 0, effect_limit_value3 = 0, formula3 = 100, max3 = 0,
+    effectid4 = 254, effect_base_value4 = 0, effect_limit_value4 = 0, formula4 = 100, max4 = 0,
+    effectid5 = 254, effect_base_value5 = 0, effect_limit_value5 = 0, formula5 = 100, max5 = 0,
+    effectid6 = 254, effect_base_value6 = 0, effect_limit_value6 = 0, formula6 = 100, max6 = 0,
+    effectid7 = 254, effect_base_value7 = 0, effect_limit_value7 = 0, formula7 = 100, max7 = 0,
+    effectid8 = 254, effect_base_value8 = 0, effect_limit_value8 = 0, formula8 = 100, max8 = 0,
+    effectid9 = 254, effect_base_value9 = 0, effect_limit_value9 = 0, formula9 = 100, max9 = 0,
+    effectid10 = 254, effect_base_value10 = 0, effect_limit_value10 = 0, formula10 = 100, max10 = 0,
+    effectid11 = 254, effect_base_value11 = 0, effect_limit_value11 = 0, formula11 = 100, max11 = 0,
+    effectid12 = 254, effect_base_value12 = 0, effect_limit_value12 = 0, formula12 = 100, max12 = 0,
+    classes1 = 255, classes2 = 255, classes3 = 10, classes4 = 255,
+    classes5 = 255, classes6 = 255, classes7 = 255, classes8 = 255,
+    classes9 = 255, classes10 = 255, classes11 = 255, classes12 = 255,
+    classes13 = 255, classes14 = 255, classes15 = 255, classes16 = 255;
+INSERT INTO spells_new SELECT * FROM aotv4_disc_tmpl;
+DELETE FROM aotv4_disc_tmpl;
+DROP TEMPORARY TABLE IF EXISTS aotv4_disc_tmpl;
+
+-- ---------------------------------------------------------------- descriptions
+-- ⚠️⚠️ A spell with no db_str type 6 row renders BLANK and nothing errors. Written in the same
+-- migration as the rows, deliberately.
+-- ⚠️ The CLIENT resolves these from its own dbstr_us.txt, so this migration alone changes nothing
+-- in game: it needs ./export_client_files and that file shipped to players.
+DELETE FROM db_str WHERE id IN (44706, 44707, 44708) AND type = 6;
+INSERT INTO db_str (id, type, value) VALUES
+ (44706, 6, 'A weapon blow carried by conviction rather than force, and it draws the eye of what you strike.'),
+ (44707, 6, 'Spend your own vitality to mend your group. Each member is healed for a quarter of YOUR maximum health, which is why a Paladin who builds health heals harder.'),
+ (44708, 6, 'A rebuke that halts your target briefly and fixes its attention on you. Shortens Hand of Conviction by 5 seconds.');
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 123,
+		.description = "2026_08_21_paladin_retire_aas",
+		// Submitted by: Claude
+		// with the ability twice, or with none at all.
+		.check       = "SELECT `enabled` FROM `aa_ability` WHERE `id` = 45",
+		.condition   = "missing",
+		.match       = "0",
+		.sql         = R"(
+DELETE FROM character_alternate_abilities WHERE aa_id IN (144, 158, 196);
+
+-- ⚠️ Disabling is what actually takes them out of the window: `zone/aa.cpp` loads only enabled rows
+-- (section 32), so the ability stops existing at runtime rather than merely being unbuyable.
+-- 📌 The rank rows, their db_str strings and spells 44600-44602 are LEFT ALONE deliberately. They
+-- cost nothing dormant, and they are the only record of how the AA version was built if this is ever
+-- revisited. `lua_modules/aotv4_paladin.lua` and quests/global/spells/446xx.lua go dormant with them.
+UPDATE aa_ability SET enabled = 0 WHERE id IN (45, 55, 79);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 124,
+		.description = "2026_08_21_class_ability_melee_range",
+		// Submitted by: Claude
+		// summons and group buffs keep 200.
+		.check       = "SELECT `range` FROM `spells_new` WHERE `id` = 44700",
+		.condition   = "missing",
+		.match       = "25",
+		.sql         = R"(
+UPDATE spells_new SET `range` = 25 WHERE id IN (44700, 44702, 44703, 44706, 44708, 44709, 44710, 44711, 44712, 44713, 44714, 44715, 44718, 44720, 44721, 44723, 44724, 44726, 44730, 44733, 44736, 44742, 44744, 44745, 44746, 44747);
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does
