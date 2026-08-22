@@ -785,6 +785,58 @@ GM `#resetaa aa` only *refunds* spent → unspent (doesn't zero the pool). The m
 
 ## 8. Building
 
+### ⚠️⚠️ A SHARED-MEMORY REBUILD IS ONLY REAL IF EVERY PROCESS STARTED **AFTER** THE BLOB (2026-08-22)
+
+`./shared_memory` was run and the stack restarted, and the fix did not take — **because world and
+all nine zones had start times EARLIER than `shared/spells`**. They attached to the previous blob and
+kept serving the old data. Reported from play as a fix that had already been "verified" here:
+*"Wildgrowth is also taking all of my endurance again"*, after v128 had zeroed `EndurUpkeep` in the
+database and the database had been checked and was correct.
+
+- ⚠️⚠️ **THE DATABASE BEING RIGHT PROVES NOTHING.** `items` and `spells_new` are read from the mmap,
+  never from the DB, so `SELECT` will happily confirm a fix that no running zone can see. Every check
+  short of reading the blob agrees with you.
+- ⚠️⚠️⚠️ **DO NOT COMPARE THE BLOB'S MTIME TO PROCESS START TIMES. IT CANNOT WORK, AND THIS FILE
+  SAID TO DO IT FOR HALF A DAY.** `MemoryMappedFile` opens with **`O_RDWR | O_CREAT`** and maps
+  **`PROT_READ | PROT_WRITE, MAP_SHARED`** (`common/memory_mapped_file.cpp:92`, `:102`), so **every
+  process that ATTACHES updates the file's mtime**. The blob is therefore always newer than
+  everything, the test always "fails", and chasing it produced three needless full restarts. Watching
+  it live makes it obvious: the mtime tracks the **last zone to boot**, moving 09:26:00 → 09:27:14 as
+  six zones came up with nothing writing spells at all.
+- ✅ **CHECK THE CONTENT INSTEAD.** The blob is indexed by spell id, so read the field back and
+  compare it to the database. This is the only test that means anything:
+  ```python
+  SIZE, NAME, BASE, FORM, DUR = 1088, 4, 528, 720, 516   # offsetof(); re-derive if the struct changes
+  d    = open('shared/spells','rb').read()
+  base = d.find(b'Spiritual Foresight\x00') - NAME - 44727*SIZE
+  r    = base + 44727*SIZE
+  struct.unpack('<i', d[r+BASE:r+BASE+4])[0]             # -> matches spells_new or it does not
+  ```
+- ⚠️ **The ordering still matters — just verify it by SEQUENCE, not by timestamp.** Kill everything,
+  loop until `ps` shows no live `zone`/`world`/`eqlaunch` (⚠️ excluding **zombies**, §2 — `pgrep`
+  counts them and reports a false survivor), THEN run `./shared_memory`, THEN read the content back,
+  THEN start world.
+- ⚠️ **Kill and WAIT.** `kill -9 … ; sleep 3` is not enough — loop until `pgrep` is actually empty
+  before running `./shared_memory`, or the rebuild races a process that is still coming down and the
+  next start order is whatever the scheduler decided.
+- ⚠️ **`LoadItems Loaded [0] items via shared memory` in world's log is a RED HERRING.**
+  `m_shared_items_count` is never populated on world's boot path (`common/shareddb.cpp:913`), so it
+  prints 0 on a perfectly good load. It cost time here looking like the smoking gun.
+- ✅ **To PROVE a spell landed, read it out of the blob.** The array is indexed by spell id, and the
+  data does not start where `LoadSpells` suggests — the first `uint32` is a byte count and the mmf has
+  its own header, so **find the array base from a known name** rather than assuming an offset:
+  ```python
+  SIZE, NAME, UPKEEP, EFFECT = 1088, 4, 928, 780   # from offsetof(); re-derive if the struct changes
+  d    = open('shared/spells','rb').read()
+  base = d.find(b'Wildgrowth\x00') - NAME - 44716*SIZE
+  ```
+  Offsets come from a template-error trick, which needs no linking:
+  `template<size_t N> struct Show;  Show<offsetof(SPDat_Spell_Struct,endurance_upkeep)> c;`
+  then `g++ -fsyntax-only` and read the number out of the error.
+- 📌 The same ordering applies to `zone` and `world` **binaries** (§10) and to `rule_values` (read at
+  boot). "I restarted it" is not the check; "it started after the thing it needs" is.
+
+
 **`dinput8.dll`** (Windows, Visual Studio): project
 `eq-core-dll/src/eq-core-dll-vs2022.vcxproj` (toolset **v143**). Non-default settings for the
 legacy MQ2-derived code: `ConformanceMode=false`, `LanguageStandard=stdcpp14`, `SDLCheck=false`,
@@ -1153,6 +1205,41 @@ the Portal window at the start, since §3 records that window as openable **only
   known-good standing ground (every character materialises on it and respawns there after every death),
   which also makes it the most discoverable spot in the zone. ⚠️ In-game `/loc` prints **Y,X,Z** —
   `doors.pos_x/pos_y` are already swapped relative to it, so never paste a raw `/loc`.
+
+### ⚠️⚠️ THE BOOK GATE HAD THREE ENTRY POINTS AND ONLY ONE OF THEM CHECKED IT (2026-08-22)
+Travelling is meant to require a **recently clicked Plane of Knowledge book** — the `/aot` launcher
+opens the Travel window as a **read-only map**. Reported from play as *"anyone can use it at any
+time"*, and they were right: the rule was one say command away from being optional.
+
+Three things can move a player, and the gate was written at only the first:
+
+| path | what it is | was gated? |
+|---|---|---|
+| `aotv4_travel.M.request` | the window's Travel button | ✅ yes |
+| `aotv4_travel.M.on_popup` | the confirmation coming back | ❌ **no** |
+| `pok_travel.handle_say` | legacy **`/say portalgo <short>`** | ❌ **no** |
+
+- ⚠️⚠️ **THE LEGACY `portalgo` IS THE BIG ONE — IT NEEDS NO WINDOW AT ALL.** It is the old GDI Portal
+  overlay's command (§11) and is still wired at `global_player.lua:1150`. It checked only that the
+  destination had been discovered and then `MovePC`'d, so **typing it travelled you from anywhere**,
+  and it had no combat check either. Both added.
+- ⚠️⚠️ **THE POPUP IS A SEPARATE ENTRY POINT, AND ITS OWN COMMENT SAYS SO** — *"RE-CHECK, do not
+  trust the parked request... The popup is a confirmation, not a licence"* — and it duly re-checked
+  region, combat and group blockers while **omitting the one gate the feature exists for**. The box
+  stays on screen as long as the player likes, so holding it past the 180 second grace and then
+  pressing OK travelled from wherever they had wandered to.
+  📌 **When a handler re-validates "everything", enumerate what the FIRST handler checked and tick
+  each one off.** Both misses here were checks with no local reason to exist in that function.
+- ✅ The test is now **`aotv4_travel.M.reading_book(c)`** plus `M.BOOK_REFUSAL`, one definition, three
+  callers. `pok_travel` reaches it through the same `pcall(require, "aotv4_travel")` it already uses
+  to open the window.
+- 📌 **The dll was already right.** `core_travel.cpp` tracks `g_fromBook` (set by `TRAVELOPEN`, which
+  only a book sends) and hides the Travel button when false. That is presentation; the rule has to be
+  server side, because `portalgo` proves the client can be bypassed entirely.
+- ⚠️ A **stamp with a grace window** (`M.BOOK_GRACE_SECS = 180`), not a proximity test: travel moves
+  you the instant you confirm, and "are you near a book" would have to survive the popup round trip.
+- 📌 **Lua only** — no migration, no binary, no shared memory. But `#reloadquest` does **not** reload
+  `require`d modules (§10), so zones must be killed and respawned.
 
 ### ⚠️⚠️ THE HUB NPC LOCK TRIGGERS DO NOT SURVIVE A FULL IMPORT, AND WERE FOUND MISSING 2026-08-13
 `custom/sql/aotv4_resplendent_npc_lock.sql` installs four `BEFORE INSERT/UPDATE` triggers that
@@ -1759,6 +1846,37 @@ A native SIDL **Advanced Loot** window in **complement mode**: the stock RoF2 lo
   `sed 's/<!--/«/g; s/-->/»/g' f.xml | grep -n -- "--"` (must print nothing).
 - **Client install:** `aotv4_client_install/ADVLOOT_WINDOW_INSTALL.md` (copy the XML to `uifiles/default/`,
   `<Include>` it in `EQUI.xml`, rebuild the dll).
+
+### ⚠️⚠️ THE FILTERS TAB TRUNCATED AT ~94 RULES, SILENTLY, AND THE NEVER BUTTON IS A TOGGLE (2026-08-22)
+Reported from play as *"trying to stop looting velium, but it won't appear in the edit filters, and it
+ignores it"*, and confirmed by the player's own count: **"it says 94 items in there, which is
+definitely a lie, is WAY more."** 94 is not a cap anybody wrote — it is where `Client::Message`'s
+`char[4096]` ran out.
+- ⚠️⚠️ **`SendAdvLootFilters` HAD NO BOUND AT ALL, WHILE ITS SIBLING `SendAdvLootData` HAS ONE AND
+  EXPLAINS WHY.** `ADVLOOT_MAX_ROWS = 60` carries the comment *"cap the row count rather than risk a
+  silent truncation"*. The filters function was written later and simply never got the same guard.
+  📌 **When one function in a pair bounds its chat line, check the other.**
+- ⚠️⚠️ **WHICH RULES VANISH IS NOT RANDOM, AND THAT IS WHY IT READ AS ITEM-SPECIFIC.** `rules` is a
+  `std::map<uint32,int>`, so it is ordered by **item id** and truncation always eats the **highest**.
+  Classic trash sits at 1,000-13,000 and shows; **Velium (22,093-88,100)** and the **Blood Runed line
+  (25,568-25,569)** are high and get cut. The player correctly reported that specific items "will not
+  appear" while the rest of their filters worked — nothing about those items is special except their id.
+- ⚠️ **A ROW cap is not enough here**: rows run 40-90 bytes depending on the item name and rule label,
+  so any fixed count is wrong for somebody. It is **byte budgeted** (3,900) and appends a **visible
+  marker row** plus a chat line naming how many are hidden — the §3 Zone XP lesson, which is the same
+  bug in a different window.
+- ⚠️⚠️ **THE `Never` BUTTON IS A TOGGLE, AND WITH A LYING LIST THAT WAS A TRAP WITH NO EXIT.** Pressing
+  Never on an item that already has Never **removes** the rule. So the natural response to "I set it and
+  it is not in my filters" — press it again — turned it back off. The cleared echo now says
+  **"Rule REMOVED, this will be looted again"** rather than just naming the item.
+- ⚠️⚠️ **AND A `Never` RULE DOES NOTHING WHILE "Apply Filters" IS UNCHECKED.** `SendAdvLootData` only
+  honours NV when that box is on, so the rule stores, lists, and changes nothing you loot. The player's
+  own screenshot showed **`Apply Filters: OFF`**. Setting a Never rule with it off now says so in red.
+  📌 It defaults **ON** (`v.empty() || v == "1"`), so this is something the player turned off.
+- 📌 **Still capped, just honestly.** Managing more rules than fit needs either chunking (`SJPOOLDATA`
+  does 60 a line with a chunk index, §20) or paging — both need a **dll** change, because
+  `HandleFilterData` resets `g_filterCount` on every FILTERDATA line, so a second line replaces the
+  first rather than appending. `FILT_MAX` is 200 client-side and never binds today.
 
 ## 17c. Roaming world boss — `#worldboss` — 2026-07-26
 
@@ -5166,8 +5284,11 @@ points** either way — this is a change of **timing, not of income**. §6 and �
   ⚠️ Multiply before dividing — a small experience delta otherwise truncates to zero AA and low-level
   kills silently pay nothing.
 - ⚠️⚠️ **`AoT:AAExpSlowdownEnabled` IS OFF** (migration **v126**, 2026-08-22). It braked *normal*
-  experience as AA accumulated; the header default was already `false` and a `rule_values` row was
-  overriding it, which is the §22 trap — **a header default is not what a live server runs.**
+  experience as AA accumulated. **BOTH** switches were on and both had to be turned off: the
+  `rule_values` row by v126, and the **ruletypes.h default by carolus in `efe7b96a8`**.
+  ⚠️ An earlier version of this note claimed the header default "was already false". It was `true`.
+  📌 The §22 point still stands and is if anything sharper: a header default is not what a live
+  server runs, so **check both** — fixing either one alone leaves the rule on somewhere.
   📌 It never touched AA per **level** (the applied experience needed to level is fixed), only AA per
   **kill**, because it shrank the gain portion of each award. Turning it off therefore raises AA per
   kill on top of the 130.

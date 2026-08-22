@@ -1,0 +1,35 @@
+-- @aotv4-migration
+-- description: 2026_08_22_shaman_rune_scale
+-- check: SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `spells_new` WHERE (`id` = 44727 AND (`effect_base_value1` <> 3 OR `formula1` <> 2)) OR (`id` = 44728 AND (`effect_base_value1` <> 10 OR `formula1` <> 4))
+-- condition: match
+-- match: pending
+-- shared-memory: yes
+-- band:
+-- author: Claude
+-- notes: v132 made the runes flat, which fixed the level 30 end and left level 1 as total immunity.
+
+-- ⚠️⚠️ A FLAT ABSORB IS WRONG AT BOTH ENDS, AND v132 ONLY NOTICED ONE OF THEM.
+-- Making these static (60 and 120) stopped them tripling at the cap -- and left a level 1 Shaman with
+-- a 60 point ward. Measured from `npc_types` on this database, creatures at levels 2-9 average
+-- **5 to 14 damage a hit**, so 60 absorbs five to ten swings. Reported as *"that's a crazy number for
+-- low levels, mobs don't hit anywhere near 60"*, and that is exactly right.
+--
+-- 📌 **An absorb has to be sized against INCOMING DAMAGE AT THAT LEVEL, so it is one of the few
+-- things that genuinely should scale.** A flat pool is either immunity early or worthless late; the
+-- only question is where the curve starts. v132 fixed the ceiling and ignored the floor.
+-- 📌 The target is roughly **one hit**, so the ward turns a blow aside rather than removing a fight:
+--       level        1     5    10    20    30
+--   Foresight        5    13    23    43    63     (3 + 2 x level)
+--   Crippling       14    30    50    90   130     (10 + 4 x level)
+--   typical hit   5-10     8    13   ~40   ~55
+--
+-- ⚠️ `max` stays 0. That is a real ceiling on the NUKES in this band (250/300/900) but here the
+-- formula is deliberately gentle and a cap would only bend the curve somewhere arbitrary.
+-- ⚠️ Tier 1 keeps `buffduration 1` from v132 -- 6 seconds against a 10 second recast. Duration and
+-- amount are separate problems and both were wrong: v132 fixed the uptime, this fixes the size.
+-- ⚠️ Tier 2 is deliberately larger and slower: it is the group ward on a 120 second recast, so it is
+-- a cooldown rather than a rotation button, and being worth ~2 hits each is the point of taking it.
+-- 📌 The SLOW proc (SPA 323 -> 44751/44752) is untouched. Per the design that is the ability's real
+-- identity; the ward is the delivery.
+UPDATE spells_new SET effect_base_value1 = 3,  formula1 = 2 WHERE id = 44727;
+UPDATE spells_new SET effect_base_value1 = 10, formula1 = 4 WHERE id = 44728;

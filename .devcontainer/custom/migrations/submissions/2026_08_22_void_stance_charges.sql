@@ -1,0 +1,38 @@
+-- @aotv4-migration
+-- description: 2026_08_22_void_stance_charges
+-- check: SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `spells_new` WHERE `id` = 44719 AND `numhitstype` <> 6
+-- condition: match
+-- match: pending
+-- shared-memory: yes
+-- band:
+-- author: Claude
+-- notes: Void Stance spent a charge on every incoming SWING, including the misses it was causing.
+
+-- ⚠️⚠️ AN AVOIDANCE BUFF ON `numhitstype` 1 CONSUMES ITSELF FASTER THE BETTER IT WORKS.
+-- Type 1 is NumHit::IncomingHitAttempts -- "attempted incoming melee attacks (HIT OR MISS) on YOU"
+-- (zone/common.h:147) -- and the counter at zone/attack.cpp:4502 sits OUTSIDE any `damage > 0`
+-- guard, so a miss decrements it exactly like a hit. Void Stance is SPA 172 AvoidMeleeChance: its
+-- entire job is to produce misses, and every miss it produced burned one of its own four charges.
+--
+-- ⚠️⚠️ AND FOUR ATTEMPTS IS A HANDFUL OF SECONDS. Attempts, not rounds: one creature swinging twice
+-- a round empties it in about two rounds, two creatures in one. Reported from play as the Monk
+-- abilities doing "nothing outside of damage" -- it was firing correctly and expiring before it
+-- could be noticed.
+--
+-- Type 6 is NumHit::IncomingHitSuccess, counted at zone/attack.cpp:4621 INSIDE the `damage > 0`
+-- branch, so a charge is spent only when a blow actually lands. "Slip the next 4 blows" then means
+-- what it says instead of "survive 4 swing attempts".
+--
+-- 📌 Its sibling already does this: Cadence Strike (44723) is numhitstype 6, and it is the only
+-- other class ability using engine charges at all. Void Stance was the odd one out.
+--
+-- ⚠️ The Bulwark trap does NOT apply here. CheckNumHitsRemaining fades the buff before
+-- EVENT_DAMAGE_TAKEN, which breaks a LUA-paid absorb (that is why Bulwark counts its charges in
+-- Lua) -- but SPA 172 is paid by the ENGINE, and it is read in GetTotalDefense during the hit roll,
+-- which happens before any damage exists. The design doc says as much: the engine counter is safe
+-- exactly when the engine also pays the effect.
+--
+-- ⚠️ Magnitude is deliberately NOT touched in the same change. 50 is a 1.5x multiplier on total
+-- defense (zone/attack.cpp:325) and is already large; find out what it feels like when it survives
+-- long enough to be felt before adding to it.
+UPDATE spells_new SET numhitstype = 6 WHERE id = 44719;

@@ -73,13 +73,12 @@ ROWS = []
 # ============================================================================= 2 CLERIC (mana)
 ROWS += [
  A(2,1,"Templar Strike", 88, MELEE, 5, 0, INERT, desc=
-   "Strike your target with your weapon and draw a measure of vigour back into yourself."),
+   "A full weapon swing that heals you for twice your level."),
  A(2,2,"Sanctuary", 99, HEAL, 41, 1,
    [(147,17,0,100,0), (289,44750,0,100,0)], dur=3, durf=11, tmpl=T_BUFF, desc=
-   "Shelter your group. Each member is healed for a sixth of their own maximum health at once, "
-   "and again when the shelter lifts three ticks later."),
+   "Heals your whole group for a sixth of their own maximum health, then the same again when it fades 18 seconds later."),
  A(2,3,"Condemn", 26, NUKE, 5, 0, [(0,-20,0,4,250)], desc=
-   "Call down judgement. Shortens Sanctuary by 5 seconds, or by 10 against the undead."),
+   "A blast of judgement dealing 20 plus 4 per level, to a maximum of 250. Cuts Sanctuary by 5 seconds, or by 10 against the undead."),
  H(2,44750,"Sanctuary Bloom", 99, HEAL, 6, 1, [(147,17,0,100,0)], desc=
    "The delayed half of Sanctuary."),
 ]
@@ -93,34 +92,31 @@ ROWS += [
 # 📌 Behaviour is ported verbatim from lua_modules/aotv4_paladin.lua; only the delivery changed.
 ROWS += [
  A(3,1,"Ardent Strike", 94, MELEE, 5, 0, INERT, desc=
-   "A weapon blow carried by conviction rather than force, and it draws the eye of what you strike."),
+   "A weapon swing at four fifths damage, plus divine damage equal to your level or a tenth of your Strength, whichever is greater. That part ignores armor. Adds threat equal to 8 times your level."),
  A(3,2,"Hand of Conviction", 95, HEAL, 6, 1, INERT, desc=
-   "Spend your own vitality to mend your group. Each member is healed for a quarter of YOUR maximum "
-   "health, which is why a Paladin who builds health heals harder."),
+   "Heals every group member in your zone for a quarter of YOUR maximum health. Alone, it heals you."),
  A(3,3,"Divine Reproach", 96, MELEE, 5, 0, [(21,1,0,100,0)], desc=
-   "A rebuke that halts your target briefly and fixes its attention on you. Shortens Hand of "
-   "Conviction by 5 seconds."),
+   "A full weapon swing that stuns your target, plus threat equal to 6 times your level. Cuts Hand of Conviction by 5 seconds."),
 ]
 
 # ============================================================================= 4 RANGER (endurance)
 ROWS += [
  A(4,1,"Twin Slash", 91, MELEE, 5, 0, INERT, desc=
-   "Two swings in the time of one."),
+   "Two weapon swings at three fifths damage each."),
  A(4,2,"Volley", 92, MELEE, 5, 0, INERT, desc=
-   "Loose a volley at everything in front of you."),
+   "An archery attack at four fifths damage against every enemy within 60 feet in front of you that is already fighting you."),
  A(4,3,"Point Blank Shot", 93, MELEE, 5, 0, INERT, desc=
-   "Fire at a target already in your face. Shortens Volley by 5 seconds, or by 10 with a bow drawn."),
+   "Fires your bow at a target in melee range and cuts Volley by 10 seconds. With no bow you drive the blow home instead, at one and a fifth weapon damage, and cut it by 5."),
 ]
 
 # ============================================================================= 5 SHADOWKNIGHT (endurance)
 ROWS += [
  A(5,1,"Reaving Strike", 47, MELEE, 5, 0, INERT, desc=
-   "A cruel swing that draws the life out of what it opens."),
+   "A full weapon swing that drains twice your level in health. Doubled while Reaving Vow is up, which spends it."),
  A(5,2,"Harrowing", 46, NUKE, 5, 0, INERT, desc=
-   "Tear the life from everything around you and take it for your own."),
+   "A weapon swing at seven tenths damage against every enemy within 40 feet that is already fighting you, draining twice your level in health for each one struck."),
  A(5,3,"Reaving Vow", 48, MELEE, 5, 0, INERT, desc=
-   "Swear the next wound to yourself: your next Reaving Strike drains twice as deeply. "
-   "Shortens Harrowing by 6 seconds."),
+   "A full weapon swing that swears your next Reaving Strike to drain double, for 18 seconds. Cuts Harrowing by 6 seconds."),
  H(5,44753,"Reaving Fervor", 48, MELEE, 6, 1, INERT, dur=3, durf=11, tmpl=T_BUFF, desc=
    "Your next Reaving Strike drains twice as deeply."),
 ]
@@ -128,61 +124,64 @@ ROWS += [
 # ============================================================================= 6 DRUID (mana)
 ROWS += [
  A(6,1,"Thorned Strike", 25, DEBUF, 5, 0, [(121,-8,0,100,0)], dur=5, durf=11, tmpl=T_BUFF, desc=
-   "Drive thorns into your target. Every melee blow it lands wounds it in turn."),
+   "A full weapon swing that wreathes your target in thorns for 30 seconds. Every melee blow it lands wounds it for 8."),
  A(6,2,"Wildgrowth", 30, HEAL, 5, 1, [(0,12,0,1,0)], dur=10, durf=11, tmpl=T_BUFF, desc=
-   "Growth closes wounds faster than they open, for a while."),
+   "Mends the target for 12 plus your level every tick, for 10 ticks."),
  A(6,3,"Sunflare", 31, NUKE, 5, 0, [(0,-25,0,4,300)], desc=
-   "A lance of light, brighter against something that cannot move. Shortens Wildgrowth by "
-   "5 seconds, or by 10 against a rooted or snared target."),
+   "A lance of light dealing 25 plus 4 per level, to a maximum of 300. Against a target that is rooted, snared, mezzed or stunned it deals a further 6 times your level and cuts Wildgrowth by 10 seconds instead of 5."),
 ]
 
 # ============================================================================= 7 MONK (endurance)
 ROWS += [
  A(7,1,"Iron Palm", 51, MELEE, 5, 0, INERT, desc=
-   "An open hand driven through the guard, weighted by the pace of your weapon."),
+   "A hand to hand strike for your weapon delay times 0.2, plus 0.035 more for each level. A slower weapon hits harder."),
  A(7,2,"Void Stance", 52, RUNE, 6, 1, [(172,50,0,100,0)], dur=10, durf=11,
    numhits=4, numhitstype=1, tmpl=T_BUFF, desc=
-   "Stand in the space between blows. The next 4 melee attacks against you are far likelier to "
-   "find nothing there."),
+   "Raises your avoidance by half until 4 melee blows land on you, or 60 seconds, whichever comes first."),
  A(7,3,"Pressure Point", 53, MELEE, 5, 0, INERT, desc=
-   "One strike, placed where it is felt. Shortens Void Stance by 6 seconds."),
+   "A weapon swing at one and three fifths damage, plus threat equal to 4 times your level. Cuts Void Stance by 6 seconds."),
 ]
 
 # ============================================================================= 8 BARD (endurance)
 ROWS += [
  A(8,1,"Discordant Strike", 60, DEBUF, 5, 0, [(1,-25,0,100,0)], dur=5, durf=11, tmpl=T_BUFF, desc=
-   "A note struck wrong. Your target guards itself worse for it."),
+   "A full weapon swing that strips 25 armor from your target for 30 seconds."),
  A(8,2,"Crescendo", 61, HEAL, 41, 1, [(189,100,0,3,0)], desc=
-   "The music carries your group. Their second wind arrives early."),
+   "Restores 100 plus 3 per level endurance to your whole group."),
  A(8,3,"Cadence Strike", 62, DEBUF, 5, 0, [(197,10,-1,100,0)], dur=5, durf=11,
    numhits=5, numhitstype=6, tmpl=T_BUFF, desc=
-   "Set the beat of the fight. The next 5 blows landed on your target hurt it more. "
-   "Shortens Crescendo by 5 seconds."),
+   "A weapon swing at one and a fifth damage, or one and a half with an instrument in your range slot. The next 5 blows landed on your target hurt it a tenth more. Cuts Crescendo by 5 seconds."),
 ]
 
 # ============================================================================= 9 ROGUE (endurance)
 ROWS += [
  A(9,1,"Vital Strike", 71, DEBUF, 5, 0, [(3,-35,0,100,0)], dur=4, durf=11, tmpl=T_BUFF, desc=
-   "Open a leg. What you have cut cannot run."),
+   "A full weapon swing that slows your target to under two thirds speed for 24 seconds."),
  A(9,2,"Rupture", 72, DEBUF, 5, 0, [(0,-18,0,1,0)], dur=8, durf=11, tmpl=T_BUFF, desc=
-   "A wound that will not close on its own."),
+   "Opens a bleed for 18 plus your level every tick, for 8 ticks."),
  A(9,3,"Exploit Weakness", 73, MELEE, 5, 0, INERT, desc=
-   "Put a blade where it is already bleeding, for half as much again. Shortens Rupture by 5 seconds."),
+   "A full weapon swing, half again as hard if Rupture is already bleeding on the target. Cuts Rupture by 5 seconds."),
 ]
 
 # ============================================================================= 10 SHAMAN (mana)
 ROWS += [
  A(10,1,"Spiritual Foresight", 77, RUNE, 5, 1,
-   [(55,60,0,3,0), (323,44751,0,100,0)], dur=10, durf=11, tmpl=T_BUFF, desc=
-   "A ward that sees the blow coming. What strikes through it is slowed for its trouble."),
+   # ⚠️⚠️ dur MUST NOT EXCEED THE TIER 1 RECAST (10s). An absorb refreshed faster than it is
+   # consumed never has to survive anything -- this shipped at dur=10 (60s) on a 10s recast and
+   # made Shamans unkillable (v132). ⚠️ The AMOUNT scales from a SMALL base on purpose (v133):
+   # an absorb is sized against incoming damage at that level, so flat is immunity early and
+   # worthless late. Target is roughly ONE hit -- 5 at level 1, 63 at 30.
+   [(55,3,0,2,0), (323,44751,0,100,0)], dur=1, durf=11, tmpl=T_BUFF, desc=
+   "Wards the target against 3 plus twice your level of damage for 6 seconds. Anything that strikes the ward is slowed for 2 ticks."),
  A(10,2,"Crippling Spirit", 78, RUNE, 41, 1,
-   [(55,120,0,5,0), (323,44752,0,100,0)], dur=10, durf=11, tmpl=T_BUFF, desc=
-   "The same ward, over your whole group, and it bites harder."),
+   # ⚠️ 60s duration is fine HERE only because the recast is 120s -- half uptime, a real
+   # cooldown, and worth ~2 hits each is the point of taking it. Scales like tier 1 (v133).
+   [(55,10,0,4,0), (323,44752,0,100,0)], dur=10, durf=11, tmpl=T_BUFF, desc=
+   "Wards your whole group against 10 plus 4 per level of damage each, for 60 seconds. Anything that strikes a ward is slowed harder, for 2 ticks."),
  A(10,3,"Malaise", 79, DEBUF, 5, 0,
    [(4,-20,0,100,0), (8,-20,0,100,0), (10,-20,0,100,0), (2,-25,0,100,0)], dur=6, durf=11,
    tmpl=T_BUFF, desc=
-   "Sap what your target swings, thinks and commands with. Shortens Crippling Spirit by 5 seconds, "
-   "or by 10 against something already slowed."),
+   "Saps 25 attack and 20 each of Strength, Intelligence and Charisma from your target for 36 seconds. Cuts Crippling Spirit by 5 seconds, or by 10 against something already slowed."),
  H(10,44751,"Foresight Chill", 77, DEBUF, 5, 0, [(11,85,0,100,0)], dur=2, durf=11, tmpl=T_BUFF, desc=
    "The cold left behind by a warded blow."),
  H(10,44752,"Crippling Chill", 78, DEBUF, 5, 0, [(11,70,0,100,0)], dur=2, durf=11, tmpl=T_BUFF, desc=
@@ -192,33 +191,31 @@ ROWS += [
 # ============================================================================= 11 NECROMANCER (health)
 ROWS += [
  A(11,1,"Withering Touch", 41, DEBUF, 5, 0, [(0,-10,0,1,0)], dur=6, durf=11, tmpl=T_BUFF, desc=
-   "Your hand leaves rot behind it."),
+   "A full weapon swing that leaves rot behind, dealing 10 plus your level every tick for 6 ticks."),
  A(11,2,"Soul Harvest", 42, NUKE, 5, 0, INERT, desc=
-   "Call in every debt at once. Each affliction on your target is spent for damage and health."),
+   "Spends every affliction on your target at once. They deal all of their remaining damage immediately and are consumed, and you are healed for half of that."),
  A(11,3,"Toll of the Dead", 43, NUKE, 5, 0, INERT, desc=
-   "Name the price of what is already killing your target. Shortens Soul Harvest by 15 seconds."),
+   "Deals a twentieth of the damage your target afflictions still have left to give, or a quarter of it if that total would already kill them. Cuts Soul Harvest by 15 seconds."),
 ]
 
 # ============================================================================= 12 WIZARD (mana)
 ROWS += [
  A(12,1,"Arcane Fist", 162, MELEE, 5, 0, INERT, desc=
-   "Strike with the hand that is not casting, and take a little power back from the impact."),
+   "A weapon swing at seven tenths damage that returns twice your level in mana."),
  A(12,2,"Overload", 163, NUKE, 5, 0, [(0,-40,0,20,900)], desc=
-   "Pour everything into one cast. The recoil leaves you reeling for a moment."),
+   "Pours everything into one cast for 40 plus 20 per level, to a maximum of 900, then stuns you for 2 seconds. Each gathered ley thread adds a further 3 times your level."),
  A(12,3,"Ley Tap", 164, NUKE, 5, 0, [(0,-15,0,3,200)], desc=
-   "Draw off a thread of the ley. Each thread makes your next Overload land harder, up to three. "
-   "Shortens Overload by 5 seconds."),
+   "A bolt for 15 plus 3 per level, to a maximum of 200, that gathers a ley thread. Threads stack to 3 and are spent by your next Overload. Cuts Overload by 5 seconds."),
 ]
 
 # ============================================================================= 13 MAGICIAN (mana)
 ROWS += [
  A(13,1,"Elemental Fist", 38, MELEE, 5, 0, INERT, desc=
-   "A fist wrapped in flame, and a guardian at your shoulder if you have none."),
+   "A full weapon swing. If you have no pet, an elemental guardian answers, and it is rescaled to your level as you grow."),
  A(13,2,"Elemental Swarm", 105, SWARM, 6, 1, [(152,1,0,100,0)], tmpl=T_SWARM, tz="ServantRo", desc=
-   "Call a brief host of servants to fight beside your guardian."),
+   "Calls a brief host of servants to fight beside you."),
  A(13,3,"Cinder Blast", 106, NUKE, 5, 0, [(0,-30,0,3,250)], desc=
-   "A burst of cinders, twice as fierce on whatever your pet is already fighting. "
-   "Shortens Elemental Swarm by 7 seconds."),
+   "A burst of cinders for 30 plus 3 per level, to a maximum of 250. If your pet is already fighting that target it deals a further 3 times your level. Cuts Elemental Swarm by 7 seconds."),
  H(13,44754,"Elemental Guardian", 38, PET, 6, 1, [(33,1,0,100,0)], tmpl=T_PET, tz="SumEarthR2", desc=
    "The guardian granted by Elemental Fist."),
 ]
@@ -226,24 +223,22 @@ ROWS += [
 # ============================================================================= 14 ENCHANTER (mana)
 ROWS += [
  A(14,1,"Tashania", 21, DEBUF, 5, 0, [(111,-15,0,100,0)], dur=8, durf=11, tmpl=T_BUFF, desc=
-   "Thin every ward your target has against magic."),
+   "Thins every magical ward your target has, lowering all resists by 15 for 48 seconds. Physical resistance is unaffected."),
  A(14,2,"Gift of Thought", 22, HEAL, 41, 1, [(15,100,0,3,0)], desc=
-   "Hand your group back the thoughts they have spent."),
+   "Restores 100 plus 3 per level mana to your whole group."),
  A(14,3,"Mind Fray", 23, DEBUF, 6, 1, [(286,30,0,100,0)], dur=3, durf=11, tmpl=T_BUFF, desc=
-   "Fray your own mind against the working. Your spells land harder for three ticks. "
-   "Shortens Gift of Thought by 5 seconds."),
+   "Your spells land for 30 more damage for 3 ticks. Cuts Gift of Thought by 5 seconds."),
 ]
 
 # ============================================================================= 15 BEASTLORD (endurance)
 ROWS += [
  A(15,1,"Feral Swipe", 108, MELEE, 5, 0, INERT, desc=
-   "A raking blow, and a companion at your side if you have none."),
+   "A full weapon swing. If you have no pet, a feral companion answers, and it is rescaled to your level as you grow."),
  A(15,2,"Feral Frenzy", 109, RUNE, 6, 1, [(11,125,0,100,0), (0,10,0,1,0)], dur=10, durf=11,
    tmpl=T_BUFF, desc=
-   "You and your companion both move faster and mend faster."),
+   "You and your companion attack a quarter faster and mend 10 plus your level every tick, for 60 seconds."),
  A(15,3,"Bloodscent", 110, MELEE, 5, 0, INERT, desc=
-   "You can smell the end of it. Far worse for a target below half health, and it shortens "
-   "Feral Frenzy by 5 seconds, or by 10 on wounded prey."),
+   "A full weapon swing, or four fifths harder against a target below half health. Cuts Feral Frenzy by 5 seconds, or by 10 on wounded prey."),
  H(15,44755,"Feral Companion", 108, PET, 6, 1, [(33,1,0,100,0)], tmpl=T_PET, tz="SpiritWolf224", desc=
    "The companion granted by Feral Swipe."),
 ]
@@ -251,12 +246,11 @@ ROWS += [
 # ============================================================================= 16 BERSERKER (endurance)
 ROWS += [
  A(16,1,"Reckless Cleave", 55, MELEE, 5, 0, INERT, desc=
-   "Everything behind the swing and nothing behind the guard. It costs you a little blood."),
+   "A weapon swing at one and two fifths damage that costs you a hundredth of your maximum health."),
  A(16,2,"Frenzied Onslaught", 56, MELEE, 5, 0, INERT, desc=
-   "Five swings, as fast as you can put them in."),
+   "Five weapon swings at half damage each."),
  A(16,3,"Blood Frenzy", 57, MELEE, 5, 0, INERT, desc=
-   "The worse your own wounds, the sooner you can do that again. Shortens Frenzied Onslaught by "
-   "2 seconds for every tenth of your health that is gone."),
+   "A full weapon swing. Cuts Frenzied Onslaught by 2 seconds for every tenth of your own health that is missing, up to 18."),
 ]
 
 
@@ -571,9 +565,9 @@ UPDATE spells_new SET player_1 = 'PLAYER_1' WHERE id BETWEEN 44700 AND 44755;
         desc_lines.append('\t[%d] = "%s",' % (r["id"], r["desc"].replace('"', "'")))
     # Warrior predates this generator (v104) but its window rows still need text.
     war = {
-        44700: "Cleave into your target with your equipped weapon, striking for weapon damage and seizing its attention.",
-        44701: "Brace behind your guard. The next 5 melee attacks against you are each reduced by a tenth of your armor class, and any blow weaker than that is turned aside entirely.",
-        44702: "Sweep everything in front of you. Each target struck shortens the recovery of Bulwark by 3 seconds, to a maximum of 9. Generates no additional threat.",
+        44700: "A full weapon swing that also seizes attention, adding threat equal to 6 times your level.",
+        44701: "Brace behind your guard for 60 seconds. The next 5 melee hits against you are each reduced by a tenth of your armor class, and any blow smaller than that is stopped outright.",
+        44702: "A full weapon swing against every enemy within 30 feet in front of you that is already fighting you. Adds no threat of its own. Each target struck cuts Bulwark by 3 seconds, up to 9.",
     }
     for i in sorted(war):
         desc_lines.insert(0, '\t[%d] = "%s",' % (i, war[i]))

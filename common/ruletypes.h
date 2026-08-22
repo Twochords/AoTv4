@@ -539,7 +539,7 @@ RULE_INT(Spells, HarmTouchCritRatio, 200, "Harmtouch crit bonus, on top of BaseC
 RULE_BOOL(Spells, UseClassicHarmTouchDamage, false, "Use pre 2007 Harm Touch calculations - Default: False")
 RULE_BOOL(Spells, UseClassicSpellFocus, false, "Enabling will tell the server to handle random focus damage as classic spell imports lack the limit values.")
 RULE_BOOL(Spells, ManaTapsOnAnyClass, false, "Enabling this will allow you to cast mana taps on any class, this will bypass ManaTapsRequireNPCMana rule.")
-RULE_INT(Spells, HealAmountMessageFilterThreshold, 100, "Lifetaps below this threshold will not have a message sent to the client (Heal will still process) 0 to Disable.")
+RULE_INT(Spells, HealAmountMessageFilterThreshold, 12,  "Heals below this threshold send no message. Despite the name it gates EVERY heal message, not just lifetaps -- one call site, Mob::HealDamage. Stock 100 is a live EQ number that hides every heal a level 30 cap can produce. MUST stay at or above the top Thirst tier (12, aotv4_thirst.lua): that line heals on every melee hit, 3-4 times a second, and a lower value puts the engine per-hit line back under its deliberate 3-second accumulation. 0 to Disable.")
 RULE_BOOL(Spells, SnareOverridesSpeedBonuses, false, "Enabling will allow snares to override any speed bonuses the entity may have. Default: False")
 RULE_INT(Spells, TargetedAOEMaxTargets, 4, "Max number of targets a Targeted AOE spell can cast on. Set to 0 for no limit.")
 RULE_INT(Spells, PointBlankAOEMaxTargets, 0, "Max number of targets a Point-Blank AOE spell can cast on. Set to 0 for no limit.")

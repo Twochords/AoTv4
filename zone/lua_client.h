@@ -245,6 +245,7 @@ public:
 	void UntrainDiscBySpellID(uint16 spell_id);
 	void UntrainDiscBySpellID(uint16 spell_id, bool update_client);
 	void UntrainDiscAll();
+	void SendDisciplineUpdate();
 	void UntrainDiscAll(bool update_client);
 	bool IsStanding();
 	bool IsSitting();

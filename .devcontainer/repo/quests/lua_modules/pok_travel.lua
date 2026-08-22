@@ -194,6 +194,23 @@ function M.handle_say(e)
 			client:Message(MT.Red, "You have not discovered that portal.")
 			return true
 		end
+		-- ⚠️⚠️ THE SAME BOOK GATE AS THE NEW WINDOW, AND IT WAS MISSING HERE ENTIRELY.
+		-- This branch is reachable by TYPING `/say portalgo <short>` -- no window, no book, no dll --
+		-- so while aotv4_travel.M.request refused travel away from a book, this quietly did not, and
+		-- the whole rule was one say command away from being optional. Reported as "anyone can use it
+		-- at any time". The predicate lives in aotv4_travel so there is exactly one definition of
+		-- "is this player reading a book"; requiring it here would be a second copy to drift.
+		local ok_tv, travel = pcall(require, "aotv4_travel")
+		if ok_tv and travel and travel.reading_book and not travel.reading_book(client) then
+			client:Message(MT.Red, travel.BOOK_REFUSAL)
+			return true
+		end
+		-- ⚠️ And refused in combat, matching the new window and the delve and difficulty shifts
+		-- (§24, §43): a zone change breaks every hate list at once, with no cast time and no reagent.
+		if (client:GetAggroCount() or 0) > 0 then
+			client:Message(MT.Red, "Not while something is hunting you. Break away first.")
+			return true
+		end
 		client:Message(MT.Yellow, "The book's magic carries you to " .. p.long .. "...")
 		client:MovePC(p.id, p.x, p.y, p.z, p.h)
 		return true

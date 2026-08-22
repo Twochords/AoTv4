@@ -300,6 +300,19 @@ ability (Discordant Strike, 44721) therefore carries a **flat −25**, which is 
 level-30 mob's 152 AC and was chosen from that measurement rather than from the level. The analysis
 below is still the right analysis; only its conclusion ("ship the −15% directly") was unbuildable.
 
+**⚠️⚠️ CORRECTION (2026-08-22): SPA 1 IS FLAT. THE PARAGRAPH BELOW IS WRONG ABOUT THIS.**
+`Mob::ApplySpellsBonuses` does `newbon->AC += base_value` (`zone/bonuses.cpp:649`) — there is **no
+percentage form of SPA 1**. So "ship the −15% directly" was never possible: the row carries a flat
+**−25**, which happens to match the 15 percent figure on an *average* mob and under-delivers badly on
+exactly the elites the debuff exists for (25 against the intended 79 on a 529-AC one).
+- 📌 It **is** applied — `mitigation_ac` is a cached value (`mob.h:262`) but applying a buff calls
+  `CalcBonuses`, which calls `CalcAC` (`bonuses.cpp:38`), so the debuff is picked up. Reported as
+  *"neither Discordant Strike nor Cadence Strike actually reduce anything"*; both work and **neither
+  said so**, which is the same failure as Void Stance.
+- 📌 Making it genuinely proportional would need Lua `ModifyNPCStat("ac", …)` with a restore on fade —
+  a real design decision with a real failure mode (a debuff that fails to restore is permanent), not
+  a bug fix. Left flat deliberately; raise the number if elites are the problem.
+
 **Bard AC debuff — the flat approximation, and why 10 x level was wrong.**
 15% is the design target; a flat `10 × level` was floated only as an easy way to approximate it. It
 does not approximate it. After the NPC rescale, average mob AC at level 30 is **152** (max 529 on
@@ -736,8 +749,199 @@ native line would never appear at any level this server reaches — §38 again.
 `M.tell_hot` therefore reports per-tick, tick count and total **once at cast**, read off the row
 (`base`, `formula`, `buff_duration`) rather than hardcoded so retuning the spell cannot leave it
 lying. That is also better information than a per-tick trickle, and costs no chat volume.
-- 📌 **Lowering that threshold is the lever if per-tick lines are ever wanted** — but it would also
-  make the engine print a generic "You heal X for N" on top of every class ability that already
-  reports its own heal, so it was left alone.
-- 📌 The Circle of Renewal tiers have no Lua script and so still rely on the native message, which
-  only tier VI (150 a tick) clears. That matches how stock heals over time behave here.
+- ✅ **LOWERED TO 12 (migration v130, 2026-08-22)**, because the cast-time line was not what was
+  wanted — reported as *"I dont see the heal ticks in chat still"*. Every heal over time now reports
+  each tick through the engine's own `HOT_HEAL_SELF`, on the Heal Over Time filter, exactly as a
+  stock HoT does.
+- ⚠️⚠️ **12 IS COUPLED TO THE THIRST LINE. DO NOT SET IT TO 0.** `aotv4_thirst.lua` pays a flat heal
+  on every successful melee hit, **2 to 12** by tier, which with dual wield and double attack is
+  **3-4 heals a second**. That file accumulates and reports once every 3 seconds precisely because
+  one line per hit *"is not a proc message, it is a wall of text"*. Dropping this rule below the top
+  Thirst tier puts the engine's per-hit line straight back underneath that accumulation and undoes
+  the design. **Raise the Thirst amounts and this must rise with them.**
+  📌 It also lands where §38's scaling argument puts it independently: 100 on a live 10,000 HP bar is
+  about 15 on ours.
+- ⚠️ The rule is **named for lifetaps and gates every heal** — one call site, `Mob::HealDamage`
+  (`zone/attack.cpp:5305`), wrapping direct heals, HoT ticks and taps alike. The stock description is
+  misleading; the header text now says so.
+- 📌 Cost accepted: a class ability that heals now draws the engine's generic *"You heal X for N
+  points"* underneath its own line, which already names the ability. Two lines for one event, taken
+  so that **ticks — which have no other voice at all** — become visible.
+- 📌 The Circle of Renewal tiers have no Lua script and now report through the same native path, so
+  all six tiers are covered rather than only tier VI.
+
+### ⚠️⚠️ THE CLIENT KEEPS ITS OWN COPY OF `EndurUpkeep`, SO FIXING THE SERVER IS HALF THE JOB
+v128 zeroed `EndurUpkeep` in `spells_new`, the shared-memory blob was verified to carry 0, and the
+drain was **still reported from play** with Wildgrowth sitting in the Combat Abilities window running
+like an upkeep discipline.
+
+The client reads spell data from its **own `spells_us.txt`**, not from the server, and the shipped
+copy was dated a day before the fix. So the client went on believing Wildgrowth costs 10 endurance a
+tick and rendered it accordingly — an entirely client-side drain that no amount of server-side
+verification can see or disprove.
+
+- ✅ **`EndurUpkeep` is field 174 and `effectid1` is field 86** in `spells_us.txt`. A field-level diff
+  of one spell is the fastest proof that an export is current:
+  ```python
+  f = next(l for l in open('spells_us.txt', encoding='latin1') if l.startswith('44716^')).split('^')
+  f[86], f[174]        # -> '100', '0' once v128 and v129 have been exported
+  ```
+- ⚠️⚠️ **ANY MIGRATION TOUCHING `spells_new` NEEDS `./export_client_files` AND THE FILE SHIPPED**, in
+  addition to `./shared_memory`. §14 says this for class levels and cast times and §51 for
+  descriptions; it is just as true for **mechanics**, which is much less obvious — nobody expects the
+  client to be enforcing a cost.
+- 📌 The tell that it is client-side: the server can be *proved* correct (blob read directly, no
+  code path that subtracts endurance, regen positive) and the player still sees it. When every
+  server-side check passes and the symptom persists, **ask what the client believes.**
+- 📌 Backups follow the existing convention, `spells_us.txt.pre_v129_2026-08-22.bak`. §36 records an
+  old export being the only surviving copy of pre-change durations — do not delete them.
+
+### ⚠️⚠️ AN AVOIDANCE BUFF ON `numhitstype` 1 CONSUMES ITSELF FASTER THE BETTER IT WORKS (v131)
+
+Reported as the Monk abilities doing *"nothing outside of damage — the avoidance or void aren't doing
+anything"*. Void Stance was firing correctly and expiring before it could be noticed.
+
+`numhitstype` **1** is `NumHit::IncomingHitAttempts` — *"attempted incoming melee attacks (**hit or
+miss**) on YOU"* (`zone/common.h:147`) — and its counter at `zone/attack.cpp:4502` sits **outside**
+any `damage > 0` guard, so a miss decrements it exactly like a hit. Void Stance is SPA 172
+`AvoidMeleeChance`: **producing misses is its entire job**, and every miss it produced burned one of
+its own four charges.
+
+- ⚠️⚠️ **AND FOUR *ATTEMPTS* IS SECONDS, NOT ROUNDS.** One creature swinging twice a round empties it
+  in about two rounds; two creatures in one. The window was too short to perceive even when it worked.
+- ✅ Now **type 6** `IncomingHitSuccess`, counted at `attack.cpp:4621` **inside** the `damage > 0`
+  branch, so a charge is spent only when a blow actually lands. "Slip the next 4 blows" means what it
+  says rather than "survive 4 swing attempts".
+- 📌 **Its sibling already did this.** Cadence Strike (44723) is type 6, and those two are the only
+  class abilities using engine charges at all — Void Stance was the odd one out. **Check the other
+  member of a pair before assuming a value is deliberate.**
+- ⚠️ **The Bulwark trap does NOT apply here.** `CheckNumHitsRemaining` fades the buff before
+  `EVENT_DAMAGE_TAKEN`, which is why Bulwark counts its charges in Lua — but SPA 172 is paid by the
+  **engine** and read in `GetTotalDefense` during the hit roll, before any damage exists. The engine
+  counter is safe exactly when the engine also pays the effect.
+- ⚠️ **Magnitude deliberately untouched.** 50 is a 1.5x multiplier on total defense
+  (`attack.cpp:325`) and is already large. Find out what it feels like now that it survives long
+  enough to be felt before adding to it.
+- 📌 **A pure chance modifier with no message is indistinguishable from a broken ability**, which is
+  how this was reported. Void Stance now states its own numbers at cast — *"50 percent harder to hit
+  until 4 blows land"* — with the magnitude read off the row so retuning cannot leave the line lying.
+  ⚠️ The charge count is the one number that **cannot** be read back (`get_spell_stat` has no key for
+  `numhits`), so `VOID_CHARGES` mirrors the SQL the way `aotv4_thirst.lua`'s table does. Change one,
+  change the other.
+
+### ⚠️⚠️ `#show stats` PRINTS **TWO** NUMBERS CALLED "ARMOR CLASS" AND ONE OF THEM NEVER MOVES
+
+This cost a full round trip. An AC debuff was reported as not working, twice, and it was working the
+whole time — the wrong line was being watched.
+
+```
+Combat Stats | Accuracy: 0 Armor Class: 86 Attack: 0          <- t->GetAC(), the RAW npc_types field
+Combat Stats | Offense: 200 Mitigation Armor Class: 116       <- GetMitigationAC(), the real one
+```
+
+- ⚠️⚠️ **`Armor Class:` is the raw column and a spell bonus CANNOT move it.** `Mob::GetAC()` returns
+  the creature's `npc_types.AC`; the debuff lands in `spellbonuses.AC`, which only ever shows up
+  through `ACSum` (`attack.cpp:937`). The line that keeps the plain name is the one that never
+  changes (`mob.cpp:3194`).
+- ✅ **`Mitigation Armor Class` is the number to watch** (`mob.cpp:3231`). Measured on a Crushbone
+  orc centurion: **116 before Discordant Strike, 91 after** — exactly the −25 on the row.
+- 📌 Cadence Strike is confirmed the same way, by its own fade message: *"Your Cadence Strike spell
+  has worn off of orc centurion."*
+- ⚠️ **`#showstats` has MOVED to `#show stats`**, and the two produce different layouts. The
+  `Mob::SendStatsWindow` format (`mob.cpp:1752`, `Mitigation AC:` / `Defense: X / Y | Spell: N`) is
+  the *window*; the flat chat dump above is what `#show stats` actually prints. Do not describe one
+  and test with the other.
+- ⚠️ Both Bard debuffs last **5 ticks / 30 seconds** — measure during the fight.
+
+📌 **The general lesson, and it is not about AC:** when a mechanic is reported as doing nothing and
+the code reads correct end to end, suspect the *instrument* before the mechanic. Two of these three
+Bard/Monk reports were the effect being invisible, and this one was the effect being visible on a
+line nobody was looking at.
+
+### 📌 HOW TO VERIFY A DEBUFF ACTUALLY LANDED ON A CREATURE
+
+⚠️ **This section describes the WINDOW format (`Mob::SendStatsWindow`, `zone/mob.cpp:1752`). What
+`#show stats` prints in chat is the flat dump described above — check that one first.**
+`Mob::SendStatsWindow` prints two relevant lines:
+
+```
+Mitigation AC: 152                      <- drops by the debuff
+Defense: 41 / 63 | Spell: -25           <- the "| Spell:" part appears ONLY when spellbonuses.AC != 0
+```
+
+**No `| Spell:` component means the buff is not on the creature.** That is the decisive test — the
+number itself can be argued about, its presence cannot.
+
+- ⚠️⚠️ **THE CLIENT'S OWN INSPECT WINDOW SHOWS EQUIPMENT, NOT AC.** Right-clicking a creature will
+  never show an AC change however well the debuff is working.
+- ⚠️⚠️ **THE STATS WINDOW'S OWN UPDATE BUTTON LIES ON AN NPC TARGET.**
+  `POPUPID_UPDATE_SHOWSTATSWINDOW` (`zone/client_packet.cpp:13080`) refreshes the **target** only when
+  the target `IsOfClientBot()` — for a creature it falls through and re-sends **YOUR OWN** stats. So
+  pressing Update while targeting a mob silently shows you yourself. Re-run `#showstats` instead.
+- ⚠️ **Both Bard debuffs last 5 ticks — 30 seconds.** Inspect during the fight, not after it.
+- 📌 The recalculation is not in doubt: `Mob::AddBuff` ends with `CalcBonuses()` (`spells.cpp:4046`),
+  which calls `CalcAC()` (`bonuses.cpp:38`), which refreshes the cached `mitigation_ac` (`mob.h:262`).
+
+### ⚠️⚠️ AN ABSORB'S DURATION MUST NOT EXCEED ITS RECAST (v132, 2026-08-22)
+
+Reported from play: *"Spiritual Foresight is spammable and makes shamans unkillable. It's a rune that
+absorbs a ton, their level 5 does the same thing but for their group."*
+
+The Shaman's **tier 1** — available at level **1** — was a **60 second** rune on a **10 second**
+recast. Every cast handed out a fresh absorb pool, six times over before the old one could expire, so
+the pool never had to survive anything at all.
+
+- 📌 **The general rule, and it is not about Shamans.** For a damage or debuff ability, duration and
+  recast are independent dials. For a **pool that refills on cast** they are the same dial, and the
+  shorter one wins: recast < duration means the pool is never actually spent. Tier 1 is now
+  `buffduration 1` (6s) against its 10s recast.
+- ⚠️ Tier 2 keeps its 60 second duration **because its recast is 120 seconds** — half uptime, a real
+  cooldown. Same effect, opposite verdict, entirely because of the ratio.
+
+**And the amount tripled with level — which is NOT the §5 clone trap, it was authored.**
+`gen_class_abilities.py` sets every formula explicitly and the Shaman spec really did say
+`(55, 60, 0, 3, 0)`. Formula 1-99 is `base + caster_level * formula`:
+
+| | level 1 | 10 | 20 | 30 |
+|---|---|---|---|---|
+| Spiritual Foresight | 63 | 90 | 120 | **150** |
+| Crippling Spirit | 125 | 170 | 220 | **270** |
+
+- ⚠️⚠️ **AND `max` WAS 0, SO THERE WAS NO CEILING** — which is what separates these two from every
+  nuke in the band. Condemn, Sunflare, Ley Tap, Cinder Blast and Overload all scale **on purpose** and
+  all carry a cap (250 / 300 / 200 / 250 / 900). The runes scaled and had none.
+- ✅ Both are now `formula 100 / max 0`, the static case §5 prescribes for any hand-tuned value: the
+  number in the row is the number in the game.
+- ⚠️ **The generator spec was corrected too** — the migration alone would be undone by the next
+  regen, since these rows are generated (§30).
+- 📌 **Magnitude is not settled.** 60 and 120 are what the rows always claimed; whether they are right
+  now that they are actually delivered is a question for play.
+
+### ⚠️⚠️ THE DESCRIPTIONS WERE FLAVOUR TEXT, NOT DESCRIPTIONS (v134, 2026-08-22)
+
+Every one of the 48 was directionally true and **none carried a number**. "Draw a measure of vigour
+back into yourself" is a heal for twice your level. "Your target guards itself worse for it" is 25
+armor for 30 seconds. "Far likelier to find nothing there" is avoidance raised by half until 4 blows
+land. A player could not tell any of them from an ability that does nothing — which is exactly how
+three separate *working* abilities got reported as broken in one week.
+
+- ⚠️⚠️ **A DESCRIPTION MUST BE CHECKED AGAINST BOTH HALVES, AND EITHER ONE ALONE IS WRONG FOR ABOUT
+  HALF THE SET.** Behaviour is split: the **row** owns the SPA, base, formula, duration and numhits;
+  the **Lua payload** owns the swings, the riders and the cooldown cuts. Every swing in this feature
+  is invisible in the row, and every duration and debuff is invisible in the Lua.
+- ⚠️ **Scaling is written as "X plus Y per level"**, because that is what `formula` 1-99 means — the
+  number in the row is only the base. Caps are stated wherever `max` is non-zero.
+- ⚠️⚠️ **NO APOSTROPHES AND NO PERCENT SIGNS.** The submission validator refuses an unescaped
+  apostrophe (it has aborted a migration part-way before, §51) and the description path is
+  printf-style, so a literal `%` is eaten as a format token (§14). Hence "a tenth", not "10 percent".
+- ⚠️⚠️ **THERE ARE THREE COPIES AND ALL THREE MUST MOVE TOGETHER**:
+  | copy | read by | updated by |
+  |---|---|---|
+  | `db_str` type 6 | the spellbook, and `AoTv4SpellDesc` for every search window | migration v134 |
+  | `lua_modules/aotv4_class_ability_desc.lua` | the Combat Skills tab | regenerated |
+  | the `desc=` spec in `gen_class_abilities.py` | **nothing at runtime** | edited, or a regen reverts the other two |
+  ⚠️ The generator holds the **Warrior three in a separate hardcoded `war` dict**, because that class
+  predates it (v104) and is not in the spec — 45 entries are found by `A(class, tier, ...)` and three
+  are not. Miss that dict and a regen silently reverts 44700-44702 alone.
+- 📌 **The client will not see any of this until `./export_client_files` runs and `dbstr_us.txt`
+  ships.** The spellbook reads the client file, never this table (§6).

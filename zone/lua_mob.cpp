@@ -3769,8 +3769,14 @@ luabind::scope lua_register_mob() {
 	.def("GetBuffs", &Lua_Mob::GetBuffs)
 	.def("GetBuffSlotFromType", &Lua_Mob::GetBuffSlotFromType)
 	.def("GetBuffSpellIDs", &Lua_Mob::GetBuffSpellIDs)
-	.def("GetBuffStatValueBySlot", (void(Lua_Mob::*)(uint8, const char*))& Lua_Mob::GetBuffStatValueBySlot)
-	.def("GetBuffStatValueBySpell", (void(Lua_Mob::*)(int, const char*))&Lua_Mob::GetBuffStatValueBySpell)
+	// ⚠️⚠️ THESE RETURN `int`, AND THE CAST USED TO SAY `void` -- so luabind registered them as
+	// returning nothing and every call handed Lua **nil**. The functions ran; their answer was thrown
+	// away at the boundary. That is why aotv4_class_abilities could not read a buff's `ticsremaining`
+	// and approximated three ticks for Soul Harvest and Toll of the Dead instead.
+	// 📌 A binding that exists, compiles and silently returns nil is worse than a missing one: the
+	// missing one is a runtime error naming the method.
+	.def("GetBuffStatValueBySlot", (int(Lua_Mob::*)(uint8, const char*))& Lua_Mob::GetBuffStatValueBySlot)
+	.def("GetBuffStatValueBySpell", (int(Lua_Mob::*)(int, const char*))&Lua_Mob::GetBuffStatValueBySpell)
 	.def("GetCHA", &Lua_Mob::GetCHA)
 	.def("GetCR", &Lua_Mob::GetCR)
 	.def("GetCasterLevel", &Lua_Mob::GetCasterLevel)

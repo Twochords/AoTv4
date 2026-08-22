@@ -862,6 +862,17 @@ void Lua_Client::UntrainDiscAll() {
 	self->UntrainDiscAll();
 }
 
+// ⚠️⚠️ THE ONLY WAY LUA CAN RESYNC THE COMBAT ABILITIES WINDOW. Every discipline change is sent as
+// the WHOLE array (Client::SendDisciplineUpdate memcpys m_pp.disciplines), so ONE call after the
+// dust settles makes the client match the server no matter which path got there. Without it, a path
+// that only ever REMOVES disciplines -- death_loss calls UntrainDiscAll(false) deliberately, to
+// avoid a packet per slot -- leaves the player looking at abilities the server has already taken
+// away. Reported as a Shaman who died, became a Berserker, and kept seeing Shaman disciplines.
+void Lua_Client::SendDisciplineUpdate() {
+	Lua_Safe_Call_Void();
+	self->SendDisciplineUpdate();
+}
+
 void Lua_Client::UntrainDiscAll(bool update_client) {
 	Lua_Safe_Call_Void();
 	self->UntrainDiscAll(update_client);
@@ -4692,6 +4703,7 @@ luabind::scope lua_register_client() {
 	.def("UntrainDisc", (void(Lua_Client::*)(int,bool))&Lua_Client::UntrainDisc)
 	.def("UntrainDiscAll", (void(Lua_Client::*)(bool))&Lua_Client::UntrainDiscAll)
 	.def("UntrainDiscAll", (void(Lua_Client::*)(void))&Lua_Client::UntrainDiscAll)
+	.def("SendDisciplineUpdate", (void(Lua_Client::*)(void))&Lua_Client::SendDisciplineUpdate)
 	.def("UntrainDiscBySpellID", (void(Lua_Client::*)(uint16))&Lua_Client::UntrainDiscBySpellID)
 	.def("UntrainDiscBySpellID", (void(Lua_Client::*)(uint16,bool))&Lua_Client::UntrainDiscBySpellID)
 	.def("UpdateAdmin", (void(Lua_Client::*)(void))&Lua_Client::UpdateAdmin)

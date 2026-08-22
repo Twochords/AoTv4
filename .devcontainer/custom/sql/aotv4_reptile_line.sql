@@ -70,40 +70,46 @@ DELETE FROM aotv4_tmpl; INSERT INTO aotv4_tmpl SELECT * FROM spells_new WHERE id
 UPDATE aotv4_tmpl SET id=43355, name='Skin of the Drake Trigger',     descnum=43355, effect_base_value1=300;
 INSERT INTO spells_new SELECT * FROM aotv4_tmpl;
 
+-- ⚠️⚠️ `numhits` IS PINNED TO 5 ON EVERY TIER, AND IT MUST BE. Template 8008 carries **72**, and a
+-- clone inherits it (section 5) -- 72 charges of a defensive proc across a 45 tick duration can never
+-- run out, so the ward was effectively a passive heal for its whole window. Migration v136 corrected
+-- the live rows; without this line a re-run of THIS script would quietly restore 72.
+-- 📌 numhitstype 10 (NumHit::DefensiveSpellProcs) is inherited and is correct -- a charge is spent
+-- only when the proc actually fires (zone/attack.cpp:5467).
 -- ---------------------------------------------------------------- buffs (what the player scribes)
 -- Cloned from 8008 "Skin of the Reptile". effect_base_value4 is the SPA 323 trigger id.
 DELETE FROM aotv4_tmpl; INSERT INTO aotv4_tmpl SELECT * FROM spells_new WHERE id = 8008;
-UPDATE aotv4_tmpl SET id=43300, name='Skin of the Newt',      descnum=43300, mana=26,  effect_base_value4=43350,
+UPDATE aotv4_tmpl SET id=43300, name='Skin of the Newt',      descnum=43300, numhits=5, mana=26,  effect_base_value4=43350,
   classes1=8,  classes2=8,  classes3=8,  classes4=8,  classes5=8,  classes6=8,  classes7=8,  classes8=8,
   classes9=8,  classes10=8, classes11=8, classes12=8, classes13=8, classes14=8, classes15=8, classes16=8;
 INSERT INTO spells_new SELECT * FROM aotv4_tmpl;
 
 DELETE FROM aotv4_tmpl; INSERT INTO aotv4_tmpl SELECT * FROM spells_new WHERE id = 8008;
-UPDATE aotv4_tmpl SET id=43301, name='Skin of the Lizard',    descnum=43301, mana=58,  effect_base_value4=43351,
+UPDATE aotv4_tmpl SET id=43301, name='Skin of the Lizard',    descnum=43301, numhits=5, mana=58,  effect_base_value4=43351,
   classes1=18, classes2=18, classes3=18, classes4=18, classes5=18, classes6=18, classes7=18, classes8=18,
   classes9=18, classes10=18,classes11=18,classes12=18,classes13=18,classes14=18,classes15=18,classes16=18;
 INSERT INTO spells_new SELECT * FROM aotv4_tmpl;
 
 DELETE FROM aotv4_tmpl; INSERT INTO aotv4_tmpl SELECT * FROM spells_new WHERE id = 8008;
-UPDATE aotv4_tmpl SET id=43302, name='Skin of the Serpent',   descnum=43302, mana=110, effect_base_value4=43352,
+UPDATE aotv4_tmpl SET id=43302, name='Skin of the Serpent',   descnum=43302, numhits=5, mana=110, effect_base_value4=43352,
   classes1=28, classes2=28, classes3=28, classes4=28, classes5=28, classes6=28, classes7=28, classes8=28,
   classes9=28, classes10=28,classes11=28,classes12=28,classes13=28,classes14=28,classes15=28,classes16=28;
 INSERT INTO spells_new SELECT * FROM aotv4_tmpl;
 
 DELETE FROM aotv4_tmpl; INSERT INTO aotv4_tmpl SELECT * FROM spells_new WHERE id = 8008;
-UPDATE aotv4_tmpl SET id=43303, name='Skin of the Crocodile', descnum=43303, mana=182, effect_base_value4=43353,
+UPDATE aotv4_tmpl SET id=43303, name='Skin of the Crocodile', descnum=43303, numhits=5, mana=182, effect_base_value4=43353,
   classes1=38, classes2=38, classes3=38, classes4=38, classes5=38, classes6=38, classes7=38, classes8=38,
   classes9=38, classes10=38,classes11=38,classes12=38,classes13=38,classes14=38,classes15=38,classes16=38;
 INSERT INTO spells_new SELECT * FROM aotv4_tmpl;
 
 DELETE FROM aotv4_tmpl; INSERT INTO aotv4_tmpl SELECT * FROM spells_new WHERE id = 8008;
-UPDATE aotv4_tmpl SET id=43304, name='Skin of the Basilisk',  descnum=43304, mana=279, effect_base_value4=43354,
+UPDATE aotv4_tmpl SET id=43304, name='Skin of the Basilisk',  descnum=43304, numhits=5, mana=279, effect_base_value4=43354,
   classes1=48, classes2=48, classes3=48, classes4=48, classes5=48, classes6=48, classes7=48, classes8=48,
   classes9=48, classes10=48,classes11=48,classes12=48,classes13=48,classes14=48,classes15=48,classes16=48;
 INSERT INTO spells_new SELECT * FROM aotv4_tmpl;
 
 DELETE FROM aotv4_tmpl; INSERT INTO aotv4_tmpl SELECT * FROM spells_new WHERE id = 8008;
-UPDATE aotv4_tmpl SET id=43305, name='Skin of the Drake',     descnum=43305, mana=390, effect_base_value4=43355,
+UPDATE aotv4_tmpl SET id=43305, name='Skin of the Drake',     descnum=43305, numhits=5, mana=390, effect_base_value4=43355,
   classes1=58, classes2=58, classes3=58, classes4=58, classes5=58, classes6=58, classes7=58, classes8=58,
   classes9=58, classes10=58,classes11=58,classes12=58,classes13=58,classes14=58,classes15=58,classes16=58;
 INSERT INTO spells_new SELECT * FROM aotv4_tmpl;

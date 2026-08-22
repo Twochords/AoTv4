@@ -33,6 +33,26 @@ local M = {}
 -- them, or hang it off the M table, which is resolved at call time instead.
 local function bookkey(c) return "travel_book_" .. c:CharacterID() end
 
+-- ⚠️⚠️ THE ONE RULE: TRAVELLING REQUIRES A RECENTLY CLICKED PLANE OF KNOWLEDGE BOOK.
+-- The window opens two ways -- from a book (M.open_window stamps `travel_book_<charid>`) and from
+-- the /aot launcher as a READ-ONLY map. Everything that can actually move a player must ask this,
+-- and there are THREE such paths, which is exactly why the test lives in one function instead of
+-- being written out at each of them:
+--     M.request        the window's Travel button
+--     M.on_popup       the confirmation coming back, which is a SEPARATE entry point
+--     pok_travel       the legacy `/say portalgo <short>`, typed by hand, no window involved
+-- ⚠️⚠️ THAT LAST ONE WAS COMPLETELY UNGATED and is what made the window usable as travel-from-
+-- anywhere: it checks only that the destination was discovered, then MovePCs. Reported as
+-- "anyone can use it at any time".
+-- 📌 A stamp with a window, not a proximity test: travel moves you the instant you confirm, and a
+-- "are you near a book" check would have to survive the confirmation popup round trip.
+function M.reading_book(c)
+	if not c or not c.valid then return false end
+	local stamped = tonumber(eq.get_data(bookkey(c))) or 0
+	return stamped > 0 and (os.time() - stamped) <= M.BOOK_GRACE_SECS
+end
+M.BOOK_REFUSAL = "You must be reading a Plane of Knowledge book to travel. This is a map of what you have found." 
+
 -------------------------------------------------------------------- the spots
 -- ⚠️⚠️ COORDINATES ARE REAL SPAWN POINTS, NOT INVENTED AND NOT THE ZONE SAFE POINT.
 -- Each was taken from an actual `spawn2` row at roughly 60 percent of the zone's spawn spread from
@@ -105,8 +125,15 @@ M.SPOTS = {
 M.RADIUS_XY = 40.0
 M.RADIUS_Z  = 25.0
 
--- The marker NPC. VISIBLE PORTAL as of migration v64 -- see make_marker below for the appearance and
--- for why the client needs `bothunder_chr` in GlobalLoad_chr.txt.
+-- The marker NPC. VISIBLE PORTAL as of migration v64 -- see make_marker below for the appearance.
+-- ⚠️⚠️ THE OLD CLAIM THAT THIS NEEDS `bothunder_chr` IN GlobalLoad_chr.txt IS STALE AND WRONG.
+-- Section 48 records that file being extended from 13 to 21 entries and then REVERTED, because the
+-- client log answered `Failed to open` for every one of the eight added archives -- they are simply
+-- not in a RoF2 client. `bothunder_chr` is not in the file today and the markers render anyway: they
+-- are race **567 Campfire**, an object race whose model the client already has, and they are proven
+-- across the 13 travel zones.
+-- 📌 Worth keeping as the shape of the lesson: an archive named in GlobalLoad_chr.txt that the client
+-- does not have is not loaded, it is silently skipped -- naming it there proves nothing.
 --
 -- ⚠️⚠️ HISTORY WORTH KEEPING, because it cost four rounds of screenshots: while this was an INVISIBLE
 -- trigger, what kept it visible was the **WEAPONS**, not the race. It was cloned from `Animation1`
@@ -579,9 +606,8 @@ function M.request(c, id, group, auto)
 	-- hides the Travel button in the second case, but that is presentation: this is the rule.
 	-- Without it the launcher becomes travel-from-anywhere and the books stop mattering at all.
 	-- ⚠️ Checked BEFORE anything else so the refusal names the real reason rather than a downstream one.
-	local stamped = tonumber(eq.get_data(bookkey(c))) or 0
-	if stamped <= 0 or (os.time() - stamped) > M.BOOK_GRACE_SECS then
-		c:Message(MT.Red, "You must be reading a Plane of Knowledge book to travel. This is a map of what you have found.")
+	if not M.reading_book(c) then
+		c:Message(MT.Red, M.BOOK_REFUSAL)
 		return false
 	end
 
@@ -647,6 +673,14 @@ function M.on_popup(e)
 	-- ⚠️ RE-CHECK, do not trust the parked request. Time passed while the box was on screen: they may
 	-- have been pulled, or (in a group) somebody may have zoned out. The popup is a confirmation, not
 	-- a licence.
+	-- ⚠️⚠️ INCLUDING THE BOOK. This re-checked combat, region and group and NOT the one gate the
+	-- feature is about, so leaving the confirmation box open until the grace lapsed and then pressing
+	-- OK travelled you from wherever you had wandered to. The box is on screen for as long as the
+	-- player likes; nothing here may assume it is answered promptly.
+	if not M.reading_book(c) then
+		c:Message(MT.Red, M.BOOK_REFUSAL)
+		return true
+	end
 	local ok, why = M.may_travel(c, sp)
 	if not ok then
 		c:Message(MT.Red, why .. ".")

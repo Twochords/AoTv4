@@ -1,0 +1,39 @@
+-- @aotv4-migration
+-- description: 2026_08_22_show_heal_ticks
+-- check: SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `rule_values` WHERE `rule_name` = 'Spells:HealAmountMessageFilterThreshold' AND `rule_value` <> '12'
+-- condition: match
+-- match: pending
+-- shared-memory: no
+-- band:
+-- author: Claude
+-- notes: 100 is a live EQ number and hides every heal in the game at a level 30 cap.
+
+-- ⚠️⚠️ THIS RULE IS DESCRIBED FOR LIFETAPS AND STOCK APPLIES IT TO EVERY HEAL.
+-- Its own text reads "Lifetaps below this threshold will not have a message sent to the client", but
+-- there is exactly ONE call site (Mob::HealDamage, zone/attack.cpp:5305) and it wraps the whole
+-- message block -- direct heals, heal over time ticks and lifetaps alike. So the lifetap spam filter
+-- silences all healing.
+--
+-- ⚠️⚠️ AT 100 IT HID EVERYTHING THIS SERVER CAN PRODUCE. On live, 100 is one percent of a health bar;
+-- at our level 30 cap it is about seven percent. Of every stock heal over time learnable at or below
+-- 30, exactly ONE clears it (2175 Celestial Health, 115 a tick); 2502 Celestial Remedy at ~35 does
+-- not, and neither does Wildgrowth (17 a tick at level 5, 42 at 30) or five of the six Circle of
+-- Renewal tiers. Section 38 is the same trap in three other places.
+--
+-- ⚠️⚠️ 12 IS NOT ARBITRARY AND IS COUPLED TO THE THIRST LINE -- DO NOT LOWER IT TO 0.
+-- lua_modules/aotv4_thirst.lua pays a FLAT heal on every successful melee hit, 2 to 12 by tier
+-- (43342-43347). With dual wield and double attack that is 3-4 heals a SECOND, and that file exists
+-- in its current shape precisely because one line per hit "is not a proc message, it is a wall of
+-- text that buries everything else in the chat window" -- it accumulates and reports every 3 seconds
+-- instead. Dropping this rule to 0 would put the engine's own per-hit line back underneath that
+-- accumulation and undo the whole design.
+-- 📌 So the rule is: **this value must stay at or above the top Thirst tier.** Raise those amounts
+-- and raise this with them, or the spam returns silently.
+-- 📌 It also lands close to where section 38's scaling argument puts it independently: 100 on a live
+-- 10,000 HP bar is ~15 on ours.
+--
+-- ⚠️ Ordinary heals cast BY a player already carried their own AoTv4 chat line (the class abilities
+-- name the ability and the amount), so those will now also draw the engine's generic "You heal X for
+-- N points" underneath. That is a small duplication, accepted so that heal over time TICKS -- which
+-- have no other voice at all -- become visible.
+UPDATE rule_values SET rule_value = '12' WHERE rule_name = 'Spells:HealAmountMessageFilterThreshold';

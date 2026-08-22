@@ -1,0 +1,38 @@
+-- @aotv4-migration
+-- description: 2026_08_22_shaman_rune_spam
+-- check: SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `spells_new` WHERE `id` IN (44727,44728) AND (`formula1` <> 100 OR (`id` = 44727 AND `buffduration` <> 1))
+-- condition: match
+-- match: pending
+-- shared-memory: yes
+-- band:
+-- author: Claude
+-- notes: A rune whose recast is shorter than its duration is not a rune, it is immunity.
+
+-- ⚠️⚠️ A RUNE REFRESHED FASTER THAN IT IS CONSUMED IS PERMANENT DAMAGE IMMUNITY.
+-- Spiritual Foresight is the Shaman's TIER 1 -- available at level 1 -- on a **10 second** recast
+-- with a **60 second** duration. Every cast handed out a FRESH absorb pool six times over before the
+-- old one could expire, so the pool never had to survive anything. Reported from play as
+-- "spammable and makes shamans unkillable", with the level 5 group version doing the same for
+-- everyone at once.
+-- 📌 The general rule this is an instance of: for an ABSORB, duration must not exceed recast.
+-- For a damage or debuff ability the two are independent; for a pool that refills on cast they are
+-- the same dial, and the shorter one wins.
+--
+-- ⚠️⚠️ AND THE AMOUNT TRIPLED WITH LEVEL, WHICH IS NOT THE SECTION 5 CLONE TRAP -- IT WAS
+-- AUTHORED. gen_class_abilities.py sets every formula explicitly and the Shaman spec really does say
+-- `(55, 60, 0, 3, 0)`. Formula 1-99 is `base + caster_level * formula`, so 60 and 120 were really:
+--       level  1        5       10       20       30
+--   Foresight  63       75       90      120      150
+--   Crippling 125      145      170      220      270
+-- ⚠️ With `max` **0** there was no cap either, which is what makes these two different from every
+-- nuke in the band -- Condemn, Sunflare, Ley Tap, Cinder Blast and Overload all scale on purpose and
+-- all carry a ceiling (250/300/200/250/900). The runes scaled by accident and had none.
+-- 📌 `formula 100 / max 0` is the static case, and it is what section 5 prescribes for any
+-- hand-tuned value: the number in the row is the number in the game.
+--
+-- ⚠️ The tier 2 group rune keeps its 60 second duration: its recast is 120 seconds, so it is already
+-- a real cooldown at 50 percent uptime. Only the amount is corrected there.
+-- 📌 MAGNITUDE IS NOT SETTLED. 60 and 120 are what the rows always claimed to be; whether they are
+-- the right numbers now that they are actually delivered is a tuning question for play.
+UPDATE spells_new SET formula1 = 100, max1 = 0, buffduration = 1  WHERE id = 44727;
+UPDATE spells_new SET formula1 = 100, max1 = 0                    WHERE id = 44728;

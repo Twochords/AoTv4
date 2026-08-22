@@ -124,6 +124,28 @@ function M.tell(c, text)
 	if c then c:Message(MSG, text) end
 end
 
+-- Report what a NUKE on the spell row is rated for.
+-- ⚠️⚠️ THE PAYLOAD RUNS BEFORE THE SPELL RESOLVES, so the number that actually lands is not knowable
+-- here -- crits, focus and the section 5 DC Overpower bonus all push it up, a partial resist pulls it
+-- down. The wording therefore says "before resists" rather than claiming a result: a confident wrong
+-- number is worse than none.
+-- 📌 The engine sends its own "hit for N points of non-melee damage" line, but that goes out on
+-- Chat::NonMelee behind the player FilterSpellDamage setting -- so it is the first thing to check when
+-- spell damage seems to be missing, and it is why these abilities do not rely on it alone.
+function M.tell_nuke(c, spell_id, t, label)
+	local base    = math.abs(eq.get_spell_stat(spell_id, "base", 1) or 0)
+	local formula = eq.get_spell_stat(spell_id, "formula", 1) or 100
+	local cap     = eq.get_spell_stat(spell_id, "max", 1) or 0
+	if base <= 0 then return false end
+	local dmg = base
+	if formula > 0 and formula < 100 then dmg = base + c:GetLevel() * formula end
+	if cap > 0 and dmg > cap then dmg = cap end
+	M.tell(c, string.format("%s strikes %s for %d before resists.",
+		label or (eq.get_spell_name(spell_id) or "It"),
+		(t and t.valid) and t:GetCleanName() or "your target", dmg))
+	return true
+end
+
 -- Report what a heal over time is actually worth, at cast.
 -- ⚠️⚠️ THE ENGINE'S OWN PER TICK LINE IS GATED BEHIND `Spells:HealAmountMessageFilterThreshold`,
 -- WHICH IS 100 -- a live EQ number. At a level 30 cap a tick of 17 to 42 is a real heal and is
@@ -165,10 +187,20 @@ end
 -- live in character_disciplines, not the spellbook. So this must run on death as well as on connect
 -- and on level up, or a character comes back from every run with no class abilities at all. Class
 -- AAs are permanent and need no such hook, which is why grant_class_aas has only two callers.
+-- ⚠️⚠️ ALWAYS RESYNCS THE CLIENT AT THE END, EVEN WHEN IT GRANTED NOTHING.
+-- The Combat Abilities window is only ever refreshed by Client::SendDisciplineUpdate, which ships the
+-- WHOLE array -- and the roguelite death calls `UntrainDiscAll(false)` on purpose, which sends
+-- nothing. So a path that only REMOVES disciplines left the player staring at abilities the server had
+-- already taken: reported as a Shaman who died, became a Berserker, and still saw Shaman disciplines.
+-- 📌 One call at the end covers every entry point at once -- connect, level up, death and the forced
+-- relog after a reforge -- instead of each of them having to remember.
 function M.grant(c)
 	if not c then return end
 	local class = c:GetClass()
-	if not M.BUILT[class] then return end
+	if not M.BUILT[class] then
+		if c.SendDisciplineUpdate then c:SendDisciplineUpdate() end
+		return
+	end
 	for tier = 1, 3 do
 		local id = M.spell_id(class, tier)
 		if c:GetLevel() >= M.TIER_LEVEL[tier] and not c:HasDisciplineLearned(id) then
@@ -179,6 +211,9 @@ function M.grant(c)
 			c:Message(15, string.format("You have learned %s.", eq.get_spell_name(id)))
 		end
 	end
+	-- ⚠️ The resync is unconditional: it must fire even when nothing was trained, because the case
+	-- that needed fixing is exactly "the server removed abilities and added none back".
+	if c.SendDisciplineUpdate then c:SendDisciplineUpdate() end
 end
 
 -- ---------------------------------------------------------------------------------------------
@@ -367,7 +402,27 @@ end
 
 -- ---------------------------------------------------------------------------------------------
 -- Wizard Ley Tap stacks, counted the same way and for the same reason.
-local LEYTAP_VAR, LEYTAP_MAX = "aotv4_leytap", 3
+-- ⚠️⚠️ THE BUFFS ARE THE STATE. Ley Tap used to bank its count in an entity variable, which meant
+-- nothing appeared on the buff bar at all -- reported as "not providing a visible buff for Overload".
+-- A buff row cannot display a number, so the count is encoded in WHICH row is up (the section 17b
+-- Shield Wall pattern, three rows for three counts).
+-- ⚠️ Reading the count back off the buffs, rather than keeping a variable beside them, is the whole
+-- point: a variable plus a buff is two sources of truth and they drift the moment one expires and the
+-- other does not. There is nothing left to desync.
+local LEYTAP_MAX  = 3
+local LEYTAP_BUFF = { 44756, 44757, 44758 }   -- 1, 2, 3 threads
+
+local function ley_stacks(c)
+	for n = LEYTAP_MAX, 1, -1 do
+		if c:FindBuff(LEYTAP_BUFF[n]) then return n end
+	end
+	return 0
+end
+
+local function ley_set(c, n)
+	for _, id in ipairs(LEYTAP_BUFF) do c:BuffFadeBySpellID(id) end
+	if n > 0 then c:ApplySpellBuff(LEYTAP_BUFF[n]) end
+end
 
 -- ---------------------------------------------------------------------------------------------
 -- SPEC: what M.fire does for an ability before its payload runs.
@@ -414,7 +469,6 @@ M.SPEC = {
 -- back to a bare "You use X", which is not wrong but tells the player nothing.
 M.NOTE = {
 	[44704] = "You raise a sanctuary over your group.",
-	[44719] = "You settle into a void stance, slipping the next blows aimed at you.",
 	[44722] = "Your crescendo restores your group's endurance.",
 	[44725] = "You rupture your target. It will bleed.",
 	[44727] = "You weave a foresight rune. Anything striking through it is slowed.",
@@ -471,7 +525,8 @@ end
 P[44705] = function(c, t)                                    -- Condemn
 	-- bodytype 3 is Undead. The nuke itself is on the spell row; this is only the cut.
 	local undead = t and t:GetBodyType() == 3
-	M.tell(c, undead and "Your condemnation burns the undead." or "Your condemnation strikes home.")
+	M.tell_nuke(c, 44705, t, "Condemn")
+	if undead then M.tell(c, "The undead burn for it.") end
 	M.cut_tier2(c, undead and 10 or 5)
 end
 
@@ -633,6 +688,7 @@ P[44717] = function(c, t)                                    -- Sunflare
 	-- ⚠️ There is no "is it standing still" test in the engine, so stationary means ROOTED, MEZZED,
 	-- STUNNED or carrying our own snare -- the whole definition, deliberately.
 	local held = t and (t:IsRooted() or t:IsMezzed() or t:IsStunned() or t:FindBuff(44724))
+	M.tell_nuke(c, 44717, t, "Sunflare")
 	if held then
 		local bonus = c:GetLevel() * 6
 		t:Damage(c, bonus, 44717, 24, false)
@@ -655,6 +711,24 @@ P[44718] = function(c, t)                                    -- Iron Palm
 	c:CheckIncreaseSkill(SKILL_HAND_TO_HAND, t, 10)
 	M.tell(c, string.format("Your iron palm lands with the weight of your weapon (%d).", dmg))
 end
+-- ⚠️ Charge count mirrors `numhits` on the 44719 row (migration 2026_08_22_void_stance_charges).
+-- There is no get_spell_stat key for numhits, so this is the one number that cannot be read back --
+-- same "the SQL is documentation, this table pays" arrangement aotv4_thirst.lua uses. Change one and
+-- change the other.
+local VOID_CHARGES = 4
+P[44719] = function(c)                                       -- Void Stance (SPA 172 is on the row)
+	-- ⚠️⚠️ SAY WHAT IT DOES IN NUMBERS. A pure chance modifier with no message and no visible tell is
+	-- indistinguishable from an ability that does nothing -- which is exactly how this was reported.
+	-- The magnitude is read off the row so retuning the spell cannot leave this line lying.
+	local pct = eq.get_spell_stat(44719, "base", 1) or 0
+	if pct > 0 then
+		M.tell(c, string.format(
+			"You settle into a void stance: %d percent harder to hit until %d blows land.",
+			pct, VOID_CHARGES))
+	else
+		M.tell(c, "You settle into a void stance.")
+	end
+end
 P[44720] = function(c, t)                                    -- Pressure Point
 	if not M.weapon_blow(c, t, 15, 1.6) then return end
 	t:AddToHateList(c, c:GetLevel() * 4)
@@ -665,9 +739,23 @@ P[44720] = function(c, t)                                    -- Pressure Point
 end
 
 -- ============================================================== 8 BARD
+-- ⚠️ Mirrors `numhits` on the 44723 row. `get_spell_stat` has no key for numhits, so this is the one
+-- number that cannot be read back -- same arrangement as VOID_CHARGES and aotv4_thirst.lua's table.
+local CADENCE_HITS = 5
+-- ⚠️⚠️ SPA 1 `ArmorClass` IS **FLAT**, NOT A PERCENTAGE. `bonuses.cpp:649` is `newbon->AC +=
+-- base_value` -- there is no percentage form of it. The design doc asserted the opposite and sized
+-- the row against "15 percent of target AC" (23 on an average mob, 79 on a 529 AC elite); what
+-- actually ships is a flat 25 everywhere, which happens to hit the average and under-delivers badly
+-- on the elites the debuff is for. Corrected in CLASS_ABILITIES_DESIGN.md rather than papered over.
+-- 📌 It IS applied: the cached `mitigation_ac` is recomputed because applying a buff calls
+-- CalcBonuses, which calls CalcAC (bonuses.cpp:38). The problem was never that it did nothing -- it
+-- is that nothing said what it did.
 P[44721] = function(c, t)                                    -- Discordant Strike (SPA 1 is on the row)
 	if not M.weapon_blow(c, t, 10) then return end
-	M.tell(c, string.format("Discord rattles %s, weakening its armor.", t:GetCleanName()))
+	local ac = math.abs(eq.get_spell_stat(44721, "base", 1) or 0)
+	M.tell(c, ac > 0
+		and string.format("Discord strips %d armor from %s.", ac, t:GetCleanName())
+		or string.format("Discord rattles %s.", t:GetCleanName()))
 end
 P[44723] = function(c, t)                                    -- Cadence Strike
 	-- 📌 GetInstrumentMod is Bard-only and is NOT Lua-bound, so "instrument scaled" is expressed as
@@ -682,6 +770,15 @@ P[44723] = function(c, t)                                    -- Cadence Strike
 	M.tell(c, mult > 1.2
 		and "Your cadence rings through your instrument."
 		or "Your cadence strikes true, though you carry no instrument.")
+	-- ⚠️ SPA 197 SkillDamageTaken with limit -1 (ALL_SKILLS): a POSITIVE base is +damage taken
+	-- (`hit.damage_done += hit.damage_done * pct / 100`, attack.cpp:7000), and the charge is spent on
+	-- the TARGET's incoming hits (numhitstype 6). All correct -- and entirely invisible, which is how
+	-- it came to be reported as doing nothing.
+	local pct = eq.get_spell_stat(44723, "base", 1) or 0
+	if pct > 0 and t and t.valid then
+		M.tell(c, string.format("%s will take %d percent more melee damage for the next %d hits.",
+			t:GetCleanName(), pct, CADENCE_HITS))
+	end
 	M.cut_tier2(c, 5)
 end
 
@@ -714,10 +811,16 @@ P[44730] = function(c, t)                                    -- Withering Touch 
 	M.tell(c, string.format("Your touch withers %s.", t:GetCleanName()))
 end
 
--- ⚠️⚠️ "REMAINING DoT DAMAGE" IS NOT FULLY KNOWABLE FROM LUA. A buff's ticsremaining has no binding
--- (only FindBuff/FindBuffBySlot/BuffCount exist), so remaining damage is approximated as three ticks
--- of each affliction. eq.get_spell_stat DOES expose effectid/base/formula per slot, which is what
--- makes detecting somebody else's DoT possible at all.
+-- ⚠️⚠️ REMAINING DoT DAMAGE IS NOW REAL, NOT A GUESS. This used to say ticsremaining "has no
+-- binding" and assumed a flat THREE ticks per affliction, so a DoT with one tick left counted the
+-- same as one with ten and the whole ability was an estimate.
+-- 📌 The binding did exist -- `Mob::GetBuffStatValueBySlot(slot, "ticsremaining")`
+-- (spell_effects.cpp:10794) -- but `lua_mob.cpp` registered it with a cast to `void`, so luabind
+-- discarded the return and Lua got **nil** on every call. Fixed at the binding; the workaround here
+-- is retired. ⚠️ The `or 3` fallback stays: if that binding ever regresses to nil again this
+-- degrades to the old estimate instead of computing zero damage.
+-- ⚠️ eq.get_spell_stat exposes effectid/base/formula per slot, which is what makes detecting
+-- somebody else's DoT possible at all.
 local function dot_pool(t, caster_level)
 	local total, found = 0, {}
 	for slot = 0, 24 do
@@ -734,7 +837,11 @@ local function dot_pool(t, caster_level)
 						local formula = eq.get_spell_stat(sid, "formula", i) or 100
 						local per = math.abs(base)
 						if formula > 0 and formula < 100 then per = per + caster_level * formula end
-						total = total + per * 3
+						-- ⚠️ REAL tics left, not an assumed 3. Clamped to at least 1: a DoT about to
+						-- expire is still worth its last tick, and 0 would make it free to consume.
+						local tics = tonumber(t:GetBuffStatValueBySlot(slot, "ticsremaining")) or 3
+						if tics < 1 then tics = 1 end
+						total = total + per * tics
 						found[#found + 1] = sid
 						break
 					end
@@ -783,11 +890,12 @@ P[44733] = function(c, t)                                    -- Arcane Fist
 end
 P[44734] = function(c, t)                                    -- Overload
 	-- The nuke is on the row; this is the recoil and the Ley Tap payoff.
-	local stacks = tonumber(c:GetEntityVariable(LEYTAP_VAR) or "") or 0
+	M.tell_nuke(c, 44734, t, "Overload")
+	local stacks = ley_stacks(c)
 	if stacks > 0 and t and t.valid then
 		local bonus = math.floor(c:GetLevel() * 20 * 0.15 * stacks)
 		t:Damage(c, bonus, 44734, 24, false)
-		c:SetEntityVariable(LEYTAP_VAR, "0")
+		ley_set(c, 0)
 		M.tell(c, string.format("Your overload discharges %d ley threads for %d more damage.",
 			stacks, bonus))
 	else
@@ -796,9 +904,10 @@ P[44734] = function(c, t)                                    -- Overload
 	M.tell(c, "The recoil leaves you reeling.")
 	c:Stun(2000)
 end
-P[44735] = function(c)                                       -- Ley Tap
-	local stacks = math.min((tonumber(c:GetEntityVariable(LEYTAP_VAR) or "") or 0) + 1, LEYTAP_MAX)
-	c:SetEntityVariable(LEYTAP_VAR, tostring(stacks))
+P[44735] = function(c, _, e)                                 -- Ley Tap
+	M.tell_nuke(c, 44735, e and e.target, "Ley Tap")
+	local stacks = math.min(ley_stacks(c) + 1, LEYTAP_MAX)
+	ley_set(c, stacks)
 	M.tell(c, string.format("Ley threads gathered: %d of %d.", stacks, LEYTAP_MAX))
 	M.cut_tier2(c, 5)
 end
@@ -813,6 +922,7 @@ P[44736] = function(c, t)                                    -- Elemental Fist
 	end
 end
 P[44738] = function(c, t)                                    -- Cinder Blast
+	M.tell_nuke(c, 44738, t, "Cinder Blast")
 	local p = c:GetPet()
 	local pt = (p and p.valid) and p:GetTarget() or nil
 	if t and t.valid and pt and pt.valid and pt:GetID() == t:GetID() then
