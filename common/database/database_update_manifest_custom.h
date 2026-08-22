@@ -10277,6 +10277,19 @@ UPDATE rule_values SET rule_value = 'false' WHERE rule_name = 'AoT:AAExpSlowdown
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 127,
+		.description = "2026_08_22_no_min_ranged_distance",
+		// Submitted by: Claude
+		// WIDER THAN AoT:BowMinRangeIsMeleeRange -- this also reaches NPC archers, bots and THROWING.
+		.check       = "SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `rule_values` WHERE `rule_name` = 'Combat:MinRangedAttackDist' AND `rule_value` <> '0'",
+		.condition   = "match",
+		.match       = "pending",
+		.sql         = R"(
+UPDATE rule_values SET rule_value = '0' WHERE rule_name = 'Combat:MinRangedAttackDist';
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

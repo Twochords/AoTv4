@@ -4551,9 +4551,18 @@ type rather than a class identity, and these fights are not built around kiting.
   (`zone/special_attacks.cpp:905`) is reached from the server-driven **auto-fire loop**
   (`client_process.cpp:364`) **and** from the **manual archery combat ability**
   (`Client::OPCombatAbility`, `special_attacks.cpp:453`). Same reasoning as §22's endurance cost.
-- ⚠️⚠️ **`Combat:MinRangedAttackDist` ITSELF IS LEFT ALONE — changing that rule instead would have
-  silently let every enemy archer NPC shoot point blank too.** It still governs `NPC::RangedAttack`
-  (`:1453`), the bot paths (`bot.cpp:3124`, `:7016`) and `Client::ThrowingAttack` (`:1634`).
+- ⚠️⚠️ **`Combat:MinRangedAttackDist` IS NOW 0 TOO — migration v127, 2026-08-22, owner decision**, so
+  the floor is gone for **every** path, not just player bows. It governs `NPC::RangedAttack`, the bot
+  paths (`bot.cpp:3124`, `:7016`) and `Client::ThrowingAttack`, so this is a real widening and was
+  taken knowingly: **throwing works point blank, and so do ENEMY archers** (unless an npc sets its own
+  minimum through `SpecialAbility::RangedAttack` param 4, which overrides the rule).
+  ⚠️⚠️ **The header default alone would have changed NOTHING** — two `rule_values` rows (rulesets 1
+  and 10) were holding it at 25. Same §22 trap as `AoT:SpecialEndurancePct`; the migration is scoped
+  by `rule_name` alone so both rulesets move (§35).
+  📌 **`AoT:BowMinRangeIsMeleeRange` STAYS AND IS DELIBERATELY NOT RETIRED.** It is redundant for
+  players now, but it is the independent switch: put this rule back to 25 and player bows still fire
+  point blank, which is what was actually wanted the first time. The `IsTempPet()` archer carve-out in
+  `mob_ai.cpp:1325` is likewise moot but harmless.
 - 📌 **Throwing is deliberately NOT included** — a separate function with its own copy of the check.
   Two lines if it is ever wanted.
 - ⚠️ **Auto-fire is SERVER driven, which is why a server edit is enough for it.** The client sends
