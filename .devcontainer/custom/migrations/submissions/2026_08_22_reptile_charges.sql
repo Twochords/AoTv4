@@ -1,0 +1,35 @@
+-- @aotv4-migration
+-- description: 2026_08_22_reptile_charges
+-- check: SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `spells_new` WHERE `id` BETWEEN 43300 AND 43305 AND `numhits` <> 5
+-- condition: match
+-- match: pending
+-- shared-memory: yes
+-- band:
+-- author: Claude
+-- notes: The Skin of the Reptile line healed on 72 incoming hits. Cut to 5.
+
+-- ⚠️⚠️ 72 CHARGES OVER 45 TICKS IS NOT A WARD, IT IS A PASSIVE. The line is a SPA 323 defensive proc
+-- that heals whenever something lands a melee hit on you, and at 72 charges across a 4 and a half
+-- minute duration the counter could never realistically run out -- the buff always ended on its
+-- timer, so the charges were decoration and the heal was effectively unlimited for the whole window.
+-- 5 makes it what the name suggests: a skin that turns aside a handful of blows and is then gone.
+--
+-- 📌 The mechanism was already correct and is untouched. `numhitstype` **10** is
+-- NumHit::DefensiveSpellProcs, spent at zone/attack.cpp:5467 when the defensive proc actually fires,
+-- so a charge is only paid when the heal is. Only the COUNT was wrong.
+-- 📌 The engine owns the counter and the fade (CheckNumHitsRemaining), which is safe here for the
+-- same reason it is safe on Void Stance and not on Bulwark: the engine also pays the effect. A
+-- Lua-paid charge must be counted in Lua, because the buff fades before EVENT_DAMAGE_TAKEN runs.
+-- 📌 The client shows the remaining count on the buff for free, so the player can see it drain.
+--
+-- ⚠️ SPA 44 in slot 1 is the stacking MARKER for this line (100 to 600 by tier) and slot 4 is the
+-- proc. Neither is touched here -- section 5 records that the marker slot index is what isolates this
+-- line from sloth, kindred and thirst, and that reusing a slot makes two unrelated spells cancel
+-- each other.
+--
+-- 📌 NOT CHANGED, and worth a look: the SLOTH line (43306-43311) carries **240** charges of the same
+-- defensive proc on the same 45 tick duration -- four times as many as reptile had, and equally
+-- unreachable. It was left alone because it was not what was asked for, but it has the same problem.
+-- The THIRST line (43342-43347) is different and is fine: 50 to 100 charges of numhitstype 5, spent
+-- on YOUR successful swings, which is a rate the player controls and genuinely does exhaust.
+UPDATE spells_new SET numhits = 5 WHERE id BETWEEN 43300 AND 43305;

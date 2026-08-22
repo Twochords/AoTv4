@@ -862,6 +862,17 @@ void Lua_Client::UntrainDiscAll() {
 	self->UntrainDiscAll();
 }
 
+// ⚠️⚠️ THE ONLY WAY LUA CAN RESYNC THE COMBAT ABILITIES WINDOW. Every discipline change is sent as
+// the WHOLE array (Client::SendDisciplineUpdate memcpys m_pp.disciplines), so ONE call after the
+// dust settles makes the client match the server no matter which path got there. Without it, a path
+// that only ever REMOVES disciplines -- death_loss calls UntrainDiscAll(false) deliberately, to
+// avoid a packet per slot -- leaves the player looking at abilities the server has already taken
+// away. Reported as a Shaman who died, became a Berserker, and kept seeing Shaman disciplines.
+void Lua_Client::SendDisciplineUpdate() {
+	Lua_Safe_Call_Void();
+	self->SendDisciplineUpdate();
+}
+
 void Lua_Client::UntrainDiscAll(bool update_client) {
 	Lua_Safe_Call_Void();
 	self->UntrainDiscAll(update_client);
@@ -1624,6 +1635,11 @@ bool Lua_Client::GrantAlternateAdvancementAbility(int aa_id, int points, bool ig
 
 // AoTv4: shorten an AA's recast by `seconds` and resend the timer to the client.
 // Returns false when the ability is unknown or already ready.
+bool Lua_Client::AoTv4ReduceDisciplineTimer(int timer_id, int seconds) {
+	Lua_Safe_Call_Bool();
+	return self->AoTv4ReduceDisciplineTimer(static_cast<uint32>(timer_id), seconds);
+}
+
 bool Lua_Client::AoTv4ReduceAATimer(int aa_id, int seconds) {
 	Lua_Safe_Call_Bool();
 	return self->AoTv4ReduceAATimer(aa_id, seconds);
@@ -4355,6 +4371,7 @@ luabind::scope lua_register_client() {
 	.def("GrantAlternateAdvancementAbility", (bool(Lua_Client::*)(int, int))&Lua_Client::GrantAlternateAdvancementAbility)
 	.def("GrantAlternateAdvancementAbility", (bool(Lua_Client::*)(int, int, bool))&Lua_Client::GrantAlternateAdvancementAbility)
 	.def("AoTv4ReduceAATimer", (bool(Lua_Client::*)(int, int))&Lua_Client::AoTv4ReduceAATimer)
+	.def("AoTv4ReduceDisciplineTimer", (bool(Lua_Client::*)(int, int))&Lua_Client::AoTv4ReduceDisciplineTimer)
 	.def("StartPlayerTrader", &Lua_Client::StartPlayerTrader)
 	.def("GetTraderSatchelItemIDs", &Lua_Client::GetTraderSatchelItemIDs)
 	.def("StopPlayerTrader", &Lua_Client::StopPlayerTrader)
@@ -4686,6 +4703,7 @@ luabind::scope lua_register_client() {
 	.def("UntrainDisc", (void(Lua_Client::*)(int,bool))&Lua_Client::UntrainDisc)
 	.def("UntrainDiscAll", (void(Lua_Client::*)(bool))&Lua_Client::UntrainDiscAll)
 	.def("UntrainDiscAll", (void(Lua_Client::*)(void))&Lua_Client::UntrainDiscAll)
+	.def("SendDisciplineUpdate", (void(Lua_Client::*)(void))&Lua_Client::SendDisciplineUpdate)
 	.def("UntrainDiscBySpellID", (void(Lua_Client::*)(uint16))&Lua_Client::UntrainDiscBySpellID)
 	.def("UntrainDiscBySpellID", (void(Lua_Client::*)(uint16,bool))&Lua_Client::UntrainDiscBySpellID)
 	.def("UpdateAdmin", (void(Lua_Client::*)(void))&Lua_Client::UpdateAdmin)

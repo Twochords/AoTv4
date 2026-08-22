@@ -1,0 +1,29 @@
+-- @aotv4-migration
+-- description: 2026_08_22_no_min_ranged_distance
+-- check: SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `rule_values` WHERE `rule_name` = 'Combat:MinRangedAttackDist' AND `rule_value` <> '0'
+-- condition: match
+-- match: pending
+-- shared-memory: no
+-- band:
+-- author: Claude
+-- notes: Remove the 25 unit floor on ranged attacks outright, for every path rather than only player bows.
+-- notes: WIDER THAN AoT:BowMinRangeIsMeleeRange -- this also reaches NPC archers, bots and THROWING.
+
+-- ⚠️⚠️ THE ruletypes.h DEFAULT IS NOT WHAT A LIVE SERVER RUNS. Two rule_values rows (rulesets 1
+-- and 10) were holding this at 25, so editing the header alone would have changed nothing anywhere
+-- the game is actually played. Same trap as AoT:SpecialEndurancePct and AAExpSlowdownEnabled.
+--
+-- ⚠️ Scoped by rule_name ALONE, deliberately: rule_values carries one row per ruleset and fixing
+-- only ruleset 1 leaves the other behind, which then applies to whoever is on that ruleset.
+--
+-- 📌 What this opens up beyond the player bow, which AoT:BowMinRangeIsMeleeRange already handled:
+--      Client::ThrowingAttack (special_attacks.cpp:1721)  throwing works point blank
+--      NPC::RangedAttack      (special_attacks.cpp:1540)  ENEMY archers may shoot point blank,
+--                                                         unless the npc sets its own minimum via
+--                                                         SpecialAbility::RangedAttack param 4
+--      the bot paths          (bot.cpp:3124, :7016)
+--
+-- 📌 AoT:BowMinRangeIsMeleeRange is deliberately LEFT IN PLACE and stays true. It is now redundant
+-- for players, but it is the independent switch: restore this rule to 25 and player bows still fire
+-- point blank, which is the behaviour that was actually asked for the first time.
+UPDATE rule_values SET rule_value = '0' WHERE rule_name = 'Combat:MinRangedAttackDist';

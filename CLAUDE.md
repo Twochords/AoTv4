@@ -772,13 +772,70 @@ GM `#resetaa aa` only *refunds* spent → unspent (doesn't zero the pool). The m
 - **Bard `skill_caps`** (`class_id=8`) raised so skills scale; client also needs the exported
   `SkillCaps.txt` (`export_client_files`) installed in the EQ root.
 - **Expansion lock:** `rule_values Expansion:CurrentExpansion = 0` (Classic).
-- Test char `Ashrem`: charid **1**, GM — **Warrior (class 1)** as of 2026-07-29, not Bard; it was
-  remade after the all-classes pivot (§14), so it also exercises the melee-as-caster path.
+- Test char `Ashrem`: charid **1**, GM — ⚠️⚠️ **PALADIN (class 3) as of 2026-08-21**, not the Warrior
+  this line claimed since 2026-07-29 and not the original Bard. Read the class out of the database
+  before planning a test around it.
+  ⚠️⚠️ **That makes Ashrem the WORST character on the server for testing class abilities (§30):
+  Paladin is the one class deliberately excluded** — its three are activated AAs — so it is granted
+  **no disciplines at all**, which looks exactly like the feature being broken. `Cexoos` (id 2) is
+  also a Paladin. Use `Aqqeroun` (Rogue) or `Apheyawus` (Shadowknight) instead.
   (Reset a char's combat skills via
   `UPDATE character_skills SET value=0 WHERE id=<charid> AND skill_id IN (...)` — only sticks
   while that char is at **character select**, else the live zone saves over it.)
 
 ## 8. Building
+
+### ⚠️⚠️ A SHARED-MEMORY REBUILD IS ONLY REAL IF EVERY PROCESS STARTED **AFTER** THE BLOB (2026-08-22)
+
+`./shared_memory` was run and the stack restarted, and the fix did not take — **because world and
+all nine zones had start times EARLIER than `shared/spells`**. They attached to the previous blob and
+kept serving the old data. Reported from play as a fix that had already been "verified" here:
+*"Wildgrowth is also taking all of my endurance again"*, after v128 had zeroed `EndurUpkeep` in the
+database and the database had been checked and was correct.
+
+- ⚠️⚠️ **THE DATABASE BEING RIGHT PROVES NOTHING.** `items` and `spells_new` are read from the mmap,
+  never from the DB, so `SELECT` will happily confirm a fix that no running zone can see. Every check
+  short of reading the blob agrees with you.
+- ⚠️⚠️⚠️ **DO NOT COMPARE THE BLOB'S MTIME TO PROCESS START TIMES. IT CANNOT WORK, AND THIS FILE
+  SAID TO DO IT FOR HALF A DAY.** `MemoryMappedFile` opens with **`O_RDWR | O_CREAT`** and maps
+  **`PROT_READ | PROT_WRITE, MAP_SHARED`** (`common/memory_mapped_file.cpp:92`, `:102`), so **every
+  process that ATTACHES updates the file's mtime**. The blob is therefore always newer than
+  everything, the test always "fails", and chasing it produced three needless full restarts. Watching
+  it live makes it obvious: the mtime tracks the **last zone to boot**, moving 09:26:00 → 09:27:14 as
+  six zones came up with nothing writing spells at all.
+- ✅ **CHECK THE CONTENT INSTEAD.** The blob is indexed by spell id, so read the field back and
+  compare it to the database. This is the only test that means anything:
+  ```python
+  SIZE, NAME, BASE, FORM, DUR = 1088, 4, 528, 720, 516   # offsetof(); re-derive if the struct changes
+  d    = open('shared/spells','rb').read()
+  base = d.find(b'Spiritual Foresight\x00') - NAME - 44727*SIZE
+  r    = base + 44727*SIZE
+  struct.unpack('<i', d[r+BASE:r+BASE+4])[0]             # -> matches spells_new or it does not
+  ```
+- ⚠️ **The ordering still matters — just verify it by SEQUENCE, not by timestamp.** Kill everything,
+  loop until `ps` shows no live `zone`/`world`/`eqlaunch` (⚠️ excluding **zombies**, §2 — `pgrep`
+  counts them and reports a false survivor), THEN run `./shared_memory`, THEN read the content back,
+  THEN start world.
+- ⚠️ **Kill and WAIT.** `kill -9 … ; sleep 3` is not enough — loop until `pgrep` is actually empty
+  before running `./shared_memory`, or the rebuild races a process that is still coming down and the
+  next start order is whatever the scheduler decided.
+- ⚠️ **`LoadItems Loaded [0] items via shared memory` in world's log is a RED HERRING.**
+  `m_shared_items_count` is never populated on world's boot path (`common/shareddb.cpp:913`), so it
+  prints 0 on a perfectly good load. It cost time here looking like the smoking gun.
+- ✅ **To PROVE a spell landed, read it out of the blob.** The array is indexed by spell id, and the
+  data does not start where `LoadSpells` suggests — the first `uint32` is a byte count and the mmf has
+  its own header, so **find the array base from a known name** rather than assuming an offset:
+  ```python
+  SIZE, NAME, UPKEEP, EFFECT = 1088, 4, 928, 780   # from offsetof(); re-derive if the struct changes
+  d    = open('shared/spells','rb').read()
+  base = d.find(b'Wildgrowth\x00') - NAME - 44716*SIZE
+  ```
+  Offsets come from a template-error trick, which needs no linking:
+  `template<size_t N> struct Show;  Show<offsetof(SPDat_Spell_Struct,endurance_upkeep)> c;`
+  then `g++ -fsyntax-only` and read the number out of the error.
+- 📌 The same ordering applies to `zone` and `world` **binaries** (§10) and to `rule_values` (read at
+  boot). "I restarted it" is not the check; "it started after the thing it needs" is.
+
 
 **`dinput8.dll`** (Windows, Visual Studio): project
 `eq-core-dll/src/eq-core-dll-vs2022.vcxproj` (toolset **v143**). Non-default settings for the
@@ -1148,6 +1205,41 @@ the Portal window at the start, since §3 records that window as openable **only
   known-good standing ground (every character materialises on it and respawns there after every death),
   which also makes it the most discoverable spot in the zone. ⚠️ In-game `/loc` prints **Y,X,Z** —
   `doors.pos_x/pos_y` are already swapped relative to it, so never paste a raw `/loc`.
+
+### ⚠️⚠️ THE BOOK GATE HAD THREE ENTRY POINTS AND ONLY ONE OF THEM CHECKED IT (2026-08-22)
+Travelling is meant to require a **recently clicked Plane of Knowledge book** — the `/aot` launcher
+opens the Travel window as a **read-only map**. Reported from play as *"anyone can use it at any
+time"*, and they were right: the rule was one say command away from being optional.
+
+Three things can move a player, and the gate was written at only the first:
+
+| path | what it is | was gated? |
+|---|---|---|
+| `aotv4_travel.M.request` | the window's Travel button | ✅ yes |
+| `aotv4_travel.M.on_popup` | the confirmation coming back | ❌ **no** |
+| `pok_travel.handle_say` | legacy **`/say portalgo <short>`** | ❌ **no** |
+
+- ⚠️⚠️ **THE LEGACY `portalgo` IS THE BIG ONE — IT NEEDS NO WINDOW AT ALL.** It is the old GDI Portal
+  overlay's command (§11) and is still wired at `global_player.lua:1150`. It checked only that the
+  destination had been discovered and then `MovePC`'d, so **typing it travelled you from anywhere**,
+  and it had no combat check either. Both added.
+- ⚠️⚠️ **THE POPUP IS A SEPARATE ENTRY POINT, AND ITS OWN COMMENT SAYS SO** — *"RE-CHECK, do not
+  trust the parked request... The popup is a confirmation, not a licence"* — and it duly re-checked
+  region, combat and group blockers while **omitting the one gate the feature exists for**. The box
+  stays on screen as long as the player likes, so holding it past the 180 second grace and then
+  pressing OK travelled from wherever they had wandered to.
+  📌 **When a handler re-validates "everything", enumerate what the FIRST handler checked and tick
+  each one off.** Both misses here were checks with no local reason to exist in that function.
+- ✅ The test is now **`aotv4_travel.M.reading_book(c)`** plus `M.BOOK_REFUSAL`, one definition, three
+  callers. `pok_travel` reaches it through the same `pcall(require, "aotv4_travel")` it already uses
+  to open the window.
+- 📌 **The dll was already right.** `core_travel.cpp` tracks `g_fromBook` (set by `TRAVELOPEN`, which
+  only a book sends) and hides the Travel button when false. That is presentation; the rule has to be
+  server side, because `portalgo` proves the client can be bypassed entirely.
+- ⚠️ A **stamp with a grace window** (`M.BOOK_GRACE_SECS = 180`), not a proximity test: travel moves
+  you the instant you confirm, and "are you near a book" would have to survive the popup round trip.
+- 📌 **Lua only** — no migration, no binary, no shared memory. But `#reloadquest` does **not** reload
+  `require`d modules (§10), so zones must be killed and respawned.
 
 ### ⚠️⚠️ THE HUB NPC LOCK TRIGGERS DO NOT SURVIVE A FULL IMPORT, AND WERE FOUND MISSING 2026-08-13
 `custom/sql/aotv4_resplendent_npc_lock.sql` installs four `BEFORE INSERT/UPDATE` triggers that
@@ -1754,6 +1846,37 @@ A native SIDL **Advanced Loot** window in **complement mode**: the stock RoF2 lo
   `sed 's/<!--/«/g; s/-->/»/g' f.xml | grep -n -- "--"` (must print nothing).
 - **Client install:** `aotv4_client_install/ADVLOOT_WINDOW_INSTALL.md` (copy the XML to `uifiles/default/`,
   `<Include>` it in `EQUI.xml`, rebuild the dll).
+
+### ⚠️⚠️ THE FILTERS TAB TRUNCATED AT ~94 RULES, SILENTLY, AND THE NEVER BUTTON IS A TOGGLE (2026-08-22)
+Reported from play as *"trying to stop looting velium, but it won't appear in the edit filters, and it
+ignores it"*, and confirmed by the player's own count: **"it says 94 items in there, which is
+definitely a lie, is WAY more."** 94 is not a cap anybody wrote — it is where `Client::Message`'s
+`char[4096]` ran out.
+- ⚠️⚠️ **`SendAdvLootFilters` HAD NO BOUND AT ALL, WHILE ITS SIBLING `SendAdvLootData` HAS ONE AND
+  EXPLAINS WHY.** `ADVLOOT_MAX_ROWS = 60` carries the comment *"cap the row count rather than risk a
+  silent truncation"*. The filters function was written later and simply never got the same guard.
+  📌 **When one function in a pair bounds its chat line, check the other.**
+- ⚠️⚠️ **WHICH RULES VANISH IS NOT RANDOM, AND THAT IS WHY IT READ AS ITEM-SPECIFIC.** `rules` is a
+  `std::map<uint32,int>`, so it is ordered by **item id** and truncation always eats the **highest**.
+  Classic trash sits at 1,000-13,000 and shows; **Velium (22,093-88,100)** and the **Blood Runed line
+  (25,568-25,569)** are high and get cut. The player correctly reported that specific items "will not
+  appear" while the rest of their filters worked — nothing about those items is special except their id.
+- ⚠️ **A ROW cap is not enough here**: rows run 40-90 bytes depending on the item name and rule label,
+  so any fixed count is wrong for somebody. It is **byte budgeted** (3,900) and appends a **visible
+  marker row** plus a chat line naming how many are hidden — the §3 Zone XP lesson, which is the same
+  bug in a different window.
+- ⚠️⚠️ **THE `Never` BUTTON IS A TOGGLE, AND WITH A LYING LIST THAT WAS A TRAP WITH NO EXIT.** Pressing
+  Never on an item that already has Never **removes** the rule. So the natural response to "I set it and
+  it is not in my filters" — press it again — turned it back off. The cleared echo now says
+  **"Rule REMOVED, this will be looted again"** rather than just naming the item.
+- ⚠️⚠️ **AND A `Never` RULE DOES NOTHING WHILE "Apply Filters" IS UNCHECKED.** `SendAdvLootData` only
+  honours NV when that box is on, so the rule stores, lists, and changes nothing you loot. The player's
+  own screenshot showed **`Apply Filters: OFF`**. Setting a Never rule with it off now says so in red.
+  📌 It defaults **ON** (`v.empty() || v == "1"`), so this is something the player turned off.
+- 📌 **Still capped, just honestly.** Managing more rules than fit needs either chunking (`SJPOOLDATA`
+  does 60 a line with a chunk index, §20) or paging — both need a **dll** change, because
+  `HandleFilterData` resets `g_filterCount` on every FILTERDATA line, so a second line replaces the
+  first rather than appending. `FILT_MAX` is 200 client-side and never binds today.
 
 ## 17c. Roaming world boss — `#worldboss` — 2026-07-26
 
@@ -3304,6 +3427,24 @@ easy to miss and easy to re-implement by accident.
 - Rule `Zone:ZoneShardQuestMenuOnly` (currently false) suppresses the automatic assignment so only
   quests surface the menu — i.e. makes sharding opt-in.
 
+### ⚠️⚠️ THE ZONE PORT RANGE DRIFTED BACK TO 7000-7010 AND ZONES SILENTLY FAILED TO BOOT (2026-08-22)
+Reported from play as *"I couldn't get in to Crushbone"*. Nothing was wrong with the zone: its row is
+Classic, `bypass_expansion_check = 1`, no `min_level`/`min_status`/`flag_needed`, and the character
+was a **GM** so region locking never applied (`RegionManager::CanEnterZone` returns true for a GM
+before any region test). The zone simply could not get a port.
+- `eqemu_config.json` `server.zones.ports` was **7000-7010** -- eleven ports -- against
+  `devcontainer.json` `appPort` of **7000-7029** and `launcher.zone.dynamics = 9`. §27 records the
+  range being widened to 7000-7029 on 2026-07-30 for exactly this reason; it had drifted back.
+- ⚠️⚠️ **THE TELL IS IN A *ZONE* LOG, NOT WORLD'S**, and it is one line:
+  `World did not have a port to assign from this server, the port range was not large enough.`
+  World itself logs nothing useful, and the player just cannot enter -- no error, no refusal message.
+  📌 The other tell is world assigning ports at the **ends** of the range (7001 and 7010) rather than
+  in sequence: a nearly-full pool. After the fix it hands out 7001, 7002, 7003 ... in order.
+- ⚠️ The config is a symlink to `.devcontainer/override/eqemu_config.json` -- edit the real file, and
+  the range is read at **world boot**, so world must be restarted (then eqlaunch, exactly one).
+- 📌 **Check this first for any "cannot enter a zone" report**, before regions, expansions or flags:
+  it presents identically to all of them and none of those log anything either.
+
 ### ⚠️⚠️ EVERY SHARD IS AN INSTANCE, SO EVERY SHARD COSTS A ZONE PROCESS AND A ZONE PORT
 This is the reason it is off. The port range was widened to **7000-7029** on 2026-07-30 because six
 was not enough for the `zone` launcher's **28 dynamics** (§0), and the Delve already burns an instance
@@ -3589,6 +3730,107 @@ in game at all** — the difficulty system in particular has a lot of first-gues
   native AA window shows **0 spendable** throughout, and that sitting **at the cap** earns nothing.
 - ⚠️ **Non-Bard songs (§46)** — a Monk with Largo's: cast once, no locked spell bar, and **camping
   works**. All three were separate failures of the previous approach.
+
+### ⚠️⚠️ The stock Combat Abilities window does NOT open for casters — the abilities live in OUR window (2026-08-21)
+All sixteen classes get three disciplines, but RoF2 only ever expected the melee classes to have any,
+and **Alt+C does nothing for a Cleric.** A detour was looked for first and not found: window creation
+(`0x498eba`), the constructor (`0x65b3c0`), the show dispatch (`0x487d72`) and
+`EQ_PC::GetCombatAbility` (`0x7c44f0`) all have **no class test**, and only two functions in the
+binary do a class jump-table lookup — one is `IsSpellcaster`. Binding
+`CMD_TOGGLE_COMBAT_ABILITY_WIN` and pressing it did not open it either. Same wall as §13's
+`CBazaarWnd`: exists everywhere, no findable gate, still will not render.
+✅ **The answer is a second tab on the Autoskill window**, which is ours and opens for anybody. It is
+retitled **"Combat Skills"** with tabs *Autoskill* and *Combat Skills*; the second lists the class
+abilities with their descriptions, recast state and a Use button. `/autoskill`, `/abilities` or
+`/ca`. ⚠️ The screen item is still `AoTAutoSkillWnd` — only the title changed, because renaming the
+item means renaming it in the dll, in `EQUI.xml` and in every saved UI ini at once.
+⚠️ **Needs a dll rebuild AND the updated XML** (it gained a `TabBox`) —
+`aotv4_client_install/AUTOSKILL_WINDOW_INSTALL.md`.
+⚠️⚠️ **YOU CANNOT DRAG OUT OF A CUSTOM SIDL LISTBOX.** The requirement was never "see them", it was
+"get them on a hotbar", and a Use button does not do that. **`/hotbutton` is the real answer** and it
+is in this client: `#ability` prints ready-to-paste lines like
+`/hotbutton CleavingBlow #ability 1`, and `global_player` says so once on login.
+
+### (superseded) The standalone Class Abilities window
+All sixteen classes get three disciplines, but RoF2 only ever expected the melee classes to have any,
+and **the client's own Combat Abilities window will not open for a Cleric or a Wizard.** A detour was
+looked for first and not found: window creation (`0x498eba`), its constructor (`0x65b3c0`), the
+window-id show dispatch (`0x487d72`) and `EQ_PC::GetCombatAbility` (`0x7c44f0`) all have **no class
+test**, and only two functions in the binary do a class jump-table lookup — one is `IsSpellcaster`.
+Binding `CMD_TOGGLE_COMBAT_ABILITY_WIN` and pressing it still did not open it.
+📌 Same wall as §13's `CBazaarWnd`: exists everywhere, no findable gate, still will not render
+because it was never **activated**. §13's answer was to ship our own window, and that is what
+`core_abilities.cpp` + `EQUI_AoTAbilityWnd.xml` are (`/abilities` or `/ca`).
+⚠️ **Needs a dll rebuild** — `aotv4_client_install/ABILITY_WINDOW_INSTALL.md`.
+✅ **`#ability 1|2|3` needs no dll at all** and is the fallback: bare `#ability` lists the three with
+their state, and `#ability 1` in a **social** makes a real hotbar button. Both routes go through
+`Client::UseDiscipline`, so every gate still applies.
+
+### Added 2026-08-21 — FIFTEEN classes of class abilities (v104-v119), built and never pressed
+45 disciplines at **44700-44747** plus 6 helper/trigger rows at **44750-44755**, one three-tier kit
+per class. Applied to the dev database (custom version **119**), shared memory rebuilt, client files
+exported. **Nobody has pressed any of them.** Design and per-class detail: `CLASS_ABILITIES_DESIGN.md`.
+- **Everything except Warrior is GENERATED** by `custom/tools/gen_class_abilities.py` — the 14 class
+  migrations, the cast-message migration, and all 45 Lua stubs come out of one spec table there.
+  ⚠️ Hand-editing a generated file is reverted by the next run, and the class migrations are already
+  merged, so **regenerating them would drift from the manifest**. That is why v119 exists separately.
+- **Every behaviour lives in `lua_modules/aotv4_class_abilities.lua`, keyed by spell id.** The spell
+  scripts are four-line stubs. 45 near-identical scripts would be 45 chances for the cost model, the
+  cooldown cut and the swing to drift.
+- ⚠️⚠️ **ALL SIXTEEN CLASSES ARE ON THE SAME MECHANISM AS OF 2026-08-21 (v122/v123).** Paladin was
+  the last holdout -- its three were activated AAs, so one class found its kit in the **AA window**
+  while fifteen found theirs in **Combat Abilities**. It now has disciplines 44706-44708 like
+  everyone else; v123 disables the AA hosts (45/55/79) and deletes the trained ranks.
+  ⚠️ The two migrations are a PAIR: the spells alone leave a Paladin holding each ability twice, the
+  retirement alone leaves them with none. `CLASS_AAS` in `global_player.lua` is now empty.
+  ⚠️ `character_alternate_abilities.aa_id` stores the **first_rank_id** (144/158/196), not the
+  ability id -- deleting by ability id matches nothing and silently leaves both versions in place.
+  📌 Spells 44600-44602, their rank rows and `lua_modules/aotv4_paladin.lua` are left DORMANT: they
+  cost nothing and are the only record of how the AA version was built.
+- ⚠️ Test each class as a **NON-GM** character (§41). The sharp per-class checks are in §30's Warrior
+  entry below; the ones unique to the other fourteen are: a **Magician** and a **Beastlord** getting a
+  pet from tier 1 that then **levels with them** (the rescale runs on level-up and on every press), a
+  **Necromancer** Soul Harvest consuming DoTs it did not cast, a **Ranger** firing Point Blank Shot
+  with and without a bow (it falls back to a heavier swing), and a **Wizard** stacking Ley Tap three
+  times before Overload.
+- ⚠️⚠️ **`IsDiscipline` IS A COLUMN, AND IT IS NOT THE `IsDiscipline()` FUNCTION.** The function is
+  derived (`mana == 0 && EndurCost > 0`) and was true for all 51 rows immediately; the COLUMN is
+  `spells_new` field 168, whose header comment is *"Will goto the combat window when cast"*, and a
+  clone inherits it. 32 of the 51 shipped with it **0** because they were cloned from templates that
+  are not disciplines, which is what made them read as spells rather than combat abilities. Stock
+  writes **-1**, never 1. Fixed by **v120**. 📌 Only **281** stock spells carry the column against
+  thousands that pass the function -- **read the column, not the function.**
+- ⚠️⚠️ **`player_1` IS THE PARTICLE/TRAIL GRAPHIC** and the instant template carries `BLUE_TRAIL`,
+  so 29 rows fired a blue projectile trail on sword swings. 263 of 281 stock disciplines are
+  `PLAYER_1` (no effect). Fixed by **v121**.
+- 📌 **Three of the five defects in this feature were the same bug wearing different columns**
+  (messages, `IsDiscipline`, `player_1`), and none of them affected whether the ability WORKED. After
+  cloning a row, diff it against a row of the shape you want, not against the template you cloned.
+- ⚠️⚠️ **The cast messages and icons were WRONG on first ship and are worth re-checking after any
+  future clone**: every row inherited its template's `cast_on_you`/`cast_on_other`/`spell_fades`,
+  so Sanctuary announced itself as *"You assume a defensive fighting style."* and every swing printed
+  *"You are hit by an invisible force."* v119 sets all 51 explicitly; swings are blanked on purpose.
+
+### Added 2026-08-21 — the Warrior class abilities (v104), built and never pressed
+The reference build for `CLASS_ABILITIES_DESIGN.md`: three **disciplines** at 44700-44702 (Cleaving
+Blow 1, Bulwark 5, Broad Cleave 10), `lua_modules/aotv4_class_abilities.lua`, three spell scripts,
+and `Client::AoTv4ReduceDisciplineTimer` + its Lua binding. It compiles, luachecks and the migration
+dry-runs clean; **nobody has cast any of it.**
+- ⚠️⚠️ **DEPLOY ORDER MATTERS**: the DB is at custom 103 and the binary at **104**, so every zone
+  refuses to boot until **world** applies the migration (§2's "Exiting due to pending database
+  updates"). Then, because `spells_new` is shared memory, the stack must come **down** for
+  `./shared_memory` before the rows are visible to any zone.
+- Test as a **Warrior** (§41 — and Ashrem already is one): the three abilities must appear in the
+  **Combat Abilities** window at levels 1/5/10, not in the spellbook.
+- ⚠️⚠️ The sharp test is that they are on **three separate cooldowns** (10 s / 120 s / 15 s). One
+  shared cooldown means `EndurTimerIndex` did not take, which is the correction the design doc's §1
+  now carries.
+- ⚠️ Then: Broad Cleave into **two** creatures must take **6 s** off Bulwark's recast and into empty
+  air must take **nothing**; Bulwark must absorb **five** hits, not four (the numhits trap); and
+  Cleaving Blow's damage message must read as an ordinary weapon hit rather than "you frenzy on".
+- ⚠️ Finally **die**, and confirm the abilities come back — the wipe untrains disciplines, so
+  `event_death_complete` re-grants them. This is the failure mode that has no in-game symptom until
+  the player looks for a button that is simply gone.
 
 ## 31. Individual loot — everybody gets their own roll — 2026-08-01
 
@@ -4427,9 +4669,18 @@ type rather than a class identity, and these fights are not built around kiting.
   (`zone/special_attacks.cpp:905`) is reached from the server-driven **auto-fire loop**
   (`client_process.cpp:364`) **and** from the **manual archery combat ability**
   (`Client::OPCombatAbility`, `special_attacks.cpp:453`). Same reasoning as §22's endurance cost.
-- ⚠️⚠️ **`Combat:MinRangedAttackDist` ITSELF IS LEFT ALONE — changing that rule instead would have
-  silently let every enemy archer NPC shoot point blank too.** It still governs `NPC::RangedAttack`
-  (`:1453`), the bot paths (`bot.cpp:3124`, `:7016`) and `Client::ThrowingAttack` (`:1634`).
+- ⚠️⚠️ **`Combat:MinRangedAttackDist` IS NOW 0 TOO — migration v127, 2026-08-22, owner decision**, so
+  the floor is gone for **every** path, not just player bows. It governs `NPC::RangedAttack`, the bot
+  paths (`bot.cpp:3124`, `:7016`) and `Client::ThrowingAttack`, so this is a real widening and was
+  taken knowingly: **throwing works point blank, and so do ENEMY archers** (unless an npc sets its own
+  minimum through `SpecialAbility::RangedAttack` param 4, which overrides the rule).
+  ⚠️⚠️ **The header default alone would have changed NOTHING** — two `rule_values` rows (rulesets 1
+  and 10) were holding it at 25. Same §22 trap as `AoT:SpecialEndurancePct`; the migration is scoped
+  by `rule_name` alone so both rulesets move (§35).
+  📌 **`AoT:BowMinRangeIsMeleeRange` STAYS AND IS DELIBERATELY NOT RETIRED.** It is redundant for
+  players now, but it is the independent switch: put this rule back to 25 and player bows still fire
+  point blank, which is what was actually wanted the first time. The `IsTempPet()` archer carve-out in
+  `mob_ai.cpp:1325` is likewise moot but harmless.
 - 📌 **Throwing is deliberately NOT included** — a separate function with its own copy of the check.
   Two lines if it is ever wanted.
 - ⚠️ **Auto-fire is SERVER driven, which is why a server edit is enough for it.** The client sends
@@ -5017,10 +5268,30 @@ points** either way — this is a change of **timing, not of income**. §6 and �
   the cap has `set_exp` clamped back to where it already was, so the delta is 0 and no AA is earned.
   Compute the delta **before** the clamp and a capped character farms AA forever — which is exactly the
   v50 bug (deaths paying 7 points against an intended 2.32) reintroduced by another route.
-- ⚠️⚠️ **NO LEVEL SCALING, DELIBERATELY.** 1:1 is already steeply depth-weighted twice over: a higher
-  level mob grants more experience, *and* the curve is quadratic in cumulative terms. Levels 1-10 are
-  **11.6 percent** of a climb's AA and levels 20-30 are **55 percent**. A `(level/cap)` multiplier was
-  tried on the death payout and reverted for this reason; adding one here double-counts it a third time.
+- ⚠️⚠️ **NO LEVEL SCALING, DELIBERATELY.** The rate is a flat percentage and must stay one. It is
+  already steeply depth-weighted twice over: a higher level mob grants more experience, *and* the curve
+  is quadratic in cumulative terms. Levels 1-10 are **11.6 percent** of a climb's AA and levels 20-30
+  are **55 percent**. A `(level/cap)` multiplier was tried on the death payout and reverted for this
+  reason; adding one here double-counts it a third time.
+- ⚠️⚠️ **THE RATE IS `AoT:LiveAAExpPct` AND IT IS NO LONGER 1:1 — it is 130** (2026-08-22, owner
+  decision), so a full climb to the cap yields **3.02 points** against the 2.32 the death lump paid.
+  📌 **Scaling it in `exp.cpp` is the only correct place.** The obvious alternative — dividing
+  `AA:ExpPerPoint` by 1.3 — would silently disagree with the **hardcoded `AA_EXP_PER_POINT` copy in
+  `global_player.lua`** that §35 already records drifting ~120x, and would also change what a *spent*
+  point costs rather than what a kill *earns*.
+  ⚠️ It does **nothing while `LiveAAExp` is false**: the death-lump branch is Lua and divides `run_xp`
+  by that same hardcoded constant, so flipping the rule off reverts to the un-scaled rate.
+  ⚠️ Multiply before dividing — a small experience delta otherwise truncates to zero AA and low-level
+  kills silently pay nothing.
+- ⚠️⚠️ **`AoT:AAExpSlowdownEnabled` IS OFF** (migration **v126**, 2026-08-22). It braked *normal*
+  experience as AA accumulated. **BOTH** switches were on and both had to be turned off: the
+  `rule_values` row by v126, and the **ruletypes.h default by carolus in `efe7b96a8`**.
+  ⚠️ An earlier version of this note claimed the header default "was already false". It was `true`.
+  📌 The §22 point still stands and is if anything sharper: a header default is not what a live
+  server runs, so **check both** — fixing either one alone leaves the rule on somewhere.
+  📌 It never touched AA per **level** (the applied experience needed to level is fixed), only AA per
+  **kill**, because it shrank the gain portion of each award. Turning it off therefore raises AA per
+  kill on top of the 130.
 - ⚠️ Not paid on **resurrection** experience — that is a refund of experience already earned once.
 - 📌 Dying is still the only way to keep earning: at the cap you stop gaining experience, so you stop
   gaining AA until a new run.

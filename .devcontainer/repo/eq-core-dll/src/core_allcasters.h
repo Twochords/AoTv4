@@ -65,6 +65,30 @@
 // Singing=41, Stringed=49, Wind=54, Percussion=70. Everything else (incl. the skill-98 reward spells)
 // is treated as a normal spell.
 
+// THE COMBAT ABILITIES WINDOW (companion patch):
+// ⚠️⚠️ EVERY CLASS HERE GETS THREE DISCIPLINES (44700-44747), BUT ON A PURE CASTER THE COMBAT
+// ABILITIES ICON ON THE WINDOW SELECTOR WAS BLACKED OUT AND THE WINDOW WOULD NOT OPEN.
+//
+// It is the SAME shape as IsSpellcaster, and it is a predicate on the character:
+//   CSelectorWnd's update (0x751fc7) calls this on the local PC, and feeds the bool straight into
+//   the combat button's state setter (0x866610). Return 0 and the icon is dead.
+// The function reads the class byte (char struct +0x3374) and indexes a 16-entry table at
+// 0x58238C, jumping through 0x582384 (entry 0 -> return 1, entry 1 -> return 0):
+//   00 01 00 00 00 01 00 00 00 01 01 01 01 01 00 00
+//   War TRUE  Clr false Pal TRUE  Rng TRUE  SK  TRUE  Dru false Mnk TRUE  Brd TRUE
+//   Rog TRUE  Shm false Nec false Wiz false Mag false Enc false Bst TRUE  Ber TRUE
+// -> exactly the nine classes that have disciplines on live, which is exactly the set where the
+// window worked. Forcing 1 gives every class the button and the window.
+// 📌 It sits 5KB from Max_Mana (0x581E60), which this module already detours -- the client keeps
+// these little class predicates together, which is why the same file is the right home.
+//
+// ⚠️⚠️ HOW IT WAS FOUND, BECAUSE THE SEARCH THAT FAILED IS INSTRUCTIVE: hunting for a class gate in
+// the WINDOW, the keybind handler and the button turned up nothing (they are all class-blind), and
+// four rounds of reasoning from the disassembly produced four wrong answers. What worked was
+// following the SELECTOR's button-state update backwards to whoever supplies the bool.
+#define EQ_Character__HasCombatAbilities_addr  0x582350
+
 // Installs the IsSpellcaster + Max_Mana + mana-gauge-predicate + IsBardSong detours. Called once at
 // init, gated by the areAllClassesCasters flag (see core_init.h / _options.h).
 void EnableAllClassesCasters();
+

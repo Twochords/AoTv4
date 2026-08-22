@@ -22,6 +22,7 @@ local aotv4_aa_tank = require("aotv4_aa_tank")       -- marker AAs in the Tank t
 local aotv4_difficulty = require("aotv4_difficulty") -- Normal/Nightmare/Hell/Inferno world shards (/pick)
 local aotv4_tutorial = require("aotv4_tutorial")     -- Titan Hall induction chain (freeporttheater)
 local aotv4_fellowship = require("aotv4_fellowship") -- 12-person social group, chat + travellable campfire
+local aotv4_class_abilities = require("aotv4_class_abilities") -- the three disciplines every class gets (44700+)
 
 -- AA-on-death tuning lives at the point of use, in event_death -- see the "RANDOM AA ON DEATH" block.
 -- ⚠️ A long comment here used to describe a two-regime, era-anchored scheme (DEATH_AA_AT_CAP 0.40 /
@@ -423,13 +424,14 @@ end
 -- cheap early-out; the rank refuses on its own if this is ever wrong.
 -- 📌 Keyed by ABILITY id (GetAAByAAID), not rank id. Section 47 records the two being easy to
 -- confuse: character_alternate_abilities stores first_rank_id, and Mob::GetAA takes a RANK.
+-- ⚠️⚠️ EMPTY AS OF 2026-08-21, AND THAT IS THE POINT. Paladin's three lived here as activated AAs
+-- while every other class got DISCIPLINES, so one class found its kit in the AA window and fifteen
+-- found theirs in Combat Abilities. Paladin now has real disciplines (44706-44708) like everyone
+-- else, and migration v123 disables the AA hosts and deletes the trained ranks.
+-- 📌 Kept rather than deleted because the mechanism still works and is the right home for any future
+-- ability that genuinely should be an AA. Anything added here is granted on connect and on level up.
 local CLASS_AAS = {
 	-- class    = { {aa_id, level, name}, ... }
-	[3] = {   -- Paladin
-		{ 45,  1, "Ardent Strike"      },
-		{ 55,  5, "Hand of Conviction" },
-		{ 79, 10, "Divine Reproach"    },
-	},
 }
 
 local function grant_class_aas(c)
@@ -638,6 +640,14 @@ function event_connect(e)
 	grant_free_skills(e.self)            -- level-1 chars get Dual Wield etc. now, not only after first ding
 	grant_native_combat_skills(e.self)  -- a Rogue has Backstab, a Monk its strikes; the rest are picker rewards
 	grant_class_aas(e.self)             -- Paladin's three class AAs, and anything added to CLASS_AAS
+	aotv4_class_abilities.grant(e.self) -- the class's three DISCIPLINES; unlike an AA, death untrains these
+	-- ⚠️⚠️ TELL THEM HOW TO REACH IT. The stock Combat Abilities window does not open for every class
+	-- (see core_abilities.h), so for most of the roster there is nothing to drag to a hotbar -- and an
+	-- ability nobody can put on their bar might as well not exist. One line on login, and only for a
+	-- class that actually has them.
+	if aotv4_class_abilities.BUILT[e.self:GetClass()] then
+		e.self:Message(15, "You have class abilities. Type #ability to list them and get hotbar lines.")
+	end
 	floor_tradeskills(e.self)           -- every tradeskill floored to 20 (new chars start there; existing raised on login)
 	max_skills_for_level(e.self)        -- ⚠️ AFTER the grants above: they lift a skill off 0 (which is what
 	                                    -- makes it "earned"), and this then takes it to the cap. Reversed,
@@ -801,6 +811,10 @@ function event_level_up(e)
   grant_free_skills(e.self)
   grant_native_combat_skills(e.self)   -- cap curves for some specials only open above level 1
   grant_class_aas(e.self)              -- a class AA whose level_req just opened
+  aotv4_class_abilities.grant(e.self)  -- tier 2 opens at 5 and tier 3 at 10
+  -- ⚠️ A pet's stats are frozen AT SUMMON (Mob::MakePet, pets.cpp:140), so a Magician or Beastlord
+  -- companion granted at level 1 does not grow on its own. This is the "levels with you" half.
+  aotv4_class_abilities.rescale_pet(e.self)
   max_skills_for_level(e.self)         -- every skill to its new cap for this level (tradeskills excluded)
 
   -- ⚠️⚠️ AND TELL THE CLIENT, OR A SKILL GRANTED HERE STAYS INVISIBLE UNTIL THE NEXT LOGIN.
@@ -1051,6 +1065,26 @@ function event_death_complete(e)
     client:SummonItem(aotv4_reforge.starter_weapon(client:GetClass()))
   end
 
+  -- ⚠️⚠️ THE DEATH WIPE UNTRAINS DISCIPLINES, SO THE CLASS ABILITIES HAVE TO BE HANDED BACK.
+  -- death_loss.process calls UntrainDiscAll; they live in character_disciplines, not the spellbook,
+  -- and they are not a reward that should be re-earned -- they are what the class IS. Class AAs need
+  -- no equivalent because AA is permanent, which is why grant_class_aas is absent from this hook.
+  -- 📌 At level 1 only tier 1 comes back; tiers 2 and 3 return from event_level_up as the run climbs.
+  aotv4_class_abilities.grant(client)
+
+  -- ⚠️⚠️ A RANGER NEEDS A BOW OR ITS TIER 3 HAS NOTHING TO FIRE. starter_weapon hands out one of the
+  -- four weapons Absor accepts (section 33) and none of them is a bow, so this is an ADDITION to the
+  -- range and ammo slots, never a substitution -- swapping the PRIMARY would make the tutorial
+  -- uncompletable, and the tutorial is the roguelite's way out.
+  -- 📌 Point Blank Shot still works without one (it falls back to a heavier swing), so this is about
+  -- the ability reading as designed rather than about it being dead.
+  if client:GetClass() == 4 then
+    local rng = client:GetItemIDAt(11)     -- slot 11 = Range
+    if not rng or rng <= 0 then client:SummonItem(8011) end   -- Hunting Bow
+    local ammo = client:GetItemIDAt(22)    -- slot 22 = Ammo
+    if not ammo or ammo <= 0 then client:SummonItem(8005, 20) end  -- Arrow x20
+  end
+
   -- REFRESH THE TUTORIAL for a DIED-IN-THE-TUTORIAL player. event_death already cancelled all tasks and
   -- cleared the gate qglobals, but a same-zone respawn (their death bind is now the Tutorial) does NOT
   -- re-fire EVENT_ENTERZONE, so we re-hand the tasks directly here and re-gate tutpop. Players who died
@@ -1108,6 +1142,11 @@ function event_say(e)
     death_loss.send_log(e.self)
     return
   end
+  -- AoTv4 Class Abilities window: "abilrefresh" / "abiluse <spellid>". Swallowed by the dll.
+  -- ⚠️ Returns early -- these are window traffic, not conversation, and must not fall through to
+  -- the other handlers or reach chat.
+  if aotv4_class_abilities.handle_say(e.self, e.message) then return end
+
   pok_travel.handle_say(e)        -- "portals" (list) + "portalgo <short>" (travel)
   bazaar_broker.handle_global_say(e)  -- vendor window: "vpset .../vshop/vclose"
 
@@ -1251,7 +1290,12 @@ function event_damage_taken(e)
   -- letting it into the return path would silently rewrite every hit taken in Hell. The reactions
   -- module owns that value and keeps it.
   aotv4_difficulty.on_damage_taken(e)
-  return aotv4_reactions.on_damage_taken(e)
+  local override = aotv4_reactions.on_damage_taken(e)
+  -- ⚠️⚠️ REACTIONS OWN THE OVERRIDE AND GO FIRST. A negative from them NEGATES the hit outright, and
+  -- a blow that never landed must not spend a Bulwark charge -- the same ordering rule
+  -- event_damage_given already follows for the Thirst leech.
+  if override and override ~= 0 then return override end
+  return aotv4_class_abilities.on_damage_taken(e)   -- Warrior Bulwark: absorb AC/10 for 5 hits
 end
 
 -- Open Wounds banks a share of every hit on a marked target as pending bleed, and the Thirst line

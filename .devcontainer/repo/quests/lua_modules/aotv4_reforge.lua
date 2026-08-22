@@ -250,6 +250,29 @@ function M.finish(c, message)
         eq.debug("aotv4_reforge: combat skill clear failed: " .. tostring(err_skills))
     end
 
+    -- ⚠️⚠️ THE OLD CLASS'S DISCIPLINES DO NOT GO AWAY ON THEIR OWN, AND NOTHING ELSE REMOVES THEM.
+    -- Class abilities live in `character_disciplines`, not the spellbook, so neither the stat rebase
+    -- above nor the combat-skill clear touches them -- and aotv4_class_abilities.M.grant only ever
+    -- ADDS. A Bard who reforged to Cleric kept Discordant Strike on the bar and could still press it.
+    -- ⚠️ Scoped to the 44700-44747 band and derived from `spell_id(class, tier)` rather than a
+    -- hardcoded range, so if the band ever moves this follows it instead of silently missing.
+    -- ⚠️ EVERY class is cleared, not just the one being left. GetClass() still returns the OLD class
+    -- here (SetBaseClass writes m_pp.class_ and nothing else -- section 34), which is fragile to
+    -- depend on; clearing the whole band needs no such assumption and cannot leave a stray behind
+    -- from an earlier reforge. M.grant re-adds the NEW class's three on the forced relog below.
+    local ok_disc, err_disc = pcall(function()
+        local ab = require("aotv4_class_abilities")
+        for class = 1, 16 do
+            for tier = 1, 3 do
+                local slot = c:GetDiscSlotBySpellID(ab.spell_id(class, tier))
+                if slot and slot >= 0 then c:UntrainDisc(slot) end
+            end
+        end
+    end)
+    if not ok_disc then
+        eq.debug("aotv4_reforge: discipline clear failed: " .. tostring(err_disc))
+    end
+
     c:Message(15, message)
     c:Message(15, "The world reshapes around you. Return in a moment.")
     c:Save(1)

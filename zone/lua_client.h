@@ -245,6 +245,7 @@ public:
 	void UntrainDiscBySpellID(uint16 spell_id);
 	void UntrainDiscBySpellID(uint16 spell_id, bool update_client);
 	void UntrainDiscAll();
+	void SendDisciplineUpdate();
 	void UntrainDiscAll(bool update_client);
 	bool IsStanding();
 	bool IsSitting();
@@ -366,6 +367,7 @@ public:
 	bool GrantAlternateAdvancementAbility(int aa_id, int points);
 	bool GrantAlternateAdvancementAbility(int aa_id, int points, bool ignore_cost);
 	bool AoTv4ReduceAATimer(int aa_id, int seconds);
+	bool AoTv4ReduceDisciplineTimer(int timer_id, int seconds);
 	int StartPlayerTrader(int default_mult);
 	std::string GetTraderSatchelItemIDs();
 	void StopPlayerTrader();

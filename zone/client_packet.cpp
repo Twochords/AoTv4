@@ -10637,6 +10637,26 @@ void Client::SendAdvLootFilters()
 	const std::map<uint32, int> rules = AdvLootLoadRules(database, CharacterID());
 	std::string                 csv;
 	int                         n = 0;
+	int                         hidden = 0;
+
+	// ⚠️⚠️ THIS LINE MUST BE BYTE BUDGETED, NOT ROW CAPPED, AND FOR YEARS IT WAS NEITHER.
+	// Client::Message formats into char[4096] with vsnprintf (zone/client.cpp:1822), so anything past
+	// that is TRUNCATED IN SILENCE. SendAdvLootData above already knows this -- it stops at
+	// ADVLOOT_MAX_ROWS with a comment saying exactly why -- and this function, written later, simply
+	// did not. Reported from play as *"trying to stop looting velium, but it won't appear in the edit
+	// filters"*.
+	//
+	// ⚠️⚠️ WHICH RULES VANISH IS NOT RANDOM: `rules` is a std::map<uint32,int>, so it is ordered by
+	// ITEM ID and truncation always eats the HIGHEST ids. Classic trash sits at 1,000-13,000 and gets
+	// shown; Velium (22,093-88,100) and the Blood Runed line (25,568-25,569) are high and get cut. A
+	// player therefore sees most of their filters working and a specific handful that "will not
+	// appear", which reads as those items being special when it is purely their id.
+	//
+	// A ROW cap is not enough either: rows here run 40 to 90 bytes depending on the item name and the
+	// rule label, so any fixed count is wrong for somebody. Budget the bytes and SAY what was dropped
+	// -- a silent short list is the failure mode this whole section exists to avoid (the Zone XP tab
+	// learned the same lesson).
+	const size_t FILTER_LINE_BUDGET = 3900;   // 4096 less the prefix, the marker row and headroom
 	for (const auto &e : rules) {
 		const EQ::ItemData *d = database.GetItem(e.first);
 		if (!d) { continue; }
@@ -10646,7 +10666,20 @@ void Client::SendAdvLootFilters()
 		                  : (e.second == ADVLOOT_RULE_AG) ? "Always Greed"
 		                  : (e.second == ADVLOOT_RULE_AS) ? "Always Sell" : "Never";
 		// carry the vendor value too -- the filters view has a Value column and it is worth seeing
-		csv += fmt::format("{}|{}|{}|{}|{}^", e.first, d->Icon, name, label, AdvLootSellValue(d, 1));
+		const std::string row =
+			fmt::format("{}|{}|{}|{}|{}^", e.first, d->Icon, name, label, AdvLootSellValue(d, 1));
+		if (csv.size() + row.size() > FILTER_LINE_BUDGET) { ++hidden; continue; }
+		csv += row;
+		++n;
+	}
+	// ⚠️ A visible marker row, not a chat line: the player is LOOKING AT the filters list, and a
+	// separate message scrolls away in the middle of looting. Item id 0 so a click on it erases
+	// nothing (rules.erase(0) is a no-op).
+	if (hidden > 0) {
+		csv += fmt::format(
+			"0|0|... and {} more rule{} not shown -- the list is full|--|0^",
+			hidden, hidden == 1 ? "" : "s"
+		);
 		++n;
 	}
 	Message(
@@ -10654,6 +10687,14 @@ void Client::SendAdvLootFilters()
 		"%s",
 		fmt::format("FILTERDATA {}^{}", n, csv).c_str()
 	);
+	if (hidden > 0) {
+		Message(
+			Chat::Yellow,
+			"Your filter list is full: %d rule%s cannot be shown. Clear some to see the rest -- "
+			"they are all still being applied.",
+			hidden, hidden == 1 ? "" : "s"
+		);
+	}
 	// tell the dll the Apply Filters checkbox state so the box matches the server
 	Message(Chat::White, "%s", fmt::format("LOOTAPPLY {}", AdvLootApplyFilters(database, CharacterID()) ? 1 : 0).c_str());
 }
@@ -11004,11 +11045,34 @@ bool Client::HandleAdvLootSay(const char *msg)
 							const char *rn = (rule == ADVLOOT_RULE_AN) ? "Always Need"
 							               : (rule == ADVLOOT_RULE_AG) ? "Always Greed"
 							               : (rule == ADVLOOT_RULE_AS) ? "Always Sell" : "Never";
+							// ⚠️⚠️ THIS BUTTON IS A TOGGLE, so pressing Never on something that ALREADY
+							// has Never REMOVES the rule. Combined with a filters list that used to
+							// truncate in silence, that was a trap with no way out: the rule was set,
+							// the player could not see it, pressed Never again to "make it work", and
+							// turned it back off. The cleared case therefore says what it MEANS -- that
+							// the item will be looted again -- rather than just naming the item.
 							Message(
-								Chat::Yellow, "%s: %s",
-								clearing ? "Cleared rule on" : rn,
-								rd ? rd->Name : "that item"
+								Chat::Yellow, "%s: %s%s",
+								clearing ? "Rule REMOVED, this will be looted again" : rn,
+								rd ? rd->Name : "that item",
+								""
 							);
+
+							// ⚠️⚠️ A `Never` RULE DOES NOTHING WHILE "Apply Filters" IS UNCHECKED --
+							// SendAdvLootData only honours NV when that box is on. Setting one with the
+							// box off therefore succeeds, is stored, is listed in the Filters tab, and
+							// changes nothing about what you loot, with no indication anywhere. Reported
+							// from play alongside the truncation bug as *"it ignores it"*, with a
+							// screenshot showing `Apply Filters: OFF`. Say so at the moment the rule is
+							// set, which is the only moment the player is looking.
+							if (!clearing && rule == ADVLOOT_RULE_NV &&
+							    !AdvLootApplyFilters(database, CharacterID())) {
+								Message(
+									Chat::Red,
+									"Apply Filters is OFF, so this rule will not hide anything yet. "
+									"Tick Apply Filters in the loot window to make it take effect."
+								);
+							}
 						}
 					}
 				}

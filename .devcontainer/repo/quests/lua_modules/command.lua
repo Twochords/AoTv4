@@ -18,6 +18,10 @@ commands["hotzones"]  = {  0, require(commands_path .. "hotzone") };
 commands["worldboss"] = { 200, require(commands_path .. "worldboss") };
 commands["worldbuff"] = { 200, require(commands_path .. "worldbuff") };
 
+-- ⚠️ ACCESS 0 -- this one is for PLAYERS. It fires a class ability without the Combat Abilities
+-- window, which RoF2 will not open for every class (see commands/ability.lua).
+commands["ability"]   = {   0, require(commands_path .. "ability") };
+
 function eq.DispatchCommands(e)
 	local command = commands[e.command];
 

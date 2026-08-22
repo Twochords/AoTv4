@@ -513,7 +513,7 @@ RULE_BOOL(Spells, HOTsScaleWithHealAmt, false, "Allow HealAmt stat to affect HoT
 RULE_BOOL(Spells, CompoundLifetapHeals, false, "True: Lifetap heals calculate damage bonuses and then heal bonuses.  False:  Lifetaps heal using the amount damaged to mob.")
 RULE_BOOL(Spells, UseFadingMemoriesMaxLevel, false, "Enables to limit field in spell data to set the max level that over which an NPC will ignore fading memories effect and not lose aggro.")
 RULE_BOOL(Spells, FixBeaconHeading, false, "Beacon spells use casters heading to fix live bug.  False: Live like heading always 0.")
-RULE_BOOL(Spells, UseSpellImpliedTargeting, false, "Replicates EQ2-style targeting behavior for spells. Spells will 'pass through' inappropriate targets to target's target if it is appropriate.")
+RULE_BOOL(Spells, UseSpellImpliedTargeting, true, "Replicates EQ2-style targeting behavior for spells. Spells will 'pass through' inappropriate targets to target's target if it is appropriate.")
 RULE_BOOL(Spells, BuffsFadeOnDeath, true, "Disable to keep buffs from fading on death")
 RULE_BOOL(Spells, IllusionsAlwaysPersist, false, "Allows Illusions to persist beyond death and zoning always.")
 RULE_BOOL(Spells, UseItemCastMessage, false, "Enable to use the \"item begins to glow\" messages when casting from an item.")
@@ -539,7 +539,7 @@ RULE_INT(Spells, HarmTouchCritRatio, 200, "Harmtouch crit bonus, on top of BaseC
 RULE_BOOL(Spells, UseClassicHarmTouchDamage, false, "Use pre 2007 Harm Touch calculations - Default: False")
 RULE_BOOL(Spells, UseClassicSpellFocus, false, "Enabling will tell the server to handle random focus damage as classic spell imports lack the limit values.")
 RULE_BOOL(Spells, ManaTapsOnAnyClass, false, "Enabling this will allow you to cast mana taps on any class, this will bypass ManaTapsRequireNPCMana rule.")
-RULE_INT(Spells, HealAmountMessageFilterThreshold, 100, "Lifetaps below this threshold will not have a message sent to the client (Heal will still process) 0 to Disable.")
+RULE_INT(Spells, HealAmountMessageFilterThreshold, 12,  "Heals below this threshold send no message. Despite the name it gates EVERY heal message, not just lifetaps -- one call site, Mob::HealDamage. Stock 100 is a live EQ number that hides every heal a level 30 cap can produce. MUST stay at or above the top Thirst tier (12, aotv4_thirst.lua): that line heals on every melee hit, 3-4 times a second, and a lower value puts the engine per-hit line back under its deliberate 3-second accumulation. 0 to Disable.")
 RULE_BOOL(Spells, SnareOverridesSpeedBonuses, false, "Enabling will allow snares to override any speed bonuses the entity may have. Default: False")
 RULE_INT(Spells, TargetedAOEMaxTargets, 4, "Max number of targets a Targeted AOE spell can cast on. Set to 0 for no limit.")
 RULE_INT(Spells, PointBlankAOEMaxTargets, 0, "Max number of targets a Point-Blank AOE spell can cast on. Set to 0 for no limit.")
@@ -574,7 +574,7 @@ RULE_REAL(Combat, AvgProcsPerMinute, 2.0, "Average proc rate per minute")
 RULE_REAL(Combat, ProcPerMinDexContrib, 0.075, "Increases the probability of a proc increased by DEX by the value indicated")
 RULE_REAL(Combat, BaseProcChance, 0.035, "Base chance for procs")
 RULE_REAL(Combat, ProcDexDivideBy, 11000, "Divisor for the probability of a proc increased by dexterity")
-RULE_INT(Combat, MinRangedAttackDist, 25, "Minimum Distance to use Ranged Attacks")
+RULE_INT(Combat, MinRangedAttackDist, 0, "Minimum Distance to use Ranged Attacks")
 RULE_BOOL(Combat, ArcheryBonusRequiresStationary, true, "does the 2x archery bonus chance require a stationary npc")
 RULE_INT(Combat, ArcheryBonusLevelRequirement, 51, "Level requirement when the 2x archery bonus will be enabled. The default is 51.")
 RULE_REAL(Combat, ArcheryNPCMultiplier, 1.0, "Value is multiplied by the regular dmg to get the archery dmg")
@@ -624,8 +624,8 @@ RULE_BOOL(Combat, UseExtendedPoisonProcs, false, "Allow old school poisons to la
 RULE_BOOL(Combat, EnableSneakPull, false, "Enable implementation of Sneak Pull")
 RULE_INT(Combat, SneakPullAssistRange, 400, "Modified range of assist for sneak pull")
 RULE_BOOL(Combat, Classic2HBAnimation, false, "2HB will use the 2 hand piercing animation instead of the overhead slashing animation")
-RULE_BOOL(Combat, ArcheryConsumesAmmo, true, "Set to false to disable Archery Ammo Consumption")
-RULE_BOOL(Combat, ThrowingConsumesAmmo, true, "Set to false to disable Throwing Ammo Consumption")
+RULE_BOOL(Combat, ArcheryConsumesAmmo, false, "Set to false to disable Archery Ammo Consumption")
+RULE_BOOL(Combat, ThrowingConsumesAmmo, false, "Set to false to disable Throwing Ammo Consumption")
 RULE_BOOL(Combat, UseLiveRiposteMechanics, false, "Set to true to disable SPA 173 SpellEffect::RiposteChance from making those with the effect on them immune to enrage, can longer riposte from a riposte.")
 RULE_INT(Combat, FrontalStunImmunityClasses, 0, "Bitmask for Classes than have frontal stun immunity, No Races (0) by default.")
 RULE_BOOL(Combat, NPCsUseFrontalStunImmunityClasses, false, "Enable or disable NPCs using frontal stun immunity Classes from Combat:FrontalStunImmunityClasses, false by default.")
@@ -1189,7 +1189,7 @@ RULE_CATEGORY_END()
 
 
 RULE_CATEGORY(AoT)
-RULE_BOOL(AoT, AAExpSlowdownEnabled,    	true, "Slow NORMAL experience the more AA a character has earned, so that accumulated AA power does not make each re-climb to the level cap progressively trivial. Multiplier = (Base + aa) / (Base + Factor * aa).")
+RULE_BOOL(AoT, AAExpSlowdownEnabled,    	false, "Slow NORMAL experience the more AA a character has earned, so that accumulated AA power does not make each re-climb to the level cap progressively trivial. Multiplier = (Base + aa) / (Base + Factor * aa).")
 RULE_INT(AoT, AAExpSlowdownBase,        	100,  "Numerator base of the AA experience slowdown. Larger = the slowdown starts more gently. With the default 100/10, half rate is reached at 12.5 AA.")
 RULE_INT(AoT, AAExpSlowdownFactor,      	10,   "Denominator factor of the AA experience slowdown. The multiplier asymptotes to 1/Factor, so 10 means normal experience never drops below 10 percent however much AA is earned.")
 RULE_INT(AoT, AAExpMinLevel,            	1,    "Lowest level at which a character may earn AA experience. Stock EQ hardcodes 51 in two places in zone/exp.cpp; on a server whose cap is below that, AA would be completely unearnable.")
@@ -1200,6 +1200,13 @@ RULE_INT(AoT, AAExpMinLevel,            	1,    "Lowest level at which a characte
 // change, not an income change. It stops automatically at the level cap because a capped character's
 // applied experience is 0 (see the note in Client::SetEXP) -- which is what keeps the v50 fix intact.
 RULE_BOOL(AoT, LiveAAExp,               	true,  "Earn AA experience continuously at 1:1 with normal experience, instead of converting the run total to AA at death. Requires the matching global_player.lua change (drop the death lump) or AA is paid twice.")
+// The 1:1 above is the BASELINE, not a law: this scales it. 130 is a deliberate 30 percent income
+// increase (2026-08-22, owner decision), so a full climb to the cap yields 3.02 points rather than
+// 2.32. It scales AA income ONLY -- normal experience, the level curve and the cap are untouched.
+// WARNING: THIS DOES NOTHING WHEN LiveAAExp IS FALSE. The death-lump path is Lua and divides run_xp
+// by its own hardcoded AA_EXP_PER_POINT (global_player.lua), so flipping LiveAAExp off silently
+// reverts to the un-scaled rate. Change both or neither.
+RULE_INT(AoT, LiveAAExpPct,             	130,   "Percent of applied normal experience also paid as AA experience while LiveAAExp is on. 100 = the stock 1:1, 130 = 30 percent more AA per kill. Does not affect normal experience or the level cap.")
 // WARNING: WITHOUT THIS, LiveAAExp HANDS PLAYERS SPENDABLE POINTS IN THE NATIVE AA WINDOW, which
 // defeats the random picker entirely -- they could simply buy what they wanted directly.
 RULE_BOOL(AoT, AAPointsToPicker,        	true,  "Earned AA points go to the picker's private bank (aa_bank_<charid>) via EVENT_AA_GAIN and the native unspent pool is forced to 0, so AA can only be spent through the random picker.")
@@ -1218,7 +1225,12 @@ RULE_REAL(AoT, PotencyPerInt,     			0.5,  "How much does intellect boost potenc
 RULE_REAL(AoT, PotencyPerHInt,     			1.0,  "How much does heroic intellect boost potency")
 RULE_REAL(AoT, PotencyCapPerHInt,     		2.5,  "How much does heroic intellect boost potency cap")
 RULE_INT(AoT, PotencySoftCap,     			400,  "After potency cap is reached, deminishing returns apply")
+RULE_REAL(AoT, HealingPotencyPerWis,     	0.5,  "How much does wisdom boost potency")
+RULE_REAL(AoT, HealingPotencyPerHWis,     	1.0,  "How much does heroic wisdom boost potency")
+RULE_REAL(AoT, HealingPotencyCapPerHWis,    2.5,  "How much does heroic wisdom boost potency cap")
+RULE_INT(AoT, HealingPotencySoftCap,     	400,  "After potency cap is reached, deminishing returns apply")
 RULE_REAL(AoT, PotencyAfterCapReturns,     	0.2,  "Beyond the potency cap, potency is worth this value per point")
+RULE_REAL(AoT, HealingPotencyAfterCapReturns,     	0.2,  "Beyond the potency cap, potency is worth this value per point")
 RULE_BOOL(AoT, AdvLootReplacesLootWindow,	true, "Advanced Loot mode: right-clicking a corpse feeds the Advanced Loot window instead of opening the stock loot window (live behaviour). Set false to restore the stock window as a fallback if the AdvLoot window ever fails to open.")
 RULE_REAL(AoT, ResistPerWis,     			0.5,  "Points of global resist per wisdom")
 RULE_REAL(AoT, eHPPerResist,     			1.0,  "How much does resists improve survivability")

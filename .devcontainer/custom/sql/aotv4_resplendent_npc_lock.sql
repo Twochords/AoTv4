@@ -32,12 +32,12 @@
 -- 1) reassert the current correct state -----------------------------------------------------------
 UPDATE npc_types
    SET class = 1, bodytype = 1
- WHERE id IN (2000400, 2000401, 2000402);
+ WHERE id IN (2000400, 2000401, 2000402, 2000403);
 
 UPDATE spawn2 s2
   JOIN spawnentry se ON se.spawngroupID = s2.spawngroupID
    SET s2.heading = 256, s2.min_expansion = -1, s2.max_expansion = -1
- WHERE se.npcID IN (2000400, 2000401, 2000402);
+ WHERE se.npcID IN (2000400, 2000401, 2000402, 2000403);
 
 -- 2) install the guards ---------------------------------------------------------------------------
 DELIMITER $$
@@ -46,7 +46,7 @@ DROP TRIGGER IF EXISTS aotv4_lock_resplendent_npc_bi $$
 CREATE TRIGGER aotv4_lock_resplendent_npc_bi
 BEFORE INSERT ON npc_types FOR EACH ROW
 BEGIN
-  IF NEW.id IN (2000400, 2000401, 2000402) THEN
+  IF NEW.id IN (2000400, 2000401, 2000402, 2000403) THEN
     SET NEW.class = 1, NEW.bodytype = 1;
   END IF;
 END $$
@@ -55,7 +55,7 @@ DROP TRIGGER IF EXISTS aotv4_lock_resplendent_npc_bu $$
 CREATE TRIGGER aotv4_lock_resplendent_npc_bu
 BEFORE UPDATE ON npc_types FOR EACH ROW
 BEGIN
-  IF NEW.id IN (2000400, 2000401, 2000402) THEN
+  IF NEW.id IN (2000400, 2000401, 2000402, 2000403) THEN
     SET NEW.class = 1, NEW.bodytype = 1;
   END IF;
 END $$
@@ -66,7 +66,7 @@ DROP TRIGGER IF EXISTS aotv4_lock_resplendent_spawn_bi $$
 CREATE TRIGGER aotv4_lock_resplendent_spawn_bi
 BEFORE INSERT ON spawn2 FOR EACH ROW
 BEGIN
-  IF NEW.spawngroupID IN (2000400, 2000401, 2000402) THEN
+  IF NEW.spawngroupID IN (2000400, 2000401, 2000402, 2000403) THEN
     SET NEW.heading = 256, NEW.min_expansion = -1, NEW.max_expansion = -1;
   END IF;
 END $$
@@ -75,7 +75,7 @@ DROP TRIGGER IF EXISTS aotv4_lock_resplendent_spawn_bu $$
 CREATE TRIGGER aotv4_lock_resplendent_spawn_bu
 BEFORE UPDATE ON spawn2 FOR EACH ROW
 BEGIN
-  IF NEW.spawngroupID IN (2000400, 2000401, 2000402) THEN
+  IF NEW.spawngroupID IN (2000400, 2000401, 2000402, 2000403) THEN
     SET NEW.heading = 256, NEW.min_expansion = -1, NEW.max_expansion = -1;
   END IF;
 END $$
@@ -87,7 +87,7 @@ SELECT nt.id, nt.name, nt.class, nt.bodytype, s2.heading, s2.min_expansion, s2.m
   FROM npc_types nt
   JOIN spawnentry se ON se.npcID = nt.id
   JOIN spawn2 s2     ON s2.spawngroupID = se.spawngroupID
- WHERE nt.id IN (2000400, 2000401, 2000402);
+ WHERE nt.id IN (2000400, 2000401, 2000402, 2000403);
 
 SELECT trigger_name, event_object_table, action_timing, event_manipulation
   FROM information_schema.triggers

@@ -1,0 +1,36 @@
+-- @aotv4-migration
+-- description: 2026_08_22_class_ability_endur_upkeep
+-- check: SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `spells_new` WHERE `id` BETWEEN 44700 AND 44755 AND `EndurUpkeep` <> 0
+-- condition: match
+-- match: pending
+-- shared-memory: yes
+-- band:
+-- author: Claude
+-- notes: The 16 duration class abilities inherited EndurUpkeep 10 from the buff template and drained the whole bar.
+
+-- ⚠️⚠️ EndurUpkeep IS A PER TICK DRAIN, NOT A CAST COST, AND IT ALSO KILLS THE BUFF.
+-- Client::DoEndurance (client_process.cpp:2076) walks every buff on the character each tick,
+-- subtracts `endurance_upkeep`, and calls BuffFadeBySlot the moment the remaining endurance cannot
+-- pay for it. So an inherited upkeep does TWO things, and the second is silent:
+--     1. it bleeds the bar for the whole duration
+--     2. it ends the ability early, which reads as the ability being weak rather than as a cost
+--
+-- Reported from play as a Druid's level 5 ability draining all of their endurance. It is exact:
+-- Wildgrowth (44716) runs 10 ticks at 10 a tick = 100 endurance, and a level 5 Druid's pool is
+-- about 100 (base_data end 75 plus end_fac 0.375 times stats).
+--
+-- ⚠️⚠️ SOURCE IS THE CLONE, AGAIN. Template 4499 Defensive Discipline legitimately carries
+-- EndurUpkeep 10, and every ability with a duration was cloned from it. That is the FIFTH column
+-- this feature has inherited and had to repair after the fact -- cast messages (v119), the
+-- IsDiscipline column (v120), player_1 (v121), the icons (v104) and now this. None of them affected
+-- whether the ability WORKED, which is exactly why each one shipped.
+-- 📌 After cloning a row, diff it against a row of the shape you want, not against the template.
+--
+-- ⚠️ These already charge their real cost in Lua (aotv4_class_abilities.M.charge), scaled by level
+-- and paid in the CLASS's own resource -- mana for a Druid. A native endurance upkeep on top is
+-- double charging, in a currency a caster has no way to regain.
+--
+-- ⚠️ Applied to the whole 44700-44755 band, helpers included, rather than to the 16 that have a
+-- duration today: the column is inert without one, so zeroing it everywhere means adding a duration
+-- to an existing ability later cannot quietly resurrect this.
+UPDATE spells_new SET EndurUpkeep = 0 WHERE id BETWEEN 44700 AND 44755;

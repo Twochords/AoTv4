@@ -27,6 +27,7 @@
 #include "core_advloot.h"
 #include "core_lostwindow.h"
 #include "core_autoskill.h"
+#include "core_allcasters.h"
 #include "core_dungeon.h"
 #include "core_difficulty.h"
 #include "core_fellowship.h"
