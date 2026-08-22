@@ -369,7 +369,9 @@ public:
 	// definitions to mob.cpp but never touched mob.h, so the branch as pushed does NOT compile:
 	//   error: no declaration matches 'int Mob::GetHealingPotencySoftCap()'
 	//   error: no declaration matches 'uint64 Mob::ScaleSpellHealing(Mob*, uint64)'
-	// 📌 Nothing calls ScaleSpellHealing yet -- it is wired up but not yet used by any heal path.
+	// 📌 ScaleSpellHealing IS live as of carolus's efe7b96a8: Mob::GetActSpellHealing now routes
+	// through it instead of GetExtraSpellAmt, which is the healing half of the section 40 fix that
+	// had already been done for spell damage.
 	int    GetHealingPotencySoftCap();
 	uint64 ScaleSpellHealing(Mob* target, uint64 base_healing);
 	int32 GetActSpellCost(uint16 spell_id, int32 cost);
