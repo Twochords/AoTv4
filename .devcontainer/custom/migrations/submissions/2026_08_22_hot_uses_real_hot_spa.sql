@@ -1,0 +1,40 @@
+-- @aotv4-migration
+-- description: 2026_08_22_hot_uses_real_hot_spa
+-- check: SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `spells_new` WHERE `id` IN (44542,44543,44544,44545,44546,44547,44716) AND `effectid1` <> 100
+-- condition: match
+-- match: pending
+-- shared-memory: yes
+-- band:
+-- author: Claude
+-- notes: Seven heal-over-time spells were built on SPA 0, which is a silent REGEN BONUS, not a heal.
+
+-- ⚠️⚠️ SPA 0 `CurrentHP` WITH A POSITIVE VALUE ON A DURATION SPELL IS A REGEN BONUS, NOT A HEAL.
+-- Mob::DoBuffTic (spell_effects.cpp:4057) reads it and does literally nothing:
+--         } else if (effect_value > 0) {
+--                 // Regen spell...
+--                 // handled with bonuses
+--         }
+-- The healing is then applied silently as hp_regen out of bonuses.cpp. SPA 100 `HealOverTime` is the
+-- real thing, and its branch four lines below calls HealDamage(value, caster, spell_id).
+--
+-- Reported from play as Wildgrowth "not showing how much the heal over time is healing", and the
+-- messaging is only the visible third of it. Being on SPA 0 cost all three:
+--     1. NO MESSAGE -- HealDamage is where HOT_HEAL_SELF is sent, and it was never called
+--     2. NO HEALING BONUSES -- the SPA 100 branch runs GetActSpellHealing first, so healing focus,
+--        Healing Adept and every heal amount item were doing nothing for these spells
+--     3. NO HEALER AA -- section 47's Mob::AoTv4HealerPostHeal hangs off HealDamage, so Overflowing
+--        Grace, Mender's Echo and Borrowed Breath could never see a tick of any of them
+--
+-- ⚠️⚠️ IT IS INVISIBLE BECAUSE THE SPELL GENUINELY HEALS. The health goes up, on time, by the right
+-- amount, through a completely different mechanism -- so every check short of reading DoBuffTic says
+-- it works. Only the things layered ON TOP of healing were missing.
+--
+-- ⚠️ Scoped to the seven rows that are heals over time BY DESIGN (Wildgrowth, and the six Circle of
+-- Renewal tiers). Do NOT widen this to every SPA 0 duration spell: stock regeneration lines are SPA 0
+-- on purpose and a regen buff is what they are meant to be. Section 36 draws the line at a base
+-- above 30 for telling the two apart; these are 12 to 150 a tick and named as heals.
+--
+-- 📌 Stacking moves with the effect id, which is correct: CheckStackConflict compares slot by slot,
+-- so these stop arbitrating against regen buffs and start arbitrating against other heals over time.
+UPDATE spells_new SET effectid1 = 100
+ WHERE id IN (44542, 44543, 44544, 44545, 44546, 44547, 44716);

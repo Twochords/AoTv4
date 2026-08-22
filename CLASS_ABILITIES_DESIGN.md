@@ -696,3 +696,48 @@ payload was correct, `M.sweep` was correct, and the only way to tell was to prin
 - 📌 **Harrowing is working as designed.** `M.sweep` takes only creatures already fighting you plus
   your current target — the §2 rule every AoE here obeys, so that a tier 3 cannot pull a room — which
   means Harrowing on a lone target is a single drain by design. It now says so.
+
+### ⚠️⚠️ SPA 0 ON A DURATION SPELL IS A SILENT REGEN BONUS, NOT A HEAL OVER TIME (v129, 2026-08-22)
+
+Reported as Wildgrowth "not showing how much the heal over time is healing". The messaging was the
+visible third of it. `Mob::DoBuffTic` (`zone/spell_effects.cpp:4057`) handles a **positive** SPA 0
+like this:
+
+```
+} else if (effect_value > 0) {
+        // Regen spell...
+        // handled with bonuses
+}
+```
+
+It does nothing. The healing is applied silently as an `hp_regen` bonus out of `bonuses.cpp`.
+**SPA 100 `HealOverTime` is the real effect**, and its branch four lines below calls
+`HealDamage(value, caster, spell_id)` — which is where all three of the missing things live:
+
+1. **The message.** `HOT_HEAL_SELF` is sent from inside `HealDamage`, which was never called.
+2. **Healing bonuses.** The SPA 100 branch runs `GetActSpellHealing` first, so healing focus,
+   Healing Adept and every heal-amount item were doing nothing for these spells.
+3. **The healer AA tree.** §47's `Mob::AoTv4HealerPostHeal` hangs off `HealDamage`, so Overflowing
+   Grace, Mender's Echo and Borrowed Breath could never see a tick of any of them.
+
+- ⚠️⚠️ **IT IS INVISIBLE BECAUSE THE SPELL GENUINELY HEALS.** Health goes up, on time, by the right
+  amount, through a completely different mechanism — so every check short of reading `DoBuffTic`
+  says it works. Only the things layered *on top of* healing were absent.
+- **Seven rows**: Wildgrowth (44716) and the six Circle of Renewal tiers (44542-44547).
+- ⚠️ **Do NOT widen this to every SPA 0 duration spell.** Stock regeneration lines are SPA 0 on
+  purpose. §36 draws the line at a base above 30; these are 12 to 150 a tick and named as heals.
+- 📌 Stacking follows the effect id, which is correct: these now arbitrate against other heals over
+  time rather than against regen buffs.
+
+#### ⚠️ The engine's per-tick line is behind a live-EQ threshold, so the amount is announced at cast
+`Spells:HealAmountMessageFilterThreshold` is **100**, and `HealDamage` only messages above it. At a
+level 30 cap a tick of 17 to 42 is a real heal and sits silently under it, so even on SPA 100 the
+native line would never appear at any level this server reaches — §38 again.
+`M.tell_hot` therefore reports per-tick, tick count and total **once at cast**, read off the row
+(`base`, `formula`, `buff_duration`) rather than hardcoded so retuning the spell cannot leave it
+lying. That is also better information than a per-tick trickle, and costs no chat volume.
+- 📌 **Lowering that threshold is the lever if per-tick lines are ever wanted** — but it would also
+  make the engine print a generic "You heal X for N" on top of every class ability that already
+  reports its own heal, so it was left alone.
+- 📌 The Circle of Renewal tiers have no Lua script and so still rely on the native message, which
+  only tier VI (150 a tick) clears. That matches how stock heals over time behave here.

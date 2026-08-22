@@ -10303,6 +10303,20 @@ UPDATE spells_new SET EndurUpkeep = 0 WHERE id BETWEEN 44700 AND 44755;
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 129,
+		.description = "2026_08_22_hot_uses_real_hot_spa",
+		// Submitted by: Claude
+		// Seven heal-over-time spells were built on SPA 0, which is a silent REGEN BONUS, not a heal.
+		.check       = "SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `spells_new` WHERE `id` IN (44542,44543,44544,44545,44546,44547,44716) AND `effectid1` <> 100",
+		.condition   = "match",
+		.match       = "pending",
+		.sql         = R"(
+UPDATE spells_new SET effectid1 = 100
+ WHERE id IN (44542, 44543, 44544, 44545, 44546, 44547, 44716);
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

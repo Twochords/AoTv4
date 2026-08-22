@@ -124,6 +124,27 @@ function M.tell(c, text)
 	if c then c:Message(MSG, text) end
 end
 
+-- Report what a heal over time is actually worth, at cast.
+-- ⚠️⚠️ THE ENGINE'S OWN PER TICK LINE IS GATED BEHIND `Spells:HealAmountMessageFilterThreshold`,
+-- WHICH IS 100 -- a live EQ number. At a level 30 cap a tick of 17 to 42 is a real heal and is
+-- silently under it, so relying on HOT_HEAL_SELF would show nothing at any level this server
+-- reaches. Announcing the whole thing once at cast is also better information than a per tick
+-- trickle, and it costs no chat volume. Section 38 is the same trap in three other places.
+-- ⚠️ Read off the ROW rather than hardcoded, so retuning the spell cannot leave this lying. Formula
+-- 1-99 is `base + level * formula` and 100 is the static case (section 5); buff_duration is the tick
+-- count because these rows all carry the duration as the CAP on their duration formula.
+function M.tell_hot(c, spell_id)
+	local base    = eq.get_spell_stat(spell_id, "base", 1) or 0
+	local formula = eq.get_spell_stat(spell_id, "formula", 1) or 100
+	local ticks   = eq.get_spell_stat(spell_id, "buff_duration") or 0
+	if base <= 0 or ticks <= 0 then return false end
+	local per = base
+	if formula > 0 and formula < 100 then per = base + c:GetLevel() * formula end
+	M.tell(c, string.format("%s will mend %d hit points a tick for %d ticks -- %d in all.",
+		eq.get_spell_name(spell_id) or "It", per, ticks, per * ticks))
+	return true
+end
+
 -- Shorten this character's tier-2 cooldown. ⚠️ Takes the TIMER id, not the spell id.
 -- ⚠️ The cut is announced HERE rather than at each call site: seventeen abilities cut the tier 2
 -- recast and every one of them would otherwise need its own copy of this line to drift out of step.
@@ -393,7 +414,6 @@ M.SPEC = {
 -- back to a bare "You use X", which is not wrong but tells the player nothing.
 M.NOTE = {
 	[44704] = "You raise a sanctuary over your group.",
-	[44716] = "Wildgrowth takes root in your target, mending it over time.",
 	[44719] = "You settle into a void stance, slipping the next blows aimed at you.",
 	[44722] = "Your crescendo restores your group's endurance.",
 	[44725] = "You rupture your target. It will bleed.",
@@ -596,6 +616,14 @@ P[44714] = function(c, t)                                    -- Reaving Vow
 end
 
 -- ============================================================== 6 DRUID
+P[44716] = function(c, t)                                    -- Wildgrowth (SPA 100 is on the row)
+	if not M.tell_hot(c, 44716) then
+		M.tell(c, "Wildgrowth takes root, mending over time.")
+	end
+	if t and t.valid and t:GetID() ~= c:GetID() then
+		M.tell(c, string.format("It takes root in %s.", t:GetCleanName()))
+	end
+end
 P[44715] = function(c, t)                                    -- Thorned Strike (SPA 121 is on the row)
 	if not M.weapon_blow(c, t, 10) then return end
 	M.tell(c, string.format("Thorns wreathe %s. It will wound itself on every blow it lands.",
