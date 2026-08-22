@@ -8008,6 +8008,45 @@ DROP TEMPORARY TABLE IF EXISTS aotv4_parcel_gap;
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 92,
+		.description = "2026_08_21_tradeskill_aa_fix",
+		// Submitted by: Carolus
+		// Fix a bug where tradeskill levels make your exp significantly worse
+		.check       = "SELECT cost FROM aa_ranks WHERE id = 979",
+		.condition   = "match",
+		.match       = "3",
+		.sql         = R"(
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (83, -1, -1, 83, 83, 0, 55, -1, 0, 0, 3, -1, 84);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (84, -1, -1, 83, 83, 0, 55, -1, 0, 0, 3, 83, 85);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (85, -1, -1, 83, 83, 0, 55, -1, 0, 0, 3, 84, 13099);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (150, -1, -1, 150, 150, 0, 59, -1, 0, 0, 3, -1, 151);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (151, -1, -1, 150, 150, 0, 59, -1, 0, 0, 3, 150, 152);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (152, -1, -1, 150, 150, 0, 59, -1, 0, 0, 3, 151, -1);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (159, -1, -1, 159, 159, 0, 59, -1, 0, 0, 3, -1, 160);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (160, -1, -1, 159, 159, 0, 59, -1, 0, 0, 3, 159, 161);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (161, -1, -1, 159, 159, 0, 59, -1, 0, 0, 3, 160, -1);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (979, -1, -1, 979, 979, 0, 59, -1, 0, 0, 8, -1, 980);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (980, -1, -1, 979, 979, 0, 59, -1, 0, 0, 8, 979, 981);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (981, -1, -1, 979, 979, 0, 59, -1, 0, 0, 8, 980, -1);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (982, -1, -1, 982, 982, 0, 59, -1, 0, 0, 8, -1, 983);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (983, -1, -1, 982, 982, 0, 59, -1, 0, 0, 8, 982, 984);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (984, -1, -1, 982, 982, 0, 59, -1, 0, 0, 8, 983, -1);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (985, -1, -1, 985, 985, 0, 59, -1, 0, 0, 8, -1, 986);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (986, -1, -1, 985, 985, 0, 59, -1, 0, 0, 8, 985, 987);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (987, -1, -1, 985, 985, 0, 59, -1, 0, 0, 8, 986, -1);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (988, -1, -1, 988, 988, 0, 59, -1, 0, 0, 8, -1, 989);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (989, -1, -1, 988, 988, 0, 59, -1, 0, 0, 8, 988, 990);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (990, -1, -1, 988, 988, 0, 59, -1, 0, 0, 8, 989, -1);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (991, -1, -1, 991, 991, 0, 59, -1, 0, 0, 8, -1, 992);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (992, -1, -1, 991, 991, 0, 59, -1, 0, 0, 8, 991, 993);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (993, -1, -1, 991, 991, 0, 59, -1, 0, 0, 8, 992, -1);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (994, -1, -1, 994, 994, 0, 59, -1, 0, 0, 8, -1, 995);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (995, -1, -1, 994, 994, 0, 59, -1, 0, 0, 8, 994, 996);
+REPLACE INTO `aa_ranks` (`id`, `upper_hotkey_sid`, `lower_hotkey_sid`, `title_sid`, `desc_sid`, `cost`, `level_req`, `spell`, `spell_type`, `recast_time`, `expansion`, `prev_id`, `next_id`) VALUES (996, -1, -1, 994, 994, 0, 59, -1, 0, 0, 8, 995, -1);
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does
