@@ -1189,7 +1189,7 @@ RULE_CATEGORY_END()
 
 
 RULE_CATEGORY(AoT)
-RULE_BOOL(AoT, AAExpSlowdownEnabled,    	true, "Slow NORMAL experience the more AA a character has earned, so that accumulated AA power does not make each re-climb to the level cap progressively trivial. Multiplier = (Base + aa) / (Base + Factor * aa).")
+RULE_BOOL(AoT, AAExpSlowdownEnabled,    	false, "Slow NORMAL experience the more AA a character has earned, so that accumulated AA power does not make each re-climb to the level cap progressively trivial. Multiplier = (Base + aa) / (Base + Factor * aa).")
 RULE_INT(AoT, AAExpSlowdownBase,        	100,  "Numerator base of the AA experience slowdown. Larger = the slowdown starts more gently. With the default 100/10, half rate is reached at 12.5 AA.")
 RULE_INT(AoT, AAExpSlowdownFactor,      	10,   "Denominator factor of the AA experience slowdown. The multiplier asymptotes to 1/Factor, so 10 means normal experience never drops below 10 percent however much AA is earned.")
 RULE_INT(AoT, AAExpMinLevel,            	1,    "Lowest level at which a character may earn AA experience. Stock EQ hardcodes 51 in two places in zone/exp.cpp; on a server whose cap is below that, AA would be completely unearnable.")
