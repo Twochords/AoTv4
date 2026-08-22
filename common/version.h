@@ -40,6 +40,4 @@
 
 #define CURRENT_BINARY_DATABASE_VERSION 9328
 #define CURRENT_BINARY_BOTS_DATABASE_VERSION 9055
-<<<<<<< Updated upstream
 #define CUSTOM_BINARY_DATABASE_VERSION 105
->>>>>>> Stashed changes
