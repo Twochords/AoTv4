@@ -5,6 +5,11 @@ level you're offered **3 random rewards** (spells or class-specific combat abili
 one, which the server scribes/trains. The window is drawn by a client-side `dinput8.dll`
 so it works on a **vanilla RoF2 client — no MacroQuest/E3 required**.
 
+> **🖥️ OPERATING THE LIVE SERVER OVER SSH? → SEE §57.** The live server is **akk-stack (Docker)**, a
+> different machine + database than the `/src` dev container in §1-§2. §57 is the authoritative
+> **restart runbook**, DB/telnet access, migration/shared-memory traps, and the current live-only state
+> that must not be reverted (player corpses OFF to stop a zone-crash bug; start zone = Freeport Theater).
+
 > **⚠️ ALL CLASSES (was Bard-only).** Originally every character was forced to Bard; as of **2026-07**
 > the server is opened to **all 16 classes**. The four pure-melee classes (Warrior/Monk/Rogue/Berserker)
 > are turned into casters **client-side** by the dll (`core_allcasters`, §14) + **server-side** mana
@@ -5929,3 +5934,144 @@ different fix. **Use `2>&1` when a query returns nothing unexpectedly**, before 
 from the emptiness. The same trap is already recorded for `docker exec` without `-u root` (§17) and
 for `sudo` on the datadir (§25): a permissions or syntax failure that prints nothing is
 indistinguishable from a true negative.
+
+## 57. ⚠️⚠️ LIVE SERVER (akk-stack) — OPERATIONS & RESTART RUNBOOK
+
+> **This is the runbook for operating the LIVE server over SSH.** §1-§2 describe the `/src` DEV
+> container (eqlaunch, `/src/build/bin`); **the LIVE server is a DIFFERENT machine running akk-stack
+> (Docker) and is NOT eqlaunch-based.** On live, THIS section wins over §1-§2. Live is also a different
+> database than dev (§25) — real bug reports come from live. Run Claude from
+> `/home/eqemu/AoTv4/AoTv4` so it reads this file.
+
+### Environment
+- Host: Ubuntu 26.04, hostname `eqemu-X570-AORUS-MASTER`, LAN `192.168.0.174`. Two Docker containers:
+  - **`akk-stack-eqemu-server-1`** — runs the game. Server dir INSIDE it: **`/home/eqemu/server`**
+    (`./bin/{world,zone,ucs,loginserver,shared_memory}`, boot script `./startup/start-server.sh`,
+    quests `./quests`, logs `./logs`). On the host: `/home/eqemu/akk-stack/server` (bind mount).
+  - **`akk-stack-mariadb-1`** — the `peq` database.
+- Three source trees (fork-first workflow):
+  - **Fork (edit here FIRST):** `/home/eqemu/AoTv4/AoTv4` — `origin` github.com/Twochords/AoTv4
+    (**PUBLIC** — never put secrets in tracked files).
+  - **Build tree (compiles the server):** `/home/eqemu/akk-stack/code` (== container
+    `/home/eqemu/code`), git remote `aotv4` → the fork.
+  - **Live quests (a SEPARATE third deploy, easy to forget):** `/home/eqemu/akk-stack/server/quests`.
+- ⚠️ **DB credentials are NOT in this public file.** User/password are in
+  `/home/eqemu/server/eqemu_config.json` (`database` block) — read them there.
+
+### Access
+- **DB (from host):** `sudo docker exec akk-stack-mariadb-1 mysql -u<user> -p<pw> peq -e "…"`
+  (creds from eqemu_config.json). **From inside the eqemu-server container** the DB host is `mariadb`:
+  `mysql -u<user> -p<pw> -h mariadb peq`.
+- **World console (telnet 127.0.0.1:9000, from INSIDE the container, localhost auto-admins):**
+  ```bash
+  sudo docker exec -i akk-stack-eqemu-server-1 bash -c '
+    exec 3<>/dev/tcp/127.0.0.1/9000; cat <&3 & sleep 1; echo "who" >&3; sleep 1.5; kill %1'
+  ```
+  Commands: `broadcast <msg>`, `wwmarquee 4 0 3000 12000 <msg>` (on-screen banner), `lock`/`unlock`,
+  `who`, `zonestatus`, `reloadworld` (WorldRepop only). ⚠️ **No `reloadrules` telnet command** — a
+  `rule_values` change needs in-game `#reload rules` (GM) OR a world restart to take effect.
+
+### ⚠️⚠️ NEVER slam zone restarts without a real warning
+Killing zone procs disconnects everyone in those zones and **players in combat DIE**. Broadcast a
+**5-minute (2-minute minimum) countdown** before any stop. `zone-keepalive.sh` topping the pool up is
+safe (it only SPAWNS idle zones, never kills).
+
+### RESTART RUNBOOK  (all commands inside `akk-stack-eqemu-server-1`)
+**1. Warn** via telnet, wait the countdown.
+
+**2. Stop cleanly — VERIFY EMPTY before starting:**
+```bash
+pkill -f "[z]one-keepalive"          # bracket trick: stops the pattern matching its own shell
+sleep 1
+for p in $(pgrep -x zone) $(pgrep -x world) $(pgrep -x ucs) $(pgrep -x loginserver); do kill -9 "$p"; done
+sleep 4
+for p in $(pgrep -x world) $(pgrep -x zone); do kill -9 "$p"; done    # sweep survivors
+sleep 2
+ps -eo comm | grep -xE 'world|zone|ucs|loginserver'                   # MUST be empty
+```
+- ⚠️⚠️ **`pkill -x world` often leaves a session-leader CHILD alive** — kill by PID with `-9` and
+  verify 0. **A leftover `world` WEDGES the next `start-server.sh`** (comes up with login+world but no
+  ucs/zones, empty deploy log).
+- ⚠️ `pgrep -cx zone` counts zombies; count LIVE with `ps -eo pid,stat,comm | awk '$3=="zone" && $2!~/Z/'`.
+
+**3. Start (only from a verified-empty slate):**
+```bash
+cd /home/eqemu/server && setsid nohup ./startup/start-server.sh > logs/start_$(date +%H%M%S).log 2>&1 < /dev/null &
+```
+Runs, in order: `shared_memory` → `loginserver` → `world` → `ucs` → zone pool (~150) + `zone-keepalive.sh`.
+
+**4. Verify:** `ps -eo comm | grep -xE 'world|loginserver|ucs' | sort | uniq -c` (1 each);
+`ps -eo comm | grep -c '^zone$'` (climbs to ~150); `SELECT custom_version FROM db_version;` must equal
+the binary's `CUSTOM_BINARY_DATABASE_VERSION` (currently **140**).
+
+### ⚠️⚠️ Migrations / versions / shared memory (traps that read as "server down")
+- **World applies pending DB migrations at boot** (manifest compiled into `world`) and advances
+  `db_version.custom_version`.
+- ⚠️⚠️ **A zone binary whose `CUSTOM_BINARY_DATABASE_VERSION` is AHEAD of `db_version.custom_version`
+  logs `Exiting due to pending database updates` and quits** — no zone binds a port, world says "No
+  zoneserver available", players see "server down". Fix: let **world** boot and migrate FIRST, then
+  zones stay up. Diagnose from a **zone** log, not world's.
+- ⚠️ **Before any MIGRATING boot, ensure `/home/eqemu/server/login.my.cnf` exists** (read-only,
+  `[mysqldump]` block with DB creds). World's pre-migration backup uses it and **deletes it after**; if
+  missing on the next migrating boot the backup fails and **world exits**. Recreate `chmod 400`.
+- ⚠️⚠️ **shared-memory ordering.** `items` + `spells_new` are shared memory, and `start-server.sh` runs
+  `shared_memory` BEFORE `world` migrates. To load NEW rows a migration adds:
+  **stop → run `./bin/world` ALONE (migrates, advances custom_version) → `pkill -x world` (verify dead)
+  → `start-server.sh`** (its `shared_memory` now reads the migrated tables). A plain stop+start is fine
+  only when NO migration touches items/spells_new.
+
+### World-ONLY restart (to apply a `rule_values` change, e.g. SoFStartZoneID)
+Rules load at boot. Kill ONLY world (all PIDs incl the child), then `setsid nohup ./bin/world > logs/world_$(date +%H%M%S).log 2>&1 < /dev/null &`.
+Zones stay up and reconnect — **players are NOT kicked from their zones**. ⚠️ A restart resets the
+runtime `lock` to unlocked; re-`lock` if you need players kept out.
+
+### Lock / unlock
+- Telnet `lock` (players below GM status blocked; GMs still get in to verify) / `unlock`. A restart
+  comes up **unlocked**.
+- ⚠️⚠️ **Do NOT lock by editing `world.locked` in `eqemu_config.json` on akk-stack.** The Spire
+  entrypoint parses it as a Go **bool** — a STRING value makes the container loop forever on an
+  unmarshal error and never launch the game. Keep it a real bool (`false`); lock/unlock over telnet.
+
+### ⚠️⚠️ Stale-log trap
+`logs/zone_N.log` files are **reused** across zone respawns, so a fresh zone appends to a file that
+still holds OLD lines (e.g. pre-restart crash traces). Grepping by file mtime catches stale lines.
+Judge CURRENT activity by a **total-count delta over time** or the **tail** of an actively-written log.
+
+### Deploying code (THREE legs — all three or it's half-deployed)
+1. **Fork:** `cd /home/eqemu/AoTv4/AoTv4 && git pull` (edit source here first, always).
+2. **Build tree:** `cd /home/eqemu/akk-stack/code && git fetch aotv4 && git reset --hard aotv4/master`
+   (keep untracked `client_files/` — the build needs it), then
+   `sudo docker exec akk-stack-eqemu-server-1 bash -lc 'cd /home/eqemu/code/build && make -j16 world zone shared_memory'`
+   (CMake **make**, not ninja; a build does not affect the running server until restart — cmake
+   unlink-then-links so running zones don't block it).
+3. **Live quests (the C++ build/restart does NOT touch Lua):**
+   `rsync -rlpt --exclude='.git' /home/eqemu/AoTv4/AoTv4/.devcontainer/repo/quests/ /home/eqemu/akk-stack/server/quests/`
+   (authoritative source is `.devcontainer/repo/quests/`, NOT `custom/quests/`; add `--delete` to also
+   remove retired files, carefully). Then restart so fresh zones load the new Lua.
+
+### ⚠️⚠️ CURRENT LIVE STATE THAT MUST NOT BE REVERTED (2026-08-22 — live-only, NOT yet migrations)
+A DB import (§25/§35) silently reverts these. **Re-apply after any import.**
+- **PLAYER CORPSES ARE OFF.** `Character:LeaveCorpses=false`, `LeaveNakedCorpses=false`,
+  `CorpseDecayTime=60000`, `EmptyCorpseDecayTime=60000`. ⚠️⚠️ **Player-corpse ACCUMULATION triggered a
+  memory-corruption zone crash** — `Zone::ZoneTimer` copying a corrupt `std::string` in
+  `Zone::Process()`. On this roguelite (constant deaths) 272 corpses at a 7-day decay piled up and
+  zones began segfaulting. **If corpses come back on and accumulate, the crashes return.** To clear
+  corpses: back up, then `DELETE FROM character_corpse_items WHERE corpse_id>0; DELETE FROM
+  character_corpses WHERE id>0;` then RESTART (in-memory corpses only clear on zone reload).
+  📌 **The underlying `ZoneTimer` bug is still LATENT** — only its trigger (corpse accumulation) was
+  removed. If zones crash again, do NOT just restart: capture a symbolized backtrace (`print_trace`
+  frames in the crashing zone's log) and/or build an ASAN `zone` to find the out-of-bounds write.
+- **START ZONE = FREEPORT THEATER (390).** `World:SoFStartZoneID=390` AND every `start_zones` row →
+  `zone_id=390, start_zone=390`, origin `(-83,-235,-27)` (NE of Wayfinder Alessa). `GetStartZone`
+  (world/worlddb.cpp) matches `WHERE zone_id = <SoFStartZoneID>` for SoF+/RoF2 clients, so BOTH must
+  agree or new chars fall back to Crescent Reach (394). Wayfinder Alessa's script was copied to
+  `quests/freeporttheater/#Wayfinder_Alessa.lua` (was resplendent-only). SoFStartZoneID needs a world
+  restart to apply; `start_zones` is read live per character creation.
+- **custom_version = 140.**
+
+### 📌 Diagnosing quick-reference
+- ⚠️ Add `2>&1` to a `mysql` call when a query unexpectedly returns nothing — a bad column / auth error
+  prints nothing and looks like "no rows" (same class as `docker exec -u root`, §17).
+- Crash check: `grep -c "print_trace \[Inferior" logs/zone_*.log` (mind the stale-log trap; use a
+  delta). A 24-hour crash watch runs detached as `/home/eqemu/server/crash_watch_24h.sh` →
+  `logs/crash_watch_24h.log` (flags any new crash with `***`).
