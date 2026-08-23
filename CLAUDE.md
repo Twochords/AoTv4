@@ -6049,8 +6049,13 @@ Judge CURRENT activity by a **total-count delta over time** or the **tail** of a
    (authoritative source is `.devcontainer/repo/quests/`, NOT `custom/quests/`; add `--delete` to also
    remove retired files, carefully). Then restart so fresh zones load the new Lua.
 
-### ⚠️⚠️ CURRENT LIVE STATE THAT MUST NOT BE REVERTED (2026-08-22 — live-only, NOT yet migrations)
-A DB import (§25/§35) silently reverts these. **Re-apply after any import.**
+### ⚠️⚠️ CURRENT LIVE STATE THAT MUST NOT BE REVERTED (2026-08-22)
+Both are now captured as **migrations v141 (`player_corpses_off`) + v142 (`start_zone_freeporttheater`)**,
+staged in the fork — they auto-apply at world boot and are idempotent (no-op once applied).
+⚠️ **BUT the running binary is still v140 and does NOT contain them yet** — they only go live on the
+**next deploy** (build tree synced to the fork → rebuilt to v142 → world migrates). Until then these
+remain **live-only DB edits**: a DB import (§25/§35) before the next deploy still reverts them and they
+must be re-applied by hand; after the next deploy the migrations restore them automatically.
 - **PLAYER CORPSES ARE OFF.** `Character:LeaveCorpses=false`, `LeaveNakedCorpses=false`,
   `CorpseDecayTime=60000`, `EmptyCorpseDecayTime=60000`. ⚠️⚠️ **Player-corpse ACCUMULATION triggered a
   memory-corruption zone crash** — `Zone::ZoneTimer` copying a corrupt `std::string` in

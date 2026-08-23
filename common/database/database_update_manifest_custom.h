@@ -10569,6 +10569,36 @@ UPDATE npc_types SET race = 51, gender = 2, size = 10, texture = 0 WHERE id = 20
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 141,
+		.description = "2026_08_22_player_corpses_off",
+		// Submitted by: Claude
+		// Scoped by rule_name ALONE, deliberately: rule_values has one row per ruleset and fixing only ruleset 1 leaves the others behind, which then apply to whoever is on that ruleset (same trap as MinRangedAttackDist / SpecialEndurancePct).
+		.check       = "SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `rule_values` WHERE (`rule_name` = 'Character:LeaveCorpses' AND `rule_value` <> 'false') OR (`rule_name` = 'Character:LeaveNakedCorpses' AND `rule_value` <> 'false') OR (`rule_name` = 'Character:CorpseDecayTime' AND `rule_value` <> '60000') OR (`rule_name` = 'Character:EmptyCorpseDecayTime' AND `rule_value` <> '60000')",
+		.condition   = "match",
+		.match       = "pending",
+		.sql         = R"(
+UPDATE `rule_values` SET `rule_value` = 'false' WHERE `rule_name` = 'Character:LeaveCorpses';
+UPDATE `rule_values` SET `rule_value` = 'false' WHERE `rule_name` = 'Character:LeaveNakedCorpses';
+UPDATE `rule_values` SET `rule_value` = '60000' WHERE `rule_name` = 'Character:CorpseDecayTime';
+UPDATE `rule_values` SET `rule_value` = '60000' WHERE `rule_name` = 'Character:EmptyCorpseDecayTime';
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 142,
+		.description = "2026_08_22_start_zone_freeporttheater",
+		// Submitted by: Claude
+		// The check keys on start_zones because a full DB import resets it (to stock home cities / 729); when it does, this re-applies. SoFStartZoneID needs a WORLD RESTART to take effect; start_zones is read live per character creation.
+		.check       = "SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `start_zones` WHERE `zone_id` <> 390",
+		.condition   = "match",
+		.match       = "pending",
+		.sql         = R"(
+UPDATE `rule_values` SET `rule_value` = '390' WHERE `rule_name` = 'World:SoFStartZoneID';
+UPDATE `start_zones` SET `zone_id` = 390, `start_zone` = 390, `x` = -83, `y` = -235, `z` = -27, `heading` = 0, `bind_id` = 390, `bind_x` = -83, `bind_y` = -235, `bind_z` = -27 WHERE `zone_id` <> 390;
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does
