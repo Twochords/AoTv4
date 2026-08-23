@@ -10599,6 +10599,67 @@ UPDATE `start_zones` SET `zone_id` = 390, `start_zone` = 390, `x` = -83, `y` = -
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 143,
+		.description = "2026_08_23_open_region_click_proc_level_25",
+		// Submitted by: Claude
+		// items is shared memory -- applying needs ./shared_memory + a restart (CLAUDE.md section 57).
+		.check       = "SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `items` WHERE (`id` = 4519 AND `clicklevel2` > 25) OR (`id` = 1154 AND `proclevel2` > 25)",
+		.condition   = "match",
+		.match       = "pending",
+		.sql         = R"(
+UPDATE `items` SET `clicklevel2` = 25
+WHERE `clickeffect` > 0 AND `clicklevel2` > 25 AND `id` < 900000
+  AND (`id` MOD 300000) IN (
+    SELECT iid FROM (
+      SELECT DISTINCT lde.item_id AS iid
+        FROM zone_regions zr
+        JOIN zone z        ON z.zoneidnumber = zr.zone_id AND z.version = 0
+        JOIN spawn2 s      ON s.zone = z.short_name
+        JOIN spawnentry se ON se.spawngroupID = s.spawngroupID
+        JOIN npc_types n   ON n.id = se.npcID
+        JOIN loottable_entries lte ON lte.loottable_id = n.loottable_id
+        JOIN lootdrop_entries  lde ON lde.lootdrop_id  = lte.lootdrop_id
+       WHERE zr.region_id BETWEEN 1 AND 6
+      UNION
+      SELECT DISTINCT ml.item AS iid
+        FROM zone_regions zr
+        JOIN zone z        ON z.zoneidnumber = zr.zone_id AND z.version = 0
+        JOIN spawn2 s      ON s.zone = z.short_name
+        JOIN spawnentry se ON se.spawngroupID = s.spawngroupID
+        JOIN npc_types n   ON n.id = se.npcID
+        JOIN merchantlist ml ON ml.merchantid = n.merchant_id
+       WHERE zr.region_id BETWEEN 1 AND 6
+    ) open_region_items
+  );
+
+UPDATE `items` SET `proclevel2` = 25
+WHERE `proceffect` > 0 AND `proclevel2` > 25 AND `id` < 900000
+  AND (`id` MOD 300000) IN (
+    SELECT iid FROM (
+      SELECT DISTINCT lde.item_id AS iid
+        FROM zone_regions zr
+        JOIN zone z        ON z.zoneidnumber = zr.zone_id AND z.version = 0
+        JOIN spawn2 s      ON s.zone = z.short_name
+        JOIN spawnentry se ON se.spawngroupID = s.spawngroupID
+        JOIN npc_types n   ON n.id = se.npcID
+        JOIN loottable_entries lte ON lte.loottable_id = n.loottable_id
+        JOIN lootdrop_entries  lde ON lde.lootdrop_id  = lte.lootdrop_id
+       WHERE zr.region_id BETWEEN 1 AND 6
+      UNION
+      SELECT DISTINCT ml.item AS iid
+        FROM zone_regions zr
+        JOIN zone z        ON z.zoneidnumber = zr.zone_id AND z.version = 0
+        JOIN spawn2 s      ON s.zone = z.short_name
+        JOIN spawnentry se ON se.spawngroupID = s.spawngroupID
+        JOIN npc_types n   ON n.id = se.npcID
+        JOIN merchantlist ml ON ml.merchantid = n.merchant_id
+       WHERE zr.region_id BETWEEN 1 AND 6
+    ) open_region_items
+  );
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does
