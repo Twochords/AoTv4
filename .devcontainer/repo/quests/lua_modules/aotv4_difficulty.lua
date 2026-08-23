@@ -367,7 +367,7 @@ local AFFIX_NIMBUS = 412
 -- never expire under the people standing in it, and there is no natural moment to renew it -- unlike
 -- a delve, which has a definite end. An unused shard costs a row in `instance_list` and nothing
 -- else: with nobody in it the zone process self-terminates like any other dynamic zone.
-M.DURATION_SECS = 3155760000
+M.DURATION_SECS = 1000000000
 
 -------------------------------------------------------------------- the rising dead (NO TIER)
 -- Tuning for a mechanic NO DIFFICULTY CURRENTLY ENABLES -- see M.on_npc_death. A creature you kill

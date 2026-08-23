@@ -10569,6 +10569,97 @@ UPDATE npc_types SET race = 51, gender = 2, size = 10, texture = 0 WHERE id = 20
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 141,
+		.description = "2026_08_22_player_corpses_off",
+		// Submitted by: Claude
+		// Scoped by rule_name ALONE, deliberately: rule_values has one row per ruleset and fixing only ruleset 1 leaves the others behind, which then apply to whoever is on that ruleset (same trap as MinRangedAttackDist / SpecialEndurancePct).
+		.check       = "SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `rule_values` WHERE (`rule_name` = 'Character:LeaveCorpses' AND `rule_value` <> 'false') OR (`rule_name` = 'Character:LeaveNakedCorpses' AND `rule_value` <> 'false') OR (`rule_name` = 'Character:CorpseDecayTime' AND `rule_value` <> '60000') OR (`rule_name` = 'Character:EmptyCorpseDecayTime' AND `rule_value` <> '60000')",
+		.condition   = "match",
+		.match       = "pending",
+		.sql         = R"(
+UPDATE `rule_values` SET `rule_value` = 'false' WHERE `rule_name` = 'Character:LeaveCorpses';
+UPDATE `rule_values` SET `rule_value` = 'false' WHERE `rule_name` = 'Character:LeaveNakedCorpses';
+UPDATE `rule_values` SET `rule_value` = '60000' WHERE `rule_name` = 'Character:CorpseDecayTime';
+UPDATE `rule_values` SET `rule_value` = '60000' WHERE `rule_name` = 'Character:EmptyCorpseDecayTime';
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 142,
+		.description = "2026_08_22_start_zone_freeporttheater",
+		// Submitted by: Claude
+		// The check keys on start_zones because a full DB import resets it (to stock home cities / 729); when it does, this re-applies. SoFStartZoneID needs a WORLD RESTART to take effect; start_zones is read live per character creation.
+		.check       = "SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `start_zones` WHERE `zone_id` <> 390",
+		.condition   = "match",
+		.match       = "pending",
+		.sql         = R"(
+UPDATE `rule_values` SET `rule_value` = '390' WHERE `rule_name` = 'World:SoFStartZoneID';
+UPDATE `start_zones` SET `zone_id` = 390, `start_zone` = 390, `x` = -83, `y` = -235, `z` = -27, `heading` = 0, `bind_id` = 390, `bind_x` = -83, `bind_y` = -235, `bind_z` = -27 WHERE `zone_id` <> 390;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 143,
+		.description = "2026_08_23_open_region_click_proc_level_25",
+		// Submitted by: Claude
+		// items is shared memory -- applying needs ./shared_memory + a restart (CLAUDE.md section 57).
+		.check       = "SELECT IF(COUNT(*) > 0, 'pending', 'done') FROM `items` WHERE (`id` = 4519 AND `clicklevel2` > 25) OR (`id` = 1154 AND `proclevel2` > 25)",
+		.condition   = "match",
+		.match       = "pending",
+		.sql         = R"(
+UPDATE `items` SET `clicklevel2` = 25
+WHERE `clickeffect` > 0 AND `clicklevel2` > 25 AND `id` < 900000
+  AND (`id` MOD 300000) IN (
+    SELECT iid FROM (
+      SELECT DISTINCT lde.item_id AS iid
+        FROM zone_regions zr
+        JOIN zone z        ON z.zoneidnumber = zr.zone_id AND z.version = 0
+        JOIN spawn2 s      ON s.zone = z.short_name
+        JOIN spawnentry se ON se.spawngroupID = s.spawngroupID
+        JOIN npc_types n   ON n.id = se.npcID
+        JOIN loottable_entries lte ON lte.loottable_id = n.loottable_id
+        JOIN lootdrop_entries  lde ON lde.lootdrop_id  = lte.lootdrop_id
+       WHERE zr.region_id BETWEEN 1 AND 6
+      UNION
+      SELECT DISTINCT ml.item AS iid
+        FROM zone_regions zr
+        JOIN zone z        ON z.zoneidnumber = zr.zone_id AND z.version = 0
+        JOIN spawn2 s      ON s.zone = z.short_name
+        JOIN spawnentry se ON se.spawngroupID = s.spawngroupID
+        JOIN npc_types n   ON n.id = se.npcID
+        JOIN merchantlist ml ON ml.merchantid = n.merchant_id
+       WHERE zr.region_id BETWEEN 1 AND 6
+    ) open_region_items
+  );
+
+UPDATE `items` SET `proclevel2` = 25
+WHERE `proceffect` > 0 AND `proclevel2` > 25 AND `id` < 900000
+  AND (`id` MOD 300000) IN (
+    SELECT iid FROM (
+      SELECT DISTINCT lde.item_id AS iid
+        FROM zone_regions zr
+        JOIN zone z        ON z.zoneidnumber = zr.zone_id AND z.version = 0
+        JOIN spawn2 s      ON s.zone = z.short_name
+        JOIN spawnentry se ON se.spawngroupID = s.spawngroupID
+        JOIN npc_types n   ON n.id = se.npcID
+        JOIN loottable_entries lte ON lte.loottable_id = n.loottable_id
+        JOIN lootdrop_entries  lde ON lde.lootdrop_id  = lte.lootdrop_id
+       WHERE zr.region_id BETWEEN 1 AND 6
+      UNION
+      SELECT DISTINCT ml.item AS iid
+        FROM zone_regions zr
+        JOIN zone z        ON z.zoneidnumber = zr.zone_id AND z.version = 0
+        JOIN spawn2 s      ON s.zone = z.short_name
+        JOIN spawnentry se ON se.spawngroupID = s.spawngroupID
+        JOIN npc_types n   ON n.id = se.npcID
+        JOIN merchantlist ml ON ml.merchantid = n.merchant_id
+       WHERE zr.region_id BETWEEN 1 AND 6
+    ) open_region_items
+  );
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does
