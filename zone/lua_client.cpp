@@ -1224,6 +1224,23 @@ void Lua_Client::SummonItem(uint32 item_id) {
 	self->SummonItem(AoTv4MythicReward(item_id));
 }
 
+// ⚠️⚠️ EVERY OTHER Lua SummonItem OVERLOAD SILENTLY UPGRADES THE ITEM TO MYTHIC.
+// AoTv4MythicReward (questmgr.cpp:192) is `if (item_id < 300000 && a Mythic row exists) return
+// item_id + 600000`, and it is wired into all eight overloads so that QUEST rewards hand out top
+// tier gear (section 10). It is the right default for a quest and completely wrong for anything that
+// grants a SPECIFIC item.
+// 📌 Note the `< 300000`: an id that is already Hallowed or Mythic passes through untouched. So the
+// symptom is narrow and confusing -- a feature selling all three tiers finds only its BASE tier
+// broken, which reads as "the cheap option is bugged" rather than "the grant path is upgrading".
+// That is exactly how it presented: the Gilded Wager handing out Mythics at the 1000p price while
+// 5000p and 10000p were correct all along.
+// ⚠️ Use this ONLY where the caller has already decided the exact tier. Anywhere the item is a
+// reward rather than a purchase, the upgrading overloads above are the ones you want.
+void Lua_Client::SummonItemExact(uint32 item_id) {
+	Lua_Safe_Call_Void();
+	self->SummonItem(item_id);
+}
+
 void Lua_Client::SummonItem(uint32 item_id, int charges) {
 	Lua_Safe_Call_Void();
 	self->SummonItem(AoTv4MythicReward(item_id), charges);
@@ -4660,6 +4677,7 @@ luabind::scope lua_register_client() {
 	// the binding exposed would let any quest script drive a system nothing else maintains.
 	// Re-registering this line is the ONLY thing needed to bring it back.
 	.def("SummonItem", (void(Lua_Client::*)(uint32))&Lua_Client::SummonItem)
+	.def("SummonItemExact", (void(Lua_Client::*)(uint32))&Lua_Client::SummonItemExact)
 	.def("SummonItem", (void(Lua_Client::*)(uint32,int))&Lua_Client::SummonItem)
 	.def("SummonItem", (void(Lua_Client::*)(uint32,int,uint32))&Lua_Client::SummonItem)
 	.def("SummonItem", (void(Lua_Client::*)(uint32,int,uint32,uint32))&Lua_Client::SummonItem)

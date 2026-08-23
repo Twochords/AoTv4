@@ -3408,6 +3408,26 @@ large enough to matter:
   items** banded 251 / 486 / 616 by minimum dropper level, which maps cleanly onto the three augment
   tiers. Parked until the cap rework lands, because the augment weights are an input to the matching.
 
+### ⚠️⚠️ EVERY LUA `SummonItem` SILENTLY UPGRADES THE ITEM TO MYTHIC (2026-08-23)
+`AoTv4MythicReward` (`zone/questmgr.cpp:192`) is wired into **all eight** `Lua_Client::SummonItem`
+overloads and into `QuestManager::summonitem`:
+```cpp
+if (item_id < 300000 && database.GetItem(item_id + 600000)) { return item_id + 600000; }
+```
+That is the right default for a **quest reward** (§10 — epics never hand out native) and completely
+wrong for anything that grants a **specific** item.
+
+- ⚠️⚠️ **THE `< 300000` IS WHAT MAKES IT CONFUSING.** An id that is already Hallowed or Mythic passes
+  through untouched, so a feature selling all three tiers finds only its **base** tier broken. It
+  reads as "the cheap option is bugged" rather than "the grant path is upgrading everything it can".
+  Reported exactly that way: the Gilded Wager handing out Mythics at 1000p while 5000p and 10000p had
+  been correct all along.
+- ✅ **`c:SummonItemExact(item_id)`** grants the id as given, with no upgrade. Use it wherever the
+  caller has already decided the tier — a purchase, a specific reward, anything tier-priced.
+- ⚠️ Keep using the ordinary overloads for real quest rewards; the upgrade is the point there.
+- 📌 The same trap applies to **`eq.summonitem`** (`QuestManager::summonitem`), which has no exact
+  variant. Anything that must not upgrade has to go through the Client binding.
+
 ## 27. Zone sharding (live's `/pick`) — NATIVE, built, deliberately NOT enabled — 2026-07-31
 
 EQEmu already has live's picking system and it needs **no custom code**. Recorded here because it is

@@ -267,6 +267,7 @@ public:
 	double AddEvolveProgress(int slot_id, uint64 amount);   // AoTv4: delve score -> evolving charm
 	double AddEvolveProgressAug(int slot_id, int aug_index, uint64 amount); // AoTv4: -> evolving augment
 	void SummonItem(uint32 item_id);
+	void SummonItemExact(uint32 item_id);
 	void SummonItem(uint32 item_id, int charges);
 	void SummonItem(uint32 item_id, int charges, uint32 aug1);
 	void SummonItem(uint32 item_id, int charges, uint32 aug1, uint32 aug2);

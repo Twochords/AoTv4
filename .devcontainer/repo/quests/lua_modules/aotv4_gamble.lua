@@ -106,7 +106,7 @@ function M.wager(npc, c, trade)
 		return false, "The wheel caught. Your coin is returned."
 	end
 
-	c:SummonItem(id)
+	c:SummonItemExact(id)                 -- see the note in M.wager_coin: SummonItem would upgrade it
 	return true, string.format("%s -- %s.", eq.get_item_name(id) or "Something", price.label), #pick
 end
 
@@ -151,7 +151,12 @@ function M.wager_coin(npc, c, plat)
 		return false
 	end
 
-	c:SummonItem(id)                      -- SummonItem lands it on the cursor
+	-- ⚠️⚠️ SummonItemEXACT, NEVER SummonItem. Every ordinary Lua SummonItem overload runs the id
+	-- through AoTv4MythicReward, which upgrades anything below 300000 to its Mythic tier so QUEST
+	-- rewards hand out top gear (section 10). Here the tier IS the price, so that upgrade handed out
+	-- Mythics for 1000 platinum -- and only for 1000, because the check is `< 300000` and the
+	-- Hallowed and Mythic ids pass through untouched. Reported as the cheap option being bugged.
+	c:SummonItemExact(id)                 -- lands on the cursor, at exactly the tier that was paid for
 	M.tell(npc, c, string.format("The wheel gives you %s -- %s.",
 		eq.get_item_name(id) or "something", price.label))
 	c:Message(15, string.format("Drawn from %d prizes in the lands open to you.", #pick))
