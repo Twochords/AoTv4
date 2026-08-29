@@ -183,9 +183,36 @@ int Mob::GetBaseSkillDamage(EQ::skills::SkillType skill, Mob *target)
 				// working and being worthless, which is harder to report than a clean refusal.
 				// See RuleB(AoT, BackstabAnyWeapon).
 				const bool aotv4_any_weapon = RuleB(AoT, BackstabAnyWeapon);
-				if (inst && inst->GetItem() &&
-				    (aotv4_any_weapon || inst->GetItem()->ItemType == EQ::item::ItemType1HPiercing)) {
+				if (inst)	auto *item = inst->GetItem();
+				if (inst && item &&
+				    (aotv4_any_weapon || item->ItemType == EQ::item::ItemType1HPiercing)) {
 					base = inst->GetItemBackstabDamage(true) + inst->GetItemWeaponDamage(true);
+					switch (item->ItemType)
+					{
+						case (EQ::item::ItemType2HSlash):
+						case (EQ::item::ItemType2HBlunt):
+							base /= 10;
+							break;
+						case (EQ::item::ItemType2HPiercing):
+							base /= 9;
+							break;
+						case (EQ::item::ItemType1HPiercing):
+							base *= 1.1;
+							[[fallthrough]];
+						default:
+							base /= 2;
+							if (!CheckDualWield())	break;	// we failed to dualwield backstab, leave
+							auto *offhand = CastToClient()->GetInv().GetItem(EQ::invslot::slotSecondary);
+							if (offhand && offhand->GetItem())	// does offhand exist
+							{
+								MessageString(Chat::YouHitOther, "You dualwield backstab for additional damage!");
+								base += (offhand->GetItemBackstabDamage(true) + offhand->GetItemWeaponDamage(true))/3;
+							}
+							break;
+						}
+
+
+
 
 					if (target) {
 						if (inst->GetItemElementalFlag(true) && inst->GetItemElementalDamage(true) &&
@@ -393,16 +420,22 @@ void Mob::DoSpecialAttackDamage(Mob *who, EQ::skills::SkillType skill, int32 bas
 	// reading this later into thinking NPCs are costed.
 	// ⚠️ A miss costs nothing, by construction: 33% of zero damage is zero.
 	if (IsClient() && my_hit.damage_done > 0) {
+		/*
 		const int pct = RuleI(AoT, SpecialEndurancePct);
 		if (pct > 0) {
 			Client *c = CastToClient();
 			// int64 damage, int arithmetic: multiply before dividing or a small hit truncates to 0.
-			const int64 cost = (my_hit.damage_done * pct) / 100;
-			if (cost > 0) {
-				const int64 have = c->GetEndurance();
-				c->SetEndurance((int32) (cost >= have ? 0 : have - cost));
-			}
+		*/
+		// Carolus: Make endurance scale with level to roughly keep up with mana efficiency
+		int lvl  = GetLevel();
+		Client *c = CastToClient();
+
+		const int64 cost = (my_hit.damage_done * 100) / (100 + lvl * lvl);
+		if (cost > 0) {
+			const int64 have = c->GetEndurance();
+			c->SetEndurance((int32) (cost >= have ? 0 : have - cost));
 		}
+
 	}
 
 	// Make sure 'this' has not killed the target and 'this' is not dead (Damage shield ect).

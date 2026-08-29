@@ -4531,7 +4531,7 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 			if (IsValidSpell(spell_id) && IsLifetapSpell(spell_id)) {
 				int64 healed = damage;
 
-				healed = RuleB(Spells, CompoundLifetapHeals) ? attacker->GetActSpellHealing(spell_id, healed) : healed;
+				// healed = RuleB(Spells, CompoundLifetapHeals) ? attacker->GetActSpellHealing(spell_id, healed) : healed;
 				LogCombat("Applying lifetap heal of [{}] to [{}]", healed, attacker->GetName());
 				// AoTv4: ⚠️⚠️ PASS THE CASTER AND THE SPELL, OR THE WHOLE HEALER AA TREE IS UNREACHABLE
 				// FROM A TAP. Stock calls `HealDamage(healed)` and both later parameters default
@@ -5392,9 +5392,14 @@ float Mob::GetProcChances(float ProcBonus, uint16 hand)
 		ProcChance += ProcChance * ProcBonus / 100.0f;
 	}
 	else {
-		ProcChance = RuleR(Combat, BaseProcChance) +
-			static_cast<float>(mydex) / RuleR(Combat, ProcDexDivideBy);
-		ProcChance += ProcChance * ProcBonus / 100.0f;
+		ProcChance = RuleR(Combat, BaseProcChance);
+		float bonus = static_cast<float>(mydex + GetHeroicDex() * 5) / RuleR(Combat, ProcDexDivideBy);
+		bonus *= (100.0f + ProcBonus) / 100.0f;
+
+		ProcChance += std::min(50.0f, 5.0f * std::sqrt(bonus));
+		// ProcChance = RuleR(Combat, BaseProcChance) +
+		// 	static_cast<float>(mydex) / RuleR(Combat, ProcDexDivideBy);
+		// ProcChance += ProcChance * ProcBonus / 100.0f;
 	}
 
 	LogCombat("Proc chance [{}] ([{}] from bonuses)", ProcChance, ProcBonus);
