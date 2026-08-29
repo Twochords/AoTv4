@@ -183,7 +183,9 @@ int Mob::GetBaseSkillDamage(EQ::skills::SkillType skill, Mob *target)
 				// working and being worthless, which is harder to report than a clean refusal.
 				// See RuleB(AoT, BackstabAnyWeapon).
 				const bool aotv4_any_weapon = RuleB(AoT, BackstabAnyWeapon);
-				if (inst)	auto *item = inst->GetItem();
+				// ⚠️ Declare at this scope, NOT as the body of an `if`: a declaration is not a legal
+				// substatement of a selection statement, and it would go out of scope on the next line.
+				const EQ::ItemData *item = inst ? inst->GetItem() : nullptr;
 				if (inst && item &&
 				    (aotv4_any_weapon || item->ItemType == EQ::item::ItemType1HPiercing)) {
 					base = inst->GetItemBackstabDamage(true) + inst->GetItemWeaponDamage(true);
@@ -205,14 +207,14 @@ int Mob::GetBaseSkillDamage(EQ::skills::SkillType skill, Mob *target)
 							auto *offhand = CastToClient()->GetInv().GetItem(EQ::invslot::slotSecondary);
 							if (offhand && offhand->GetItem())	// does offhand exist
 							{
-								MessageString(Chat::YouHitOther, "You dualwield backstab for additional damage!");
+								// ⚠️ `MessageString` takes a STRING ID (uint32) from string_ids.h, not a
+								// literal. A literal here is a const char* -> uint32 conversion error.
+								// `Message` is the free-text form.
+								Message(Chat::YouHitOther, "You dualwield backstab for additional damage!");
 								base += (offhand->GetItemBackstabDamage(true) + offhand->GetItemWeaponDamage(true))/3;
 							}
 							break;
-						}
-
-
-
+					}
 
 					if (target) {
 						if (inst->GetItemElementalFlag(true) && inst->GetItemElementalDamage(true) &&

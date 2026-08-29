@@ -5393,13 +5393,19 @@ float Mob::GetProcChances(float ProcBonus, uint16 hand)
 	}
 	else {
 		ProcChance = RuleR(Combat, BaseProcChance);
-		float bonus = static_cast<float>(mydex + GetHeroicDex() * 5) / RuleR(Combat, ProcDexDivideBy);
+		float bonus = static_cast<float>(mydex + GetHeroicDEX() * 5) / RuleR(Combat, ProcDexDivideBy);
 		bonus *= (100.0f + ProcBonus) / 100.0f;
 
-		ProcChance += std::min(50.0f, 5.0f * std::sqrt(bonus));
-		// ProcChance = RuleR(Combat, BaseProcChance) +
-		// 	static_cast<float>(mydex) / RuleR(Combat, ProcDexDivideBy);
-		// ProcChance += ProcChance * ProcBonus / 100.0f;
+		// ⚠️⚠️ ProcChance IS A 0-1 FRACTION, NOT A PERCENTAGE. Every consumer feeds it to
+		// `zone->random.Roll(double)`, which is documented "valid values 0.0 - 1.0"
+		// (common/random.h). The sqrt curve below is authored on a PERCENT scale -- the
+		// `min(50, ...)` cap only makes sense as 50 percent -- so it MUST be divided by 100
+		// before it is added. Without the /100 the smallest realistic result is 0.5 and a
+		// typical one is >1.0, i.e. a GUARANTEED proc on every swing.
+		// ⚠️ This is invisible on weapon procs: TryWeaponProc overwrites the computed chance
+		// with the fixed AoTv4 tier rate (0.10/0.35/0.75) a few lines after calling this. It
+		// bites AUG procs and every SPA 85 spell proc -- the class auras, the Kindred line.
+		ProcChance += std::min(50.0f, 5.0f * std::sqrt(bonus)) / 100.0f;
 	}
 
 	LogCombat("Proc chance [{}] ([{}] from bonuses)", ProcChance, ProcBonus);
