@@ -268,6 +268,10 @@ void Mob::DoSpecialAttackDamage(Mob *who, EQ::skills::SkillType skill, int32 bas
 	// That is deliberate rather than merely convenient: whiffing on an empty bar is what stops a
 	// player mashing specials at zero endurance, which is the whole point of the cost.
 	// Set AoT:SpecialEnduranceMinToUse to 0 to remove the gate.
+	//
+	// ⚠️⚠️ AoT:SpecialEndurancePct NO LONGER PRICES ANYTHING -- IT ONLY SWITCHES THIS GATE. The cost
+	// further down is a hardcoded level curve and does not read the rule, so setting it to 0 turns the
+	// gate off and you still pay. It is kept as the on/off switch for the gate only.
 	if (IsClient() && RuleI(AoT, SpecialEndurancePct) > 0) {
 		const int min_end = RuleI(AoT, SpecialEnduranceMinToUse);
 		if (min_end > 0 && CastToClient()->GetEndurance() < min_end) {
@@ -401,11 +405,20 @@ void Mob::DoSpecialAttackDamage(Mob *who, EQ::skills::SkillType skill, int32 bas
 	who->AddToHateList(this, hate, 0);
 	who->Damage(this, my_hit.damage_done, SPELL_UNKNOWN, skill, false);
 
-	// AoTv4: a damaging combat special COSTS ENDURANCE in proportion to what it actually hit for
-	// (AoT:SpecialEndurancePct, default 33 -- a 200 damage Backstab costs 66 endurance).
-	// ⚠️ 33 is not arbitrary: the Sinew line (custom/sql/aotv4_sinew_line.sql) returns damage/3, so the
-	// cost and the refill are ONE calibration. Move both together, and note a rule_values row overrides
-	// this default -- changing the number here alone does nothing to a live server.
+	// AoTv4: a damaging combat special COSTS ENDURANCE in proportion to what it actually hit for.
+	//
+	// ⚠️⚠️ THE COST IS A HARDCODED LEVEL CURVE AND DOES NOT READ AoT:SpecialEndurancePct. The rule
+	// still exists but now only switches the pre-swing gate above; changing it prices nothing, and 0
+	// no longer disables the cost. Its description says so -- do not "restore" it here without also
+	// deciding what the rule should mean.
+	//   cost = damage * 100 / (100 + level^2)   ->  lvl 1 ~99%, 5 80%, 10 50%, 20 20%, 30 10%
+	// The intent is that specials get cheaper with level, the way a caster's mana pool outgrows a
+	// spell's cost.
+	//
+	// ⚠️ THIS BREAKS THE OLD SINEW CALIBRATION AND THAT IS KNOWN. The Sinew line
+	// (custom/sql/aotv4_sinew_line.sql) returns damage/3, which was chosen to fund a flat 33% cost;
+	// the curve only passes 33% at about level 14, so the tap over-funds specials above that and
+	// under-funds them below. Revisit the two together if the refill starts feeling wrong.
 	//
 	// ⚠️ CHARGED AFTER THE HIT, and it has to be: the cost is a share of the damage, and the damage is
 	// not known until DoAttack has rolled it. That means the gate on USING a special is a separate,
@@ -420,24 +433,18 @@ void Mob::DoSpecialAttackDamage(Mob *who, EQ::skills::SkillType skill, int32 bas
 	// ⚠️ CLIENTS ONLY. Mob::GetEndurance is a virtual returning 0 for NPCs and SetEndurance a no-op,
 	// so an NPC would silently "pay" nothing -- but calling it is still wrong and would mislead anyone
 	// reading this later into thinking NPCs are costed.
-	// ⚠️ A miss costs nothing, by construction: 33% of zero damage is zero.
+	// ⚠️ A miss costs nothing, by construction: a share of zero damage is zero.
 	if (IsClient() && my_hit.damage_done > 0) {
-		/*
-		const int pct = RuleI(AoT, SpecialEndurancePct);
-		if (pct > 0) {
-			Client *c = CastToClient();
-			// int64 damage, int arithmetic: multiply before dividing or a small hit truncates to 0.
-		*/
 		// Carolus: Make endurance scale with level to roughly keep up with mana efficiency
-		int lvl  = GetLevel();
+		const int lvl = GetLevel();
 		Client *c = CastToClient();
 
+		// int64 damage, int arithmetic: multiply before dividing or a small hit truncates to a free swing.
 		const int64 cost = (my_hit.damage_done * 100) / (100 + lvl * lvl);
 		if (cost > 0) {
 			const int64 have = c->GetEndurance();
 			c->SetEndurance((int32) (cost >= have ? 0 : have - cost));
 		}
-
 	}
 
 	// Make sure 'this' has not killed the target and 'this' is not dead (Damage shield ect).
