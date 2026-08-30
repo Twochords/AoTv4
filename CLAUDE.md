@@ -6100,3 +6100,29 @@ must be re-applied by hand; after the next deploy the migrations restore them au
 - Crash check: `grep -c "print_trace \[Inferior" logs/zone_*.log` (mind the stale-log trap; use a
   delta). A 24-hour crash watch runs detached as `/home/eqemu/server/crash_watch_24h.sh` →
   `logs/crash_watch_24h.log` (flags any new crash with `***`).
+
+## 58. ⚠️⚠️ `ProcChance` IS A 0-1 FRACTION, AND THE TIER OVERRIDE HIDES THAT IT IS WRONG — 2026-08-29
+
+`Mob::GetProcChances` returns a **fraction**, not a percentage. Every consumer ends at
+`zone->random.Roll(double)`, documented *"valid values 0.0 - 1.0"* (`common/random.h:78`). An
+incoming rework added `ProcChance += std::min(50.0f, 5.0f * std::sqrt(bonus))` — a curve authored on
+a **percent** scale, since a `min(50, …)` cap only reads as 50 percent. On the fraction scale the
+smallest realistic result is **0.5** and a typical one is **above 1.0**, i.e. a **guaranteed proc on
+every swing**. Fixed by dividing by 100; the curve's shape was left alone.
+
+- ⚠️⚠️ **IT IS INVISIBLE ON WEAPON PROCS, WHICH IS WHY TESTING WOULD NOT HAVE FOUND IT.**
+  `TryWeaponProc` throws the computed chance away four lines after asking for it — the AoTv4 block at
+  `zone/attack.cpp:5571` overwrites `WPC` with the **fixed tier rate** (native 0.10 / Hallowed 0.35 /
+  Mythic 0.75, §10). So the one proc a player would think to watch behaves perfectly while everything
+  else is broken. What actually breaks: **aug procs** (`APC = ProcChance * (100 + aug->ProcRate)/100`,
+  `:5609`) and **every SPA 85 spell proc** via `TrySpellProc` (`:5645`) — which is the sixteen class
+  auras (§15), the Kindred line and every defensive proc (§5).
+- 📌 **The general shape, and it is the third instance of it in this file**: a value whose scale is
+  only implied by its consumers, changed by someone reading the formula and not the consumer. Compare
+  §14's `%` in a description, §5's SPA 11 base being a resulting *speed* rather than a slow amount,
+  and §32's `skillmodmax` silently turning a percentage into a flat cap. **Before editing a chance,
+  a rate or a magnitude, find the line that CONSUMES it and confirm the scale there.**
+- ⚠️ `Combat:AdjustProcPerMinute` selects which branch runs at all. It went **true → false** in the
+  same commit, so the sqrt branch is now the live one — the PPM branch above it is dead unless the
+  rule is put back. ⚠️ And these are header defaults: a `rule_values` row overrides them, so live may
+  not be running any of these numbers (§22, §45).
