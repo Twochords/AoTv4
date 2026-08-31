@@ -2,8 +2,9 @@
 <XML ID="EQInterfaceDefinitionLanguage">
 	<Schema xmlns="EverQuestData" xmlns:dt="EverQuestDataTypes" />
 
-	<!-- AoTv4 Delve window (CCustomWnd "AoTDungeonWnd"), two tabs:
-	       Layers       pick a level and enter; only unlocked layers are ever sent to the client
+	<!-- AoTv4 Delve window (CCustomWnd "AoTDungeonWnd"), three tabs:
+	       Dungeons     pick a level and enter; only unlocked layers are ever sent to the client
+	       Raids        the raid encounters, their tier and their lockout state
 	       Score Sheet  every finished run, what it scored, and how hard the creatures actually were
 
 	     These are REAL native tabs (TabBox / Page / TabText), which this client's SIDL parser
@@ -11,7 +12,7 @@
 	     Two Listboxes in one window is likewise fine (EQUI_AoTSpellBook.xml ships four).
 
 	     Each page owns its own controls, which is exactly when native tabs are the right widget:
-	     the Layers page has Enter and Exit, the Score Sheet has neither.
+	     the Dungeons page has Enter and Exit, the Score Sheet has neither.
 
 	     The Score Sheet is the Death Book pattern: one header row per run with [+]/[-], and only an
 	     open run lists its level-band breakdown, so twenty runs read as a table of contents.
@@ -20,7 +21,7 @@
 	     parser abort the WHOLE file, killing the client before character select. Run
 	     aotv4_client_install/validate_ui_xml.sh before copying this anywhere. -->
 
-	<!-- ================================================================ page 1: Layers -->
+	<!-- ================================================================ page 1: Dungeons -->
 	<Label item="DLV_Hint">
 		<ScreenID>DLV_Hint</ScreenID>
 		<RelativePosition>true</RelativePosition>
@@ -123,8 +124,8 @@
 		<RelativePosition>true</RelativePosition>
 		<Location><X>0</X><Y>0</Y></Location>
 		<Size><CX>440</CX><CY>298</CY></Size>
-		<Text>Layers</Text>
-		<TabText>Layers</TabText>
+		<Text>Dungeons</Text>
+		<TabText>Dungeons</TabText>
 		<TabTextColor><R>255</R><G>255</G><B>255</B></TabTextColor>
 		<TabTextActiveColor><R>255</R><G>255</G><B>0</B></TabTextActiveColor>
 		<Style_VScroll>false</Style_VScroll>
@@ -197,6 +198,116 @@
 		<Pieces>DLV_HistList</Pieces>
 	</Page>
 
+	<!-- ================================================================ page 3: Raids
+
+	     Raids used to be appended to the Dungeons list at levels above RAID_BASE, which shipped them
+	     with no client change but buried them under up to 70 delve rungs, in a Level column where
+	     101 is not a level. They now have their own tab and their own row shape, fed by RAIDDATA.
+
+	     The Enter button sends the SAME /say delveenter with the same level, because the server
+	     already routes anything above RAID_BASE to the raid module. So this tab is presentation:
+	     no new entry path, no second copy of the gate checks, and a modified client gains nothing.
+
+	     There is deliberately no Difficulty dropdown here. The delve modes do not apply to a raid,
+	     and the server ignores the mode on a raid row rather than refusing it. -->
+	<Label item="DLV_RaidHint">
+		<ScreenID>DLV_RaidHint</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>8</X><Y>4</Y></Location>
+		<Size><CX>336</CX><CY>16</CY></Size>
+		<Text>Select a raid, then Enter. One lockout per encounter.</Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>240</R><G>200</G><B>120</B></TextColor>
+	</Label>
+
+	<!-- A THIRD refresh button, same position and size as the other two so it does not jump when the
+	     tab is switched. This tab needs one more than the others do: the Status column counts a
+	     lockout down, so it goes stale while you are looking at it. -->
+	<Button item="DLV_RaidRefresh">
+		<ScreenID>DLV_RaidRefresh</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>350</X><Y>2</Y></Location>
+		<Size><CX>76</CX><CY>20</CY></Size>
+		<Text>Refresh</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+
+	<Listbox item="DLV_RaidList">
+		<ScreenID>DLV_RaidList</ScreenID>
+		<DrawTemplate>WDT_Inner</DrawTemplate>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>8</X><Y>22</Y></Location>
+		<Size><CX>424</CX><CY>150</CY></Size>
+		<TextColor><R>255</R><G>255</G><B>255</B></TextColor>
+		<Style_Border>true</Style_Border>
+		<Style_VScroll>true</Style_VScroll>
+		<Columns><Width>44</Width><Heading>Tier</Heading></Columns>
+		<Columns><Width>196</Width><Heading>Encounter</Heading></Columns>
+		<Columns><Width>92</Width><Heading>Region</Heading></Columns>
+		<Columns><Width>88</Width><Heading>Status</Heading></Columns>
+	</Listbox>
+
+	<!-- What the selected encounter actually is. STMLbox rather than Label for the same reason as
+	     DLV_ModeDesc: it wraps and draws a real bordered panel. -->
+	<STMLbox item="DLV_RaidDesc">
+		<ScreenID>DLV_RaidDesc</ScreenID>
+		<DrawTemplate>WDT_Inner</DrawTemplate>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>8</X><Y>180</Y></Location>
+		<Size><CX>424</CX><CY>80</CY></Size>
+		<Style_Border>true</Style_Border>
+		<Style_VScroll>true</Style_VScroll>
+		<TextColor><R>240</R><G>240</G><B>240</B></TextColor>
+	</STMLbox>
+
+	<Button item="DLV_RaidEnter">
+		<ScreenID>DLV_RaidEnter</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>8</X><Y>266</Y></Location>
+		<Size><CX>96</CX><CY>24</CY></Size>
+		<Text>Enter Raid</Text>
+		<TextColor><R>140</R><G>255</G><B>140</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+
+	<!-- The Raids tab needs its OWN Exit, for the same reason it needs its own Refresh: a Page owns
+	     its pieces, so the Dungeons tab's Exit button is not on screen while you are looking at this
+	     one. Leaving it off meant a player told "you are still committed, press Exit" had no Exit
+	     anywhere in front of them, and the one that existed was labelled "Exit Delve", which does not
+	     read as applying to a raid at all. Reported from play after leaving Phinigel and then being
+	     refused Velketor.
+	     Same command as the Dungeons tab: the server routes delveexit to the raid when the player is
+	     in one, so there is one leave path and not two to keep in step. Same position and size as
+	     DLV_Exit so the button does not move when the tab is switched. -->
+	<Button item="DLV_RaidExit">
+		<ScreenID>DLV_RaidExit</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>336</X><Y>266</Y></Location>
+		<Size><CX>96</CX><CY>24</CY></Size>
+		<Text>Exit Raid</Text>
+		<TextColor><R>255</R><G>150</G><B>150</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+
+	<Page item="DLV_RaidPage">
+		<ScreenID>DLV_RaidPage</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>0</X><Y>0</Y></Location>
+		<Size><CX>440</CX><CY>298</CY></Size>
+		<Text>Raids</Text>
+		<TabText>Raids</TabText>
+		<TabTextColor><R>255</R><G>255</G><B>255</B></TabTextColor>
+		<TabTextActiveColor><R>255</R><G>255</G><B>0</B></TabTextActiveColor>
+		<Style_VScroll>false</Style_VScroll>
+		<Pieces>DLV_RaidHint</Pieces>
+		<Pieces>DLV_RaidRefresh</Pieces>
+		<Pieces>DLV_RaidList</Pieces>
+		<Pieces>DLV_RaidDesc</Pieces>
+		<Pieces>DLV_RaidEnter</Pieces>
+		<Pieces>DLV_RaidExit</Pieces>
+	</Page>
+
 	<!-- ================================================================ the tab strip -->
 	<TabBox item="DLV_Tabs">
 		<ScreenID>DLV_Tabs</ScreenID>
@@ -206,6 +317,7 @@
 		<TabBorderTemplate>FT_DefTabBorder</TabBorderTemplate>
 		<PageBorderTemplate>FT_DefPageBorder</PageBorderTemplate>
 		<Pages>DLV_LayerPage</Pages>
+		<Pages>DLV_RaidPage</Pages>
 		<Pages>DLV_HistPage</Pages>
 	</TabBox>
 

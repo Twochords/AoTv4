@@ -84,11 +84,18 @@ burning aura, an air pet its speed, a familiar its clarity.
 
 ## 4. Known limitations — read before testing
 
-- ⚠️ **The ward is granted at summon time.** Buying or ranking up Kindred Bond does nothing to a pet
-  that is already out; the owner must **re-summon**. Deliberate — the alternative is polling every
-  owner, and a pet is cheap to re-summon.
-- ⚠️ **Group copies are handed out at summon time too**, so someone who joins the group afterwards
-  does not get one until the next summon.
+- ✅ **BOTH OF THE "SUMMON TIME ONLY" LIMITS ARE GONE (2026-08-30).**
+  `Mob::AoTv4RefreshPetWard` runs every 6 seconds and now tops up the **owner's** copy and the
+  **group's** as well as the pet's, so all three are upkeep rather than a one-shot grant.
+  - Buying or ranking up Kindred Bond with a pet already out now works on the next tick — the ward
+    id is remembered at summon regardless of rank, and the refresh reads the rank live.
+  - Someone who joins the group after the summon picks it up on the next tick.
+  - ⚠️ Someone who **leaves** still keeps what they were given until it expires or the pet dies.
+    Unchanged, and not made worse: an ex-member is simply no longer walked.
+  - ⚠️⚠️ This was a reported bug, not a nicety: *"the buff will fade and doesn't get re-applied to
+    you, just the pet. You have to kill your pet and then recast."* The pet's copy returned within
+    six seconds and the owner's never did, so re-summoning was the only cure — at the cost of every
+    buff and every weapon the player had put on the pet.
 - **The owner's copy is stripped when the pet dies** (`NPC::Death` → `AoTv4PetWardEnded`). The rows
   carry an effectively permanent duration on purpose: the pet's life is the intended lifetime, not a
   timer. Without that hook the owner would simply keep it forever.
@@ -105,8 +112,12 @@ burning aura, an air pet its speed, a familiar its clarity.
    distinct buff on the pet.
 2. **The fallback works.** Summon something obscure (monster summoning, a swarm pet). It should show
    **Bound Servant**, not nothing. A pet with no buff at all means the prefix table was not reached.
-3. **Kindred Bond rank 1:** buy it, **re-summon**, confirm the same buff appears on you.
-4. **Rank 2:** group up, re-summon, confirm group members get it.
+3. **Kindred Bond rank 1:** buy it **with a pet already out** and confirm the buff appears on you
+   within ~6 seconds, no re-summon. Then **remove it deliberately** — the sharp test is to land a
+   competing buff that overwrites it (a stronger haste over Gale Fervor, Stonestride over
+   Stoneflesh) and confirm it comes back on the next tick rather than staying gone until re-summon.
+   That overwrite is the bug this replaced, and it is why the pet looked fine while the owner did not.
+4. **Rank 2:** group up **after** the summon and confirm members get it without a re-summon.
 5. **Pet death:** kill your own pet. Your copy and the group's should vanish immediately.
 6. **Rank 5:** kill your pet — the ward should linger about a minute rather than vanishing.
 7. ⚠️ **Check `Gale Fervor` is haste and not a slow.** If the pet suddenly attacks slowly, the SPA 11

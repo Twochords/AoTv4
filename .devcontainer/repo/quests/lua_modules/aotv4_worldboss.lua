@@ -119,8 +119,14 @@ function M.on_death(e)
 	local corpse = eq.get_entity_list():GetCorpseByName(e.self:GetCleanName())
 	if not corpse or not corpse.valid then return end
 
+	-- ⚠️⚠️ `for h in hate.entries do`, NOT ipairs. GetHateList returns a luabind container
+	-- (Lua_HateList, zone/lua_hate_list.h:48) whose vector is exposed as `.entries`; ipairs over the
+	-- container itself is a hard error -- *"bad argument #1 to 'ipairs' (table expected, got
+	-- userdata)"* -- which aborts this handler and grants NOBODY loot rights.
+	-- ⚠️ This was written the wrong way and never ran: the world boss has never been killed (§30).
+	-- The identical bug was found in aotv4_raid.lua on the first Phinigel kill, 2026-08-30.
 	local granted, hate = 0, e.self:GetHateList()
-	for _, h in ipairs(hate) do
+	for h in hate.entries do
 		local m = h.ent
 		if m and m.valid and m:IsClient() and granted < 72 then
 			corpse:AddLooter(m)

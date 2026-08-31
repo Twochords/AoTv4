@@ -23,6 +23,7 @@
 #include "common/rulesys.h"
 #include "common/spdat.h"
 #include "common/strings.h"
+#include "zone/aotv4_tiers.h"
 #include "zone/achievement_manager.h"
 #include "zone/bot.h"
 #include "zone/fastmath.h"
@@ -5013,6 +5014,9 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 		a->force = 0.0f;
 
 		// AoTv4 Bracing (melee tree) joins the existing guards -- a braced character is not shoved.
+		// ⚠️ THE AA IS RETIRED (migration v146): Combat:MeleePush is false server-wide, so this whole
+		// branch is unreachable and AoTv4Braced() always reads 0. Kept, not deleted, because turning
+		// MeleePush back on is the one change that makes both live again in a single step.
 		if (RuleB(Combat, MeleePush) && damage > 0 && !IsRooted() && !AoTv4Braced() &&
 			(IsClient() || zone->random.Roll(RuleI(Combat, MeleePushChance)))) {
 			a->force = EQ::skills::GetSkillMeleePushForce(skill_used);
@@ -5548,6 +5552,47 @@ void Mob::TryCombatProcs(const EQ::ItemInstance* weapon_g, Mob *on, uint16 hand,
 	return;
 }
 
+// AoTv4 -- weapon procs are on a fixed INTERVAL per gear tier rather than a per-swing chance.
+//
+// ⚠️⚠️ THE PER-SWING CHANCE THIS REPLACED WAS UNPLAYABLE AT THE TOP TIER. It was a flat 0.10 / 0.35 /
+// 0.75 by tier, and 0.75 means a Mythic weapon proc landed on three swings in four -- reported from
+// play as "mythic is procing all the time". No chance can express "about one proc every N seconds"
+// either, because the rate then rides on weapon delay, haste and how many swings a round produced:
+// the faster the weapon, the more procs, which is backwards for a reward that is meant to be tiered.
+//
+// ⚠️ Tracked PER HAND (m_aotv4_proc_next), so a dual wielder gets one proc from each weapon on its
+// own timer. The stock `if (hand == slotSecondary) ProcChance /= 2` above is deliberately left
+// alone: it now applies only to AUG procs, which still roll a chance.
+//
+// ⚠️ AUG procs and SPA 85 spell procs are NOT changed by this and still roll per swing. They are a
+// separate budget, and both come from GetProcChances -- which on this database takes the
+// AdjustProcPerMinute branch (a `rule_values` row holds that rule true), so they are already
+// rate-based rather than the sqrt curve in the else branch.
+// 📌 But note the interaction: with OneProcPerWeapon on, an aug only gets to try when the weapon
+// proc did NOT fire, and at Mythic the weapon used to fire on 75 percent of swings. Augs therefore
+// get to roll far more often now than before. Watch them before assuming they were left untouched.
+static uint32 AoTv4WeaponProcIntervalMs(uint32 item_id)
+{
+	if (item_id >= 2 * AOTV4_TIER_STEP && item_id < AOTV4_TIER_END) {
+		return static_cast<uint32>(RuleI(AoT, WeaponProcIntervalMythicMs));
+	}
+	if (item_id >= AOTV4_TIER_FIRST && item_id < 2 * AOTV4_TIER_STEP) {
+		return static_cast<uint32>(RuleI(AoT, WeaponProcIntervalHallowedMs));
+	}
+	return static_cast<uint32>(RuleI(AoT, WeaponProcIntervalNativeMs));
+}
+
+// 0 primary / 1 secondary / 2 ranged. Anything else shares the primary slot rather than reading off
+// the end of the array.
+static int AoTv4ProcHandIndex(uint16 hand)
+{
+	switch (hand) {
+		case EQ::invslot::slotSecondary: return 1;
+		case EQ::invslot::slotRange:     return 2;
+		default:                         return 0;
+	}
+}
+
 void Mob::TryWeaponProc(const EQ::ItemInstance *inst, const EQ::ItemData *weapon, Mob *on, uint16 hand)
 {
 	if (!on) {
@@ -5572,12 +5617,32 @@ void Mob::TryWeaponProc(const EQ::ItemInstance *inst, const EQ::ItemData *weapon
 	if (weapon->Proc.Type == EQ::item::ItemEffectCombatProc && IsValidSpell(weapon->Proc.Effect)) {
 		float WPC = ProcChance * (100.0f + // Proc chance for this weapon
 			static_cast<float>(weapon->ProcRate)) / 100.0f;
-		// AoTv4: FIXED per-tier weapon proc chance (overrides the computed dex/delay/procrate chance) so
-		// every proc weapon has a predictable, tier-based rate: native 10%, Hallowed 35%, Mythic 75%.
-		if (weapon->ID >= 600000 && weapon->ID < 900000)        WPC = 0.75f;   // Mythic
-		else if (weapon->ID >= 300000 && weapon->ID < 600000)   WPC = 0.35f;   // Hallowed
-		else                                                    WPC = 0.10f;   // native
-		if (zone->random.Roll(WPC)) {	// 255 dex = 0.084 chance of proc. No idea what this number should be really.
+
+		// AoTv4: a fixed INTERVAL per gear tier -- Mythic 15s, Hallowed 20s, native 25s by default,
+		// all three tunable as AoT:WeaponProcInterval*Ms. See the note above AoTv4WeaponProcIntervalMs.
+		// ⚠️ A rule of 0 falls back to the stock computed chance for that tier, which is the only way
+		// back to a per-swing model without a rebuild.
+		const uint32 aotv4_proc_interval = AoTv4WeaponProcIntervalMs(weapon->ID);
+		const int    aotv4_proc_hand     = AoTv4ProcHandIndex(hand);
+		const uint32 aotv4_now           = Timer::GetCurrentTime();
+		bool         aotv4_may_proc;
+
+		if (aotv4_proc_interval) {
+			aotv4_may_proc = (aotv4_now >= m_aotv4_proc_next[aotv4_proc_hand]);
+			// ⚠️⚠️ STAMPED WHEN THE GATE OPENS, NOT WHEN THE PROC LANDS -- deliberately. The level
+			// check below can still refuse, and it MESSAGES the player when it does; stamping only on
+			// success would leave an under-level character failing that check on every swing and
+			// printing every time. The interval means "this weapon may TRY once per N seconds", which
+			// rate-limits the refusal along with the proc.
+			if (aotv4_may_proc) {
+				m_aotv4_proc_next[aotv4_proc_hand] = aotv4_now + aotv4_proc_interval;
+			}
+		}
+		else {
+			aotv4_may_proc = zone->random.Roll(WPC);
+		}
+
+		if (aotv4_may_proc) {
 			if (weapon->Proc.Level2 > ourlevel) {
 				LogCombat("Tried to proc ([{}]), but our level ([{}]) is lower than required ([{}])",
 					weapon->Name, ourlevel, weapon->Proc.Level2);
@@ -5591,7 +5656,15 @@ void Mob::TryWeaponProc(const EQ::ItemInstance *inst, const EQ::ItemData *weapon
 				}
 			}
 			else {
-				LogCombat("Attacking weapon ([{}]) successfully procing spell [{}] ([{}] percent chance)", weapon->Name, weapon->Proc.Effect, WPC * 100);
+				// ⚠️ Report the INTERVAL when one is in force -- WPC is not what decided this proc and
+				// logging it as "percent chance" sent a reader straight to the wrong mechanism.
+				if (aotv4_proc_interval) {
+					LogCombat("Attacking weapon ([{}]) procing spell [{}] (tier interval [{}] ms, hand [{}])",
+						weapon->Name, weapon->Proc.Effect, aotv4_proc_interval, hand);
+				}
+				else {
+					LogCombat("Attacking weapon ([{}]) successfully procing spell [{}] ([{}] percent chance)", weapon->Name, weapon->Proc.Effect, WPC * 100);
+				}
 				ExecWeaponProc(inst, weapon->Proc.Effect, on);
 				proced = true;
 			}

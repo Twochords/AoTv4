@@ -1867,6 +1867,12 @@ protected:
 	// the pet dies it is gone, and the family it belonged to can no longer be looked up.
 	uint16 m_aotv4_petward_spell  = 0;
 
+	// AoTv4 weapon procs are on a per-tier INTERVAL, not a per-swing chance. When each hand may next
+	// proc, in Timer::GetCurrentTime() ms. Indexed 0 primary / 1 secondary / 2 ranged -- per HAND so a
+	// dual wielder gets a proc from each weapon on its own timer rather than the two sharing one.
+	// ⚠️ Not persisted: a zone or a relog rebuilds the Mob, so the first swing after arriving procs.
+	uint32 m_aotv4_proc_next[3]   = { 0, 0, 0 };
+
 	// Concussive Burst (Ranged tree): when this character may next crack the air open.
 	uint32 m_aotv4_burst_ready    = 0;
 

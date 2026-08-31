@@ -139,12 +139,36 @@ void NPC::AddLootTable(uint32 loottable_id, bool is_global)
 	// the NPC's own table (not global loot). The rolled item still flows through ResolveTierDrop, so the
 	// bonus item can itself come out as Hallowed/Mythic -- it is one extra item whose tier is rolled,
 	// not an extra item plus its tier copies.
-	if (!is_global) {
+	// ⚠️⚠️ NEVER ON A RAID BOSS. A raid table is budgeted to an exact item count -- 2 molds plus one
+	// spoil, three in total per eligible looter -- and this grant is made AFTER the table has been
+	// walked, so it is invisible to that budget and there is no way to cap it from the data side.
+	// Reported from play as raids dropping far more than intended.
+	// 📌 Keyed on the `raid_enc` entity variable aotv4_raid stamps on every boss it spawns, so it
+	// costs nothing on ordinary mobs and needs no id list to keep in step.
+	const bool aotv4_is_raid_boss = !GetEntityVariable("raid_enc").empty();
+
+	if (!is_global && !aotv4_is_raid_boss) {
 		const char *cn = GetCleanName();
 		if (cn && cn[0] >= 'A' && cn[0] <= 'Z') {
+			// ⚠️⚠️ SKIP AoTv4 REWARD POOLS. This picks the entry with the highest droplimit as a proxy
+			// for "the mob's primary equipment pool", which holds right up until one of OUR pools is
+			// attached with a droplimit that beats every stock one. Mayong's own table has a single
+			// droplimit-1 entry, so the Rough mold pool (droplimit 2) won outright and the "one extra
+			// item" became a THIRD mold on top of the two the entry already guarantees -- reported
+			// from play as a raid dropping 6 molds. Phinigel (4) and Velketor (3) happened to have
+			// higher stock pools and were unaffected, which is exactly how this hid.
+			// 📌 A reward pool is a designed quantity, never a bonus roll: whatever mindrop says is
+			// what it must pay. Add any future one here.
+			static const uint32 kAoTv4RewardLootdrops[] = { 200050 };
+			auto is_aotv4_reward = [](uint32 id) {
+				for (uint32 r : kAoTv4RewardLootdrops) { if (r == id) { return true; } }
+				return false;
+			};
+
 			uint32 bonus_lootdrop = 0;
 			int    best_limit     = -1;
 			for (const auto &lte: zone->GetLootTableEntries(loottable_id)) {
+				if (is_aotv4_reward(lte.lootdrop_id)) { continue; }
 				if (static_cast<int>(lte.droplimit) > best_limit) {
 					best_limit     = static_cast<int>(lte.droplimit);
 					bonus_lootdrop = lte.lootdrop_id;

@@ -476,6 +476,39 @@ end
 -- HOME_RUNG table, how expensive that augment is to evolve. A tier 3 handed out at rung 1 would not
 -- merely be strong, it would be priced to evolve at rung 58 income and so would effectively never
 -- grow -- which is why the upgrade chance is small and only ever moves ONE tier.
+-- ⚠️⚠️ TITANWROUGHT MOLD BANDS -- mirrored from custom/tools/gen_titanwrought_crafting.py.
+-- Crude 148200-148269, Simple 148270-148339, Rough 148340-148409 (70 molds per tier).
+-- ⚠️ ROUGH IS NEVER PLACED HERE. It is raid-only by design: it is the one tier that beats what the
+-- world can give you, so a delve route to it is a route around the raid (design §9).
+-- ⚠️ Rungs 21+ deliberately drop NO mold -- named mobs cover Simple to level 30 instead. That gap is
+-- the open question in the design's §12; a capped character farming rung 30 gets no mold from it.
+M.MOLD_BAND = { { 1, 10, 148200, 148269 },      -- rungs 1-10  -> Crude
+                { 11, 20, 148270, 148339 } }    -- rungs 11-20 -> Simple
+
+-- ⚠️⚠️ THE CHEST IS NOT A GUARANTEED MOLD. It was 100 percent on first build, which made a rung 1-20
+-- clear a dependable mold every time and left named mobs (25 percent, and only off a rare_spawn)
+-- worth farming for nothing -- two routes to the same item where one strictly dominated. At 10 the
+-- chest is the *better* route rather than the only one, and a mold stays something you notice.
+-- 📌 Sized against the named-mob rate deliberately: a delve clear costs far more than a named kill,
+-- so it pays less often but is the one you can choose to run.
+M.MOLD_CHANCE = 10
+
+-- Returns a random mold id for this rung, or nil when the rung is outside both bands OR the roll
+-- failed.
+-- ⚠️ THE CHANCE IS ROLLED HERE, NOT AT THE CALL SITE. Both callers in `stock_chest` (the npc path
+-- and the summon fallback) already treat nil as "no mold", so one gate covers both -- and a second
+-- copy at a call site is how the two silently drift apart.
+function M.roll_mold(layer_level)
+    local lvl = layer_level or 1
+    for _, b in ipairs(M.MOLD_BAND) do
+        if lvl >= b[1] and lvl <= b[2] then
+            if math.random(100) > M.MOLD_CHANCE then return nil end
+            return math.random(b[3], b[4])
+        end
+    end
+    return nil
+end
+
 function M.roll_aug_tier(layer_level)
     local tier = 3
     for i = 1, 3 do
@@ -548,14 +581,29 @@ function M.stock_chest(c, chest, run, L)
     -- "starting form" to be careful of, because a tier is a flat pool of equally valid rolls.
     local id = math.random(block[1], block[2])
 
+    -- ⚠️ The chest is the delve's mold route (design §9), but it is NOT a guaranteed one -- see
+    -- M.MOLD_CHANCE. It is the route you can CHOOSE to run, where a named mob has to be found; that
+    -- is the difference between the two, not the odds, which are similar on purpose.
+    -- ⚠️ nil is the ordinary case now (a failed roll, not just a rung outside the bands), which is
+    -- why both branches below test it.
+    -- ⚠️ Placed alongside the augment, not instead of it -- this is an additional reward, and the
+    -- augment remains the chest's headline.
+    local mold_id = M.roll_mold(layer_level)
+
     if npc then
         npc:AddItem(id, 1)
+        if mold_id then npc:AddItem(mold_id, 1) end
     else
         -- ⚠️ Delivered to `c` ONLY. The chest is ONE physical reward shared by the group (the coin
         -- below is the per-member part), so summoning to every member would multiply the augment.
         -- ⚠️ Announced, because an item appearing on the cursor with no explanation reads as its own
         -- bug -- and the player has just been told to expect a chest.
         c:SummonItem(id, 1)
+        -- ⚠️⚠️ SummonItemExact, NOT SummonItem -- every ordinary SummonItem silently upgrades an id
+        -- below 300000 to its Mythic tier (section 26). A mold has slots = 0 so no tier row exists
+        -- today and the upgrade is a no-op, but naming the exact call is what keeps it a no-op if
+        -- molds are ever given tiers by mistake.
+        if mold_id then c:SummonItemExact(mold_id) end
         c:Message(MT.Yellow, "The chest could not settle here, so its contents come to you directly.")
     end
 
@@ -871,6 +919,17 @@ function M.unlocked_count(c)
 end
 
 -- ---------------------------------------------------------------- the window feed
+-- ⚠️⚠️ A DLL COMPATIBILITY SWITCH, AND IT IS MEANT TO BE TURNED OFF. While true, raid encounters are
+-- sent BOTH ways: appended to DUNGDATA as extra layer rows (which an un-rebuilt dll shows at the
+-- bottom of the Layers tab) and over RAIDDATA (which a rebuilt one shows on the Raids tab).
+--   * true  -- an OLD dll still reaches the raids. A REBUILT one lists them TWICE, in both places.
+--   * false -- the intended end state: raids live only on the Raids tab.
+-- ⚠️ Set this to FALSE once dinput8.dll has been rebuilt and EQUI_AoTDungeonWnd.xml copied. Leaving
+-- it true is not harmful, it is just the duplicate listing.
+-- 📌 It exists because the server cannot tell which dll a player is running, and the alternative was
+-- a window that silently offers no raids at all to anyone who has not patched yet.
+M.RAIDS_IN_LAYER_LIST = false
+
 -- DUNGDATA <unlocked>^level|name|cleared^level|name|cleared^...
 -- ⚠️ Only unlocked layers are sent AT ALL. The window cannot show a locked layer it was never told
 -- about, and the enter path re-checks anyway, so a modified client gains nothing by asking.
@@ -882,7 +941,45 @@ function M.send_list(c)
         local L = M.LAYERS[i]
         parts[#parts + 1] = string.format("%d|%s|%d", L.level, L.name, i <= cleared and 1 or 0)
     end
-    c:Message(MT.NPCQuestSay, "DUNGDATA " .. unlocked .. "^" .. table.concat(parts, "^"))
+
+    -- ⚠️⚠️ RAIDS MOVED TO THEIR OWN TAB (2026-08-30). They used to ride this list at levels above
+    -- aotv4_raid.RAID_BASE, which shipped them with no client change but buried them at the bottom of
+    -- a list of up to 70 delve rungs, sorted under a "Level" column where 101 is not a level. They are
+    -- now fed separately by M.send_raids over RAIDDATA.
+    -- ⚠️ M.enter STILL routes anything above RAID_BASE to the raid module, and the Raids tab's Enter
+    -- button still sends the same `/say delveenter <level>` -- so the entry path did not change and
+    -- there is no second copy of the gate checks.
+    if M.RAIDS_IN_LAYER_LIST then
+        local raid_ok, raid = pcall(require, "aotv4_raid")
+        if raid_ok and raid then
+            local used = 0
+            for _, part in ipairs(parts) do used = used + #part + 1 end
+            for _, row in ipairs(raid.list_rows(c, 3600 - used)) do
+                parts[#parts + 1] = row
+            end
+        end
+    end
+
+    c:Message(MT.NPCQuestSay, "DUNGDATA " .. #parts .. "^" .. table.concat(parts, "^"))
+end
+
+-- RAIDDATA <n>^level|tier|name|hub|status|blurb^...
+-- ⚠️ Built by aotv4_raid.window_rows -- the raid module owns what a raid IS, this module owns the
+-- window feed, exactly as send_list used to reach into raid.list_rows.
+-- ⚠️⚠️ BUDGETED IN BYTES. Client::Message formats into a char[4096] (§3) and a blurb is far longer
+-- than a name, so this overflows sooner than the old appended rows did. 3600 leaves room for the
+-- "RAIDDATA <n>^" prefix and the chat framing.
+function M.send_raids(c)
+    if not c or not c.valid then return end
+    local raid_ok, raid = pcall(require, "aotv4_raid")
+    if not (raid_ok and raid and raid.window_rows) then
+        -- ⚠️ Send an EMPTY list rather than nothing at all: the tab must be able to clear itself, or a
+        -- stale set of rows outlives whatever removed them.
+        c:Message(MT.NPCQuestSay, "RAIDDATA 0^")
+        return
+    end
+    local rows = raid.window_rows(c, 3600)
+    c:Message(MT.NPCQuestSay, "RAIDDATA " .. #rows .. "^" .. table.concat(rows, "^"))
 end
 
 -- DUNGMODES <n>^id|name|desc^id|name|desc^...
@@ -910,6 +1007,16 @@ end
 -- journal entry, which reads as the quest having failed to appear.
 function M.enter(c, level, mode_id)
     if not c or not c.valid then return end
+
+    -- ⚠️ RAID ROWS SHARE THIS LIST AND THIS BUTTON. A level above aotv4_raid.RAID_BASE is an encounter,
+    -- not a rung, and it takes an entirely different path -- no task, no ledger, no mode. The mode the
+    -- window happened to have selected is deliberately IGNORED rather than refused, so pressing Enter
+    -- on a raid row does the obvious thing whatever the dropdown says.
+    local raid_ok, raid = pcall(require, "aotv4_raid")
+    if raid_ok and raid and (level or 0) > raid.RAID_BASE then
+        raid.enter(c, level)
+        return
+    end
 
     local idx
     for i, L in ipairs(M.LAYERS) do if L.level == level then idx = i break end end
@@ -1167,9 +1274,13 @@ function M.enter(c, level, mode_id)
     -- MovePCInstance goes straight to (zone, instance) with no membership lookup, and it is the SAME
     -- move: its binding calls `MovePC(zone, instance, x, y, z, h)`, whose default zone mode is
     -- `ZoneSolicited` (zone/client.h:832) -- the identical mode `MovePCDynamicZone` would have used.
-    -- Nothing about the DZ is lost: membership lives in the DB, the compass and safe return are
-    -- already set on the dz object above, and `IsCurrentZoneDz` matches on zone id + instance id, so
-    -- the player still arrives as a member of a DZ the client knows about.
+    -- ⚠️⚠️ THE REST OF THIS NOTE USED TO READ "nothing about the DZ is lost: the compass and safe
+    -- return are already set on the dz object above". THERE IS NO dz OBJECT ABOVE -- this function
+    -- calls eq.create_instance and never CreateExpedition, so there is no compass, no safe return and
+    -- no Ctrl+Z entry, exactly as the long note at the top of this function says. The sentence is a
+    -- leftover from the DZ attempt that note describes, and it contradicted it for as long as both
+    -- were in the file. The operative advice is unchanged and still correct: if a DZ is ever restored
+    -- here, MovePCDynamicZone still cannot be called in the same breath as CreateExpedition.
     --
     -- ⚠️ Deferring the DZ call behind a timer instead would also "work" and is the wrong fix: it
     -- races the world round-trip, and there is no upper bound on that reply.
@@ -2502,12 +2613,21 @@ function M.handle_say(e)
     if msg == M.SAY_TRIGGER then
         M.send_modes(e.self)     -- modes first: the window builds its dropdown before the layer list
         M.send_list(e.self)
+        M.send_raids(e.self)
         M.send_history(e.self)   -- every tab is filled by opening the window; one round trip, not three
         return true
     end
 
     if msg == "delvehist" then
         M.send_history(e.self)
+        return true
+    end
+
+    -- ⚠️ The Raids tab has its OWN refresh, for the same reason the Score Sheet does: each Page owns
+    -- its pieces, so the Layers tab's Refresh is not on screen while you are looking at this one --
+    -- and a raid row goes stale on its own, because the status column counts a lockout down.
+    if msg == "delveraids" then
+        M.send_raids(e.self)
         return true
     end
 
@@ -2528,6 +2648,24 @@ function M.handle_say(e)
     end
 
     if msg == "delveexit" then
+        -- ⚠️ The window has ONE Exit button for both kinds of run, so a raider pressing it must leave
+        -- the RAID. Checked before the delve's own combat refusal because a raid leave has different
+        -- rules -- it drops this member and leaves the instance standing for the rest of the group.
+        -- ⚠️⚠️ ROUTED ON "in a raid run OR standing in a raid zone", not on the run record alone. A
+        -- player physically inside a raid instance whose run bucket has gone used to fall through to
+        -- the delve branch and be told "you are not in a delve" -- with no zone line to walk and no
+        -- other button, that is stranded. M.leave now handles the no-record case; this has to reach
+        -- it. See the note above aotv4_raid.M.leave for the two ways to lose the record.
+        local rx_ok, rx = pcall(require, "aotv4_raid")
+        if rx_ok and rx and (rx.current_run(e.self) or rx.in_raid_zone()) then
+            if (e.self:GetAggroCount() or 0) > 0 then
+                e.self:Message(MT.Red, "You cannot leave while something is fighting you.")
+                return true
+            end
+            rx.leave(e.self)
+            return true
+        end
+
         -- ⚠️⚠️ NOT WHILE SOMETHING IS FIGHTING YOU -- the mirror of the refusal in M.enter, and added
         -- for a bigger reason than that one. Section 24 originally left this open on the grounds that
         -- abandoning "already carries a cost" because it forfeits the run. That understates it in both

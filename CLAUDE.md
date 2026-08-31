@@ -5,6 +5,12 @@ level you're offered **3 random rewards** (spells or class-specific combat abili
 one, which the server scribes/trains. The window is drawn by a client-side `dinput8.dll`
 so it works on a **vanilla RoF2 client — no MacroQuest/E3 required**.
 
+> **📋 PICKING UP MID-STREAM? → READ `TURNOVER_2026-08-30.md` FIRST.** It carries the current state of
+> the 2026-08-30 work — the Titanwrought crafting build (§64), the raid boss tuning (§65), what is
+> verified against the DATA versus never played, the open decisions, and the container port problem
+> that currently blocks logging in. Nothing from that session is committed; it is all in the working
+> tree.
+
 > **🖥️ OPERATING THE LIVE SERVER OVER SSH? → SEE §57.** The live server is **akk-stack (Docker)**, a
 > different machine + database than the `/src` dev container in §1-§2. §57 is the authoritative
 > **restart runbook**, DB/telnet access, migration/shared-memory traps, and the current live-only state
@@ -611,7 +617,9 @@ for Bard. Opening the server to 16 classes removed that and the STOCK set was ne
 in `classes8`** so 15 of 16 classes could be offered a song and then simply never use it. Three gates
 all had to be reopened, and any one left shut makes the reward useless:
 1. `spells_new.classes1..16` -- can the class scribe/cast it
-2. `skill_caps` **Singing 12, Percussion 41, Stringed 49, Wind 54, Brass 70** -- only Bard had ANY
+2. `skill_caps` **Brass 12, Singing 41, Stringed 49, Wind 54, Percussion 70** -- only Bard had ANY
+   (⚠️ this line had Singing and Brass, and Percussion and Singing, swapped until 2026-08-30; §14
+   always had it right. Verify a skill id against `common/skills.h`, never against prose here.)
 3. `skill_caps` for the twelve activated combat specials -- without a cap `CanHaveSkill` refuses and
    a picked reward silently does nothing
 All three are in `custom/sql/aotv4_open_spells_and_skills.sql`. ⚠️ Running step 3 DESTROYS the record
@@ -5529,13 +5537,33 @@ archive**, so the guards had no model at all and the client died when enough of 
 range at once. Fixed by migration **v90**: race **12 (Gnome)**, gender 0, size 3.
 
 - ⚠️⚠️ **NAMING AN ARCHIVE IN `Resources/GlobalLoad_chr.txt` DOES NOT CREATE IT.** That file was
-  extended from 13 to 21 entries to load `mechanotus_chr` and seven others, and the client log answers
-  plainly — `Loading mechanotus_chr` → **`Failed to open ...\mechanotus_chr.s3d.`** — for **every one
-  of the eight**. They were never in the client to load. The file is reverted to its 13 entries in the
-  same commit as v90, and the revert has to ship: a player who already took the 21-entry version is
-  still asking the client to open eight archives that are not there.
+  extended to load `mechanotus_chr`, and the client log answers plainly —
+  `Loading mechanotus_chr` → **`Failed to open ...\mechanotus_chr.s3d.`** That archive was never in
+  the client to load, and `resplendent_chr`, added beside it, is the same case.
   📌 **The client log is the diagnostic.** `Failed to open` names the archive outright; there is no
   other signal, and nothing server-side can tell you a race has no model.
+- ⚠️⚠️⚠️ **CORRECTION (2026-08-30): THE REVERT WENT TOO FAR AND SILENTLY BROKE THREE FEATURES.** It
+  did not remove two entries, it removed **all eight**, back to the stock 13 — and six of those eight
+  were load-bearing and had been **tested and verified working** long before mechanotus was ever
+  added. The claim above that "every one of the eight" failed to open was generalised from one
+  archive's log line, not read off eight of them.
+  | archive | what it draws | evidence it worked |
+  |---|---|---|
+  | `illsalin_chr` · `elddar_chr` · `theater_chr` · `devastation_chr` · `westkorlachc_chr` | every race in the delve's `M.BOSS_RACES` — **all 20 warden appearances** | `aotv4_dungeon.lua` records races **461, 496 and 488** rendering correctly on the first try, and derives its whole expansion 12+ boundary rule from that testing |
+  | `guildlobby_chr` | **race 567 Campfire** — the travel waypoints (`a_forgotten_waypoint`, 2000500) *and* `Fellowship_Campfire` (2000412) | `aotv4_travel.lua:358` says outright: *"RACE 567 ONLY RENDERS IF `guildlobby_chr` IS IN THE CLIENT'S Resources\GlobalLoad_chr.txt"* |
+  So from that commit until 2026-08-30 every delve warden, every travel waypoint and every fellowship
+  campfire drew as a **generic human placeholder** — the failure mode this very section is about.
+  Restored, count line back to **19**; `mechanotus_chr` and `resplendent_chr` stay out, and nothing
+  needs them any more (v90 moved the hub guards to race 12, and the start zone moved to
+  freeporttheater). ⚠️ `CLIENT_PATCH_MANIFEST.txt` carries this file's md5 — **update it in the same
+  edit** or the shipped bundle disagrees with its own checksum.
+  📌 **The lesson is about the shape of the revert, not the archive.** One bad entry was found and the
+  whole block was taken out, because the block was added across two commits and read as one change.
+  A failing entry is **inert** — the client logs `Failed to open` and moves on — so there was never a
+  reason to remove the working ones. **Revert the entry you have evidence against, not the file.**
+  📌 And nothing detects this: a missing archive costs you a model, and a model that fails to draw
+  looks identical to a race that was never set. There is no server-side symptom, no log line on our
+  side, and no test. It was found only because a player reported unrelated models looking wrong.
 - ⚠️⚠️ **IT LOOKED INTERMITTENT, AND THE ROUTE IS WHY.** Zoning in from character select drops you at
   your **saved** location, usually out of render range. Arriving by PoK book drops you on the authored
   doorstep (`pok_portals.lua` `freeporttheater` = −71.56 / −246.67 / −27.10), and **seven guards stand
@@ -6138,6 +6166,47 @@ every swing**. Fixed by dividing by 100; the curve's shape was left alone.
   rule is put back. ⚠️ And these are header defaults: a `rule_values` row overrides them, so live may
   not be running any of these numbers (§22, §45).
 
+### ⚠️⚠️ THE TIER OVERRIDE IS NO LONGER A CHANCE AT ALL — it is an INTERVAL (2026-08-30)
+
+Reported from play: *"right now they are nuked and mythic is procing all the time."* Correct — the
+override was a flat per-swing chance of **0.10 / 0.35 / 0.75** by tier, and 0.75 means a Mythic
+weapon proc landed on **three swings in four**. It is now a minimum time between procs:
+
+| tier | rule | default |
+|---|---|---|
+| Mythic | `AoT:WeaponProcIntervalMythicMs` | **15000** |
+| Hallowed | `AoT:WeaponProcIntervalHallowedMs` | **20000** |
+| native | `AoT:WeaponProcIntervalNativeMs` | **25000** |
+
+- ⚠️⚠️ **NO CHANCE CAN EXPRESS "ONE PROC EVERY N SECONDS", WHICH IS WHY THE MODEL HAD TO CHANGE
+  RATHER THAN THE NUMBER.** A per-swing chance produces a rate that rides on weapon delay, haste and
+  how many swings the round happened to generate — so the faster your weapon the more procs, which is
+  backwards for something meant to be tiered by gear. Lowering 0.75 would have moved the symptom and
+  kept the coupling.
+- ⚠️ **Tracked PER HAND** (`Mob::m_aotv4_proc_next[3]`, primary/secondary/ranged), so a dual wielder
+  gets one proc from each weapon on its own timer rather than the two sharing one. The stock
+  `if (hand == slotSecondary) ProcChance /= 2` is deliberately left alone — it now applies only to
+  **aug** procs, which still roll a chance.
+- ⚠️⚠️ **THE TIMER IS STAMPED WHEN THE GATE OPENS, NOT WHEN THE PROC LANDS.** The `Proc.Level2` check
+  can still refuse *and it messages the player when it does*; stamping only on success would leave an
+  under-level character failing that check on every swing and printing every time. The interval means
+  "this weapon may TRY once per N seconds", which rate-limits the refusal along with the proc.
+- ⚠️⚠️ **AUG PROCS NOW GET TO ROLL FAR MORE OFTEN, AND NOTHING WAS DONE ABOUT IT.** With
+  `Combat:OneProcPerWeapon` on, an aug only tries when the weapon proc did **not** fire — and at
+  Mythic the weapon used to fire on 75 percent of swings. Removing that suppression is a real change
+  to aug procs even though no aug code was touched. **Watch augs before assuming they are unaffected.**
+- 📌 **`Combat:AdjustProcPerMinute` is `true` in `rule_values` on this database**, so aug and SPA 85
+  spell procs take the **PPM** branch of `GetProcChances` — already rate-based — and the sqrt curve
+  in the else branch (and §58's `/100` fix to it) is **dead here**. The §22 trap again: the header
+  default says false, the row says true, and the row wins.
+- ✅ **A rule of 0 falls back to the stock computed chance** for that tier — the only way back to a
+  per-swing model without a rebuild.
+- 📌 **No migration.** These are new rules with no `rule_values` rows, so the header defaults are
+  what the server runs; a zone restart or `#reload rules` is enough. Retuning later is one UPDATE.
+- 📌 This is also the change that finally migrated **`attack.cpp`'s hardcoded tier-band literals** onto
+  `zone/aotv4_tiers.h`, which is exactly the condition §26 names — migrate a duplicate when its file
+  is touched for another reason. Three hardcoded copies remain: loot.cpp, npc.cpp, questmgr.cpp.
+
 ## 59. ⚠️⚠️ AN AA THAT INDEXES A SPELL ID BY RANK DIES SILENTLY IF THE ROW IS MISSING — v144/v145 — 2026-08-30
 
 Reported from live as *"the Bloodletting AA is not procing at all. I have 3 aas into it right now"*,
@@ -6193,3 +6262,317 @@ procing".
   damage scaling §5 already records. Rank 5 is **-22**. If that multiple holds, rank 5 lands near a
   hundred a tick, unmitigated, on a server whose post-mitigation melee hits are single digits.
   **Watch it once ranks 2-5 actually exist**, and retune the rows rather than the scaling.
+
+## 60. ⚠️ TURNING A MECHANIC OFF ORPHANS THE AAs THAT GUARD IT — v146 — 2026-08-30
+
+Two AAs in the picker pool cost a point and did **nothing**, because the mechanics they defend
+against were removed server-wide and nobody went back to check what had been built on top of them.
+Asked directly — *"do Refuse to Fall and Bracing have any place now that stuns and knockbacks are
+nerfed?"* — and the answer was no, in both cases for a different reason.
+
+| AA | why it is dead |
+|---|---|
+| **Bracing** (89) | A **marker** with no `aa_rank_effects` at all. The only reader is `AoTv4Braced()` in `Mob::CommonDamage`, and that call sits **inside** the `RuleB(Combat, MeleePush)` guard — false in the header default *and* its `rule_values` row cleared by v52, so the branch is unreachable. |
+| **Refuse to Fall** (222, `aa_ability.name` is still the host's *Stalwart Endurance*) | SPA 195 `StunResist` 25/50/75. Every path that stuns a player ends at **`Client::Stun`, which is a no-op** (`zone/spells.cpp:6139`), so players are already stun-immune from melee, procs and spells and from **any** caster, duels included. NPC-cast `Stun` is dropped even earlier in `Mob::SpellEffect`. |
+
+- ⚠️⚠️ **REFUSE TO FALL WAS WORSE THAN INERT — IT ADVERTISED ITSELF AS WORKING.** In the rear-stun
+  path (`attack.cpp:1649`) a successful resist roll prints *"you shake off the stun"*; a failed one
+  calls the no-op `Stun` and prints nothing. So buying it visibly changed the combat log, for an
+  event with no consequence either way. **A resist that only produces a message is not a resist.**
+- ⚠️⚠️ **CHECK THE `caster->IsNPC()` GUARD BEFORE CALLING ANY CC-RESIST AA DEAD — TWO NEIGHBOURS
+  SURVIVED.** The guard drops **Stun / Charm / Mez / Fear / Fearstun / CancelMagic / Dispel** and
+  nothing else, and only when the caster is an NPC:
+  - **Nothing Left to Fear** (78) *looks* identical (Fear is on that list) but `Mob::Fear` is **not**
+    no-oped, and the guard is caster-scoped — so it still works **in duels**. PvP-only, not dead.
+  - **Rally** (111) keeps a real job: **root and snare are NOT on that list**, so NPC roots and
+    snares still land and the cure is still worth having. Only its fear clause is redundant.
+  📌 The two questions are different: *"is the effect blocked at the source"* (the guard) and *"is
+  the effect a no-op on the target"* (`Client::Stun`). Only the second kills an AA outright.
+- ✅ **`enabled = 0` IS THE LEVER, NOT A POOL EDIT.** `aa_pool.lua` is **generated** by
+  `gen_aa_pool.pl` from the enabled set and says *do not hand edit*; hand-removing an entry would be
+  undone by the next regen, and an entry that is in the pool but not enabled is offered and then
+  **silently refused**. Disable, then regenerate — the diff should be exactly the removed lines and
+  the count in the header (88 → 86 here). Anything else in that diff is drift, not your change.
+- ⚠️⚠️ **A HAND-RUN SCRIPT CAN RESURRECT A RETIRED AA AND NOTHING WILL SAY SO.**
+  `custom/sql/aotv4_aa_melee_utility.sql` carried `enabled=1` for 89; running it once after v146 puts
+  Bracing straight back in the pool. It is now `enabled=0` with a note saying why. **After retiring
+  anything, grep the `custom/sql` tree for whatever re-enables it** — the same class of split-brain
+  the migration path exists to prevent (§52, §59).
+- ⚠️ **Disabled, not deleted.** `enabled = 0` means the ability does not exist at runtime (§32), so a
+  character who trained one keeps a `character_alternate_abilities` row that is simply ignored on
+  load. They lose nothing functional — neither AA did anything — but **the points stay counted as
+  spent**. Refunding is a separate decision and was not taken: on this server AA points belong in the
+  picker bank (`aa_bank_<charid>`, §45), never in the native window, so a refund is a per-character
+  bucket credit rather than an `UPDATE`.
+- 📌 The C++ (`AA_BRACING`, `AoTv4Braced()`, its guard in `CommonDamage`) is **kept and commented**
+  rather than removed. Turning `Combat:MeleePush` back on is the single change that would make the
+  mechanic *and* its AA live again, and melee push is off because play reported it shoving people
+  around constantly — a tuning decision that could reverse.
+
+## 61. ⚠️⚠️ AN UPKEEP LOOP THAT REFRESHES ONLY ONE OF THE THINGS IT GRANTS — Kindred Bond — 2026-08-30
+
+Reported from play: *"the buff from the Kindred Bond AA will fade and doesn't get re-applied to you,
+just the pet. You have to kill your pet and then recast, this is a pain because then you have to
+recast any buffs on the pet and if you dumped any weapons on it those also poof."*
+
+The AA grants a pet's ward to **three** subjects — the pet, the owner, and at rank 2 the group —
+all from `Mob::AoTv4ApplyPetWard`, which runs **only at summon**. A later 6-second upkeep loop
+(`Mob::AoTv4RefreshPetWard`) was added to restore the ward if it went missing, and it topped up
+**only the pet**. So the pet's copy always came back within six seconds and the owner's never came
+back at all, and re-summoning — which costs the player every buff and weapon they had put on the
+pet — was the only cure.
+
+- ⚠️⚠️ **THE COMMENT EXPLAINING THE OMISSION WAS WRONG, AND IT IS WHY THIS SURVIVED.** It read:
+  *"Kindred Bond's copies on the owner and group are NOT refreshed here — reapplying them on a timer
+  would resurrect a share the owner is no longer entitled to."* That sounds careful and is
+  self-refuting: **the only state in which they are not entitled is a dead or absent pet, and the
+  function has already returned above for exactly that.** While a live pet is standing there the
+  owner is entitled by definition, so the refresh can only restore what should be present.
+  📌 **When a comment justifies leaving something out, check whether the condition it fears is
+  already handled by the code above it.** A plausible-sounding rationale is not a guard.
+- ⚠️⚠️ **AND THE EARLY RETURN WOULD HAVE DEFEATED THE FIX ANYWAY.** The loop ended with
+  `if (pet->FindBuff(ward)) return;  // still there; nothing to do` — true of the **pet**, and
+  silent about the other two subjects. In the normal case (pet warded) it returned before reaching
+  anything else, so an owner branch added below it would never have run and the "fix" would have
+  looked like it changed nothing. **An early return phrased as "nothing to do" is a claim about one
+  subject; re-read it once a function serves more than one.**
+- ⚠️⚠️ **STACKING IS THE LIKELY CAUSE OF THE LOSS, NOT SLOT PRESSURE** — and that asymmetry is what
+  made it read as an owner-only bug rather than a general one. The owner's copy competes with their
+  real buffs, and `PET_WARDS.md` says so in its own limitations: Gale Fervor loses to any stronger
+  haste, Stoneflesh is overwritten by Stonestride from the tank tree. The **pet** has a nearly empty
+  buff bar and never loses its copy, so the two subjects genuinely behave differently and only one
+  of them looks broken.
+- ✅ **The fix closed two documented limitations for free**, because the ward id is remembered at
+  summon *unconditionally* (rank 0 included) and the loop reads the rank live: buying or ranking up
+  Kindred Bond with a pet already out now works on the next tick, and a player who joins the group
+  after the summon now picks it up. Both were written up in `PET_WARDS.md` as "deliberate — the
+  alternative is polling every owner", which is precisely what the loop already does.
+- 📌 Cost is one `FindBuff` per subject per six seconds per owner, and a `SpellOnTarget` only when
+  the ward is genuinely absent. A re-apply blocked by stacking is **silent** — the blocked-stack
+  message in `Mob::SpellOnTarget` is sent only to a Client or Bot caster, and the caster here is the
+  pet — so a permanently-outranked buff retries quietly rather than spamming the player.
+
+## 62. ⚠️⚠️ WHY SKILLS KEEP BREAKING — one systemic gap, reported one skill at a time — v147 — 2026-08-30
+
+Reported as *"Not all skills are retained on death after class swap... Percussion Instruments was
+stuck at 1. Meditate has never been above 0 for me except when playing a caster"*, and, fairly,
+*"this kind of stuff keeps happening with skills, it's getting old."* It does, and it is **two**
+causes, neither of which was the skill anybody reported.
+
+### ⚠️⚠️ (a) `is_specialization()` had the WRONG FIVE SKILL IDS — 66-70 instead of 43-47
+`global_player.lua` guarded the casting specializations with `id >= 66 and id <= 70`. Those ids are
+**Alcohol Tolerance, Begging, Jewelry Making, Pottery and PERCUSSION INSTRUMENTS**. Not one
+specialization is in that range; the real ones are **43-47**. It failed in both directions at once:
+- **Percussion was treated as a specialization**, so `max_skills_for_level` never raised it and
+  cleared it below level 5 — stuck exactly as reported, while **Singing (41)** sat safely under 66
+  and behaved correctly. That asymmetry *is* the fingerprint. Alcohol Tolerance and Begging were
+  caught too; Jewelry Making and Pottery are tradeskills and were already excluded earlier, which is
+  the only reason two of the five escaped.
+- **The real specializations were left in the general branch and maxed to their caps** — which is
+  precisely the trap the comment directly above that function describes at length and claims to have
+  fixed. It was never fixed: the fix was written against the wrong ids, so *"specializations reset
+  randomly"* has been live the whole time and will need re-testing.
+- 📌 **The correct ids were already in the same file, eight lines up.** `FREE_SKILLS` lists
+  `43,44,45,46,47, -- casting specializations`. A literal range and a literal list of the same thing,
+  disagreeing, in one file.
+- ⚠️⚠️ **THE SKILL ENUM IS NOT GROUPED BY KIND, WHICH IS WHY A RANGE IS DANGEROUS HERE.** 41 Singing,
+  42 Sneak, 43-47 specializations, 48 Pick Pockets, 49 Stringed… 64 Fletching, 65 Brewing, 66 Alcohol
+  Tolerance, 67 Begging, 68 Jewelry Making, 69 Pottery, 70 Percussion. **Check every literal skill id
+  against `common/skills.h` — and note this file had the instrument ids wrong in §5 as well.**
+
+### ⚠️⚠️ (b) `skill_caps` had no rows for fifteen skills the design says EVERY class has
+`FREE_SKILLS` declares what every class gets, and `grant_free_skills` tries to grant all of it — but
+both it and `max_skills_for_level` go through **`CanHaveSkill`, which asks `skill_caps`**. Where a
+(class, skill) pair has no rows at all, `CanHaveSkill` answers false and `max_skills_for_level` does
+not merely skip it, it **actively zeroes it**: `if have > 0 then c:SetSkill(id, 0)`.
+- **Meditate (31) had rows for 12 of 16 classes**, and the four without are the pure-melee classes
+  §14 turned *into* casters. Hence "never above 0 except when playing a caster" — a precise report.
+- Fourteen more were in the same state: Block, Disarm Traps, Double Attack, Dual Wield, Feign Death,
+  Forage, Hide, Mend, Parry, Riposte, Safe Fall, Sneak, Intimidation, Triple Attack.
+- ⚠️⚠️ **v93 FIXED EXACTLY THIS AND ONLY FOR WEAPON SKILLS.** The mechanism was understood a
+  fortnight earlier and the fix was scoped to eight ids. **That is why it keeps recurring**: the hole
+  is per (class, skill) pair, so it surfaces one skill at a time, each report looking new.
+- ✅ v147 fills every gap from the `FREE_SKILLS` list, copying the **most conservative existing curve**
+  for that skill (`MIN(cap)` per level across classes that already had it) so no class is handed a
+  better cap than the game already gives someone.
+
+### 📌 HOW TO RECOGNISE (b) IN A CHAT LOG, AND WHY OWNING THE AA DOES NOT SAVE YOU
+
+A third report the same week — *"Forage resets on zone/death"* — was this bug again, and its log is
+the cleanest example of the fingerprint:
+
+```
+[Aug 24 22:04:07] You have become better at Forage! (7)
+[Aug 24 23:47:45] You have class abilities. Type #ability to list them...
+[Aug 24 23:47:45] You have become better at Forage! (0)
+```
+
+- ⚠️⚠️ **A SKILL-UP MESSAGE WITH A VALUE OF `(0)` IS A `SetSkill(id, 0)`, NOT A FAILED SKILL-UP.**
+  `Client::SetSkill` queues `OP_SkillUpdate` **unconditionally**, including on a decrease, and the
+  RoF2 client renders any skill update as *"You have become better at X!"*. So the zeroing branch
+  announces itself as an improvement. Grep a report for `! (0)` — it names the skill and the moment.
+- 📌 The second line dates it precisely: the class-abilities line is printed by `event_connect`, which
+  calls `max_skills_for_level` a few lines later. **Zone or login, not death.**
+- ⚠️⚠️ **THE PLAYER HELD `Forager's Eye`, AND IT CANNOT HELP.** `Client::CanHaveSkill` is
+  `GetSkillCap(class, skill, MaxLevel).cap > 0` — **`skill_caps` and nothing else**. The AA's
+  `aabonuses.GrantForage` is added in `GetMaxSkillAfterSpecializationRules`, a different function on a
+  different path, so an AA that grants a skill does **not** make `CanHaveSkill` true and does not
+  protect the skill from being zeroed. Racial and AA skill grants are invisible to every gate in
+  `max_skills_for_level`.
+
+### ✅ THE AUDIT — run it after ANY change to skill_caps, FREE_SKILLS or a class's skill set
+A zero here is a skill that will be silently wiped on login for those classes:
+```sql
+SELECT skill_id, COUNT(DISTINCT class_id) AS classes
+FROM skill_caps WHERE class_id BETWEEN 1 AND 16
+  AND skill_id IN (/* the FREE_SKILLS list from global_player.lua */)
+GROUP BY skill_id HAVING classes < 16;
+```
+- ⚠️ **A missing LEVEL-1 row is NOT the same fault and is often correct.** Feign Death, Hide, Disarm
+  Traps, Block, Parry, Riposte and the Attack skills legitimately open above level 1: the cap is 0
+  there, `max_skills_for_level` takes the *"merely too low a level — leave it alone"* branch, and the
+  earned value survives the death back to level 1. **Only a missing CLASS zeroes.**
+- ⚠️⚠️ **THE SPECIALIZATIONS 43-47 MUST KEEP THEIR MISSING LEVEL 1-4 ROWS.** That absence is
+  load-bearing: it is how the roguelite death wipes a specialization. Filling it would make them
+  survive death. v147 excludes them from its instrument backfill for exactly this reason.
+- 📌 The instruments (12/49/54/70) *were* given level 1-4 rows, copied from **Singing**, which already
+  had them and which they match exactly from level 5 up. On a server that returns everyone to level 1
+  constantly, "no cap below level 5" means the instruments are dead at the start of every run.
+
+## 63. ⚠️⚠️ AN AA REWARD THAT REQUIRES A LEVEL THE CAP FORBIDS — v148 — 2026-08-30
+
+Reported from play as *"Alchemy Mastery rank 1 (AA 49 rank 1 could not be granted.)"*, followed by
+*"I've been seeing similar issues with the AA achievement AAs"* — plural, and right.
+
+`Client::GrantAlternateAdvancementAbility` refuses on **`aa_ranks.level_req`**, and **seven of the
+eleven tradeskill mastery ladders that achievements hand out sat at level_req 59** — every rank in
+every one of those chains — on a server whose character cap is **30** (`era_system.M.HARD_CAP`).
+They could never be granted to anybody, ever. Only Poison Mastery, Salvage, Tinkering and Jewel
+Craft were reachable, which is exactly why it read as intermittent rather than as one fault.
+
+- ⚠️⚠️ **AN EIGHTH WAS FOUND THAT NOBODY HAD REPORTED, AND IT FAILS MORE QUIETLY: `20 Spell Casting
+  Mastery`, level_req 55.** It is enabled, so `gen_aa_pool.pl` puts it in the **death picker's** pool
+  — the picker offers it and the grant is then refused with **no message at all** (§10: an AA grant
+  rejected on any of its gates is silent). An achievement at least prints "could not be granted"; the
+  picker prints nothing, so this would have gone unreported indefinitely. **When a level gate breaks
+  an achievement reward, check the picker for the same gate — it is the same call with no feedback.**
+- ⚠️ **It is NOT the `enabled` flag, which is where §32 sends you.** All eleven granted abilities are
+  `enabled = 1`; v12 did its job. `classes` is 65535 on all of them, `Expansion:UseCurrentExpansionAAOnly`
+  is false, there are no `aa_rank_prereqs`, and the grant uses `ignore_cost`. Of the five gates §10
+  lists, **level_req was the only one left**, and it is the one nothing in this file had checked.
+- ✅ **v148 walks each enabled chain through `next_id`** and lowers any rank above the cap to 1 —
+  **26 ranks across 9 abilities**, since some chains had later ranks above 30 even where the first
+  rank was fine. ⚠️ Walked, never `first_rank_id + 0..n`: §6 records that rank ids are not contiguous
+  (Natural Durability is 107, 108, 109, **7541, 7542, 7543**), so an arithmetic guess writes onto
+  another ability's ranks.
+- ⚠️ Scoped to `enabled = 1`. The thousands of disabled rows keep their gates; enabling one in future
+  means re-checking its `level_req` against the cap, because nothing does that automatically.
+- ✅ **The audit, which is worth running after any change to the AA set or the level cap:**
+  ```sql
+  WITH RECURSIVE chain AS (
+    SELECT a.id AS aa_id, r.id AS rank_id, r.next_id, r.level_req, 1 AS n
+    FROM aa_ability a JOIN aa_ranks r ON r.id = a.first_rank_id WHERE a.enabled = 1
+    UNION ALL SELECT c.aa_id, r.id, r.next_id, r.level_req, c.n + 1
+    FROM chain c JOIN aa_ranks r ON r.id = c.next_id WHERE c.next_id > 0 AND c.n < 30)
+  SELECT aa_id, rank_id, level_req FROM chain WHERE level_req > 30;   -- 30 = the CHARACTER cap
+  ```
+- 📌 **The threshold is the character cap, not anything in this table.** If the cap rises this does
+  not need re-running; if it ever falls, it does.
+- 📌 Same family as §59 and §62: a reward the design promises, a gate nobody checked it against, and
+  a failure that surfaces one item at a time so each report looks new.
+
+## 64. Titanwrought mold crafting — v152-v157 — 2026-08-30
+
+Gear is **crafted, not looted**. A **mold** (slot + armour type + tier) plus a **base**, a **binding**
+and a bought **temper** makes one Titanwrought piece. Full design and every decision:
+**`TITANWROUGHT_CRAFTING_DESIGN.md`**; the state of play is **`TURNOVER_2026-08-30.md`**.
+
+| | |
+|---|---|
+| 86 gear items (completes the slot map) | 148000-148085 |
+| **210 molds** — Crude / Simple / Rough | 148200-148269 / ...339 / ...409 |
+| 48 materials (36 bases, 9 bindings, 3 tempers) | 148500-148547 |
+| 255 recipes (45 sub + 210 combines) | 480000-480254 |
+
+Generated by **`custom/tools/gen_titanwrought_crafting.py`** — re-runnable, rewrites all four SQL
+files. **Never hand-edit that SQL.**
+
+- **Combines never fail** (`nofail = 1`); tradeskill **skill picks the TIER** (native/Hallowed/Mythic)
+  through the existing `AoTv4RollCraftTier` at the `GetTradeRecipe` choke point. Skill decides how
+  *good* the item is, never whether you get one.
+- **The mold is consumed**, and **molds do NOT survive death** — `death_loss.M.is_kept` deliberately
+  excludes them; only things that cannot be re-earned are exempt.
+- Mold sources: Crude/Simple from delve rungs 1-20 **and** open-world **named** mobs; **Rough only
+  from raid bosses**, granted in `aotv4_raid.M.grant_molds` with no loot row at all.
+- ⚠️⚠️ **THE GEAR NO LONGER DROPS** — `global_loot` 1-4 are disabled. Until somebody crafts, no
+  Titanwrought enters the world. One `UPDATE` reverses it.
+- ⚠️ **Nothing has been crafted in game.** All of it is verified against the data only.
+
+### ⚠️⚠️ `rare = 1` IS `npc_types.rare_spawn`, NOT THIS PROJECT'S "named" HEURISTIC
+§17c, `quest_difficulty.pl` and the delve ledger all define named as *lowercase is trash, proper noun
+is named* — correct **inside a dungeon**. In the open world it matches **17,747** NPC types against
+`rare_spawn`'s **568**, and the excess is almost entirely **civic**: guards, merchants and bankers all
+have proper names. A mold table keyed on the heuristic makes Freeport guards a farming route.
+📌 The two definitions disagree by 31x and **each is right in its own place**. Anything classifying
+NPCs in the open world wants `rare_spawn`; anything inside a delve wants the name.
+⚠️ A count means nothing until you check `itemtype` **and** use an exact slot mask: `slots & 64`
+swept up multi-slot items (`1048936`) that are **`itemtype 54` augments**, and reported Alchemy as the
+top producer of "shoulder armour" at 1,755 items.
+
+### ⚠️⚠️ FOUR BUILD TRAPS, ALL SILENT — worth knowing before generating anything else
+1. ⚠️⚠️ **A GENERATOR THAT DISCOVERS ITS INPUTS BY PATTERN MUST EXCLUDE ITS OWN OUTPUT BAND.** This
+   one clones from "existing Titanwrought items" found by name and *creates* items named the same
+   way, so the second run found its own charms and produced **84 instead of 86**. No error — just a
+   smaller number. **Verify a generator by running it twice and diffing.**
+2. ⚠️⚠️ **`items` HAS NO PRIMARY KEY — it has a UNIQUE INDEX NAMED `ID`.** `SHOW COLUMNS` reports it
+   as `PRI` because MySQL labels the first unique NOT NULL index that way, so every sign says PRIMARY.
+   `ALTER TABLE ... DROP PRIMARY KEY` fails with *Can't DROP INDEX `PRIMARY`*.
+3. ⚠️⚠️ **THE MIGRATION VALIDATOR REFUSES `ALTER TABLE`, EVEN ON A TEMP TABLE, AND IT IS RIGHT TO** —
+   DDL commits immediately so it can neither dry-run nor prove idempotency, and it **declines to
+   merge**. A set-based clone needing a helper column was rejected and **three of six migrations
+   silently did not merge**, leaving recipes in the manifest referencing items nothing created.
+   ✅ Clone through a **single-row temp table** instead: reseed per item, override, `INSERT INTO items
+   SELECT *`. No helper column, no index to drop, and §5's "never hand-list 285 columns" still holds.
+4. ⚠️⚠️⚠️ **MIGRATION MERGE ORDER IS RUN ORDER, AND ONE OF THESE READS `items`.** The mold loot rows
+   are `INSERT INTO lootdrop_entries SELECT ... FROM items WHERE id BETWEEN 148200 AND 148269`. Merged
+   before the molds exist it matches nothing and inserts **zero rows** — a loot table that is present,
+   enabled and empty, with no error anywhere. **A migration that populates one table by SELECTing
+   another is ordered, and nothing enforces it.**
+
+## 65. ⚠️⚠️ RAID BOSSES WERE WEAKER THAN A DELVE WARDEN — `ScaleNPC` DISCARDS THE STOCK ROW
+
+`aotv4_raid.ensure_boss` called `ScaleNPC(30)` and stopped. §24 already records that `ScaleNPC`
+rewrites the stat block **wholesale** from `npc_scale_global_base` — the raid module simply did not
+account for it, so every hand-authored stock stat was thrown away:
+
+| boss | scale type | hp | max hit | AC |
+|---|---|---|---|---|
+| Phinigel · Velketor | 2 (`IsRaidTarget`) | **1,800** | 102 | 191 |
+| Mayong | 1 (**name starts uppercase**, not raid_target) | **1,440** | 82 | 152 |
+
+A delve warden at rung 30 is ~6,750 hp, so **the raid boss was a quarter of its own warm-up**, and at
+a duo's ~300 dps Phinigel died in **six seconds**.
+
+- ✅ Stats are now set explicitly in `M.apply_boss_stats`, **after** `ScaleNPC`: 120k/160k/200k hp,
+  2.5s swing, 350/400/450 max hit. Derived from the player baseline — 3k tank at ~50 pct mitigation,
+  duo ~300 dps — so every 10,000 hp is ~30 seconds of duo fight.
+- ⚠️⚠️ **`max_hp` CLAMPS DOWN ONLY — the explicit `SetHP` is mandatory.** Without it the boss keeps
+  the scaled ~1,800 while `#showstats` reports the new maximum, so it looks like the multiplier is not
+  applying. Set `max_hp` **once and last**; every call re-runs `CalcMaxHP`.
+- ⚠️⚠️ **`GetNPCScalingType` returns 2 for `IsRaidTarget()` and 1 for a capitalised NAME**
+  (`npc_scale_manager.cpp:554`), so an unflagged boss silently gets a weaker row. AC is now pinned
+  rather than inherited, or Mayong would have carried 152 against the others' 191.
+- ⚠️ **Two of three bosses had no mechanics at all.** Phinigel's own spell list `1346` has **zero
+  entries**; Mayong is class 1 with 0 mana, no spells and **no special abilities**, so he was
+  mezzable, **charmable**, snareable and could not summon. All three now get Summon + Mez/Charm/Fear/
+  Flee immunity — **slow is deliberately still landable**, since it is the core group contribution of
+  shamans, enchanters and beastlords.
+- ⚠️ Applied with **`SetSpecialAbility`**, never `ModifyNPCStat("special_abilities", …)` — §43.
+
+### ⚠️⚠️ `login_accounts.last_login_date` IS NOT PLAYER ACTIVITY — do not date a database by it
+Diagnosing a login failure, that column read **2026-06-30** and was taken as "nobody has played since
+June", which pointed straight at the §25 stale-database trap and was **wrong**.
+`character_data.last_login` showed **2026-08-23**. `login_accounts` is the *loginserver's* own table
+and does not track game logins.
+📌 **To date a database, ask `character_data`.** Getting this wrong turns a port-forwarding problem
+into a false alarm about the most expensive failure in the project — and invites a needless import.

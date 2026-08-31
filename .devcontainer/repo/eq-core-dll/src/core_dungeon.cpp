@@ -30,6 +30,26 @@ static int  g_dgLevel  [DG_MAX] = {};
 static char g_dgName   [DG_MAX][64] = { {0} };
 static int  g_dgCleared[DG_MAX] = {};
 
+// ---- raids. Their OWN tab and their OWN wire line (RAIDDATA) as of 2026-08-30. They used to ride
+// DUNGDATA as extra layer rows at levels above RAID_BASE, which needed no client change but buried
+// them under up to 70 delve rungs in a column headed "Level", where 101 is not a level.
+// ⚠️ RD_MAX is generous against the three encounters that exist because the ladder is authored
+// SERVER side: a fourth is a Lua edit and this file must not be what caps it. It is not the binding
+// limit either way -- Client::Message formats into a char[4096] and the server byte budgets the line.
+static const int RD_MAX = 32;
+static int  g_rdCount = 0;
+static int  g_rdLevel [RD_MAX] = {};        // RAID_BASE + index; what Enter puts on the wire
+static int  g_rdTier  [RD_MAX] = {};
+static char g_rdName  [RD_MAX][64]  = { {0} };
+static char g_rdHub   [RD_MAX][32]  = { {0} };
+static char g_rdStatus[RD_MAX][32]  = { {0} };
+// ⚠️⚠️ 512, NOT 256. The blurbs describe each encounter's MECHANICS as of 2026-08-31 and all three
+// run past 300 characters; at 256 `strncpy_s(..., _TRUNCATE)` cut them mid-sentence with nothing to
+// say it had -- the pane simply ended somewhere arbitrary and read as sloppy writing rather than as a
+// buffer. The server byte-budgets RAIDDATA at 3,600 against Client::Message's char[4096], so three
+// blurbs of this size are comfortably inside the real limit; this array was the binding one.
+static char g_rdBlurb [RD_MAX][512] = { {0} };
+
 // ---- score sheet. HIST_MAX mirrors M.HISTORY_MAX in aotv4_dungeon.lua; the server caps the list, so
 // this only has to be no smaller than it is.
 static const int HIST_MAX = 24;
@@ -78,6 +98,7 @@ static int g_modeSel = 0;
 static void DungeonEnsureWindow(bool show);
 static bool DungeonHistTransport(const char* message);   // defined below; routed from ParseTransport
 static bool DungeonModesTransport(const char* message);  // ditto -- the difficulty list
+static bool DungeonRaidTransport(const char* message);   // ditto -- the raid encounters
 
 // Debug trace to <EQ>\aotv4_dungeon.log. Same reason as the other native windows: when a SIDL window
 // fails to appear there is NOTHING in any client log to say why -- a missing EQUI.xml <Include>, an
@@ -139,7 +160,18 @@ public:
 	CComboWnd*  ModeCombo = nullptr;   // difficulty; choices pushed in from DUNGMODES
 	CStmlWnd*   ModeDesc  = nullptr;   // what the selected difficulty actually does
 
+	// ⚠️ A THIRD refresh button, on the Raids page, for the reason HistRefreshB exists plus one more:
+	// the Status column counts a lockout DOWN, so this tab goes stale while you are looking at it.
+	CListWnd*   RaidList     = nullptr;
+	CStmlWnd*   RaidDesc     = nullptr;
+	CButtonWnd* RaidEnterB   = nullptr;
+	CButtonWnd* RaidExitB    = nullptr;
+	CButtonWnd* RaidRefreshB = nullptr;
+
 	int m_sel = -1;   // see SelRow: a FALLBACK only, never the primary source
+	// ⚠️ A SEPARATE fallback for the raid list. Sharing m_sel would let a click on the Layers tab
+	// decide which RAID the Enter Raid button sends, which is a wrong entry rather than a refusal.
+	int m_raidSel = -1;
 
 	DungeonWnd() : CCustomWnd((char*)"AoTDungeonWnd")
 	{
@@ -152,9 +184,15 @@ public:
 		HistRefreshB = (CButtonWnd*)GetChildItem("DLV_HistRefresh");
 		ModeCombo = (CComboWnd*)GetChildItem("DLV_ModeCombo");
 		ModeDesc  = (CStmlWnd*) GetChildItem("DLV_ModeDesc");
+		RaidList     = (CListWnd*)  GetChildItem("DLV_RaidList");
+		RaidDesc     = (CStmlWnd*) GetChildItem("DLV_RaidDesc");
+		RaidEnterB   = (CButtonWnd*)GetChildItem("DLV_RaidEnter");
+		RaidExitB    = (CButtonWnd*)GetChildItem("DLV_RaidExit");
+		RaidRefreshB = (CButtonWnd*)GetChildItem("DLV_RaidRefresh");
 		Refresh();
 		RefreshHistory();
 		RefreshModes();
+		RefreshRaids();
 	}
 
 	// ---------------------------------------------------------------- the difficulty dropdown
@@ -279,6 +317,71 @@ public:
 		AoTQueueGameCommand(cmd);
 	}
 
+	// ---------------------------------------------------------------- the raids tab
+	// ⚠️ A raid row's index in THIS list is its own, unrelated to the layer list -- the two lists hold
+	// different things and are refreshed by different server lines. g_rdLevel carries the wire value,
+	// so nothing here has to know what RAID_BASE is.
+	int RaidSelRow()
+	{
+		int row = RaidList ? RaidList->GetCurSel() : -1;
+		if (row < 0)         { row = m_raidSel; }
+		if (row < 0 && g_rdCount == 1) { row = 0; }   // one raid listed: no need to click it
+		if (row < 0 || row >= g_rdCount) { return -1; }
+		return row;
+	}
+
+	void RefreshRaids()
+	{
+		if (!RaidList) { return; }
+		RaidList->DeleteAll();
+		for (int i = 0; i < g_rdCount; ++i) {
+			// ⚠️ 0xFF.. -- the leading byte is ALPHA. 0x00RRGGBB is fully TRANSPARENT and the row
+			// draws as nothing at all (CLAUDE.md section 21).
+			// A raid you cannot enter yet is dimmed rather than hidden: the server sends locked and
+			// region gated encounters ON PURPOSE, because this window is the only place a player
+			// learns the content exists. Dimming says "not now" without saying "not ever".
+			const bool ready = (strcmp(g_rdStatus[i], "Ready") == 0);
+			const COLORREF col = ready ? 0xFFFFE0A0 : 0xFF909090;
+			char tier[16];
+			sprintf_s(tier, "%d", g_rdTier[i]);
+			const int row = RaidList->AddString(tier, col, (uint32_t)i, nullptr, tier);
+			Cell(RaidList, row, 1, g_rdName[i],   col);
+			Cell(RaidList, row, 2, g_rdHub[i],    col);
+			Cell(RaidList, row, 3, g_rdStatus[i], col);
+		}
+		RefreshRaidDesc();
+	}
+
+	void RefreshRaidDesc()
+	{
+		if (!RaidDesc) { return; }
+		const int i = RaidSelRow();
+		if (i < 0) { RaidDesc->SetSTMLText(CXStr(""), false, nullptr); return; }
+		std::string t = g_rdBlurb[i];
+		// ⚠️ The refusal reason is shown HERE rather than being enforced by hiding the button. The
+		// server re-checks every gate in M.enter regardless, so a live button that gets refused is
+		// honest; a hidden one just looks broken. Same reasoning as the AdvLoot window, in reverse:
+		// there the server refusal had a reason, so the button was hidden -- here it is worth saying.
+		if (strcmp(g_rdStatus[i], "Ready") != 0) {
+			t += "<br><br>";
+			t += g_rdStatus[i];
+			t += ".";
+		}
+		RaidDesc->SetSTMLText(CXStr(t.c_str()), false, nullptr);
+	}
+
+	void EnterRaid()
+	{
+		const int i = RaidSelRow();
+		if (i < 0) { return; }
+		// ⚠️ THE SAME COMMAND THE LAYERS TAB SENDS, with no mode. The server routes anything above
+		// RAID_BASE to the raid module and ignores the mode on a raid row, so this tab needs no new
+		// entry path and no second copy of the gate checks.
+		char cmd[64];
+		sprintf_s(cmd, "/say delveenter %d", g_rdLevel[i]);
+		AoTQueueGameCommand(cmd);
+	}
+
 	// ---------------------------------------------------------------- the score sheet
 	// One header row per finished run; an OPEN run also lists its level-band breakdown underneath.
 	void RefreshHistory()
@@ -366,6 +469,29 @@ public:
 			// state and there is no second command to keep in step.
 			if (pWnd == (CXWnd*)RefreshB ||
 			    pWnd == (CXWnd*)HistRefreshB) { AoTQueueGameCommand("/say delve"); return 1; }
+			if (pWnd == (CXWnd*)RaidEnterB) { EnterRaid(); return 1; }
+			// ⚠️ SAME command as the Dungeons tab's Exit. The server routes delveexit to the raid when
+			// the player is in one, so there is a single leave path rather than two to keep in step.
+			// ⚠️ Always sent, never gated on this window's idea of whether you are in a raid -- the
+			// server knows, and gating here is two places tracking one fact, which is the bug this
+			// button exists to fix.
+			if (pWnd == (CXWnd*)RaidExitB)  { AoTQueueGameCommand("/say delveexit"); return 1; }
+			// ⚠️ A DIFFERENT command from the other two refreshes. `/say delve` re-sends the layer
+			// list, the modes, the raids and the score sheet -- correct but four lines through a chat
+			// pipe that drops bursts (section 15), for a tab whose only volatile field is a countdown.
+			// `delveraids` re-sends just this list.
+			if (pWnd == (CXWnd*)RaidRefreshB) { AoTQueueGameCommand("/say delveraids"); return 1; }
+			if (pWnd == (CXWnd*)RaidList && RaidList) {
+				// ⚠️ Read the selection AFTER the base class has processed the click: inside the
+				// notification GetCurSel is still one click behind and would describe the previous
+				// raid. Same trap as the score sheet immediately below.
+				const int handled = CSidlScreenWnd::WndNotification(pWnd, Message, unk);
+				m_raidSel = RaidList->GetCurSel();   // cache only; see RaidSelRow
+				// ⚠️ Safe from inside a list click: this touches only the STML pane, never the
+				// listbox. Rebuilding a list inside its own notification is the Death Book crash.
+				RefreshRaidDesc();
+				return handled;
+			}
 			if (pWnd == (CXWnd*)List && List) {
 				m_sel = List->GetCurSel();   // cache only; see SelRow
 				// Selecting a different layer can change whether the chosen mode is legal here, so
@@ -421,6 +547,11 @@ static void DungeonEnsureWindow(bool show)
 	}
 	if (gDungeonWnd && show) {
 		gDungeonWnd->Refresh();
+		// ⚠️ Rebuild the raid tab from whatever is already cached too. DungeonShow also queues
+		// `/say delve`, so fresh RAIDDATA is on its way -- but the window is on screen before the
+		// round trip lands, and without this it shows the previous character's raids for a moment
+		// after a relog. Cheap, and it cannot show anything the server did not send.
+		gDungeonWnd->RefreshRaids();
 		if (gDungeonWnd->pXWnd()) { gDungeonWnd->pXWnd()->Show(1, 1); }
 	}
 }
@@ -462,6 +593,48 @@ static bool DungeonModesTransport(const char* message)
 	return true;
 }
 
+// "RAIDDATA <n>^level|tier|name|hub|status|blurb^..."
+// The Raids tab. Its own line rather than extra DUNGDATA rows, which is what let the old build ship
+// raids with no client change at the cost of burying them in the layer list.
+// ⚠️ A blurb may contain neither '|' nor '^'; they are the field separators. That is a rule for
+// whoever edits M.ENCOUNTERS rather than something escaped here, and it is recorded in the Lua too.
+// ⚠️ AN EMPTY LIST IS MEANINGFUL AND MUST STILL REBUILD: the server sends "RAIDDATA 0^" when it has
+// nothing to offer, and without honouring it a stale set of rows would outlive whatever removed them.
+static bool DungeonRaidTransport(const char* message)
+{
+	const char* t = strstr(message, "RAIDDATA ");
+	if (!t) return false;
+	t += strlen("RAIDDATA ");
+
+	g_rdCount = 0;
+	const char* rows = strchr(t, '^');
+	if (rows) {
+		std::string cur;
+		for (const char* p = rows + 1; ; ++p) {
+			if (*p == '^' || *p == 0 || *p == '\n' || *p == '\r') {
+				if (!cur.empty() && g_rdCount < RD_MAX) {
+					std::string f[6]; DgSplit(cur, f, 6);
+					g_rdLevel[g_rdCount] = atoi(f[0].c_str());
+					g_rdTier [g_rdCount] = atoi(f[1].c_str());
+					strncpy_s(g_rdName  [g_rdCount], sizeof(g_rdName[0]),   f[2].c_str(), _TRUNCATE);
+					strncpy_s(g_rdHub   [g_rdCount], sizeof(g_rdHub[0]),    f[3].c_str(), _TRUNCATE);
+					strncpy_s(g_rdStatus[g_rdCount], sizeof(g_rdStatus[0]), f[4].c_str(), _TRUNCATE);
+					strncpy_s(g_rdBlurb [g_rdCount], sizeof(g_rdBlurb[0]),  f[5].c_str(), _TRUNCATE);
+					g_rdCount++;
+				}
+				cur.clear();
+				if (*p == 0 || *p == '\n' || *p == '\r') break;
+			}
+			else { cur += *p; }
+		}
+	}
+
+	DgTrace("RAIDDATA: %d raids", g_rdCount);
+	// ⚠️ Rebuild, never force the window open -- same reason as DUNGDATA.
+	if (gDungeonWnd) { gDungeonWnd->RefreshRaids(); }
+	return true;
+}
+
 // "DUNGDATA <unlocked>^level|name|cleared^level|name|cleared^..."
 bool DungeonParseTransport(const char* message)
 {
@@ -470,6 +643,7 @@ bool DungeonParseTransport(const char* message)
 	// Every server line comes through this one entry point so the dsp_chat chain only needs one call.
 	if (DungeonHistTransport(message)) { return true; }
 	if (DungeonModesTransport(message)) { return true; }
+	if (DungeonRaidTransport(message)) { return true; }
 
 	const char* t = strstr(message, "DUNGDATA ");
 	if (!t) return false;

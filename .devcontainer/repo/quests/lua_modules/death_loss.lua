@@ -58,6 +58,17 @@ local TS_ITEM_FIRST, TS_ITEM_LAST = 147930, 147965   -- 12 head + 12 face + 12 h
 -- band, so the next kept item gets its own line rather than silently widening this one.
 local FSHIP_INSIGNIA = 147975
 
+
+-- ⚠️⚠️ TITANWROUGHT MOLDS ARE **NOT** EXEMPT -- DECIDED 2026-08-30, AND AN EARLIER PASS HAD IT WRONG.
+-- They are destroyed by the wipe like any other carried item. The design doc originally argued they
+-- had to survive as "the banked progression the next run is rebuilt from"; the call is that nothing
+-- carries across a death except the things that CANNOT be re-earned (the tradeskill tools above,
+-- whose achievements are claim_once, and the fellowship insignia). A mold can always be found again.
+-- ⚠️⚠️ THE SHARP CASE IS THE ROUGH MOLD: it drops only from a raid boss on a 24-HOUR lockout, so
+-- dying with one destroys something that cannot be replaced for a day. That makes the intended loop
+-- "raid, then craft BEFORE you die" rather than "bank molds and craft later" -- deliberate, and the
+-- thing to watch first in play. If it proves too punishing, this is the one line to put back.
+
 function M.is_kept(inv, slot)
 	if not inv then return false end
 

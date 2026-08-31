@@ -10,6 +10,7 @@ local hotzones = require("hotzones")       -- daily Hot Zones: one per region, 1
 local bazaar_broker = require("bazaar_broker")  -- player-shop vendor window (vpset/vshop/vclose)
 local aotv4_reactions = require("aotv4_reactions")  -- custom "when you are hit" abilities (Divine Aura, Blade Turn, Counterattack, Vengeful Aura, Duel)
 local aotv4_dungeon = require("aotv4_dungeon")  -- scaling dungeon ("Delve"): instanced DoN zones, layers unlock in order
+local aotv4_raid = require("aotv4_raid")        -- raid encounters: the boss alone, in its own zone, in an instance
 local aotv4_thirst = require("aotv4_thirst")         -- Thirst line: flat heal per melee hit
 local aotv4_worldboss = require("aotv4_worldboss") -- roaming world boss encounter
 local aotv4_worldbuff = require("aotv4_worldbuff")  -- server-wide GM buffs (#worldbuff)
@@ -51,6 +52,9 @@ function event_enter_zone(e)
 	aotv4_worldboss.on_enter_zone(e)                -- spawn the armed world boss if it is waiting for this zone
 	aotv4_worldbuff.on_player(e)                    -- pick up an armed world buff on arrival
 	aotv4_dungeon.on_enter_zone(e)                  -- crossing a zone line out of a delve fails the run
+	-- ⚠️ A raid does NOT fail on leaving: one member walking a zone line must not end it for the
+	-- rest. This drops that member only and leaves the instance standing for everybody else.
+	aotv4_raid.on_enter_zone(e.self)
 	-- Keep the player in the shard matching their chosen difficulty. ⚠️ AFTER the delve hook: that
 	-- one may fail a run and move them, and this must see where they ACTUALLY ended up. It no-ops
 	-- for anyone on Normal standing in the open world, which is the overwhelmingly common case.
@@ -77,6 +81,7 @@ function event_enter_zone(e)
 	e.self:SetTimer("worldbuff", aotv4_worldbuff.SWEEP_SECS)  -- repeating: catch players who never zone or relog
 	e.self:SetTimer("delvescale", aotv4_dungeon.RESCALE_SECS)  -- repeating: re-measure a delve runner and rescale un-pulled mobs
 	e.self:SetTimer("fshipfire", aotv4_fellowship.SWEEP_SECS)  -- repeating: campfire buff + keeps an ATTENDED fire alive
+	e.self:SetTimer("raidsweep", aotv4_raid.SWEEP_SECS)        -- repeating: close a raid instance once its work is done
 
 	-- Gloomingdeep Guard (5150) is a Tutorial-only protective buff; strip it the moment you leave the
 	-- Tutorial so our permanent-buff rule doesn't carry it out into the world. (It stays while in tutorialb.)
@@ -518,7 +523,23 @@ end
 -- level 5, so `MaxSkill` is 0 there and the `cap <= 0` branch clears them -- which is exactly the
 -- wanted behaviour on the roguelite death, since death returns you to level 1 and a specialization
 -- should not survive it. That is why the guard below skips only the RAISE, not the whole skill.
-local function is_specialization(id) return id >= 66 and id <= 70 end
+-- ⚠️⚠️ THE SPECIALIZATIONS ARE 43-47, NOT 66-70. This guard shipped as `id >= 66 and id <= 70`,
+-- which is five completely unrelated skills -- 66 Alcohol Tolerance, 67 Begging, 68 Jewelry Making,
+-- 69 Pottery and 70 PERCUSSION INSTRUMENTS -- and misses every real one. FREE_SKILLS above has the
+-- correct ids on its own line (43,44,45,46,47, "casting specializations"), so the right answer was
+-- in this same file the whole time. It broke in both directions at once:
+--   * Percussion Instruments was treated as a specialization, so it was never raised to its cap and
+--     was cleared at levels 1-4 (skill_caps has no instrument rows below level 5). Reported from
+--     play as stuck at 1 while Singing -- id 41, safely below 66 -- looked correct. Alcohol
+--     Tolerance and Begging were caught the same way; Jewelry Making and Pottery are tradeskills
+--     and were already excluded above, so those two escaped.
+--   * The REAL specializations were left in the general branch and maxed to their caps, which is
+--     precisely the trap the note above describes and claims to have fixed. It was never fixed --
+--     it was written against the wrong ids -- so "specializations reset randomly" is still live.
+-- 📌 Whenever a skill id appears as a literal RANGE, check it against common/skills.h. The enum is
+-- not grouped by kind: 43-47 are the specializations and 41/49/54/70 are instruments, interleaved
+-- with tradeskills and utility skills.
+local function is_specialization(id) return id >= 43 and id <= 47 end
 
 local function max_skills_for_level(c)
 	local is_tradeskill = {}
@@ -692,6 +713,26 @@ function event_timer(e)
 		-- Titan Hall newcomer drop. ⚠️ Deferred out of event_enter_zone on purpose: moving a client to
 		-- the zone it is still entering breaks the handshake and it never gets in.
 		aotv4_tutorial.on_drop_timer(e.self)
+	elseif e.timer == "raidenter" then
+		-- one-shot: the deferred half of entering a raid. The expedition was created a couple of
+		-- seconds ago and world has had time to take its member list, so it is now safe to move the
+		-- player in without world reaping the DZ out from under them mid transit.
+		-- ⚠️ StopTimer is done inside on_enter_timer, beside the work, so the two cannot drift.
+		aotv4_raid.on_enter_timer(e.self)
+	elseif e.timer == "raidsweep" then
+		-- Closes a raid instance once the boss has been dead long enough, or once the zone has been
+		-- empty long enough with the boss still alive. ⚠️ No-op outside a raid instance, and cheap:
+		-- it early-outs on the instance id before reading anything.
+		-- 📌 A CLIENT timer, so it only ever runs where a player is standing. An instance that empties
+		-- needs no sweep of its own -- Zone:AutoShutdownDelay (60s) ends the empty zone process and
+		-- frees its port without help; all the sweep does is tidy the instance row and its markers.
+		aotv4_raid.sweep(e.self)
+	elseif e.timer == "raidboss" then
+		-- Encounter mechanics: notices the boss crossing a health threshold and fires that phase.
+		-- ⚠️ A POLL rather than an HP event, because there is no SetNextHPEvent binding on this build.
+		-- ⚠️ Armed only on arriving in a raid and stopped in M.leave, so unlike raidsweep it is never
+		-- running for players who are not in one.
+		aotv4_raid.boss_tick(e.self)
 	elseif e.timer == "fshipfire" then
 		-- Per CLIENT, so it only ever reads this player's own fellowship and fire -- which is what
 		-- makes the campfire buff fellowship-only by construction rather than by a filter.
@@ -1316,6 +1357,7 @@ end
 -- run bucket keeps claiming they are in a dungeon they have left. See aotv4_dungeon.M.on_disconnect.
 function event_disconnect(e)
   aotv4_dungeon.on_disconnect(e.self)
+  aotv4_raid.on_disconnect(e.self)
 end
 
 -- ⚠️⚠️ INK OF THE LOST IS A CURRENCY THAT ARRIVES AS AN ITEM. It drops from global loot, so it is

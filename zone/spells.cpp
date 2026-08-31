@@ -3056,6 +3056,13 @@ int Mob::CalcBuffDuration(Mob *caster, Mob *target, uint16 spell_id, int32 caste
 	if(!caster && !target)
 		return 0;
 
+	// ⚠️⚠️ CAPTURE WHO REALLY CAST IT **BEFORE** THE SUBSTITUTION BELOW. When `caster` is null the
+	// stock code pretends the TARGET cast it -- so every later `caster->IsNPC()` test is really asking
+	// about the player, and the AoTv4 NPC-cast crowd-control cap further down silently switches itself
+	// off. A buff applied with no caster pointer therefore keeps its full, unclamped duration, and it
+	// is invisible: nothing errors and the cap simply does not fire.
+	const bool aotv4_cast_by_npc = (caster != nullptr && caster->IsNPC());
+
 	// if we have at least one, we can make do, we'll just pretend they're the same
 	if(!caster)
 		caster = target;
@@ -3109,8 +3116,18 @@ int Mob::CalcBuffDuration(Mob *caster, Mob *target, uint16 spell_id, int32 caste
 	// only to a DETRIMENTAL spell cast by an NPC on a player, and only to the control effects that lock
 	// or steer movement -- root, mez, charm, fear, blind, silence, snare (detrimental movement slow).
 	// Stun is separate (applied in ms, capped to 4s in Mob::SpellEffect). DoTs/debuffs are untouched.
-	if (res > 1 && caster->IsNPC() && target->IsClient() &&
+	// ⚠️ Keyed on aotv4_cast_by_npc, NOT `caster->IsNPC()`: by this point a null caster has been
+	// rewritten to the target, which would ask the question of the player and skip the cap.
+	if (res > 1 && aotv4_cast_by_npc && target->IsClient() &&
 		IsDetrimentalSpell(spell_id) && IsCrowdControlSpell(spell_id)) {
+		// 📌 Logged so the culprit is identifiable in game. A snare that outlives this cap is NOT
+		// coming through here, and the log line is how you tell those two cases apart -- enable with
+		// #logs (Spells). Reported 2026-08-26 as a delve snare lasting a whole run: delve mobs do cast
+		// 2823 Gravel Rain (300 tics, duration formula 3 = 30 x CASTER LEVEL) and 512 Ensnare (140,
+		// formula 9), and the delve SCALES caster level, so an uncapped one really would run for the
+		// length of a run and get worse with the rung. This cap should already stop that.
+		LogSpells("AoTv4 CC cap: NPC [{}] spell [{}] on player clamped [{}] -> 1 tic",
+			caster->GetCleanName(), spell_id, res);
 		res = 1;
 	}
 

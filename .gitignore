@@ -96,6 +96,12 @@ skill-caps.diff
 # reads), the Delver's Sigil ladder, and the tradeskill reward gear. A fresh clone does NOT have that
 # exclusion. Re-apply it before running the item pass against any database.
 /aotv4_scaling/
+# ⚠️⚠️ AND EVERY OTHER SPELLING OF IT. `/aotv4_scaling/` did NOT cover `aotv4_scaling-main/`, which is
+# what a GitHub "Download ZIP" unpacks to -- so a downloaded copy was tracked, committed, and GitHub
+# push protection rejected the push because discord/discord_deletotron.py carries a LIVE Discord bot
+# token (2026-08-31). The glob covers -main, -master, -<branch> and any other checkout name.
+# ⚠️ If you need the tool where Claude can read it, put it under backups/ -- already ignored above.
+/aotv4_scaling*/
 
 # ⚠️⚠️ WHOLE-TABLE npc_types DUMPS. Untracked deliberately -- `aot_npcs_1.0.3.sql` arrived as a 32MB,
 # 67,702-line commit and is exactly the CLAUDE.md §35 hazard: applying one REVERTS every per-row

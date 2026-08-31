@@ -185,9 +185,28 @@ void Mob::AoTv4PetWardEnded()
 // count. On the NPC side it would run for every creature in the zone.
 //
 // ⚠️ Re-applied FROM THE PET, matching MakePoweredPet, so inspecting the buff still credits the pet
-// rather than the summoner. Kindred Bond's copies on the owner and group are NOT refreshed here --
-// those are bound to the pet's life and are torn down by AoTv4PetWardEnded; reapplying them on a
-// timer would resurrect a share the owner is no longer entitled to.
+// rather than the summoner.
+//
+// ⚠️⚠️ KINDRED BOND'S COPIES ARE REFRESHED HERE TOO, AND THE COMMENT THAT USED TO SAY THEY MUST NOT
+// BE WAS WRONG (fixed 2026-08-30). Its reasoning was that reapplying on a timer "would resurrect a
+// share the owner is no longer entitled to" -- but the one case where they are not entitled is a
+// dead or absent pet, and this function has ALREADY returned above for exactly that. While a live
+// pet is standing there the owner is entitled to the share by definition, so refreshing it can only
+// restore what should be present.
+//   The bug that came out of it was reported from play: "the buff will fade and doesn't get
+// re-applied to you, just the pet. You have to kill your pet and then recast." Exactly right. The
+// pet's copy came back within six seconds and the owner's never did, because AoTv4ApplyPetWard --
+// the only thing that granted it -- runs solely at summon. So re-summoning was the only cure, and it
+// costs the player every buff and every weapon they had put on the pet.
+//   ⚠️ The likeliest way to lose it is NOT slot pressure, it is STACKING. The owner's copy competes
+// with their real buffs, and PET_WARDS.md says so in its own limitations: Gale Fervor loses to any
+// stronger haste and Stoneflesh is overwritten by Stonestride from the tank tree. The pet, with a
+// nearly empty buff bar, keeps its copy indefinitely -- which is precisely why the two behaved
+// differently and why this reads as an owner-only bug.
+//
+// ⚠️⚠️ THE EARLY RETURN ON THE PET'S OWN BUFF HAD TO GO. It read "still there, nothing to do" and
+// returned, which is true of the PET and says nothing about the owner -- in the normal case (pet
+// warded) it skipped every check below. An owner branch added above it would still never have run.
 // =================================================================================================
 void Mob::AoTv4RefreshPetWard()
 {
@@ -204,9 +223,35 @@ void Mob::AoTv4RefreshPetWard()
 		return;
 	}
 
-	if (pet->FindBuff(ward)) {
-		return;   // still there; nothing to do
+	if (!pet->FindBuff(ward)) {
+		pet->SpellOnTarget(ward, pet);
 	}
 
-	pet->SpellOnTarget(ward, pet);
+	// ------------------------------------------------------------------ Kindred Bond
+	// Rank 0 is the common case and costs one GetAA lookup; everything below is skipped.
+	const int rank = static_cast<int>(GetAA(AA_KINDRED));
+	if (rank < 1) {
+		return;
+	}
+
+	if (!FindBuff(ward)) {
+		pet->SpellOnTarget(ward, this);
+	}
+
+	// Rank 2 spreads it to the group, cast from the pet for the same crediting reason.
+	// 📌 This also closes the limitation PET_WARDS.md records -- that someone who joins the group
+	// after the summon gets nothing until the next one. They now pick it up on the next tick.
+	// ⚠️ Someone who LEAVES keeps whatever they were given until it expires or the pet dies; that is
+	// unchanged, and it is not made worse here, because an ex-member is no longer walked.
+	if (rank >= 2) {
+		Group *group = entity_list.GetGroupByMob(this);
+		if (group) {
+			for (int i = 0; i < MAX_GROUP_MEMBERS; ++i) {
+				Mob *m = group->members[i];
+				if (m && m != this && !m->FindBuff(ward)) {
+					pet->SpellOnTarget(ward, m);
+				}
+			}
+		}
+	}
 }

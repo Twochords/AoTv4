@@ -8,6 +8,8 @@
 -- 247, 210 and 255 are the ONLY join. Chains walked; title_sid and desc_sid confirmed equal to
 -- first_rank_id on all three (the trap that made Overload show Quick Damage's description).
 --
+-- ⚠️⚠️ BRACING IS RETIRED -- see the note on its UPDATE below. The other two are live.
+--
 -- ⚠️ NONE OF THESE IS A STUN OR A PROC, deliberately. Stuns are already reachable through the spell
 -- and combat-ability rewards, and weapon procs already carry a great deal of this server's power
 -- budget. These three add reach into situations nothing else covers.
@@ -19,7 +21,12 @@
 -- =============================================================================================
 
 UPDATE aa_ability SET name='Backs to the Wall', classes=65535, enabled=1, type=4 WHERE id=104;
-UPDATE aa_ability SET name='Bracing',           classes=65535, enabled=1, type=4 WHERE id=89;
+-- ⚠️⚠️ BRACING IS RETIRED (migration v146, 2026-08-30) AND THIS LINE MUST STAY enabled=0.
+-- It guarded melee push, and Combat:MeleePush is false server-wide -- the AoTv4Braced() call in
+-- Mob::CommonDamage sits inside that rule's guard, so the branch is unreachable and a point spent
+-- on it bought nothing. Written as enabled=1 this script would resurrect it on the next hand run,
+-- silently undoing the migration. Set it back to 1 only if melee push is ever turned back on.
+UPDATE aa_ability SET name='Bracing',           classes=65535, enabled=0, type=4 WHERE id=89;
 UPDATE aa_ability SET name='Run Them Down',     classes=65535, enabled=1, type=4 WHERE id=108;
 
 UPDATE aa_ranks SET level_req=5,  cost=3 WHERE id IN (247, 210, 255);

@@ -84,6 +84,19 @@ function event_death_complete(e)
   -- OWN scaled level, stamped when it spawned, so no later change of gear can revalue it.
   aotv4_dungeon.on_npc_death(e)
 
+  -- Raid boss: grant loot rights to everyone on its hate list. ⚠️ pcall'd require so a missing or
+  -- broken raid module cannot abort the rest of this handler -- an error here would take the delve's
+  -- own accounting down with it (§26: a runtime nil in on_task_complete cost a whole clear's score).
+  -- ⚠️⚠️ PASS `e.corpse`. This passed `nil` until 2026-08-31, which forced on_boss_death onto its
+  -- GetCorpseByName fallback -- and that fallback CANNOT WORK: a corpse is named `<npc name>'s
+  -- corpse<entity id>` (corpse.cpp:157 + :639) while the lookup is an exact strcmp against
+  -- GetCleanName(), so "Phinigel Autropos" never matches "#Phinigel_Autropos's corpse123". The corpse
+  -- came back nil on every kill, the whole loot block was skipped, and NOBODY got loot rights or
+  -- Rough molds from any raid boss, ever. Reported from play as the raid paying no molds.
+  -- 📌 EVENT_DEATH_COMPLETE provides it (lua_parser_events.cpp, "corpse"), so it was there all along.
+  local raid_ok, raid = pcall(require, "aotv4_raid")
+  if raid_ok and raid then raid.on_boss_death(e.self, e.corpse) end
+
   -- Delve: opening the reward chest ends the run and closes the instance.
   -- ⚠️ Keyed on the chest's npc type id, not on its name -- a_delve_reward_chest is a clone of
   -- a_gilded_chest and there are several similarly named chests in the world.

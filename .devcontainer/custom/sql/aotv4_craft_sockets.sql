@@ -112,8 +112,22 @@ WHERE i.augslot1type IN (20,21) OR i.augslot2type IN (20,21) OR i.augslot3type I
 ON DUPLICATE KEY UPDATE orn_type = VALUES(orn_type), orn_type2 = VALUES(orn_type2);
 
 -- ---------------------------------------------------------------- 2. write the stat sockets
--- Positions 1-3 become type 1 and visible, as many as the tier allows; the remainder of 1-3 is
--- CLEARED so a lower tier cannot keep a socket it should not have.
+-- Positions 1-3 become types 1, 2, 3 and visible, as many as the tier allows; the remainder of 1-3
+-- is CLEARED so a lower tier cannot keep a socket it should not have.
+--
+-- ⚠️⚠️ THE THREE TYPES MUST DIFFER, AND THIS IS A CLIENT BUG, NOT A PREFERENCE. They were all type 1
+-- until 2026-08-31, and the RoF2 item inspect window MIS-RENDERS DUPLICATE SLOT TYPES: it drops one
+-- socket entirely and scatters the rest, drawing "Slot 2" above the item name and "Slot 1" down over
+-- the Modified line, with Slot 3 missing altogether. Reported from play on a Mythic Rough Titanwrought
+-- Plate Helm.
+-- ⚠️ PROVEN AGAINST STOCK DATA, so do not go looking for the cause in this script. Stock `45022
+-- Gemmed Mace` ships 1/1/1/20 and renders exactly as broken; our own `637062 Mythic Elegant
+-- Lorekeeper Robes` at 7/11/12/21 renders perfectly. Only 4 stock items in the whole table use three
+-- identical types against 14,724 that use distinct ones -- which is why nobody has ever hit this.
+-- ⚠️⚠️ 1, 2 AND 3 ARE ALL "General" TYPES -- this is NOT tier-locking the sockets. §32's warning
+-- against giving them different types was about locking a slot to raid-only content; the delve
+-- augments all carry `augtype 255` (types 1-8), so they still fit all three slots, which was the
+-- actual requirement. Step 2b below keeps every other augment fitting too.
 UPDATE items i JOIN aotv4_craft_base b ON i.id = b.item_id
    SET i.augslot1type = 1, i.augslot1visible = 1,
        i.augslot2type = 0, i.augslot2visible = 0,
@@ -121,13 +135,29 @@ UPDATE items i JOIN aotv4_craft_base b ON i.id = b.item_id
 
 UPDATE items i JOIN aotv4_craft_base b ON i.id = b.item_id + 300000
    SET i.augslot1type = 1, i.augslot1visible = 1,
-       i.augslot2type = 1, i.augslot2visible = 1,
+       i.augslot2type = 2, i.augslot2visible = 1,
        i.augslot3type = 0, i.augslot3visible = 0;
 
 UPDATE items i JOIN aotv4_craft_base b ON i.id = b.item_id + 600000
    SET i.augslot1type = 1, i.augslot1visible = 1,
-       i.augslot2type = 1, i.augslot2visible = 1,
-       i.augslot3type = 1, i.augslot3visible = 1;
+       i.augslot2type = 2, i.augslot2visible = 1,
+       i.augslot3type = 3, i.augslot3visible = 1;
+
+-- ------------------------------------------------------- 2b. keep every augment usable in all three
+-- ⚠️⚠️ WITHOUT THIS, SPLITTING THE TYPES IS A NERF. While all three sockets were type 1, ANY augment
+-- accepting type 1 could go in any of them. Types 1/2/3 would leave a type-1-only augment fitting
+-- slot 1 alone -- so an aug that used to fill three sockets now fills one, silently, on gear players
+-- are already wearing.
+-- ✅ So any augment that fits type 1 is widened to fit types 1, 2 and 3 (`| 7` sets those three bits).
+-- That preserves the previous behaviour EXACTLY rather than merely approximating it.
+--   * 316 delve augments already carry 255 and are unaffected (a no-op).
+--   * 371 accepted types 1+2 and gain 3.  *  45 accepted type 1 only and gain 2 and 3.
+-- 📌 Splitting the types is still a net WIDENING overall: it opens 1,790 stock augments that accept
+-- type 3 and 429 that accept type 2, none of which could be socketed anywhere before.
+-- ⚠️ `itemtype = 54` is the augment item type -- this must never touch ordinary gear, whose `augtype`
+-- column means something else entirely (what the item can accept is augslotNtype, not augtype).
+UPDATE items SET augtype = augtype | 7
+ WHERE itemtype = 54 AND (augtype & 1) AND (augtype & 7) <> 7;
 
 -- ---------------------------------------------------------------- 3. put the ornament slots back
 -- Into positions 4 and 5, both empty on every item in this set.
@@ -150,12 +180,12 @@ FROM items i WHERE i.id IN (
   SELECT DISTINCT e.item_id FROM tradeskill_recipe_entries e JOIN items x ON x.id=e.item_id
   JOIN tradeskill_recipe r ON r.id=e.recipe_id WHERE e.successcount>0 AND x.slots>0 AND r.enabled=1)
 UNION ALL
-SELECT 'hallowed, expect 2', SUM(i.augslot1type=1), SUM(i.augslot2type=1), SUM(i.augslot3type>0), COUNT(*)
+SELECT 'hallowed, expect 2', SUM(i.augslot1type=1), SUM(i.augslot2type=2), SUM(i.augslot3type>0), COUNT(*)
 FROM items i WHERE i.id IN (
   SELECT DISTINCT e.item_id + 300000 FROM tradeskill_recipe_entries e JOIN items x ON x.id=e.item_id
   JOIN tradeskill_recipe r ON r.id=e.recipe_id WHERE e.successcount>0 AND x.slots>0 AND r.enabled=1)
 UNION ALL
-SELECT 'mythic, expect 3', SUM(i.augslot1type=1), SUM(i.augslot2type=1), SUM(i.augslot3type=1), COUNT(*)
+SELECT 'mythic, expect 3', SUM(i.augslot1type=1), SUM(i.augslot2type=2), SUM(i.augslot3type=3), COUNT(*)
 FROM items i WHERE i.id IN (
   SELECT DISTINCT e.item_id + 600000 FROM tradeskill_recipe_entries e JOIN items x ON x.id=e.item_id
   JOIN tradeskill_recipe r ON r.id=e.recipe_id WHERE e.successcount>0 AND x.slots>0 AND r.enabled=1);

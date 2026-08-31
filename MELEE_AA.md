@@ -110,6 +110,10 @@ the same damage number and you will not be able to tell them apart otherwise.
 2. Rank 5: watch for occasional three-swing rounds.
 
 ### Bloodletting
+0. ⚠️⚠️ **Test a rank ABOVE 1.** Spells 43401-43404 did not exist until migration **v144**, so ranks
+   2-5 cast an invalid id, `SpellOnTarget` failed `IsValidSpell` and returned, and the AA did nothing
+   at all above rank 1 -- silently, with rank 1 still working perfectly. Reported from live
+   2026-08-29. Ranks 2/3/4/5 must tick for 7/7/11/22 and ranks 3+ must last 5 tics, not 3.
 1. Rank 1: a melee hit should apply a "Bloodletting" DoT that ticks for 4.
 2. It re-applies only once the previous one expires, not on every swing.
 3. ⚠️ Bleeds on **NPCs** survive; `BuffProcess` cleanse-on-peace only strips detrimental buffs from

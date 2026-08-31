@@ -3,13 +3,13 @@
 
 ## -> <EQ>\  (game root)
 c89d56f2e9fddc4e287a983b2803316b  8431587      freeporttheater.eqg
-3fbe074c55074ffc9cd7e235d9546393  24360801     spells_us.txt
-a4af84ca4810311c6221620a6dfb4281  6349565      dbstr_us.txt
+bdce41912b914c931a33a38fefeef0e5  24398117     spells_us.txt
+08cdef8f6bcf3ebf5fe82e6ceba01382  6356339      dbstr_us.txt
 b140dc8033fcaa64b6a75b1755e17d26  1332161      SkillCaps.txt
 878851da61b5b3d1ea4963fa9073f212  61817        BaseData.txt
 
 ## -> <EQ>\Resources\
-2c58484eae90424816741491da16f5a4  159          GlobalLoad_chr.txt
+d725df1f3271b664842577484289b3c5  303          GlobalLoad_chr.txt
 
 ## -> <EQ>\uifiles\default\
 6666d3ac0d6c94613b73380d322bca1d  21102        EQUI_AAWindow.xml
@@ -17,7 +17,7 @@ d4eec1f41900b95c6d24fb7a7f9b2803  10914        EQUI_AdvLootWnd.xml
 798fd10d89db7d74d42f667abda28f51  9304         EQUI_AoTAllacloneWnd.xml
 d080472affce2692fcac48352f96f201  4328         EQUI_AoTAutoSkillWnd.xml
 b3773d81c6348b9d0d5d8e63e49289a7  5699         EQUI_AoTDifficultyWnd.xml
-be9f10f2ad1540669419642a21d554e7  9450         EQUI_AoTDungeonWnd.xml
+263abde82490698b3a182bbd05666e7d  14551        EQUI_AoTDungeonWnd.xml
 bd404704c51065faad5cc64f8e229a9c  24081        EQUI_AoTFellowshipWnd.xml
 47c37144926f3fd94a3d4b6118547546  13814        EQUI_AoTLostWnd.xml
 41547c12772dd616058c70e293e0de9b  11725        EQUI_AoTMenuWnd.xml

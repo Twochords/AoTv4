@@ -134,7 +134,7 @@ and was moved to 20. Sanctified Blow was moved 2 → 6 for exactly this reason �
 | Sanguine Frenzy | 47 | 146,**5069,6102,7466,7691** | **ACTIVATED** — 4 s window, 45 s recast |
 | Disengage | 170 | 510,511,512,**7425,7426** | **ACTIVATED** speed + root/snare break, 45 min |
 | Backs to the Wall | 104 | 247,248,249,**504,505** | **marker** → flat reduction per extra attacker |
-| Bracing | 89 | 210,211,212,**1316,1317** | **marker** → refuses melee push |
+| ~~Bracing~~ | 89 | 210,211,212,**1316,1317** | **RETIRED v146** — guarded melee push, and `Combat:MeleePush` is off server-wide, so the branch was unreachable |
 | Run Them Down | 108 | 255,256,257,**542,543** | **marker** → `Mob::CheckFlee`, targets cannot run |
 
 ### Ranged tree (`type = 3`) — built 2026-07-26, **untested**

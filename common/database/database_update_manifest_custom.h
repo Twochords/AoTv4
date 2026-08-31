@@ -10786,6 +10786,3487 @@ DROP TEMPORARY TABLE IF EXISTS aotv4_breath_tmpl;
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 146,
+		.description = "2026_08_30_retire_bracing_and_refuse_to_fall",
+		// Submitted by: Twochords
+		// Both AAs guard mechanics this server no longer has, so a point spent on either buys
+		.check       = "SELECT id FROM aa_ability WHERE id IN (89, 222) AND enabled = 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE aa_ability SET enabled = 0 WHERE id IN (89, 222);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 147,
+		.description = "2026_08_30_skill_caps_for_every_free_skill",
+		// Submitted by: Twochords
+		// The generalisation of v93, which did this for WEAPON skills only and left every other kind
+		.check       = "SELECT class_id FROM skill_caps WHERE skill_id = 70 AND level = 1 LIMIT 1",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+CREATE TEMPORARY TABLE aotv4_gap_skill (skill_id TINYINT UNSIGNED PRIMARY KEY);
+INSERT INTO aotv4_gap_skill VALUES
+  (11),   -- Block
+  (17),   -- Disarm Traps
+  (20),   -- Double Attack
+  (22),   -- Dual Wield
+  (25),   -- Feign Death
+  (27),   -- Forage
+  (29),   -- Hide
+  (31),   -- Meditate          <- the reported one
+  (32),   -- Mend
+  (34),   -- Parry
+  (37),   -- Riposte
+  (39),   -- Safe Fall
+  (42),   -- Sneak
+  (71),   -- Intimidation
+  (76);   -- Triple Attack
+
+CREATE TEMPORARY TABLE aotv4_all_class (class_id TINYINT UNSIGNED PRIMARY KEY);
+INSERT INTO aotv4_all_class VALUES
+  (1),(2),(3),(4),(5),(6),(7),(8),(9),(10),(11),(12),(13),(14),(15),(16);
+
+-- The conservative curve for each skill: the lowest cap any class already gets at that level.
+CREATE TEMPORARY TABLE aotv4_gap_curve AS
+SELECT sc.skill_id, sc.level, MIN(sc.cap) AS cap
+FROM skill_caps sc
+JOIN aotv4_gap_skill g ON g.skill_id = sc.skill_id
+WHERE sc.class_id BETWEEN 1 AND 16 AND sc.cap > 0
+GROUP BY sc.skill_id, sc.level;
+
+INSERT INTO skill_caps (skill_id, class_id, level, cap, class_)
+SELECT cu.skill_id, cl.class_id, cu.level, cu.cap, 0
+FROM aotv4_gap_curve cu
+CROSS JOIN aotv4_all_class cl
+WHERE NOT EXISTS (
+  SELECT 1 FROM skill_caps x
+  WHERE x.class_id = cl.class_id AND x.skill_id = cu.skill_id AND x.level = cu.level
+);
+
+-- ------------------------------------------------------------ PART B: instruments at levels 1-4
+CREATE TEMPORARY TABLE aotv4_instrument (skill_id TINYINT UNSIGNED PRIMARY KEY);
+INSERT INTO aotv4_instrument VALUES (12),(49),(54),(70);   -- Brass, Stringed, Wind, Percussion
+
+CREATE TEMPORARY TABLE aotv4_sing_low AS
+SELECT class_id, level, cap FROM skill_caps
+WHERE skill_id = 41 AND level BETWEEN 1 AND 4 AND class_id BETWEEN 1 AND 16;
+
+INSERT INTO skill_caps (skill_id, class_id, level, cap, class_)
+SELECT i.skill_id, s.class_id, s.level, s.cap, 0
+FROM aotv4_instrument i
+CROSS JOIN aotv4_sing_low s
+WHERE NOT EXISTS (
+  SELECT 1 FROM skill_caps x
+  WHERE x.class_id = s.class_id AND x.skill_id = i.skill_id AND x.level = s.level
+);
+
+DROP TEMPORARY TABLE aotv4_gap_curve;
+DROP TEMPORARY TABLE aotv4_gap_skill;
+DROP TEMPORARY TABLE aotv4_all_class;
+DROP TEMPORARY TABLE aotv4_sing_low;
+DROP TEMPORARY TABLE aotv4_instrument;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 148,
+		.description = "2026_08_30_enabled_aa_ranks_reachable_at_the_level_cap",
+		// Submitted by: Twochords
+		// Reported from play as "Alchemy Mastery rank 1 (AA 49 rank 1 could not be granted.)", and
+		.check       = "WITH RECURSIVE chain AS (SELECT r.id AS rank_id, r.next_id, r.level_req, 1 AS n FROM aa_ability a JOIN aa_ranks r ON r.id = a.first_rank_id WHERE a.enabled = 1 UNION ALL SELECT r.id, r.next_id, r.level_req, c.n + 1 FROM chain c JOIN aa_ranks r ON r.id = c.next_id WHERE c.next_id > 0 AND c.n < 30) SELECT rank_id FROM chain WHERE level_req > 30 LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+CREATE TEMPORARY TABLE aotv4_reach (rank_id INT NOT NULL PRIMARY KEY);
+
+INSERT INTO aotv4_reach (rank_id)
+WITH RECURSIVE chain AS (
+  SELECT r.id AS rank_id, r.next_id, 1 AS n
+  FROM aa_ability a
+  JOIN aa_ranks r ON r.id = a.first_rank_id
+  WHERE a.enabled = 1
+  UNION ALL
+  SELECT r.id, r.next_id, c.n + 1
+  FROM chain c
+  JOIN aa_ranks r ON r.id = c.next_id
+  WHERE c.next_id > 0 AND c.n < 30
+)
+SELECT DISTINCT rank_id FROM chain;
+
+UPDATE aa_ranks r
+JOIN aotv4_reach g ON g.rank_id = r.id
+SET r.level_req = 1
+WHERE r.level_req > 30;
+
+DROP TEMPORARY TABLE aotv4_reach;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 149,
+		.description = "2026_08_30_spell_summoned_materials_on_the_jeweler",
+		// Submitted by: Twochords
+		// Enchanted metal bars, Imbued gems and the rest of the "conjured material" family are not
+		.check       = "SELECT item FROM merchantlist WHERE merchantid = 202069 AND item = 16504",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE items SET price = 500 WHERE id = 22553 AND price = 0;
+
+-- ⚠️⚠️ min_expansion / max_expansion MUST BE -1. A merchantlist row carrying a real expansion is
+-- content-filtered out on a Classic server and the item silently does not appear -- the same trap
+-- that hid the parcel merchants (§56) and the PoK books (§11). It fails by the item simply not being
+-- in the shop, with nothing anywhere to say why.
+-- ⚠️ Slots start at 108: Audri already holds 106 rows occupying slots 1-107, and a duplicate slot
+-- makes one of the two items unreachable in the window.
+-- ⚠️ The SET is DERIVED, not a list of 36 ids typed out -- it is exactly "summoned by an Enchant/Imbue
+-- spell AND used as a component by an enabled recipe", so it cannot drift from what the analysis
+-- found. `tradeskill_reachability.py` re-derives the same set.
+INSERT INTO merchantlist
+  (merchantid, slot, item, faction_required, level_required, min_status, max_status,
+   alt_currency_cost, classes_required, probability, min_expansion, max_expansion)
+SELECT 202069,
+       107 + ROW_NUMBER() OVER (ORDER BY i.price, i.id),
+       i.id, -1, 0, 0, 0, 0, 0, 100, -1, -1
+FROM items i
+WHERE i.id IN (
+        SELECT DISTINCT s.effect_base_value1
+        FROM spells_new s
+        WHERE s.effectid1 = 32 AND s.effect_base_value1 > 0
+          AND (s.name LIKE 'Enchant %' OR s.name LIKE 'Imbue %' OR s.name LIKE 'Mass Enchant %')
+      )
+  AND i.id IN (
+        SELECT e.item_id FROM tradeskill_recipe_entries e
+        JOIN tradeskill_recipe r ON r.id = e.recipe_id
+        WHERE e.componentcount > 0 AND r.enabled = 1
+      )
+  AND NOT EXISTS (
+        SELECT 1 FROM merchantlist m WHERE m.merchantid = 202069 AND m.item = i.id
+      );
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 150,
+		.description = "2026_08_30_fill_archetype_jewelry",
+		// Submitted by: Twochords
+		// The Combatant's / Adept's line already covers every slot the Defiant armour line does not
+		.check       = "SELECT id FROM items WHERE id = 50347 AND ac > 0",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE items SET ac = 4, hp = 8, mana = 10, endur = 0, reclevel = 10 WHERE id = 50312;
+UPDATE items SET ac = 5, hp = 10, mana = 8, endur = 8, reclevel = 10 WHERE id = 50302;
+UPDATE items SET ac = 3, hp = 13, mana = 15, endur = 0, reclevel = 10 WHERE id = 50310;
+UPDATE items SET ac = 3, hp = 13, mana = 15, endur = 0, reclevel = 10 WHERE id = 50311;
+UPDATE items SET ac = 4, hp = 15, mana = 13, endur = 13, reclevel = 10 WHERE id = 50300;
+UPDATE items SET ac = 4, hp = 15, mana = 13, endur = 13, reclevel = 10 WHERE id = 50301;
+UPDATE items SET ac = 4, hp = 11, mana = 14, endur = 0, reclevel = 10 WHERE id = 50313;
+UPDATE items SET ac = 5, hp = 13, mana = 12, endur = 11, reclevel = 10 WHERE id = 50303;
+UPDATE items SET ac = 3, hp = 13, mana = 18, endur = 0, reclevel = 10 WHERE id = 50318;
+UPDATE items SET ac = 3, hp = 13, mana = 18, endur = 0, reclevel = 10 WHERE id = 50317;
+UPDATE items SET ac = 4, hp = 16, mana = 15, endur = 13, reclevel = 10 WHERE id = 50308;
+UPDATE items SET ac = 4, hp = 16, mana = 15, endur = 13, reclevel = 10 WHERE id = 50307;
+UPDATE items SET ac = 8, hp = 13, mana = 15, endur = 0, reclevel = 20 WHERE id = 50332;
+UPDATE items SET ac = 10, hp = 13, mana = 14, endur = 13, reclevel = 20 WHERE id = 50322;
+UPDATE items SET ac = 6, hp = 20, mana = 23, endur = 0, reclevel = 20 WHERE id = 50331;
+UPDATE items SET ac = 6, hp = 20, mana = 23, endur = 0, reclevel = 20 WHERE id = 50330;
+UPDATE items SET ac = 8, hp = 21, mana = 22, endur = 20, reclevel = 20 WHERE id = 50321;
+UPDATE items SET ac = 8, hp = 21, mana = 22, endur = 20, reclevel = 20 WHERE id = 50320;
+UPDATE items SET ac = 8, hp = 17, mana = 21, endur = 0, reclevel = 20 WHERE id = 50333;
+UPDATE items SET ac = 9, hp = 18, mana = 20, endur = 17, reclevel = 20 WHERE id = 50323;
+UPDATE items SET ac = 6, hp = 21, mana = 26, endur = 0, reclevel = 20 WHERE id = 50338;
+UPDATE items SET ac = 6, hp = 21, mana = 26, endur = 0, reclevel = 20 WHERE id = 50337;
+UPDATE items SET ac = 7, hp = 23, mana = 25, endur = 21, reclevel = 20 WHERE id = 50328;
+UPDATE items SET ac = 7, hp = 23, mana = 25, endur = 21, reclevel = 20 WHERE id = 50327;
+UPDATE items SET ac = 11, hp = 27, mana = 31, endur = 0, reclevel = 30 WHERE id = 50352;
+UPDATE items SET ac = 13, hp = 29, mana = 29, endur = 28, reclevel = 30 WHERE id = 50342;
+UPDATE items SET ac = 10, hp = 43, mana = 48, endur = 0, reclevel = 30 WHERE id = 50350;
+UPDATE items SET ac = 10, hp = 43, mana = 48, endur = 0, reclevel = 30 WHERE id = 50351;
+UPDATE items SET ac = 11, hp = 45, mana = 45, endur = 44, reclevel = 30 WHERE id = 50340;
+UPDATE items SET ac = 11, hp = 45, mana = 45, endur = 44, reclevel = 30 WHERE id = 50341;
+UPDATE items SET ac = 11, hp = 37, mana = 43, endur = 0, reclevel = 30 WHERE id = 50353;
+UPDATE items SET ac = 13, hp = 39, mana = 40, endur = 38, reclevel = 30 WHERE id = 50343;
+UPDATE items SET ac = 9, hp = 46, mana = 54, endur = 0, reclevel = 30 WHERE id = 50358;
+UPDATE items SET ac = 9, hp = 46, mana = 54, endur = 0, reclevel = 30 WHERE id = 50357;
+UPDATE items SET ac = 10, hp = 48, mana = 51, endur = 47, reclevel = 30 WHERE id = 50348;
+UPDATE items SET ac = 10, hp = 48, mana = 51, endur = 47, reclevel = 30 WHERE id = 50347;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 151,
+		.description = "2026_08_30_rename_defiant_to_titanwrought",
+		// Submitted by: Twochords
+		// "Defiant" is a Seeds of Destruction line name that means nothing on this server. The line is
+		.check       = "SELECT id FROM items WHERE name LIKE '%Defiant%' LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE items SET Name = REPLACE(Name, 'Defiant', 'Titanwrought') WHERE Name LIKE '%Defiant%';
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 152,
+		.description = "2026_08_30_titanwrought_gear",
+		// Submitted by: AoTv4
+		// 86 gear items completing the Titanwrought slot map: shoulders/back/face/waist at 4 armour types (the recipe data shows all four are ordinary armour made by Blacksmithing and Tailoring, including plate cloaks), ears/neck/fingers at 4 jewelcraft metals, plus the Crude and Simple charms the line never had. Generated by custom/tools/gen_titanwrought_crafting.py.
+		.check       = "SELECT id FROM items WHERE id = 148085",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM items WHERE id BETWEEN 148000 AND 148199;
+CREATE TEMPORARY TABLE _tw LIKE items;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50005;
+UPDATE _tw SET `Name`='Crude Titanwrought Plate Cloak', `slots`=256, `icon`=663, `reclevel`=10, id=148013;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Plate Visor', `slots`=8, `icon`=770, `reclevel`=10, id=148014;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50006;
+UPDATE _tw SET `Name`='Crude Titanwrought Plate Pauldrons', `slots`=64, `icon`=798, `reclevel`=10, id=148012;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Plate Girdle', `slots`=(1<<20), `icon`=564, `reclevel`=10, id=148015;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50012;
+UPDATE _tw SET `Name`='Crude Titanwrought Chain Cape', `slots`=256, `icon`=663, `reclevel`=10, id=148009;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Chain Veil', `slots`=8, `icon`=770, `reclevel`=10, id=148010;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50013;
+UPDATE _tw SET `Name`='Crude Titanwrought Chain Mantle', `slots`=64, `icon`=798, `reclevel`=10, id=148008;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Chain Belt', `slots`=(1<<20), `icon`=564, `reclevel`=10, id=148011;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50019;
+UPDATE _tw SET `Name`='Crude Titanwrought Leather Cloak', `slots`=256, `icon`=663, `reclevel`=10, id=148005;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Leather Mask', `slots`=8, `icon`=770, `reclevel`=10, id=148006;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50020;
+UPDATE _tw SET `Name`='Crude Titanwrought Leather Shoulderpads', `slots`=64, `icon`=798, `reclevel`=10, id=148004;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Leather Belt', `slots`=(1<<20), `icon`=564, `reclevel`=10, id=148007;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50026;
+UPDATE _tw SET `Name`='Crude Titanwrought Cloth Cloak', `slots`=256, `icon`=663, `reclevel`=10, id=148001;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Cloth Veil', `slots`=8, `icon`=770, `reclevel`=10, id=148002;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Silver Earring', `slots`=18, `icon`=1050, `reclevel`=10, `ac`=0, id=148016;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Gold Earring', `slots`=18, `icon`=1050, `reclevel`=10, `ac`=0, id=148017;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Electrum Earring', `slots`=18, `icon`=1050, `reclevel`=10, `ac`=0, id=148018;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Platinum Earring', `slots`=18, `icon`=1050, `reclevel`=10, `ac`=0, id=148019;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Silver Necklace', `slots`=32, `icon`=626, `reclevel`=10, `ac`=0, id=148020;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Gold Necklace', `slots`=32, `icon`=626, `reclevel`=10, `ac`=0, id=148021;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Electrum Necklace', `slots`=32, `icon`=626, `reclevel`=10, `ac`=0, id=148022;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Platinum Necklace', `slots`=32, `icon`=626, `reclevel`=10, `ac`=0, id=148023;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Silver Ring', `slots`=98304, `icon`=612, `reclevel`=10, `ac`=0, id=148024;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Gold Ring', `slots`=98304, `icon`=612, `reclevel`=10, `ac`=0, id=148025;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Electrum Ring', `slots`=98304, `icon`=612, `reclevel`=10, `ac`=0, id=148026;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Platinum Ring', `slots`=98304, `icon`=612, `reclevel`=10, `ac`=0, id=148027;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50027;
+UPDATE _tw SET `Name`='Crude Titanwrought Cloth Mantle', `slots`=64, `icon`=798, `reclevel`=10, id=148000;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Titanwrought Cloth Sash', `slots`=(1<<20), `icon`=564, `reclevel`=10, id=148003;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50033;
+UPDATE _tw SET `Name`='Simple Titanwrought Plate Cloak', `slots`=256, `icon`=663, `reclevel`=20, id=148042;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Plate Visor', `slots`=8, `icon`=770, `reclevel`=20, id=148043;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50034;
+UPDATE _tw SET `Name`='Simple Titanwrought Plate Pauldrons', `slots`=64, `icon`=798, `reclevel`=20, id=148041;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Plate Girdle', `slots`=(1<<20), `icon`=564, `reclevel`=20, id=148044;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50040;
+UPDATE _tw SET `Name`='Simple Titanwrought Chain Cape', `slots`=256, `icon`=663, `reclevel`=20, id=148038;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Chain Veil', `slots`=8, `icon`=770, `reclevel`=20, id=148039;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50041;
+UPDATE _tw SET `Name`='Simple Titanwrought Chain Mantle', `slots`=64, `icon`=798, `reclevel`=20, id=148037;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Chain Belt', `slots`=(1<<20), `icon`=564, `reclevel`=20, id=148040;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50047;
+UPDATE _tw SET `Name`='Simple Titanwrought Leather Cloak', `slots`=256, `icon`=663, `reclevel`=20, id=148034;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Leather Mask', `slots`=8, `icon`=770, `reclevel`=20, id=148035;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50048;
+UPDATE _tw SET `Name`='Simple Titanwrought Leather Shoulderpads', `slots`=64, `icon`=798, `reclevel`=20, id=148033;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Leather Belt', `slots`=(1<<20), `icon`=564, `reclevel`=20, id=148036;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50054;
+UPDATE _tw SET `Name`='Simple Titanwrought Cloth Cloak', `slots`=256, `icon`=663, `reclevel`=20, id=148030;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Cloth Veil', `slots`=8, `icon`=770, `reclevel`=20, id=148031;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Silver Earring', `slots`=18, `icon`=1050, `reclevel`=20, `ac`=0, id=148045;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Gold Earring', `slots`=18, `icon`=1050, `reclevel`=20, `ac`=0, id=148046;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Electrum Earring', `slots`=18, `icon`=1050, `reclevel`=20, `ac`=0, id=148047;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Platinum Earring', `slots`=18, `icon`=1050, `reclevel`=20, `ac`=0, id=148048;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Silver Necklace', `slots`=32, `icon`=626, `reclevel`=20, `ac`=0, id=148049;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Gold Necklace', `slots`=32, `icon`=626, `reclevel`=20, `ac`=0, id=148050;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Electrum Necklace', `slots`=32, `icon`=626, `reclevel`=20, `ac`=0, id=148051;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Platinum Necklace', `slots`=32, `icon`=626, `reclevel`=20, `ac`=0, id=148052;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Silver Ring', `slots`=98304, `icon`=612, `reclevel`=20, `ac`=0, id=148053;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Gold Ring', `slots`=98304, `icon`=612, `reclevel`=20, `ac`=0, id=148054;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Electrum Ring', `slots`=98304, `icon`=612, `reclevel`=20, `ac`=0, id=148055;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Platinum Ring', `slots`=98304, `icon`=612, `reclevel`=20, `ac`=0, id=148056;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50055;
+UPDATE _tw SET `Name`='Simple Titanwrought Cloth Mantle', `slots`=64, `icon`=798, `reclevel`=20, id=148029;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Cloth Sash', `slots`=(1<<20), `icon`=564, `reclevel`=20, id=148032;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50061;
+UPDATE _tw SET `Name`='Rough Titanwrought Plate Cloak', `slots`=256, `icon`=663, `reclevel`=30, id=148071;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Plate Visor', `slots`=8, `icon`=770, `reclevel`=30, id=148072;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50062;
+UPDATE _tw SET `Name`='Rough Titanwrought Plate Pauldrons', `slots`=64, `icon`=798, `reclevel`=30, id=148070;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Plate Girdle', `slots`=(1<<20), `icon`=564, `reclevel`=30, id=148073;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50068;
+UPDATE _tw SET `Name`='Rough Titanwrought Chain Cape', `slots`=256, `icon`=663, `reclevel`=30, id=148067;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Chain Veil', `slots`=8, `icon`=770, `reclevel`=30, id=148068;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50069;
+UPDATE _tw SET `Name`='Rough Titanwrought Chain Mantle', `slots`=64, `icon`=798, `reclevel`=30, id=148066;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Chain Belt', `slots`=(1<<20), `icon`=564, `reclevel`=30, id=148069;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50075;
+UPDATE _tw SET `Name`='Rough Titanwrought Leather Cloak', `slots`=256, `icon`=663, `reclevel`=30, id=148063;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Leather Mask', `slots`=8, `icon`=770, `reclevel`=30, id=148064;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50076;
+UPDATE _tw SET `Name`='Rough Titanwrought Leather Shoulderpads', `slots`=64, `icon`=798, `reclevel`=30, id=148062;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Leather Belt', `slots`=(1<<20), `icon`=564, `reclevel`=30, id=148065;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50082;
+UPDATE _tw SET `Name`='Rough Titanwrought Cloth Cloak', `slots`=256, `icon`=663, `reclevel`=30, id=148059;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Cloth Veil', `slots`=8, `icon`=770, `reclevel`=30, id=148060;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Silver Earring', `slots`=18, `icon`=1050, `reclevel`=30, `ac`=0, id=148074;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Gold Earring', `slots`=18, `icon`=1050, `reclevel`=30, `ac`=0, id=148075;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Electrum Earring', `slots`=18, `icon`=1050, `reclevel`=30, `ac`=0, id=148076;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Platinum Earring', `slots`=18, `icon`=1050, `reclevel`=30, `ac`=0, id=148077;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Silver Necklace', `slots`=32, `icon`=626, `reclevel`=30, `ac`=0, id=148078;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Gold Necklace', `slots`=32, `icon`=626, `reclevel`=30, `ac`=0, id=148079;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Electrum Necklace', `slots`=32, `icon`=626, `reclevel`=30, `ac`=0, id=148080;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Platinum Necklace', `slots`=32, `icon`=626, `reclevel`=30, `ac`=0, id=148081;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Silver Ring', `slots`=98304, `icon`=612, `reclevel`=30, `ac`=0, id=148082;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Gold Ring', `slots`=98304, `icon`=612, `reclevel`=30, `ac`=0, id=148083;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Electrum Ring', `slots`=98304, `icon`=612, `reclevel`=30, `ac`=0, id=148084;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Platinum Ring', `slots`=98304, `icon`=612, `reclevel`=30, `ac`=0, id=148085;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50083;
+UPDATE _tw SET `Name`='Rough Titanwrought Cloth Mantle', `slots`=64, `icon`=798, `reclevel`=30, id=148058;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Titanwrought Cloth Sash', `slots`=(1<<20), `icon`=564, `reclevel`=30, id=148061;
+INSERT INTO items SELECT * FROM _tw;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=50553;
+UPDATE _tw SET `Name`='Crude Titanwrought Charm', `reclevel`=10, id=148028;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Titanwrought Charm', `reclevel`=20, id=148057;
+INSERT INTO items SELECT * FROM _tw;
+DROP TEMPORARY TABLE _tw;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 153,
+		.description = "2026_08_30_titanwrought_molds",
+		// Submitted by: AoTv4
+		// 210 molds, exactly one per craftable output, tiered Crude 148200-148269 / Simple 148270-148339 / Rough 148340-148409. Tiering costs nothing in hunt difficulty because the three tiers drop from three different activities and never share a loot table.
+		.check       = "SELECT id FROM items WHERE id = 148409",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM items WHERE id BETWEEN 148200 AND 148499;
+CREATE TEMPORARY TABLE _tw LIKE items;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=3450;
+UPDATE _tw SET `Name`='Crude Cloth Cap Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148200;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Cloth Sleeves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148201;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Cloth Wristwrap Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148202;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Cloth Gloves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148203;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Cloth Robe Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148204;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Cloth Pantaloons Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148205;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Cloth Sandals Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148206;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Cloth Mantle Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148207;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Cloth Cloak Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148208;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Cloth Veil Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148209;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Cloth Sash Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148210;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Leather Cap Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148211;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Leather Sleeves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148212;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Leather Bracer Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148213;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Leather Gloves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148214;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Leather Tunic Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148215;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Leather Trousers Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148216;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Leather Boots Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148217;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Leather Shoulderpads Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148218;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Leather Cloak Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148219;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Leather Mask Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148220;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Leather Belt Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148221;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Chain Coif Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148222;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Chain Sleeves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148223;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Chain Bracer Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148224;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Chain Gauntlets Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148225;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Chain Tunic Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148226;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Chain Leggings Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148227;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Chain Boots Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148228;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Chain Mantle Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148229;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Chain Cape Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148230;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Chain Veil Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148231;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Chain Belt Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148232;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Plate Helm Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148233;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Plate Vambraces Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148234;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Plate Bracer Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148235;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Plate Gauntlets Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148236;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Breastplate Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148237;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Plate Greaves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148238;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Plate Boots Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148239;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Plate Pauldrons Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148240;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Plate Cloak Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148241;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Plate Visor Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148242;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Plate Girdle Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148243;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Silver Earring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148244;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Gold Earring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148245;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Electrum Earring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148246;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Platinum Earring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148247;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Silver Necklace Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148248;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Gold Necklace Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148249;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Electrum Necklace Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148250;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Platinum Necklace Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148251;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Silver Ring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148252;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Gold Ring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148253;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Electrum Ring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148254;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Platinum Ring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148255;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Charm Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148256;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Axe Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148257;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Bow Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148258;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Buckler Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148259;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Club Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148260;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Dagger Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148261;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Fists Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148262;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Greatspear Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148263;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Greatsword Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148264;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Mace Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148265;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Quarterstaff Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148266;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Shortsword Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148267;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Spear Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148268;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Spiked Shield Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148269;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Cloth Cap Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148270;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Cloth Sleeves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148271;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Cloth Wristwrap Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148272;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Cloth Gloves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148273;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Cloth Robe Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148274;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Cloth Pantaloons Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148275;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Cloth Sandals Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148276;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Cloth Mantle Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148277;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Cloth Cloak Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148278;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Cloth Veil Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148279;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Cloth Sash Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148280;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Leather Cap Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148281;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Leather Sleeves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148282;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Leather Bracer Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148283;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Leather Gloves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148284;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Leather Tunic Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148285;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Leather Trousers Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148286;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Leather Boots Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148287;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Leather Shoulderpads Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148288;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Leather Cloak Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148289;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Leather Mask Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148290;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Leather Belt Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148291;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Chain Coif Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148292;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Chain Sleeves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148293;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Chain Bracer Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148294;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Chain Gauntlets Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148295;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Chain Tunic Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148296;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Chain Leggings Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148297;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Chain Boots Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148298;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Chain Mantle Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148299;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Chain Cape Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148300;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Chain Veil Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148301;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Chain Belt Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148302;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Plate Helm Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148303;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Plate Vambraces Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148304;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Plate Bracer Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148305;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Plate Gauntlets Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148306;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Breastplate Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148307;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Plate Greaves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148308;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Plate Boots Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148309;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Plate Pauldrons Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148310;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Plate Cloak Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148311;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Plate Visor Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148312;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Plate Girdle Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148313;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Silver Earring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148314;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Gold Earring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148315;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Electrum Earring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148316;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Platinum Earring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148317;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Silver Necklace Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148318;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Gold Necklace Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148319;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Electrum Necklace Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148320;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Platinum Necklace Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148321;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Silver Ring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148322;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Gold Ring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148323;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Electrum Ring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148324;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Platinum Ring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148325;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Charm Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148326;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Bastard Sword Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148327;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Bow Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148328;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Claw-dagger Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148329;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Dagger Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148330;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Greataxe Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148331;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Hammer Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148332;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Kite Shield Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148333;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Shortsword Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148334;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Spear Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148335;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Twisted Staff Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148336;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Ulak Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148337;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Wand Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148338;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Wooden Shield Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148339;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Cloth Cap Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148340;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Cloth Sleeves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148341;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Cloth Wristwrap Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148342;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Cloth Gloves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148343;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Cloth Robe Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148344;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Cloth Pantaloons Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148345;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Cloth Sandals Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148346;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Cloth Mantle Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148347;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Cloth Cloak Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148348;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Cloth Veil Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148349;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Cloth Sash Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148350;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Leather Cap Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148351;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Leather Sleeves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148352;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Leather Bracer Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148353;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Leather Gloves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148354;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Leather Tunic Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148355;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Leather Trousers Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148356;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Leather Boots Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148357;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Leather Shoulderpads Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148358;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Leather Cloak Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148359;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Leather Mask Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148360;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Leather Belt Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148361;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Chain Coif Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148362;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Chain Sleeves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148363;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Chain Bracer Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148364;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Chain Gauntlets Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148365;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Chain Tunic Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148366;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Chain Leggings Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148367;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Chain Boots Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148368;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Chain Mantle Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148369;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Chain Cape Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148370;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Chain Veil Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148371;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Chain Belt Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148372;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Plate Helm Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148373;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Plate Vambraces Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148374;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Plate Bracer Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148375;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Plate Gauntlets Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148376;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Breastplate Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148377;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Plate Greaves Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148378;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Plate Boots Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148379;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Plate Pauldrons Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148380;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Plate Cloak Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148381;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Plate Visor Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148382;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Plate Girdle Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148383;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Silver Earring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148384;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Gold Earring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148385;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Electrum Earring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148386;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Platinum Earring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148387;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Silver Necklace Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148388;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Gold Necklace Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148389;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Electrum Necklace Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148390;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Platinum Necklace Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148391;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Silver Ring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148392;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Gold Ring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148393;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Electrum Ring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148394;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Platinum Ring Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148395;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Charm Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148396;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Bow Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148397;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Chitin Shield Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148398;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Halberd Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148399;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Hammer Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148400;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Knuckle Dusters Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148401;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Longsword Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148402;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Round Shield Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148403;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Scepter Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148404;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Serrated Dagger Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148405;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Shortsword Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148406;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Spiked Staff Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148407;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Stone Dagger Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148408;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Trident Mold', `slots`=0, `icon`=1151, `price`=0, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148409;
+INSERT INTO items SELECT * FROM _tw;
+DROP TEMPORARY TABLE _tw;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 154,
+		.description = "2026_08_30_titanwrought_materials",
+		// Submitted by: AoTv4
+		// 48 materials: 36 bases carrying the four-way identity (armour types, jewelcraft metals, weapon metals), 9 bindings at group level so Pottery, Alchemy and Jewelcraft are all required, and 3 bought tempers whose price is the per-tier cost ladder.
+		.check       = "SELECT id FROM items WHERE id = 148547",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM items WHERE id BETWEEN 148500 AND 148599;
+CREATE TEMPORARY TABLE _tw LIKE items;
+DELETE FROM _tw;
+INSERT INTO _tw SELECT * FROM items WHERE id=10503;
+UPDATE _tw SET `Name`='Crude Silk Bolt', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148500;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Cured Hide', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148501;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Chain Links', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148502;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Plate Ingot', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148503;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Silver Bar', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148504;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Gold Bar', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148505;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Electrum Bar', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148506;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Platinum Bar', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148507;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Bronze Billet', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148508;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Iron Billet', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148509;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Steel Billet', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148510;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Mithril Billet', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148511;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Armour Fitting', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148512;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Jeweler''s Solvent', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148513;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Pommel Stone', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148514;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Crude Temper', `icon`=1151, `price`=100000, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148515;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Silk Bolt', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148516;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Cured Hide', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148517;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Chain Links', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148518;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Plate Ingot', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148519;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Silver Bar', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148520;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Gold Bar', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148521;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Electrum Bar', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148522;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Platinum Bar', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148523;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Bronze Billet', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148524;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Iron Billet', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148525;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Steel Billet', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148526;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Mithril Billet', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148527;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Armour Fitting', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148528;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Jeweler''s Solvent', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148529;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Pommel Stone', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148530;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Simple Temper', `icon`=1151, `price`=300000, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148531;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Silk Bolt', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148532;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Cured Hide', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148533;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Chain Links', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148534;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Plate Ingot', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148535;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Silver Bar', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148536;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Gold Bar', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148537;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Electrum Bar', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148538;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Platinum Bar', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148539;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Bronze Billet', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148540;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Iron Billet', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148541;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Steel Billet', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148542;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Mithril Billet', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148543;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Armour Fitting', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148544;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Jeweler''s Solvent', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148545;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Pommel Stone', `icon`=1151, `price`=0, `stackable`=1, `stacksize`=20, id=148546;
+INSERT INTO items SELECT * FROM _tw;
+UPDATE _tw SET `Name`='Rough Temper', `icon`=1151, `price`=500000, `nodrop`=1, `norent`=1, `stackable`=1, `stacksize`=20, id=148547;
+INSERT INTO items SELECT * FROM _tw;
+DROP TEMPORARY TABLE _tw;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 155,
+		.description = "2026_08_30_titanwrought_recipes",
+		// Submitted by: AoTv4
+		// 255 recipes: 45 material sub-recipes plus 210 final combines. Every recipe is nofail (skill picks the TIER via AoTv4RollCraftTier, never whether you get an item), lists the Artisan Universal Kit alongside its world container so a hub-bound player can always combine, and carries min_expansion/max_expansion -1 with must_learn 0 or the recipe SEARCH content-filters it away and nobody could find a brand-new system.
+		.check       = "SELECT recipe_id FROM tradeskill_recipe_entries WHERE recipe_id = 480254 LIMIT 1",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM tradeskill_recipe_entries WHERE recipe_id BETWEEN 480000 AND 480499;
+DELETE FROM tradeskill_recipe WHERE id BETWEEN 480000 AND 480499;
+INSERT INTO tradeskill_recipe (id,name,tradeskill,skillneeded,trivial,nofail,replace_container,must_learn,quest,enabled,min_expansion,max_expansion) VALUES
+(480000,'Crude Silk Bolt',61,0,40,1,0,0,0,1,-1,-1),
+(480001,'Crude Cured Hide',61,0,40,1,0,0,0,1,-1,-1),
+(480002,'Crude Chain Links',63,0,40,1,0,0,0,1,-1,-1),
+(480003,'Crude Plate Ingot',63,0,40,1,0,0,0,1,-1,-1),
+(480004,'Crude Silver Bar',68,0,40,1,0,0,0,1,-1,-1),
+(480005,'Crude Gold Bar',68,0,40,1,0,0,0,1,-1,-1),
+(480006,'Crude Electrum Bar',68,0,40,1,0,0,0,1,-1,-1),
+(480007,'Crude Platinum Bar',68,0,40,1,0,0,0,1,-1,-1),
+(480008,'Crude Bronze Billet',63,0,40,1,0,0,0,1,-1,-1),
+(480009,'Crude Iron Billet',63,0,40,1,0,0,0,1,-1,-1),
+(480010,'Crude Steel Billet',63,0,40,1,0,0,0,1,-1,-1),
+(480011,'Crude Mithril Billet',63,0,40,1,0,0,0,1,-1,-1),
+(480012,'Crude Armour Fitting',69,0,40,1,0,0,0,1,-1,-1),
+(480013,'Crude Jeweler''s Solvent',59,0,40,1,0,0,0,1,-1,-1),
+(480014,'Crude Pommel Stone',68,0,40,1,0,0,0,1,-1,-1),
+(480015,'Simple Silk Bolt',61,46,79,1,0,0,0,1,-1,-1),
+(480016,'Simple Cured Hide',61,46,79,1,0,0,0,1,-1,-1),
+(480017,'Simple Chain Links',63,46,79,1,0,0,0,1,-1,-1),
+(480018,'Simple Plate Ingot',63,46,79,1,0,0,0,1,-1,-1),
+(480019,'Simple Silver Bar',68,46,79,1,0,0,0,1,-1,-1),
+(480020,'Simple Gold Bar',68,46,79,1,0,0,0,1,-1,-1),
+(480021,'Simple Electrum Bar',68,46,79,1,0,0,0,1,-1,-1),
+(480022,'Simple Platinum Bar',68,46,79,1,0,0,0,1,-1,-1),
+(480023,'Simple Bronze Billet',63,46,79,1,0,0,0,1,-1,-1),
+(480024,'Simple Iron Billet',63,46,79,1,0,0,0,1,-1,-1),
+(480025,'Simple Steel Billet',63,46,79,1,0,0,0,1,-1,-1),
+(480026,'Simple Mithril Billet',63,46,79,1,0,0,0,1,-1,-1),
+(480027,'Simple Armour Fitting',69,46,79,1,0,0,0,1,-1,-1),
+(480028,'Simple Jeweler''s Solvent',59,46,79,1,0,0,0,1,-1,-1),
+(480029,'Simple Pommel Stone',68,46,79,1,0,0,0,1,-1,-1),
+(480030,'Rough Silk Bolt',61,120,120,1,0,0,0,1,-1,-1),
+(480031,'Rough Cured Hide',61,120,120,1,0,0,0,1,-1,-1),
+(480032,'Rough Chain Links',63,120,120,1,0,0,0,1,-1,-1),
+(480033,'Rough Plate Ingot',63,120,120,1,0,0,0,1,-1,-1),
+(480034,'Rough Silver Bar',68,120,120,1,0,0,0,1,-1,-1),
+(480035,'Rough Gold Bar',68,120,120,1,0,0,0,1,-1,-1),
+(480036,'Rough Electrum Bar',68,120,120,1,0,0,0,1,-1,-1),
+(480037,'Rough Platinum Bar',68,120,120,1,0,0,0,1,-1,-1),
+(480038,'Rough Bronze Billet',63,120,120,1,0,0,0,1,-1,-1),
+(480039,'Rough Iron Billet',63,120,120,1,0,0,0,1,-1,-1),
+(480040,'Rough Steel Billet',63,120,120,1,0,0,0,1,-1,-1),
+(480041,'Rough Mithril Billet',63,120,120,1,0,0,0,1,-1,-1),
+(480042,'Rough Armour Fitting',69,120,120,1,0,0,0,1,-1,-1),
+(480043,'Rough Jeweler''s Solvent',59,120,120,1,0,0,0,1,-1,-1),
+(480044,'Rough Pommel Stone',68,120,120,1,0,0,0,1,-1,-1),
+(480045,'Crude Titanwrought Cloth Cap',61,0,50,1,0,0,0,1,-1,-1),
+(480046,'Crude Titanwrought Cloth Sleeves',61,0,50,1,0,0,0,1,-1,-1),
+(480047,'Crude Titanwrought Cloth Wristwrap',61,0,50,1,0,0,0,1,-1,-1),
+(480048,'Crude Titanwrought Cloth Gloves',61,0,50,1,0,0,0,1,-1,-1),
+(480049,'Crude Titanwrought Cloth Robe',61,0,50,1,0,0,0,1,-1,-1),
+(480050,'Crude Titanwrought Cloth Pantaloons',61,0,50,1,0,0,0,1,-1,-1),
+(480051,'Crude Titanwrought Cloth Sandals',61,0,50,1,0,0,0,1,-1,-1),
+(480052,'Crude Titanwrought Cloth Mantle',61,0,50,1,0,0,0,1,-1,-1),
+(480053,'Crude Titanwrought Cloth Cloak',61,0,50,1,0,0,0,1,-1,-1),
+(480054,'Crude Titanwrought Cloth Veil',61,0,50,1,0,0,0,1,-1,-1),
+(480055,'Crude Titanwrought Cloth Sash',61,0,50,1,0,0,0,1,-1,-1),
+(480056,'Crude Titanwrought Leather Cap',61,0,50,1,0,0,0,1,-1,-1),
+(480057,'Crude Titanwrought Leather Sleeves',61,0,50,1,0,0,0,1,-1,-1),
+(480058,'Crude Titanwrought Leather Bracer',61,0,50,1,0,0,0,1,-1,-1),
+(480059,'Crude Titanwrought Leather Gloves',61,0,50,1,0,0,0,1,-1,-1);
+INSERT INTO tradeskill_recipe (id,name,tradeskill,skillneeded,trivial,nofail,replace_container,must_learn,quest,enabled,min_expansion,max_expansion) VALUES
+(480060,'Crude Titanwrought Leather Tunic',61,0,50,1,0,0,0,1,-1,-1),
+(480061,'Crude Titanwrought Leather Trousers',61,0,50,1,0,0,0,1,-1,-1),
+(480062,'Crude Titanwrought Leather Boots',61,0,50,1,0,0,0,1,-1,-1),
+(480063,'Crude Titanwrought Leather Shoulderpads',61,0,50,1,0,0,0,1,-1,-1),
+(480064,'Crude Titanwrought Leather Cloak',61,0,50,1,0,0,0,1,-1,-1),
+(480065,'Crude Titanwrought Leather Mask',61,0,50,1,0,0,0,1,-1,-1),
+(480066,'Crude Titanwrought Leather Belt',61,0,50,1,0,0,0,1,-1,-1),
+(480067,'Crude Titanwrought Chain Coif',63,0,50,1,0,0,0,1,-1,-1),
+(480068,'Crude Titanwrought Chain Sleeves',63,0,50,1,0,0,0,1,-1,-1),
+(480069,'Crude Titanwrought Chain Bracer',63,0,50,1,0,0,0,1,-1,-1),
+(480070,'Crude Titanwrought Chain Gauntlets',63,0,50,1,0,0,0,1,-1,-1),
+(480071,'Crude Titanwrought Chain Tunic',63,0,50,1,0,0,0,1,-1,-1),
+(480072,'Crude Titanwrought Chain Leggings',63,0,50,1,0,0,0,1,-1,-1),
+(480073,'Crude Titanwrought Chain Boots',63,0,50,1,0,0,0,1,-1,-1),
+(480074,'Crude Titanwrought Chain Mantle',63,0,50,1,0,0,0,1,-1,-1),
+(480075,'Crude Titanwrought Chain Cape',63,0,50,1,0,0,0,1,-1,-1),
+(480076,'Crude Titanwrought Chain Veil',63,0,50,1,0,0,0,1,-1,-1),
+(480077,'Crude Titanwrought Chain Belt',63,0,50,1,0,0,0,1,-1,-1),
+(480078,'Crude Titanwrought Plate Helm',63,0,50,1,0,0,0,1,-1,-1),
+(480079,'Crude Titanwrought Plate Vambraces',63,0,50,1,0,0,0,1,-1,-1),
+(480080,'Crude Titanwrought Plate Bracer',63,0,50,1,0,0,0,1,-1,-1),
+(480081,'Crude Titanwrought Plate Gauntlets',63,0,50,1,0,0,0,1,-1,-1),
+(480082,'Crude Titanwrought Breastplate',63,0,50,1,0,0,0,1,-1,-1),
+(480083,'Crude Titanwrought Plate Greaves',63,0,50,1,0,0,0,1,-1,-1),
+(480084,'Crude Titanwrought Plate Boots',63,0,50,1,0,0,0,1,-1,-1),
+(480085,'Crude Titanwrought Plate Pauldrons',63,0,50,1,0,0,0,1,-1,-1),
+(480086,'Crude Titanwrought Plate Cloak',63,0,50,1,0,0,0,1,-1,-1),
+(480087,'Crude Titanwrought Plate Visor',63,0,50,1,0,0,0,1,-1,-1),
+(480088,'Crude Titanwrought Plate Girdle',63,0,50,1,0,0,0,1,-1,-1),
+(480089,'Crude Titanwrought Silver Earring',68,0,50,1,0,0,0,1,-1,-1),
+(480090,'Crude Titanwrought Gold Earring',68,0,50,1,0,0,0,1,-1,-1),
+(480091,'Crude Titanwrought Electrum Earring',68,0,50,1,0,0,0,1,-1,-1),
+(480092,'Crude Titanwrought Platinum Earring',68,0,50,1,0,0,0,1,-1,-1),
+(480093,'Crude Titanwrought Silver Necklace',68,0,50,1,0,0,0,1,-1,-1),
+(480094,'Crude Titanwrought Gold Necklace',68,0,50,1,0,0,0,1,-1,-1),
+(480095,'Crude Titanwrought Electrum Necklace',68,0,50,1,0,0,0,1,-1,-1),
+(480096,'Crude Titanwrought Platinum Necklace',68,0,50,1,0,0,0,1,-1,-1),
+(480097,'Crude Titanwrought Silver Ring',68,0,50,1,0,0,0,1,-1,-1),
+(480098,'Crude Titanwrought Gold Ring',68,0,50,1,0,0,0,1,-1,-1),
+(480099,'Crude Titanwrought Electrum Ring',68,0,50,1,0,0,0,1,-1,-1),
+(480100,'Crude Titanwrought Platinum Ring',68,0,50,1,0,0,0,1,-1,-1),
+(480101,'Crude Titanwrought Charm',68,0,50,1,0,0,0,1,-1,-1),
+(480102,'Crude Titanwrought Axe',63,0,50,1,0,0,0,1,-1,-1),
+(480103,'Crude Titanwrought Bow',63,0,50,1,0,0,0,1,-1,-1),
+(480104,'Crude Titanwrought Buckler',63,0,50,1,0,0,0,1,-1,-1),
+(480105,'Crude Titanwrought Club',63,0,50,1,0,0,0,1,-1,-1),
+(480106,'Crude Titanwrought Dagger',63,0,50,1,0,0,0,1,-1,-1),
+(480107,'Crude Titanwrought Fists',63,0,50,1,0,0,0,1,-1,-1),
+(480108,'Crude Titanwrought Greatspear',63,0,50,1,0,0,0,1,-1,-1),
+(480109,'Crude Titanwrought Greatsword',63,0,50,1,0,0,0,1,-1,-1),
+(480110,'Crude Titanwrought Mace',63,0,50,1,0,0,0,1,-1,-1),
+(480111,'Crude Titanwrought Quarterstaff',63,0,50,1,0,0,0,1,-1,-1),
+(480112,'Crude Titanwrought Shortsword',63,0,50,1,0,0,0,1,-1,-1),
+(480113,'Crude Titanwrought Spear',63,0,50,1,0,0,0,1,-1,-1),
+(480114,'Crude Titanwrought Spiked Shield',63,0,50,1,0,0,0,1,-1,-1),
+(480115,'Simple Titanwrought Cloth Cap',61,46,89,1,0,0,0,1,-1,-1),
+(480116,'Simple Titanwrought Cloth Sleeves',61,46,89,1,0,0,0,1,-1,-1),
+(480117,'Simple Titanwrought Cloth Wristwrap',61,46,89,1,0,0,0,1,-1,-1),
+(480118,'Simple Titanwrought Cloth Gloves',61,46,89,1,0,0,0,1,-1,-1),
+(480119,'Simple Titanwrought Cloth Robe',61,46,89,1,0,0,0,1,-1,-1);
+INSERT INTO tradeskill_recipe (id,name,tradeskill,skillneeded,trivial,nofail,replace_container,must_learn,quest,enabled,min_expansion,max_expansion) VALUES
+(480120,'Simple Titanwrought Cloth Pantaloons',61,46,89,1,0,0,0,1,-1,-1),
+(480121,'Simple Titanwrought Cloth Sandals',61,46,89,1,0,0,0,1,-1,-1),
+(480122,'Simple Titanwrought Cloth Mantle',61,46,89,1,0,0,0,1,-1,-1),
+(480123,'Simple Titanwrought Cloth Cloak',61,46,89,1,0,0,0,1,-1,-1),
+(480124,'Simple Titanwrought Cloth Veil',61,46,89,1,0,0,0,1,-1,-1),
+(480125,'Simple Titanwrought Cloth Sash',61,46,89,1,0,0,0,1,-1,-1),
+(480126,'Simple Titanwrought Leather Cap',61,46,89,1,0,0,0,1,-1,-1),
+(480127,'Simple Titanwrought Leather Sleeves',61,46,89,1,0,0,0,1,-1,-1),
+(480128,'Simple Titanwrought Leather Bracer',61,46,89,1,0,0,0,1,-1,-1),
+(480129,'Simple Titanwrought Leather Gloves',61,46,89,1,0,0,0,1,-1,-1),
+(480130,'Simple Titanwrought Leather Tunic',61,46,89,1,0,0,0,1,-1,-1),
+(480131,'Simple Titanwrought Leather Trousers',61,46,89,1,0,0,0,1,-1,-1),
+(480132,'Simple Titanwrought Leather Boots',61,46,89,1,0,0,0,1,-1,-1),
+(480133,'Simple Titanwrought Leather Shoulderpads',61,46,89,1,0,0,0,1,-1,-1),
+(480134,'Simple Titanwrought Leather Cloak',61,46,89,1,0,0,0,1,-1,-1),
+(480135,'Simple Titanwrought Leather Mask',61,46,89,1,0,0,0,1,-1,-1),
+(480136,'Simple Titanwrought Leather Belt',61,46,89,1,0,0,0,1,-1,-1),
+(480137,'Simple Titanwrought Chain Coif',63,46,89,1,0,0,0,1,-1,-1),
+(480138,'Simple Titanwrought Chain Sleeves',63,46,89,1,0,0,0,1,-1,-1),
+(480139,'Simple Titanwrought Chain Bracer',63,46,89,1,0,0,0,1,-1,-1),
+(480140,'Simple Titanwrought Chain Gauntlets',63,46,89,1,0,0,0,1,-1,-1),
+(480141,'Simple Titanwrought Chain Tunic',63,46,89,1,0,0,0,1,-1,-1),
+(480142,'Simple Titanwrought Chain Leggings',63,46,89,1,0,0,0,1,-1,-1),
+(480143,'Simple Titanwrought Chain Boots',63,46,89,1,0,0,0,1,-1,-1),
+(480144,'Simple Titanwrought Chain Mantle',63,46,89,1,0,0,0,1,-1,-1),
+(480145,'Simple Titanwrought Chain Cape',63,46,89,1,0,0,0,1,-1,-1),
+(480146,'Simple Titanwrought Chain Veil',63,46,89,1,0,0,0,1,-1,-1),
+(480147,'Simple Titanwrought Chain Belt',63,46,89,1,0,0,0,1,-1,-1),
+(480148,'Simple Titanwrought Plate Helm',63,46,89,1,0,0,0,1,-1,-1),
+(480149,'Simple Titanwrought Plate Vambraces',63,46,89,1,0,0,0,1,-1,-1),
+(480150,'Simple Titanwrought Plate Bracer',63,46,89,1,0,0,0,1,-1,-1),
+(480151,'Simple Titanwrought Plate Gauntlets',63,46,89,1,0,0,0,1,-1,-1),
+(480152,'Simple Titanwrought Breastplate',63,46,89,1,0,0,0,1,-1,-1),
+(480153,'Simple Titanwrought Plate Greaves',63,46,89,1,0,0,0,1,-1,-1),
+(480154,'Simple Titanwrought Plate Boots',63,46,89,1,0,0,0,1,-1,-1),
+(480155,'Simple Titanwrought Plate Pauldrons',63,46,89,1,0,0,0,1,-1,-1),
+(480156,'Simple Titanwrought Plate Cloak',63,46,89,1,0,0,0,1,-1,-1),
+(480157,'Simple Titanwrought Plate Visor',63,46,89,1,0,0,0,1,-1,-1),
+(480158,'Simple Titanwrought Plate Girdle',63,46,89,1,0,0,0,1,-1,-1),
+(480159,'Simple Titanwrought Silver Earring',68,46,89,1,0,0,0,1,-1,-1),
+(480160,'Simple Titanwrought Gold Earring',68,46,89,1,0,0,0,1,-1,-1),
+(480161,'Simple Titanwrought Electrum Earring',68,46,89,1,0,0,0,1,-1,-1),
+(480162,'Simple Titanwrought Platinum Earring',68,46,89,1,0,0,0,1,-1,-1),
+(480163,'Simple Titanwrought Silver Necklace',68,46,89,1,0,0,0,1,-1,-1),
+(480164,'Simple Titanwrought Gold Necklace',68,46,89,1,0,0,0,1,-1,-1),
+(480165,'Simple Titanwrought Electrum Necklace',68,46,89,1,0,0,0,1,-1,-1),
+(480166,'Simple Titanwrought Platinum Necklace',68,46,89,1,0,0,0,1,-1,-1),
+(480167,'Simple Titanwrought Silver Ring',68,46,89,1,0,0,0,1,-1,-1),
+(480168,'Simple Titanwrought Gold Ring',68,46,89,1,0,0,0,1,-1,-1),
+(480169,'Simple Titanwrought Electrum Ring',68,46,89,1,0,0,0,1,-1,-1),
+(480170,'Simple Titanwrought Platinum Ring',68,46,89,1,0,0,0,1,-1,-1),
+(480171,'Simple Titanwrought Charm',68,46,89,1,0,0,0,1,-1,-1),
+(480172,'Simple Titanwrought Bastard Sword',63,46,89,1,0,0,0,1,-1,-1),
+(480173,'Simple Titanwrought Bow',63,46,89,1,0,0,0,1,-1,-1),
+(480174,'Simple Titanwrought Claw-dagger',63,46,89,1,0,0,0,1,-1,-1),
+(480175,'Simple Titanwrought Dagger',63,46,89,1,0,0,0,1,-1,-1),
+(480176,'Simple Titanwrought Greataxe',63,46,89,1,0,0,0,1,-1,-1),
+(480177,'Simple Titanwrought Hammer',63,46,89,1,0,0,0,1,-1,-1),
+(480178,'Simple Titanwrought Kite Shield',63,46,89,1,0,0,0,1,-1,-1),
+(480179,'Simple Titanwrought Shortsword',63,46,89,1,0,0,0,1,-1,-1);
+INSERT INTO tradeskill_recipe (id,name,tradeskill,skillneeded,trivial,nofail,replace_container,must_learn,quest,enabled,min_expansion,max_expansion) VALUES
+(480180,'Simple Titanwrought Spear',63,46,89,1,0,0,0,1,-1,-1),
+(480181,'Simple Titanwrought Twisted Staff',63,46,89,1,0,0,0,1,-1,-1),
+(480182,'Simple Titanwrought Ulak',63,46,89,1,0,0,0,1,-1,-1),
+(480183,'Simple Titanwrought Wand',63,46,89,1,0,0,0,1,-1,-1),
+(480184,'Simple Titanwrought Wooden Shield',63,46,89,1,0,0,0,1,-1,-1),
+(480185,'Rough Titanwrought Cloth Cap',61,120,130,1,0,0,0,1,-1,-1),
+(480186,'Rough Titanwrought Cloth Sleeves',61,120,130,1,0,0,0,1,-1,-1),
+(480187,'Rough Titanwrought Cloth Wristwrap',61,120,130,1,0,0,0,1,-1,-1),
+(480188,'Rough Titanwrought Cloth Gloves',61,120,130,1,0,0,0,1,-1,-1),
+(480189,'Rough Titanwrought Cloth Robe',61,120,130,1,0,0,0,1,-1,-1),
+(480190,'Rough Titanwrought Cloth Pantaloons',61,120,130,1,0,0,0,1,-1,-1),
+(480191,'Rough Titanwrought Cloth Sandals',61,120,130,1,0,0,0,1,-1,-1),
+(480192,'Rough Titanwrought Cloth Mantle',61,120,130,1,0,0,0,1,-1,-1),
+(480193,'Rough Titanwrought Cloth Cloak',61,120,130,1,0,0,0,1,-1,-1),
+(480194,'Rough Titanwrought Cloth Veil',61,120,130,1,0,0,0,1,-1,-1),
+(480195,'Rough Titanwrought Cloth Sash',61,120,130,1,0,0,0,1,-1,-1),
+(480196,'Rough Titanwrought Leather Cap',61,120,130,1,0,0,0,1,-1,-1),
+(480197,'Rough Titanwrought Leather Sleeves',61,120,130,1,0,0,0,1,-1,-1),
+(480198,'Rough Titanwrought Leather Bracer',61,120,130,1,0,0,0,1,-1,-1),
+(480199,'Rough Titanwrought Leather Gloves',61,120,130,1,0,0,0,1,-1,-1),
+(480200,'Rough Titanwrought Leather Tunic',61,120,130,1,0,0,0,1,-1,-1),
+(480201,'Rough Titanwrought Leather Trousers',61,120,130,1,0,0,0,1,-1,-1),
+(480202,'Rough Titanwrought Leather Boots',61,120,130,1,0,0,0,1,-1,-1),
+(480203,'Rough Titanwrought Leather Shoulderpads',61,120,130,1,0,0,0,1,-1,-1),
+(480204,'Rough Titanwrought Leather Cloak',61,120,130,1,0,0,0,1,-1,-1),
+(480205,'Rough Titanwrought Leather Mask',61,120,130,1,0,0,0,1,-1,-1),
+(480206,'Rough Titanwrought Leather Belt',61,120,130,1,0,0,0,1,-1,-1),
+(480207,'Rough Titanwrought Chain Coif',63,120,130,1,0,0,0,1,-1,-1),
+(480208,'Rough Titanwrought Chain Sleeves',63,120,130,1,0,0,0,1,-1,-1),
+(480209,'Rough Titanwrought Chain Bracer',63,120,130,1,0,0,0,1,-1,-1),
+(480210,'Rough Titanwrought Chain Gauntlets',63,120,130,1,0,0,0,1,-1,-1),
+(480211,'Rough Titanwrought Chain Tunic',63,120,130,1,0,0,0,1,-1,-1),
+(480212,'Rough Titanwrought Chain Leggings',63,120,130,1,0,0,0,1,-1,-1),
+(480213,'Rough Titanwrought Chain Boots',63,120,130,1,0,0,0,1,-1,-1),
+(480214,'Rough Titanwrought Chain Mantle',63,120,130,1,0,0,0,1,-1,-1),
+(480215,'Rough Titanwrought Chain Cape',63,120,130,1,0,0,0,1,-1,-1),
+(480216,'Rough Titanwrought Chain Veil',63,120,130,1,0,0,0,1,-1,-1),
+(480217,'Rough Titanwrought Chain Belt',63,120,130,1,0,0,0,1,-1,-1),
+(480218,'Rough Titanwrought Plate Helm',63,120,130,1,0,0,0,1,-1,-1),
+(480219,'Rough Titanwrought Plate Vambraces',63,120,130,1,0,0,0,1,-1,-1),
+(480220,'Rough Titanwrought Plate Bracer',63,120,130,1,0,0,0,1,-1,-1),
+(480221,'Rough Titanwrought Plate Gauntlets',63,120,130,1,0,0,0,1,-1,-1),
+(480222,'Rough Titanwrought Breastplate',63,120,130,1,0,0,0,1,-1,-1),
+(480223,'Rough Titanwrought Plate Greaves',63,120,130,1,0,0,0,1,-1,-1),
+(480224,'Rough Titanwrought Plate Boots',63,120,130,1,0,0,0,1,-1,-1),
+(480225,'Rough Titanwrought Plate Pauldrons',63,120,130,1,0,0,0,1,-1,-1),
+(480226,'Rough Titanwrought Plate Cloak',63,120,130,1,0,0,0,1,-1,-1),
+(480227,'Rough Titanwrought Plate Visor',63,120,130,1,0,0,0,1,-1,-1),
+(480228,'Rough Titanwrought Plate Girdle',63,120,130,1,0,0,0,1,-1,-1),
+(480229,'Rough Titanwrought Silver Earring',68,120,130,1,0,0,0,1,-1,-1),
+(480230,'Rough Titanwrought Gold Earring',68,120,130,1,0,0,0,1,-1,-1),
+(480231,'Rough Titanwrought Electrum Earring',68,120,130,1,0,0,0,1,-1,-1),
+(480232,'Rough Titanwrought Platinum Earring',68,120,130,1,0,0,0,1,-1,-1),
+(480233,'Rough Titanwrought Silver Necklace',68,120,130,1,0,0,0,1,-1,-1),
+(480234,'Rough Titanwrought Gold Necklace',68,120,130,1,0,0,0,1,-1,-1),
+(480235,'Rough Titanwrought Electrum Necklace',68,120,130,1,0,0,0,1,-1,-1),
+(480236,'Rough Titanwrought Platinum Necklace',68,120,130,1,0,0,0,1,-1,-1),
+(480237,'Rough Titanwrought Silver Ring',68,120,130,1,0,0,0,1,-1,-1),
+(480238,'Rough Titanwrought Gold Ring',68,120,130,1,0,0,0,1,-1,-1),
+(480239,'Rough Titanwrought Electrum Ring',68,120,130,1,0,0,0,1,-1,-1);
+INSERT INTO tradeskill_recipe (id,name,tradeskill,skillneeded,trivial,nofail,replace_container,must_learn,quest,enabled,min_expansion,max_expansion) VALUES
+(480240,'Rough Titanwrought Platinum Ring',68,120,130,1,0,0,0,1,-1,-1),
+(480241,'Rough Titanwrought Charm',68,120,130,1,0,0,0,1,-1,-1),
+(480242,'Rough Titanwrought Bow',63,120,130,1,0,0,0,1,-1,-1),
+(480243,'Rough Titanwrought Chitin Shield',63,120,130,1,0,0,0,1,-1,-1),
+(480244,'Rough Titanwrought Halberd',63,120,130,1,0,0,0,1,-1,-1),
+(480245,'Rough Titanwrought Hammer',63,120,130,1,0,0,0,1,-1,-1),
+(480246,'Rough Titanwrought Knuckle Dusters',63,120,130,1,0,0,0,1,-1,-1),
+(480247,'Rough Titanwrought Longsword',63,120,130,1,0,0,0,1,-1,-1),
+(480248,'Rough Titanwrought Round Shield',63,120,130,1,0,0,0,1,-1,-1),
+(480249,'Rough Titanwrought Scepter',63,120,130,1,0,0,0,1,-1,-1),
+(480250,'Rough Titanwrought Serrated Dagger',63,120,130,1,0,0,0,1,-1,-1),
+(480251,'Rough Titanwrought Shortsword',63,120,130,1,0,0,0,1,-1,-1),
+(480252,'Rough Titanwrought Spiked Staff',63,120,130,1,0,0,0,1,-1,-1),
+(480253,'Rough Titanwrought Stone Dagger',63,120,130,1,0,0,0,1,-1,-1),
+(480254,'Rough Titanwrought Trident',63,120,130,1,0,0,0,1,-1,-1);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480000,16482,2,0,0,0,0),
+(480000,13006,1,0,0,0,0),
+(480000,148500,0,1,0,0,0),
+(480000,16,0,0,0,0,1),
+(480000,990061,0,0,0,0,1),
+(480001,97860,2,0,0,0,0),
+(480001,13006,1,0,0,0,0),
+(480001,148501,0,1,0,0,0),
+(480001,16,0,0,0,0,1),
+(480001,990061,0,0,0,0,1),
+(480002,10503,2,0,0,0,0),
+(480002,13006,1,0,0,0,0),
+(480002,148502,0,1,0,0,0),
+(480002,17,0,0,0,0,1),
+(480002,990061,0,0,0,0,1),
+(480003,10503,2,0,0,0,0),
+(480003,13006,1,0,0,0,0),
+(480003,148503,0,1,0,0,0),
+(480003,17,0,0,0,0,1),
+(480003,990061,0,0,0,0,1),
+(480004,10028,1,0,0,0,0),
+(480004,13006,1,0,0,0,0),
+(480004,148504,0,1,0,0,0),
+(480004,20,0,0,0,0,1),
+(480004,990061,0,0,0,0,1),
+(480005,10028,1,0,0,0,0),
+(480005,13006,1,0,0,0,0),
+(480005,148505,0,1,0,0,0),
+(480005,20,0,0,0,0,1),
+(480005,990061,0,0,0,0,1),
+(480006,10028,1,0,0,0,0),
+(480006,13006,1,0,0,0,0),
+(480006,148506,0,1,0,0,0),
+(480006,20,0,0,0,0,1),
+(480006,990061,0,0,0,0,1),
+(480007,10028,1,0,0,0,0),
+(480007,13006,1,0,0,0,0),
+(480007,148507,0,1,0,0,0),
+(480007,20,0,0,0,0,1),
+(480007,990061,0,0,0,0,1),
+(480008,10503,2,0,0,0,0),
+(480008,13006,1,0,0,0,0),
+(480008,148508,0,1,0,0,0),
+(480008,17,0,0,0,0,1),
+(480008,990061,0,0,0,0,1),
+(480009,10503,2,0,0,0,0),
+(480009,13006,1,0,0,0,0),
+(480009,148509,0,1,0,0,0),
+(480009,17,0,0,0,0,1),
+(480009,990061,0,0,0,0,1),
+(480010,10503,2,0,0,0,0),
+(480010,13006,1,0,0,0,0),
+(480010,148510,0,1,0,0,0),
+(480010,17,0,0,0,0,1),
+(480010,990061,0,0,0,0,1),
+(480011,10503,2,0,0,0,0),
+(480011,13006,1,0,0,0,0),
+(480011,148511,0,1,0,0,0),
+(480011,17,0,0,0,0,1),
+(480011,990061,0,0,0,0,1),
+(480012,13006,1,0,0,0,0),
+(480012,16482,1,0,0,0,0),
+(480012,148512,0,1,0,0,0),
+(480012,21,0,0,0,0,1),
+(480012,990061,0,0,0,0,1),
+(480013,13006,1,0,0,0,0),
+(480013,97860,1,0,0,0,0),
+(480013,148513,0,1,0,0,0),
+(480013,990061,0,0,0,0,1),
+(480013,990061,0,0,0,0,1),
+(480014,13006,1,0,0,0,0),
+(480014,10028,1,0,0,0,0),
+(480014,148514,0,1,0,0,0),
+(480014,20,0,0,0,0,1),
+(480014,990061,0,0,0,0,1),
+(480015,16482,2,0,0,0,0),
+(480015,13006,1,0,0,0,0),
+(480015,148516,0,1,0,0,0),
+(480015,16,0,0,0,0,1),
+(480015,990061,0,0,0,0,1),
+(480016,97860,2,0,0,0,0),
+(480016,13006,1,0,0,0,0),
+(480016,148517,0,1,0,0,0),
+(480016,16,0,0,0,0,1),
+(480016,990061,0,0,0,0,1),
+(480017,10503,2,0,0,0,0),
+(480017,13006,1,0,0,0,0),
+(480017,148518,0,1,0,0,0),
+(480017,17,0,0,0,0,1),
+(480017,990061,0,0,0,0,1),
+(480018,10503,2,0,0,0,0),
+(480018,13006,1,0,0,0,0),
+(480018,148519,0,1,0,0,0),
+(480018,17,0,0,0,0,1),
+(480018,990061,0,0,0,0,1),
+(480019,10028,1,0,0,0,0),
+(480019,13006,1,0,0,0,0),
+(480019,148520,0,1,0,0,0),
+(480019,20,0,0,0,0,1),
+(480019,990061,0,0,0,0,1),
+(480020,10028,1,0,0,0,0),
+(480020,13006,1,0,0,0,0),
+(480020,148521,0,1,0,0,0),
+(480020,20,0,0,0,0,1),
+(480020,990061,0,0,0,0,1),
+(480021,10028,1,0,0,0,0),
+(480021,13006,1,0,0,0,0),
+(480021,148522,0,1,0,0,0),
+(480021,20,0,0,0,0,1),
+(480021,990061,0,0,0,0,1),
+(480022,10028,1,0,0,0,0),
+(480022,13006,1,0,0,0,0),
+(480022,148523,0,1,0,0,0),
+(480022,20,0,0,0,0,1),
+(480022,990061,0,0,0,0,1),
+(480023,10503,2,0,0,0,0),
+(480023,13006,1,0,0,0,0),
+(480023,148524,0,1,0,0,0),
+(480023,17,0,0,0,0,1),
+(480023,990061,0,0,0,0,1);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480024,10503,2,0,0,0,0),
+(480024,13006,1,0,0,0,0),
+(480024,148525,0,1,0,0,0),
+(480024,17,0,0,0,0,1),
+(480024,990061,0,0,0,0,1),
+(480025,10503,2,0,0,0,0),
+(480025,13006,1,0,0,0,0),
+(480025,148526,0,1,0,0,0),
+(480025,17,0,0,0,0,1),
+(480025,990061,0,0,0,0,1),
+(480026,10503,2,0,0,0,0),
+(480026,13006,1,0,0,0,0),
+(480026,148527,0,1,0,0,0),
+(480026,17,0,0,0,0,1),
+(480026,990061,0,0,0,0,1),
+(480027,13006,1,0,0,0,0),
+(480027,16482,1,0,0,0,0),
+(480027,148528,0,1,0,0,0),
+(480027,21,0,0,0,0,1),
+(480027,990061,0,0,0,0,1),
+(480028,13006,1,0,0,0,0),
+(480028,97860,1,0,0,0,0),
+(480028,148529,0,1,0,0,0),
+(480028,990061,0,0,0,0,1),
+(480028,990061,0,0,0,0,1),
+(480029,13006,1,0,0,0,0),
+(480029,10028,1,0,0,0,0),
+(480029,148530,0,1,0,0,0),
+(480029,20,0,0,0,0,1),
+(480029,990061,0,0,0,0,1),
+(480030,16482,2,0,0,0,0),
+(480030,13006,1,0,0,0,0),
+(480030,148532,0,1,0,0,0),
+(480030,16,0,0,0,0,1),
+(480030,990061,0,0,0,0,1),
+(480031,97860,2,0,0,0,0),
+(480031,13006,1,0,0,0,0),
+(480031,148533,0,1,0,0,0),
+(480031,16,0,0,0,0,1),
+(480031,990061,0,0,0,0,1),
+(480032,10503,2,0,0,0,0),
+(480032,13006,1,0,0,0,0),
+(480032,148534,0,1,0,0,0),
+(480032,17,0,0,0,0,1),
+(480032,990061,0,0,0,0,1),
+(480033,10503,2,0,0,0,0),
+(480033,13006,1,0,0,0,0),
+(480033,148535,0,1,0,0,0),
+(480033,17,0,0,0,0,1),
+(480033,990061,0,0,0,0,1),
+(480034,10028,1,0,0,0,0),
+(480034,13006,1,0,0,0,0),
+(480034,148536,0,1,0,0,0),
+(480034,20,0,0,0,0,1),
+(480034,990061,0,0,0,0,1),
+(480035,10028,1,0,0,0,0),
+(480035,13006,1,0,0,0,0),
+(480035,148537,0,1,0,0,0),
+(480035,20,0,0,0,0,1),
+(480035,990061,0,0,0,0,1),
+(480036,10028,1,0,0,0,0),
+(480036,13006,1,0,0,0,0),
+(480036,148538,0,1,0,0,0),
+(480036,20,0,0,0,0,1),
+(480036,990061,0,0,0,0,1),
+(480037,10028,1,0,0,0,0),
+(480037,13006,1,0,0,0,0),
+(480037,148539,0,1,0,0,0),
+(480037,20,0,0,0,0,1),
+(480037,990061,0,0,0,0,1),
+(480038,10503,2,0,0,0,0),
+(480038,13006,1,0,0,0,0),
+(480038,148540,0,1,0,0,0),
+(480038,17,0,0,0,0,1),
+(480038,990061,0,0,0,0,1),
+(480039,10503,2,0,0,0,0),
+(480039,13006,1,0,0,0,0),
+(480039,148541,0,1,0,0,0),
+(480039,17,0,0,0,0,1),
+(480039,990061,0,0,0,0,1),
+(480040,10503,2,0,0,0,0),
+(480040,13006,1,0,0,0,0),
+(480040,148542,0,1,0,0,0),
+(480040,17,0,0,0,0,1),
+(480040,990061,0,0,0,0,1),
+(480041,10503,2,0,0,0,0),
+(480041,13006,1,0,0,0,0),
+(480041,148543,0,1,0,0,0),
+(480041,17,0,0,0,0,1),
+(480041,990061,0,0,0,0,1),
+(480042,13006,1,0,0,0,0),
+(480042,16482,1,0,0,0,0),
+(480042,148544,0,1,0,0,0),
+(480042,21,0,0,0,0,1),
+(480042,990061,0,0,0,0,1),
+(480043,13006,1,0,0,0,0),
+(480043,97860,1,0,0,0,0),
+(480043,148545,0,1,0,0,0),
+(480043,990061,0,0,0,0,1),
+(480043,990061,0,0,0,0,1),
+(480044,13006,1,0,0,0,0),
+(480044,10028,1,0,0,0,0),
+(480044,148546,0,1,0,0,0),
+(480044,20,0,0,0,0,1),
+(480044,990061,0,0,0,0,1),
+(480045,148200,1,0,0,0,0),
+(480045,148500,1,0,0,0,0),
+(480045,148512,1,0,0,0,0),
+(480045,148515,1,0,0,0,0),
+(480045,50029,0,1,0,0,0),
+(480045,16,0,0,0,0,1),
+(480045,990061,0,0,0,0,1),
+(480046,148201,1,0,0,0,0),
+(480046,148500,1,0,0,0,0),
+(480046,148512,1,0,0,0,0),
+(480046,148515,1,0,0,0,0),
+(480046,50030,0,1,0,0,0),
+(480046,16,0,0,0,0,1),
+(480046,990061,0,0,0,0,1),
+(480047,148202,1,0,0,0,0);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480047,148500,1,0,0,0,0),
+(480047,148512,1,0,0,0,0),
+(480047,148515,1,0,0,0,0),
+(480047,50026,0,1,0,0,0),
+(480047,16,0,0,0,0,1),
+(480047,990061,0,0,0,0,1),
+(480048,148203,1,0,0,0,0),
+(480048,148500,1,0,0,0,0),
+(480048,148512,1,0,0,0,0),
+(480048,148515,1,0,0,0,0),
+(480048,50027,0,1,0,0,0),
+(480048,16,0,0,0,0,1),
+(480048,990061,0,0,0,0,1),
+(480049,148204,1,0,0,0,0),
+(480049,148500,1,0,0,0,0),
+(480049,148512,1,0,0,0,0),
+(480049,148515,1,0,0,0,0),
+(480049,50032,0,1,0,0,0),
+(480049,16,0,0,0,0,1),
+(480049,990061,0,0,0,0,1),
+(480050,148205,1,0,0,0,0),
+(480050,148500,1,0,0,0,0),
+(480050,148512,1,0,0,0,0),
+(480050,148515,1,0,0,0,0),
+(480050,50031,0,1,0,0,0),
+(480050,16,0,0,0,0,1),
+(480050,990061,0,0,0,0,1),
+(480051,148206,1,0,0,0,0),
+(480051,148500,1,0,0,0,0),
+(480051,148512,1,0,0,0,0),
+(480051,148515,1,0,0,0,0),
+(480051,50028,0,1,0,0,0),
+(480051,16,0,0,0,0,1),
+(480051,990061,0,0,0,0,1),
+(480052,148207,1,0,0,0,0),
+(480052,148500,1,0,0,0,0),
+(480052,148512,1,0,0,0,0),
+(480052,148515,1,0,0,0,0),
+(480052,148000,0,1,0,0,0),
+(480052,16,0,0,0,0,1),
+(480052,990061,0,0,0,0,1),
+(480053,148208,1,0,0,0,0),
+(480053,148500,1,0,0,0,0),
+(480053,148512,1,0,0,0,0),
+(480053,148515,1,0,0,0,0),
+(480053,148001,0,1,0,0,0),
+(480053,16,0,0,0,0,1),
+(480053,990061,0,0,0,0,1),
+(480054,148209,1,0,0,0,0),
+(480054,148500,1,0,0,0,0),
+(480054,148512,1,0,0,0,0),
+(480054,148515,1,0,0,0,0),
+(480054,148002,0,1,0,0,0),
+(480054,16,0,0,0,0,1),
+(480054,990061,0,0,0,0,1),
+(480055,148210,1,0,0,0,0),
+(480055,148500,1,0,0,0,0),
+(480055,148512,1,0,0,0,0),
+(480055,148515,1,0,0,0,0),
+(480055,148003,0,1,0,0,0),
+(480055,16,0,0,0,0,1),
+(480055,990061,0,0,0,0,1),
+(480056,148211,1,0,0,0,0),
+(480056,148501,1,0,0,0,0),
+(480056,148512,1,0,0,0,0),
+(480056,148515,1,0,0,0,0),
+(480056,50022,0,1,0,0,0),
+(480056,16,0,0,0,0,1),
+(480056,990061,0,0,0,0,1),
+(480057,148212,1,0,0,0,0),
+(480057,148501,1,0,0,0,0),
+(480057,148512,1,0,0,0,0),
+(480057,148515,1,0,0,0,0),
+(480057,50023,0,1,0,0,0),
+(480057,16,0,0,0,0,1),
+(480057,990061,0,0,0,0,1),
+(480058,148213,1,0,0,0,0),
+(480058,148501,1,0,0,0,0),
+(480058,148512,1,0,0,0,0),
+(480058,148515,1,0,0,0,0),
+(480058,50019,0,1,0,0,0),
+(480058,16,0,0,0,0,1),
+(480058,990061,0,0,0,0,1),
+(480059,148214,1,0,0,0,0),
+(480059,148501,1,0,0,0,0),
+(480059,148512,1,0,0,0,0),
+(480059,148515,1,0,0,0,0),
+(480059,50020,0,1,0,0,0),
+(480059,16,0,0,0,0,1),
+(480059,990061,0,0,0,0,1),
+(480060,148215,1,0,0,0,0),
+(480060,148501,1,0,0,0,0),
+(480060,148512,1,0,0,0,0),
+(480060,148515,1,0,0,0,0),
+(480060,50025,0,1,0,0,0),
+(480060,16,0,0,0,0,1),
+(480060,990061,0,0,0,0,1),
+(480061,148216,1,0,0,0,0),
+(480061,148501,1,0,0,0,0),
+(480061,148512,1,0,0,0,0),
+(480061,148515,1,0,0,0,0),
+(480061,50024,0,1,0,0,0),
+(480061,16,0,0,0,0,1),
+(480061,990061,0,0,0,0,1),
+(480062,148217,1,0,0,0,0),
+(480062,148501,1,0,0,0,0),
+(480062,148512,1,0,0,0,0),
+(480062,148515,1,0,0,0,0),
+(480062,50021,0,1,0,0,0),
+(480062,16,0,0,0,0,1),
+(480062,990061,0,0,0,0,1),
+(480063,148218,1,0,0,0,0),
+(480063,148501,1,0,0,0,0),
+(480063,148512,1,0,0,0,0),
+(480063,148515,1,0,0,0,0),
+(480063,148004,0,1,0,0,0),
+(480063,16,0,0,0,0,1),
+(480063,990061,0,0,0,0,1),
+(480064,148219,1,0,0,0,0),
+(480064,148501,1,0,0,0,0);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480064,148512,1,0,0,0,0),
+(480064,148515,1,0,0,0,0),
+(480064,148005,0,1,0,0,0),
+(480064,16,0,0,0,0,1),
+(480064,990061,0,0,0,0,1),
+(480065,148220,1,0,0,0,0),
+(480065,148501,1,0,0,0,0),
+(480065,148512,1,0,0,0,0),
+(480065,148515,1,0,0,0,0),
+(480065,148006,0,1,0,0,0),
+(480065,16,0,0,0,0,1),
+(480065,990061,0,0,0,0,1),
+(480066,148221,1,0,0,0,0),
+(480066,148501,1,0,0,0,0),
+(480066,148512,1,0,0,0,0),
+(480066,148515,1,0,0,0,0),
+(480066,148007,0,1,0,0,0),
+(480066,16,0,0,0,0,1),
+(480066,990061,0,0,0,0,1),
+(480067,148222,1,0,0,0,0),
+(480067,148502,1,0,0,0,0),
+(480067,148512,1,0,0,0,0),
+(480067,148515,1,0,0,0,0),
+(480067,50015,0,1,0,0,0),
+(480067,17,0,0,0,0,1),
+(480067,990061,0,0,0,0,1),
+(480068,148223,1,0,0,0,0),
+(480068,148502,1,0,0,0,0),
+(480068,148512,1,0,0,0,0),
+(480068,148515,1,0,0,0,0),
+(480068,50016,0,1,0,0,0),
+(480068,17,0,0,0,0,1),
+(480068,990061,0,0,0,0,1),
+(480069,148224,1,0,0,0,0),
+(480069,148502,1,0,0,0,0),
+(480069,148512,1,0,0,0,0),
+(480069,148515,1,0,0,0,0),
+(480069,50012,0,1,0,0,0),
+(480069,17,0,0,0,0,1),
+(480069,990061,0,0,0,0,1),
+(480070,148225,1,0,0,0,0),
+(480070,148502,1,0,0,0,0),
+(480070,148512,1,0,0,0,0),
+(480070,148515,1,0,0,0,0),
+(480070,50013,0,1,0,0,0),
+(480070,17,0,0,0,0,1),
+(480070,990061,0,0,0,0,1),
+(480071,148226,1,0,0,0,0),
+(480071,148502,1,0,0,0,0),
+(480071,148512,1,0,0,0,0),
+(480071,148515,1,0,0,0,0),
+(480071,50018,0,1,0,0,0),
+(480071,17,0,0,0,0,1),
+(480071,990061,0,0,0,0,1),
+(480072,148227,1,0,0,0,0),
+(480072,148502,1,0,0,0,0),
+(480072,148512,1,0,0,0,0),
+(480072,148515,1,0,0,0,0),
+(480072,50017,0,1,0,0,0),
+(480072,17,0,0,0,0,1),
+(480072,990061,0,0,0,0,1),
+(480073,148228,1,0,0,0,0),
+(480073,148502,1,0,0,0,0),
+(480073,148512,1,0,0,0,0),
+(480073,148515,1,0,0,0,0),
+(480073,50014,0,1,0,0,0),
+(480073,17,0,0,0,0,1),
+(480073,990061,0,0,0,0,1),
+(480074,148229,1,0,0,0,0),
+(480074,148502,1,0,0,0,0),
+(480074,148512,1,0,0,0,0),
+(480074,148515,1,0,0,0,0),
+(480074,148008,0,1,0,0,0),
+(480074,17,0,0,0,0,1),
+(480074,990061,0,0,0,0,1),
+(480075,148230,1,0,0,0,0),
+(480075,148502,1,0,0,0,0),
+(480075,148512,1,0,0,0,0),
+(480075,148515,1,0,0,0,0),
+(480075,148009,0,1,0,0,0),
+(480075,17,0,0,0,0,1),
+(480075,990061,0,0,0,0,1),
+(480076,148231,1,0,0,0,0),
+(480076,148502,1,0,0,0,0),
+(480076,148512,1,0,0,0,0),
+(480076,148515,1,0,0,0,0),
+(480076,148010,0,1,0,0,0),
+(480076,17,0,0,0,0,1),
+(480076,990061,0,0,0,0,1),
+(480077,148232,1,0,0,0,0),
+(480077,148502,1,0,0,0,0),
+(480077,148512,1,0,0,0,0),
+(480077,148515,1,0,0,0,0),
+(480077,148011,0,1,0,0,0),
+(480077,17,0,0,0,0,1),
+(480077,990061,0,0,0,0,1),
+(480078,148233,1,0,0,0,0),
+(480078,148503,1,0,0,0,0),
+(480078,148512,1,0,0,0,0),
+(480078,148515,1,0,0,0,0),
+(480078,50008,0,1,0,0,0),
+(480078,17,0,0,0,0,1),
+(480078,990061,0,0,0,0,1),
+(480079,148234,1,0,0,0,0),
+(480079,148503,1,0,0,0,0),
+(480079,148512,1,0,0,0,0),
+(480079,148515,1,0,0,0,0),
+(480079,50009,0,1,0,0,0),
+(480079,17,0,0,0,0,1),
+(480079,990061,0,0,0,0,1),
+(480080,148235,1,0,0,0,0),
+(480080,148503,1,0,0,0,0),
+(480080,148512,1,0,0,0,0),
+(480080,148515,1,0,0,0,0),
+(480080,50005,0,1,0,0,0),
+(480080,17,0,0,0,0,1),
+(480080,990061,0,0,0,0,1),
+(480081,148236,1,0,0,0,0),
+(480081,148503,1,0,0,0,0),
+(480081,148512,1,0,0,0,0);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480081,148515,1,0,0,0,0),
+(480081,50006,0,1,0,0,0),
+(480081,17,0,0,0,0,1),
+(480081,990061,0,0,0,0,1),
+(480082,148237,1,0,0,0,0),
+(480082,148503,1,0,0,0,0),
+(480082,148512,1,0,0,0,0),
+(480082,148515,1,0,0,0,0),
+(480082,50011,0,1,0,0,0),
+(480082,17,0,0,0,0,1),
+(480082,990061,0,0,0,0,1),
+(480083,148238,1,0,0,0,0),
+(480083,148503,1,0,0,0,0),
+(480083,148512,1,0,0,0,0),
+(480083,148515,1,0,0,0,0),
+(480083,50010,0,1,0,0,0),
+(480083,17,0,0,0,0,1),
+(480083,990061,0,0,0,0,1),
+(480084,148239,1,0,0,0,0),
+(480084,148503,1,0,0,0,0),
+(480084,148512,1,0,0,0,0),
+(480084,148515,1,0,0,0,0),
+(480084,50007,0,1,0,0,0),
+(480084,17,0,0,0,0,1),
+(480084,990061,0,0,0,0,1),
+(480085,148240,1,0,0,0,0),
+(480085,148503,1,0,0,0,0),
+(480085,148512,1,0,0,0,0),
+(480085,148515,1,0,0,0,0),
+(480085,148012,0,1,0,0,0),
+(480085,17,0,0,0,0,1),
+(480085,990061,0,0,0,0,1),
+(480086,148241,1,0,0,0,0),
+(480086,148503,1,0,0,0,0),
+(480086,148512,1,0,0,0,0),
+(480086,148515,1,0,0,0,0),
+(480086,148013,0,1,0,0,0),
+(480086,17,0,0,0,0,1),
+(480086,990061,0,0,0,0,1),
+(480087,148242,1,0,0,0,0),
+(480087,148503,1,0,0,0,0),
+(480087,148512,1,0,0,0,0),
+(480087,148515,1,0,0,0,0),
+(480087,148014,0,1,0,0,0),
+(480087,17,0,0,0,0,1),
+(480087,990061,0,0,0,0,1),
+(480088,148243,1,0,0,0,0),
+(480088,148503,1,0,0,0,0),
+(480088,148512,1,0,0,0,0),
+(480088,148515,1,0,0,0,0),
+(480088,148015,0,1,0,0,0),
+(480088,17,0,0,0,0,1),
+(480088,990061,0,0,0,0,1),
+(480089,148244,1,0,0,0,0),
+(480089,148504,1,0,0,0,0),
+(480089,148513,1,0,0,0,0),
+(480089,148515,1,0,0,0,0),
+(480089,148016,0,1,0,0,0),
+(480089,20,0,0,0,0,1),
+(480089,990061,0,0,0,0,1),
+(480090,148245,1,0,0,0,0),
+(480090,148505,1,0,0,0,0),
+(480090,148513,1,0,0,0,0),
+(480090,148515,1,0,0,0,0),
+(480090,148017,0,1,0,0,0),
+(480090,20,0,0,0,0,1),
+(480090,990061,0,0,0,0,1),
+(480091,148246,1,0,0,0,0),
+(480091,148506,1,0,0,0,0),
+(480091,148513,1,0,0,0,0),
+(480091,148515,1,0,0,0,0),
+(480091,148018,0,1,0,0,0),
+(480091,20,0,0,0,0,1),
+(480091,990061,0,0,0,0,1),
+(480092,148247,1,0,0,0,0),
+(480092,148507,1,0,0,0,0),
+(480092,148513,1,0,0,0,0),
+(480092,148515,1,0,0,0,0),
+(480092,148019,0,1,0,0,0),
+(480092,20,0,0,0,0,1),
+(480092,990061,0,0,0,0,1),
+(480093,148248,1,0,0,0,0),
+(480093,148504,1,0,0,0,0),
+(480093,148513,1,0,0,0,0),
+(480093,148515,1,0,0,0,0),
+(480093,148020,0,1,0,0,0),
+(480093,20,0,0,0,0,1),
+(480093,990061,0,0,0,0,1),
+(480094,148249,1,0,0,0,0),
+(480094,148505,1,0,0,0,0),
+(480094,148513,1,0,0,0,0),
+(480094,148515,1,0,0,0,0),
+(480094,148021,0,1,0,0,0),
+(480094,20,0,0,0,0,1),
+(480094,990061,0,0,0,0,1),
+(480095,148250,1,0,0,0,0),
+(480095,148506,1,0,0,0,0),
+(480095,148513,1,0,0,0,0),
+(480095,148515,1,0,0,0,0),
+(480095,148022,0,1,0,0,0),
+(480095,20,0,0,0,0,1),
+(480095,990061,0,0,0,0,1),
+(480096,148251,1,0,0,0,0),
+(480096,148507,1,0,0,0,0),
+(480096,148513,1,0,0,0,0),
+(480096,148515,1,0,0,0,0),
+(480096,148023,0,1,0,0,0),
+(480096,20,0,0,0,0,1),
+(480096,990061,0,0,0,0,1),
+(480097,148252,1,0,0,0,0),
+(480097,148504,1,0,0,0,0),
+(480097,148513,1,0,0,0,0),
+(480097,148515,1,0,0,0,0),
+(480097,148024,0,1,0,0,0),
+(480097,20,0,0,0,0,1),
+(480097,990061,0,0,0,0,1),
+(480098,148253,1,0,0,0,0),
+(480098,148505,1,0,0,0,0),
+(480098,148513,1,0,0,0,0),
+(480098,148515,1,0,0,0,0);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480098,148025,0,1,0,0,0),
+(480098,20,0,0,0,0,1),
+(480098,990061,0,0,0,0,1),
+(480099,148254,1,0,0,0,0),
+(480099,148506,1,0,0,0,0),
+(480099,148513,1,0,0,0,0),
+(480099,148515,1,0,0,0,0),
+(480099,148026,0,1,0,0,0),
+(480099,20,0,0,0,0,1),
+(480099,990061,0,0,0,0,1),
+(480100,148255,1,0,0,0,0),
+(480100,148507,1,0,0,0,0),
+(480100,148513,1,0,0,0,0),
+(480100,148515,1,0,0,0,0),
+(480100,148027,0,1,0,0,0),
+(480100,20,0,0,0,0,1),
+(480100,990061,0,0,0,0,1),
+(480101,148256,1,0,0,0,0),
+(480101,148504,1,0,0,0,0),
+(480101,148513,1,0,0,0,0),
+(480101,148515,1,0,0,0,0),
+(480101,148028,0,1,0,0,0),
+(480101,20,0,0,0,0,1),
+(480101,990061,0,0,0,0,1),
+(480102,148257,1,0,0,0,0),
+(480102,148508,1,0,0,0,0),
+(480102,148514,1,0,0,0,0),
+(480102,148515,1,0,0,0,0),
+(480102,50509,0,1,0,0,0),
+(480102,17,0,0,0,0,1),
+(480102,990061,0,0,0,0,1),
+(480103,148258,1,0,0,0,0),
+(480103,148509,1,0,0,0,0),
+(480103,148514,1,0,0,0,0),
+(480103,148515,1,0,0,0,0),
+(480103,50516,0,1,0,0,0),
+(480103,17,0,0,0,0,1),
+(480103,990061,0,0,0,0,1),
+(480104,148259,1,0,0,0,0),
+(480104,148510,1,0,0,0,0),
+(480104,148514,1,0,0,0,0),
+(480104,148515,1,0,0,0,0),
+(480104,50518,0,1,0,0,0),
+(480104,17,0,0,0,0,1),
+(480104,990061,0,0,0,0,1),
+(480105,148260,1,0,0,0,0),
+(480105,148511,1,0,0,0,0),
+(480105,148514,1,0,0,0,0),
+(480105,148515,1,0,0,0,0),
+(480105,50507,0,1,0,0,0),
+(480105,17,0,0,0,0,1),
+(480105,990061,0,0,0,0,1),
+(480106,148261,1,0,0,0,0),
+(480106,148508,1,0,0,0,0),
+(480106,148514,1,0,0,0,0),
+(480106,148515,1,0,0,0,0),
+(480106,50510,0,1,0,0,0),
+(480106,17,0,0,0,0,1),
+(480106,990061,0,0,0,0,1),
+(480107,148262,1,0,0,0,0),
+(480107,148509,1,0,0,0,0),
+(480107,148514,1,0,0,0,0),
+(480107,148515,1,0,0,0,0),
+(480107,50512,0,1,0,0,0),
+(480107,17,0,0,0,0,1),
+(480107,990061,0,0,0,0,1),
+(480108,148263,1,0,0,0,0),
+(480108,148510,1,0,0,0,0),
+(480108,148514,1,0,0,0,0),
+(480108,148515,1,0,0,0,0),
+(480108,50514,0,1,0,0,0),
+(480108,17,0,0,0,0,1),
+(480108,990061,0,0,0,0,1),
+(480109,148264,1,0,0,0,0),
+(480109,148511,1,0,0,0,0),
+(480109,148514,1,0,0,0,0),
+(480109,148515,1,0,0,0,0),
+(480109,50515,0,1,0,0,0),
+(480109,17,0,0,0,0,1),
+(480109,990061,0,0,0,0,1),
+(480110,148265,1,0,0,0,0),
+(480110,148508,1,0,0,0,0),
+(480110,148514,1,0,0,0,0),
+(480110,148515,1,0,0,0,0),
+(480110,50506,0,1,0,0,0),
+(480110,17,0,0,0,0,1),
+(480110,990061,0,0,0,0,1),
+(480111,148266,1,0,0,0,0),
+(480111,148509,1,0,0,0,0),
+(480111,148514,1,0,0,0,0),
+(480111,148515,1,0,0,0,0),
+(480111,50513,0,1,0,0,0),
+(480111,17,0,0,0,0,1),
+(480111,990061,0,0,0,0,1),
+(480112,148267,1,0,0,0,0),
+(480112,148510,1,0,0,0,0),
+(480112,148514,1,0,0,0,0),
+(480112,148515,1,0,0,0,0),
+(480112,50508,0,1,0,0,0),
+(480112,17,0,0,0,0,1),
+(480112,990061,0,0,0,0,1),
+(480113,148268,1,0,0,0,0),
+(480113,148511,1,0,0,0,0),
+(480113,148514,1,0,0,0,0),
+(480113,148515,1,0,0,0,0),
+(480113,50511,0,1,0,0,0),
+(480113,17,0,0,0,0,1),
+(480113,990061,0,0,0,0,1),
+(480114,148269,1,0,0,0,0),
+(480114,148508,1,0,0,0,0),
+(480114,148514,1,0,0,0,0),
+(480114,148515,1,0,0,0,0),
+(480114,50517,0,1,0,0,0),
+(480114,17,0,0,0,0,1),
+(480114,990061,0,0,0,0,1),
+(480115,148270,1,0,0,0,0),
+(480115,148516,1,0,0,0,0),
+(480115,148528,1,0,0,0,0),
+(480115,148531,1,0,0,0,0),
+(480115,50057,0,1,0,0,0);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480115,16,0,0,0,0,1),
+(480115,990061,0,0,0,0,1),
+(480116,148271,1,0,0,0,0),
+(480116,148516,1,0,0,0,0),
+(480116,148528,1,0,0,0,0),
+(480116,148531,1,0,0,0,0),
+(480116,50058,0,1,0,0,0),
+(480116,16,0,0,0,0,1),
+(480116,990061,0,0,0,0,1),
+(480117,148272,1,0,0,0,0),
+(480117,148516,1,0,0,0,0),
+(480117,148528,1,0,0,0,0),
+(480117,148531,1,0,0,0,0),
+(480117,50054,0,1,0,0,0),
+(480117,16,0,0,0,0,1),
+(480117,990061,0,0,0,0,1),
+(480118,148273,1,0,0,0,0),
+(480118,148516,1,0,0,0,0),
+(480118,148528,1,0,0,0,0),
+(480118,148531,1,0,0,0,0),
+(480118,50055,0,1,0,0,0),
+(480118,16,0,0,0,0,1),
+(480118,990061,0,0,0,0,1),
+(480119,148274,1,0,0,0,0),
+(480119,148516,1,0,0,0,0),
+(480119,148528,1,0,0,0,0),
+(480119,148531,1,0,0,0,0),
+(480119,50060,0,1,0,0,0),
+(480119,16,0,0,0,0,1),
+(480119,990061,0,0,0,0,1),
+(480120,148275,1,0,0,0,0),
+(480120,148516,1,0,0,0,0),
+(480120,148528,1,0,0,0,0),
+(480120,148531,1,0,0,0,0),
+(480120,50059,0,1,0,0,0),
+(480120,16,0,0,0,0,1),
+(480120,990061,0,0,0,0,1),
+(480121,148276,1,0,0,0,0),
+(480121,148516,1,0,0,0,0),
+(480121,148528,1,0,0,0,0),
+(480121,148531,1,0,0,0,0),
+(480121,50056,0,1,0,0,0),
+(480121,16,0,0,0,0,1),
+(480121,990061,0,0,0,0,1),
+(480122,148277,1,0,0,0,0),
+(480122,148516,1,0,0,0,0),
+(480122,148528,1,0,0,0,0),
+(480122,148531,1,0,0,0,0),
+(480122,148029,0,1,0,0,0),
+(480122,16,0,0,0,0,1),
+(480122,990061,0,0,0,0,1),
+(480123,148278,1,0,0,0,0),
+(480123,148516,1,0,0,0,0),
+(480123,148528,1,0,0,0,0),
+(480123,148531,1,0,0,0,0),
+(480123,148030,0,1,0,0,0),
+(480123,16,0,0,0,0,1),
+(480123,990061,0,0,0,0,1),
+(480124,148279,1,0,0,0,0),
+(480124,148516,1,0,0,0,0),
+(480124,148528,1,0,0,0,0),
+(480124,148531,1,0,0,0,0),
+(480124,148031,0,1,0,0,0),
+(480124,16,0,0,0,0,1),
+(480124,990061,0,0,0,0,1),
+(480125,148280,1,0,0,0,0),
+(480125,148516,1,0,0,0,0),
+(480125,148528,1,0,0,0,0),
+(480125,148531,1,0,0,0,0),
+(480125,148032,0,1,0,0,0),
+(480125,16,0,0,0,0,1),
+(480125,990061,0,0,0,0,1),
+(480126,148281,1,0,0,0,0),
+(480126,148517,1,0,0,0,0),
+(480126,148528,1,0,0,0,0),
+(480126,148531,1,0,0,0,0),
+(480126,50050,0,1,0,0,0),
+(480126,16,0,0,0,0,1),
+(480126,990061,0,0,0,0,1),
+(480127,148282,1,0,0,0,0),
+(480127,148517,1,0,0,0,0),
+(480127,148528,1,0,0,0,0),
+(480127,148531,1,0,0,0,0),
+(480127,50051,0,1,0,0,0),
+(480127,16,0,0,0,0,1),
+(480127,990061,0,0,0,0,1),
+(480128,148283,1,0,0,0,0),
+(480128,148517,1,0,0,0,0),
+(480128,148528,1,0,0,0,0),
+(480128,148531,1,0,0,0,0),
+(480128,50047,0,1,0,0,0),
+(480128,16,0,0,0,0,1),
+(480128,990061,0,0,0,0,1),
+(480129,148284,1,0,0,0,0),
+(480129,148517,1,0,0,0,0),
+(480129,148528,1,0,0,0,0),
+(480129,148531,1,0,0,0,0),
+(480129,50048,0,1,0,0,0),
+(480129,16,0,0,0,0,1),
+(480129,990061,0,0,0,0,1),
+(480130,148285,1,0,0,0,0),
+(480130,148517,1,0,0,0,0),
+(480130,148528,1,0,0,0,0),
+(480130,148531,1,0,0,0,0),
+(480130,50053,0,1,0,0,0),
+(480130,16,0,0,0,0,1),
+(480130,990061,0,0,0,0,1),
+(480131,148286,1,0,0,0,0),
+(480131,148517,1,0,0,0,0),
+(480131,148528,1,0,0,0,0),
+(480131,148531,1,0,0,0,0),
+(480131,50052,0,1,0,0,0),
+(480131,16,0,0,0,0,1),
+(480131,990061,0,0,0,0,1),
+(480132,148287,1,0,0,0,0),
+(480132,148517,1,0,0,0,0),
+(480132,148528,1,0,0,0,0),
+(480132,148531,1,0,0,0,0),
+(480132,50049,0,1,0,0,0),
+(480132,16,0,0,0,0,1);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480132,990061,0,0,0,0,1),
+(480133,148288,1,0,0,0,0),
+(480133,148517,1,0,0,0,0),
+(480133,148528,1,0,0,0,0),
+(480133,148531,1,0,0,0,0),
+(480133,148033,0,1,0,0,0),
+(480133,16,0,0,0,0,1),
+(480133,990061,0,0,0,0,1),
+(480134,148289,1,0,0,0,0),
+(480134,148517,1,0,0,0,0),
+(480134,148528,1,0,0,0,0),
+(480134,148531,1,0,0,0,0),
+(480134,148034,0,1,0,0,0),
+(480134,16,0,0,0,0,1),
+(480134,990061,0,0,0,0,1),
+(480135,148290,1,0,0,0,0),
+(480135,148517,1,0,0,0,0),
+(480135,148528,1,0,0,0,0),
+(480135,148531,1,0,0,0,0),
+(480135,148035,0,1,0,0,0),
+(480135,16,0,0,0,0,1),
+(480135,990061,0,0,0,0,1),
+(480136,148291,1,0,0,0,0),
+(480136,148517,1,0,0,0,0),
+(480136,148528,1,0,0,0,0),
+(480136,148531,1,0,0,0,0),
+(480136,148036,0,1,0,0,0),
+(480136,16,0,0,0,0,1),
+(480136,990061,0,0,0,0,1),
+(480137,148292,1,0,0,0,0),
+(480137,148518,1,0,0,0,0),
+(480137,148528,1,0,0,0,0),
+(480137,148531,1,0,0,0,0),
+(480137,50043,0,1,0,0,0),
+(480137,17,0,0,0,0,1),
+(480137,990061,0,0,0,0,1),
+(480138,148293,1,0,0,0,0),
+(480138,148518,1,0,0,0,0),
+(480138,148528,1,0,0,0,0),
+(480138,148531,1,0,0,0,0),
+(480138,50044,0,1,0,0,0),
+(480138,17,0,0,0,0,1),
+(480138,990061,0,0,0,0,1),
+(480139,148294,1,0,0,0,0),
+(480139,148518,1,0,0,0,0),
+(480139,148528,1,0,0,0,0),
+(480139,148531,1,0,0,0,0),
+(480139,50040,0,1,0,0,0),
+(480139,17,0,0,0,0,1),
+(480139,990061,0,0,0,0,1),
+(480140,148295,1,0,0,0,0),
+(480140,148518,1,0,0,0,0),
+(480140,148528,1,0,0,0,0),
+(480140,148531,1,0,0,0,0),
+(480140,50041,0,1,0,0,0),
+(480140,17,0,0,0,0,1),
+(480140,990061,0,0,0,0,1),
+(480141,148296,1,0,0,0,0),
+(480141,148518,1,0,0,0,0),
+(480141,148528,1,0,0,0,0),
+(480141,148531,1,0,0,0,0),
+(480141,50046,0,1,0,0,0),
+(480141,17,0,0,0,0,1),
+(480141,990061,0,0,0,0,1),
+(480142,148297,1,0,0,0,0),
+(480142,148518,1,0,0,0,0),
+(480142,148528,1,0,0,0,0),
+(480142,148531,1,0,0,0,0),
+(480142,50045,0,1,0,0,0),
+(480142,17,0,0,0,0,1),
+(480142,990061,0,0,0,0,1),
+(480143,148298,1,0,0,0,0),
+(480143,148518,1,0,0,0,0),
+(480143,148528,1,0,0,0,0),
+(480143,148531,1,0,0,0,0),
+(480143,50042,0,1,0,0,0),
+(480143,17,0,0,0,0,1),
+(480143,990061,0,0,0,0,1),
+(480144,148299,1,0,0,0,0),
+(480144,148518,1,0,0,0,0),
+(480144,148528,1,0,0,0,0),
+(480144,148531,1,0,0,0,0),
+(480144,148037,0,1,0,0,0),
+(480144,17,0,0,0,0,1),
+(480144,990061,0,0,0,0,1),
+(480145,148300,1,0,0,0,0),
+(480145,148518,1,0,0,0,0),
+(480145,148528,1,0,0,0,0),
+(480145,148531,1,0,0,0,0),
+(480145,148038,0,1,0,0,0),
+(480145,17,0,0,0,0,1),
+(480145,990061,0,0,0,0,1),
+(480146,148301,1,0,0,0,0),
+(480146,148518,1,0,0,0,0),
+(480146,148528,1,0,0,0,0),
+(480146,148531,1,0,0,0,0),
+(480146,148039,0,1,0,0,0),
+(480146,17,0,0,0,0,1),
+(480146,990061,0,0,0,0,1),
+(480147,148302,1,0,0,0,0),
+(480147,148518,1,0,0,0,0),
+(480147,148528,1,0,0,0,0),
+(480147,148531,1,0,0,0,0),
+(480147,148040,0,1,0,0,0),
+(480147,17,0,0,0,0,1),
+(480147,990061,0,0,0,0,1),
+(480148,148303,1,0,0,0,0),
+(480148,148519,1,0,0,0,0),
+(480148,148528,1,0,0,0,0),
+(480148,148531,1,0,0,0,0),
+(480148,50036,0,1,0,0,0),
+(480148,17,0,0,0,0,1),
+(480148,990061,0,0,0,0,1),
+(480149,148304,1,0,0,0,0),
+(480149,148519,1,0,0,0,0),
+(480149,148528,1,0,0,0,0),
+(480149,148531,1,0,0,0,0),
+(480149,50037,0,1,0,0,0),
+(480149,17,0,0,0,0,1),
+(480149,990061,0,0,0,0,1);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480150,148305,1,0,0,0,0),
+(480150,148519,1,0,0,0,0),
+(480150,148528,1,0,0,0,0),
+(480150,148531,1,0,0,0,0),
+(480150,50033,0,1,0,0,0),
+(480150,17,0,0,0,0,1),
+(480150,990061,0,0,0,0,1),
+(480151,148306,1,0,0,0,0),
+(480151,148519,1,0,0,0,0),
+(480151,148528,1,0,0,0,0),
+(480151,148531,1,0,0,0,0),
+(480151,50034,0,1,0,0,0),
+(480151,17,0,0,0,0,1),
+(480151,990061,0,0,0,0,1),
+(480152,148307,1,0,0,0,0),
+(480152,148519,1,0,0,0,0),
+(480152,148528,1,0,0,0,0),
+(480152,148531,1,0,0,0,0),
+(480152,50039,0,1,0,0,0),
+(480152,17,0,0,0,0,1),
+(480152,990061,0,0,0,0,1),
+(480153,148308,1,0,0,0,0),
+(480153,148519,1,0,0,0,0),
+(480153,148528,1,0,0,0,0),
+(480153,148531,1,0,0,0,0),
+(480153,50038,0,1,0,0,0),
+(480153,17,0,0,0,0,1),
+(480153,990061,0,0,0,0,1),
+(480154,148309,1,0,0,0,0),
+(480154,148519,1,0,0,0,0),
+(480154,148528,1,0,0,0,0),
+(480154,148531,1,0,0,0,0),
+(480154,50035,0,1,0,0,0),
+(480154,17,0,0,0,0,1),
+(480154,990061,0,0,0,0,1),
+(480155,148310,1,0,0,0,0),
+(480155,148519,1,0,0,0,0),
+(480155,148528,1,0,0,0,0),
+(480155,148531,1,0,0,0,0),
+(480155,148041,0,1,0,0,0),
+(480155,17,0,0,0,0,1),
+(480155,990061,0,0,0,0,1),
+(480156,148311,1,0,0,0,0),
+(480156,148519,1,0,0,0,0),
+(480156,148528,1,0,0,0,0),
+(480156,148531,1,0,0,0,0),
+(480156,148042,0,1,0,0,0),
+(480156,17,0,0,0,0,1),
+(480156,990061,0,0,0,0,1),
+(480157,148312,1,0,0,0,0),
+(480157,148519,1,0,0,0,0),
+(480157,148528,1,0,0,0,0),
+(480157,148531,1,0,0,0,0),
+(480157,148043,0,1,0,0,0),
+(480157,17,0,0,0,0,1),
+(480157,990061,0,0,0,0,1),
+(480158,148313,1,0,0,0,0),
+(480158,148519,1,0,0,0,0),
+(480158,148528,1,0,0,0,0),
+(480158,148531,1,0,0,0,0),
+(480158,148044,0,1,0,0,0),
+(480158,17,0,0,0,0,1),
+(480158,990061,0,0,0,0,1),
+(480159,148314,1,0,0,0,0),
+(480159,148520,1,0,0,0,0),
+(480159,148529,1,0,0,0,0),
+(480159,148531,1,0,0,0,0),
+(480159,148045,0,1,0,0,0),
+(480159,20,0,0,0,0,1),
+(480159,990061,0,0,0,0,1),
+(480160,148315,1,0,0,0,0),
+(480160,148521,1,0,0,0,0),
+(480160,148529,1,0,0,0,0),
+(480160,148531,1,0,0,0,0),
+(480160,148046,0,1,0,0,0),
+(480160,20,0,0,0,0,1),
+(480160,990061,0,0,0,0,1),
+(480161,148316,1,0,0,0,0),
+(480161,148522,1,0,0,0,0),
+(480161,148529,1,0,0,0,0),
+(480161,148531,1,0,0,0,0),
+(480161,148047,0,1,0,0,0),
+(480161,20,0,0,0,0,1),
+(480161,990061,0,0,0,0,1),
+(480162,148317,1,0,0,0,0),
+(480162,148523,1,0,0,0,0),
+(480162,148529,1,0,0,0,0),
+(480162,148531,1,0,0,0,0),
+(480162,148048,0,1,0,0,0),
+(480162,20,0,0,0,0,1),
+(480162,990061,0,0,0,0,1),
+(480163,148318,1,0,0,0,0),
+(480163,148520,1,0,0,0,0),
+(480163,148529,1,0,0,0,0),
+(480163,148531,1,0,0,0,0),
+(480163,148049,0,1,0,0,0),
+(480163,20,0,0,0,0,1),
+(480163,990061,0,0,0,0,1),
+(480164,148319,1,0,0,0,0),
+(480164,148521,1,0,0,0,0),
+(480164,148529,1,0,0,0,0),
+(480164,148531,1,0,0,0,0),
+(480164,148050,0,1,0,0,0),
+(480164,20,0,0,0,0,1),
+(480164,990061,0,0,0,0,1),
+(480165,148320,1,0,0,0,0),
+(480165,148522,1,0,0,0,0),
+(480165,148529,1,0,0,0,0),
+(480165,148531,1,0,0,0,0),
+(480165,148051,0,1,0,0,0),
+(480165,20,0,0,0,0,1),
+(480165,990061,0,0,0,0,1),
+(480166,148321,1,0,0,0,0),
+(480166,148523,1,0,0,0,0),
+(480166,148529,1,0,0,0,0),
+(480166,148531,1,0,0,0,0),
+(480166,148052,0,1,0,0,0),
+(480166,20,0,0,0,0,1),
+(480166,990061,0,0,0,0,1),
+(480167,148322,1,0,0,0,0);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480167,148520,1,0,0,0,0),
+(480167,148529,1,0,0,0,0),
+(480167,148531,1,0,0,0,0),
+(480167,148053,0,1,0,0,0),
+(480167,20,0,0,0,0,1),
+(480167,990061,0,0,0,0,1),
+(480168,148323,1,0,0,0,0),
+(480168,148521,1,0,0,0,0),
+(480168,148529,1,0,0,0,0),
+(480168,148531,1,0,0,0,0),
+(480168,148054,0,1,0,0,0),
+(480168,20,0,0,0,0,1),
+(480168,990061,0,0,0,0,1),
+(480169,148324,1,0,0,0,0),
+(480169,148522,1,0,0,0,0),
+(480169,148529,1,0,0,0,0),
+(480169,148531,1,0,0,0,0),
+(480169,148055,0,1,0,0,0),
+(480169,20,0,0,0,0,1),
+(480169,990061,0,0,0,0,1),
+(480170,148325,1,0,0,0,0),
+(480170,148523,1,0,0,0,0),
+(480170,148529,1,0,0,0,0),
+(480170,148531,1,0,0,0,0),
+(480170,148056,0,1,0,0,0),
+(480170,20,0,0,0,0,1),
+(480170,990061,0,0,0,0,1),
+(480171,148326,1,0,0,0,0),
+(480171,148520,1,0,0,0,0),
+(480171,148529,1,0,0,0,0),
+(480171,148531,1,0,0,0,0),
+(480171,148057,0,1,0,0,0),
+(480171,20,0,0,0,0,1),
+(480171,990061,0,0,0,0,1),
+(480172,148327,1,0,0,0,0),
+(480172,148524,1,0,0,0,0),
+(480172,148530,1,0,0,0,0),
+(480172,148531,1,0,0,0,0),
+(480172,50526,0,1,0,0,0),
+(480172,17,0,0,0,0,1),
+(480172,990061,0,0,0,0,1),
+(480173,148328,1,0,0,0,0),
+(480173,148525,1,0,0,0,0),
+(480173,148530,1,0,0,0,0),
+(480173,148531,1,0,0,0,0),
+(480173,50533,0,1,0,0,0),
+(480173,17,0,0,0,0,1),
+(480173,990061,0,0,0,0,1),
+(480174,148329,1,0,0,0,0),
+(480174,148526,1,0,0,0,0),
+(480174,148530,1,0,0,0,0),
+(480174,148531,1,0,0,0,0),
+(480174,50527,0,1,0,0,0),
+(480174,17,0,0,0,0,1),
+(480174,990061,0,0,0,0,1),
+(480175,148330,1,0,0,0,0),
+(480175,148527,1,0,0,0,0),
+(480175,148530,1,0,0,0,0),
+(480175,148531,1,0,0,0,0),
+(480175,50528,0,1,0,0,0),
+(480175,17,0,0,0,0,1),
+(480175,990061,0,0,0,0,1),
+(480176,148331,1,0,0,0,0),
+(480176,148524,1,0,0,0,0),
+(480176,148530,1,0,0,0,0),
+(480176,148531,1,0,0,0,0),
+(480176,50532,0,1,0,0,0),
+(480176,17,0,0,0,0,1),
+(480176,990061,0,0,0,0,1),
+(480177,148332,1,0,0,0,0),
+(480177,148525,1,0,0,0,0),
+(480177,148530,1,0,0,0,0),
+(480177,148531,1,0,0,0,0),
+(480177,50523,0,1,0,0,0),
+(480177,17,0,0,0,0,1),
+(480177,990061,0,0,0,0,1),
+(480178,148333,1,0,0,0,0),
+(480178,148526,1,0,0,0,0),
+(480178,148530,1,0,0,0,0),
+(480178,148531,1,0,0,0,0),
+(480178,50534,0,1,0,0,0),
+(480178,17,0,0,0,0,1),
+(480178,990061,0,0,0,0,1),
+(480179,148334,1,0,0,0,0),
+(480179,148527,1,0,0,0,0),
+(480179,148530,1,0,0,0,0),
+(480179,148531,1,0,0,0,0),
+(480179,50525,0,1,0,0,0),
+(480179,17,0,0,0,0,1),
+(480179,990061,0,0,0,0,1),
+(480180,148335,1,0,0,0,0),
+(480180,148524,1,0,0,0,0),
+(480180,148530,1,0,0,0,0),
+(480180,148531,1,0,0,0,0),
+(480180,50531,0,1,0,0,0),
+(480180,17,0,0,0,0,1),
+(480180,990061,0,0,0,0,1),
+(480181,148336,1,0,0,0,0),
+(480181,148525,1,0,0,0,0),
+(480181,148530,1,0,0,0,0),
+(480181,148531,1,0,0,0,0),
+(480181,50530,0,1,0,0,0),
+(480181,17,0,0,0,0,1),
+(480181,990061,0,0,0,0,1),
+(480182,148337,1,0,0,0,0),
+(480182,148526,1,0,0,0,0),
+(480182,148530,1,0,0,0,0),
+(480182,148531,1,0,0,0,0),
+(480182,50529,0,1,0,0,0),
+(480182,17,0,0,0,0,1),
+(480182,990061,0,0,0,0,1),
+(480183,148338,1,0,0,0,0),
+(480183,148527,1,0,0,0,0),
+(480183,148530,1,0,0,0,0),
+(480183,148531,1,0,0,0,0),
+(480183,50524,0,1,0,0,0),
+(480183,17,0,0,0,0,1),
+(480183,990061,0,0,0,0,1),
+(480184,148339,1,0,0,0,0),
+(480184,148524,1,0,0,0,0);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480184,148530,1,0,0,0,0),
+(480184,148531,1,0,0,0,0),
+(480184,50535,0,1,0,0,0),
+(480184,17,0,0,0,0,1),
+(480184,990061,0,0,0,0,1),
+(480185,148340,1,0,0,0,0),
+(480185,148532,1,0,0,0,0),
+(480185,148544,1,0,0,0,0),
+(480185,148547,1,0,0,0,0),
+(480185,50085,0,1,0,0,0),
+(480185,16,0,0,0,0,1),
+(480185,990061,0,0,0,0,1),
+(480186,148341,1,0,0,0,0),
+(480186,148532,1,0,0,0,0),
+(480186,148544,1,0,0,0,0),
+(480186,148547,1,0,0,0,0),
+(480186,50086,0,1,0,0,0),
+(480186,16,0,0,0,0,1),
+(480186,990061,0,0,0,0,1),
+(480187,148342,1,0,0,0,0),
+(480187,148532,1,0,0,0,0),
+(480187,148544,1,0,0,0,0),
+(480187,148547,1,0,0,0,0),
+(480187,50082,0,1,0,0,0),
+(480187,16,0,0,0,0,1),
+(480187,990061,0,0,0,0,1),
+(480188,148343,1,0,0,0,0),
+(480188,148532,1,0,0,0,0),
+(480188,148544,1,0,0,0,0),
+(480188,148547,1,0,0,0,0),
+(480188,50083,0,1,0,0,0),
+(480188,16,0,0,0,0,1),
+(480188,990061,0,0,0,0,1),
+(480189,148344,1,0,0,0,0),
+(480189,148532,1,0,0,0,0),
+(480189,148544,1,0,0,0,0),
+(480189,148547,1,0,0,0,0),
+(480189,50088,0,1,0,0,0),
+(480189,16,0,0,0,0,1),
+(480189,990061,0,0,0,0,1),
+(480190,148345,1,0,0,0,0),
+(480190,148532,1,0,0,0,0),
+(480190,148544,1,0,0,0,0),
+(480190,148547,1,0,0,0,0),
+(480190,50087,0,1,0,0,0),
+(480190,16,0,0,0,0,1),
+(480190,990061,0,0,0,0,1),
+(480191,148346,1,0,0,0,0),
+(480191,148532,1,0,0,0,0),
+(480191,148544,1,0,0,0,0),
+(480191,148547,1,0,0,0,0),
+(480191,50084,0,1,0,0,0),
+(480191,16,0,0,0,0,1),
+(480191,990061,0,0,0,0,1),
+(480192,148347,1,0,0,0,0),
+(480192,148532,1,0,0,0,0),
+(480192,148544,1,0,0,0,0),
+(480192,148547,1,0,0,0,0),
+(480192,148058,0,1,0,0,0),
+(480192,16,0,0,0,0,1),
+(480192,990061,0,0,0,0,1),
+(480193,148348,1,0,0,0,0),
+(480193,148532,1,0,0,0,0),
+(480193,148544,1,0,0,0,0),
+(480193,148547,1,0,0,0,0),
+(480193,148059,0,1,0,0,0),
+(480193,16,0,0,0,0,1),
+(480193,990061,0,0,0,0,1),
+(480194,148349,1,0,0,0,0),
+(480194,148532,1,0,0,0,0),
+(480194,148544,1,0,0,0,0),
+(480194,148547,1,0,0,0,0),
+(480194,148060,0,1,0,0,0),
+(480194,16,0,0,0,0,1),
+(480194,990061,0,0,0,0,1),
+(480195,148350,1,0,0,0,0),
+(480195,148532,1,0,0,0,0),
+(480195,148544,1,0,0,0,0),
+(480195,148547,1,0,0,0,0),
+(480195,148061,0,1,0,0,0),
+(480195,16,0,0,0,0,1),
+(480195,990061,0,0,0,0,1),
+(480196,148351,1,0,0,0,0),
+(480196,148533,1,0,0,0,0),
+(480196,148544,1,0,0,0,0),
+(480196,148547,1,0,0,0,0),
+(480196,50078,0,1,0,0,0),
+(480196,16,0,0,0,0,1),
+(480196,990061,0,0,0,0,1),
+(480197,148352,1,0,0,0,0),
+(480197,148533,1,0,0,0,0),
+(480197,148544,1,0,0,0,0),
+(480197,148547,1,0,0,0,0),
+(480197,50079,0,1,0,0,0),
+(480197,16,0,0,0,0,1),
+(480197,990061,0,0,0,0,1),
+(480198,148353,1,0,0,0,0),
+(480198,148533,1,0,0,0,0),
+(480198,148544,1,0,0,0,0),
+(480198,148547,1,0,0,0,0),
+(480198,50075,0,1,0,0,0),
+(480198,16,0,0,0,0,1),
+(480198,990061,0,0,0,0,1),
+(480199,148354,1,0,0,0,0),
+(480199,148533,1,0,0,0,0),
+(480199,148544,1,0,0,0,0),
+(480199,148547,1,0,0,0,0),
+(480199,50076,0,1,0,0,0),
+(480199,16,0,0,0,0,1),
+(480199,990061,0,0,0,0,1),
+(480200,148355,1,0,0,0,0),
+(480200,148533,1,0,0,0,0),
+(480200,148544,1,0,0,0,0),
+(480200,148547,1,0,0,0,0),
+(480200,50081,0,1,0,0,0),
+(480200,16,0,0,0,0,1),
+(480200,990061,0,0,0,0,1),
+(480201,148356,1,0,0,0,0),
+(480201,148533,1,0,0,0,0),
+(480201,148544,1,0,0,0,0);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480201,148547,1,0,0,0,0),
+(480201,50080,0,1,0,0,0),
+(480201,16,0,0,0,0,1),
+(480201,990061,0,0,0,0,1),
+(480202,148357,1,0,0,0,0),
+(480202,148533,1,0,0,0,0),
+(480202,148544,1,0,0,0,0),
+(480202,148547,1,0,0,0,0),
+(480202,50077,0,1,0,0,0),
+(480202,16,0,0,0,0,1),
+(480202,990061,0,0,0,0,1),
+(480203,148358,1,0,0,0,0),
+(480203,148533,1,0,0,0,0),
+(480203,148544,1,0,0,0,0),
+(480203,148547,1,0,0,0,0),
+(480203,148062,0,1,0,0,0),
+(480203,16,0,0,0,0,1),
+(480203,990061,0,0,0,0,1),
+(480204,148359,1,0,0,0,0),
+(480204,148533,1,0,0,0,0),
+(480204,148544,1,0,0,0,0),
+(480204,148547,1,0,0,0,0),
+(480204,148063,0,1,0,0,0),
+(480204,16,0,0,0,0,1),
+(480204,990061,0,0,0,0,1),
+(480205,148360,1,0,0,0,0),
+(480205,148533,1,0,0,0,0),
+(480205,148544,1,0,0,0,0),
+(480205,148547,1,0,0,0,0),
+(480205,148064,0,1,0,0,0),
+(480205,16,0,0,0,0,1),
+(480205,990061,0,0,0,0,1),
+(480206,148361,1,0,0,0,0),
+(480206,148533,1,0,0,0,0),
+(480206,148544,1,0,0,0,0),
+(480206,148547,1,0,0,0,0),
+(480206,148065,0,1,0,0,0),
+(480206,16,0,0,0,0,1),
+(480206,990061,0,0,0,0,1),
+(480207,148362,1,0,0,0,0),
+(480207,148534,1,0,0,0,0),
+(480207,148544,1,0,0,0,0),
+(480207,148547,1,0,0,0,0),
+(480207,50071,0,1,0,0,0),
+(480207,17,0,0,0,0,1),
+(480207,990061,0,0,0,0,1),
+(480208,148363,1,0,0,0,0),
+(480208,148534,1,0,0,0,0),
+(480208,148544,1,0,0,0,0),
+(480208,148547,1,0,0,0,0),
+(480208,50072,0,1,0,0,0),
+(480208,17,0,0,0,0,1),
+(480208,990061,0,0,0,0,1),
+(480209,148364,1,0,0,0,0),
+(480209,148534,1,0,0,0,0),
+(480209,148544,1,0,0,0,0),
+(480209,148547,1,0,0,0,0),
+(480209,50068,0,1,0,0,0),
+(480209,17,0,0,0,0,1),
+(480209,990061,0,0,0,0,1),
+(480210,148365,1,0,0,0,0),
+(480210,148534,1,0,0,0,0),
+(480210,148544,1,0,0,0,0),
+(480210,148547,1,0,0,0,0),
+(480210,50069,0,1,0,0,0),
+(480210,17,0,0,0,0,1),
+(480210,990061,0,0,0,0,1),
+(480211,148366,1,0,0,0,0),
+(480211,148534,1,0,0,0,0),
+(480211,148544,1,0,0,0,0),
+(480211,148547,1,0,0,0,0),
+(480211,50074,0,1,0,0,0),
+(480211,17,0,0,0,0,1),
+(480211,990061,0,0,0,0,1),
+(480212,148367,1,0,0,0,0),
+(480212,148534,1,0,0,0,0),
+(480212,148544,1,0,0,0,0),
+(480212,148547,1,0,0,0,0),
+(480212,50073,0,1,0,0,0),
+(480212,17,0,0,0,0,1),
+(480212,990061,0,0,0,0,1),
+(480213,148368,1,0,0,0,0),
+(480213,148534,1,0,0,0,0),
+(480213,148544,1,0,0,0,0),
+(480213,148547,1,0,0,0,0),
+(480213,50070,0,1,0,0,0),
+(480213,17,0,0,0,0,1),
+(480213,990061,0,0,0,0,1),
+(480214,148369,1,0,0,0,0),
+(480214,148534,1,0,0,0,0),
+(480214,148544,1,0,0,0,0),
+(480214,148547,1,0,0,0,0),
+(480214,148066,0,1,0,0,0),
+(480214,17,0,0,0,0,1),
+(480214,990061,0,0,0,0,1),
+(480215,148370,1,0,0,0,0),
+(480215,148534,1,0,0,0,0),
+(480215,148544,1,0,0,0,0),
+(480215,148547,1,0,0,0,0),
+(480215,148067,0,1,0,0,0),
+(480215,17,0,0,0,0,1),
+(480215,990061,0,0,0,0,1),
+(480216,148371,1,0,0,0,0),
+(480216,148534,1,0,0,0,0),
+(480216,148544,1,0,0,0,0),
+(480216,148547,1,0,0,0,0),
+(480216,148068,0,1,0,0,0),
+(480216,17,0,0,0,0,1),
+(480216,990061,0,0,0,0,1),
+(480217,148372,1,0,0,0,0),
+(480217,148534,1,0,0,0,0),
+(480217,148544,1,0,0,0,0),
+(480217,148547,1,0,0,0,0),
+(480217,148069,0,1,0,0,0),
+(480217,17,0,0,0,0,1),
+(480217,990061,0,0,0,0,1),
+(480218,148373,1,0,0,0,0),
+(480218,148535,1,0,0,0,0),
+(480218,148544,1,0,0,0,0),
+(480218,148547,1,0,0,0,0);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480218,50064,0,1,0,0,0),
+(480218,17,0,0,0,0,1),
+(480218,990061,0,0,0,0,1),
+(480219,148374,1,0,0,0,0),
+(480219,148535,1,0,0,0,0),
+(480219,148544,1,0,0,0,0),
+(480219,148547,1,0,0,0,0),
+(480219,50065,0,1,0,0,0),
+(480219,17,0,0,0,0,1),
+(480219,990061,0,0,0,0,1),
+(480220,148375,1,0,0,0,0),
+(480220,148535,1,0,0,0,0),
+(480220,148544,1,0,0,0,0),
+(480220,148547,1,0,0,0,0),
+(480220,50061,0,1,0,0,0),
+(480220,17,0,0,0,0,1),
+(480220,990061,0,0,0,0,1),
+(480221,148376,1,0,0,0,0),
+(480221,148535,1,0,0,0,0),
+(480221,148544,1,0,0,0,0),
+(480221,148547,1,0,0,0,0),
+(480221,50062,0,1,0,0,0),
+(480221,17,0,0,0,0,1),
+(480221,990061,0,0,0,0,1),
+(480222,148377,1,0,0,0,0),
+(480222,148535,1,0,0,0,0),
+(480222,148544,1,0,0,0,0),
+(480222,148547,1,0,0,0,0),
+(480222,50067,0,1,0,0,0),
+(480222,17,0,0,0,0,1),
+(480222,990061,0,0,0,0,1),
+(480223,148378,1,0,0,0,0),
+(480223,148535,1,0,0,0,0),
+(480223,148544,1,0,0,0,0),
+(480223,148547,1,0,0,0,0),
+(480223,50066,0,1,0,0,0),
+(480223,17,0,0,0,0,1),
+(480223,990061,0,0,0,0,1),
+(480224,148379,1,0,0,0,0),
+(480224,148535,1,0,0,0,0),
+(480224,148544,1,0,0,0,0),
+(480224,148547,1,0,0,0,0),
+(480224,50063,0,1,0,0,0),
+(480224,17,0,0,0,0,1),
+(480224,990061,0,0,0,0,1),
+(480225,148380,1,0,0,0,0),
+(480225,148535,1,0,0,0,0),
+(480225,148544,1,0,0,0,0),
+(480225,148547,1,0,0,0,0),
+(480225,148070,0,1,0,0,0),
+(480225,17,0,0,0,0,1),
+(480225,990061,0,0,0,0,1),
+(480226,148381,1,0,0,0,0),
+(480226,148535,1,0,0,0,0),
+(480226,148544,1,0,0,0,0),
+(480226,148547,1,0,0,0,0),
+(480226,148071,0,1,0,0,0),
+(480226,17,0,0,0,0,1),
+(480226,990061,0,0,0,0,1),
+(480227,148382,1,0,0,0,0),
+(480227,148535,1,0,0,0,0),
+(480227,148544,1,0,0,0,0),
+(480227,148547,1,0,0,0,0),
+(480227,148072,0,1,0,0,0),
+(480227,17,0,0,0,0,1),
+(480227,990061,0,0,0,0,1),
+(480228,148383,1,0,0,0,0),
+(480228,148535,1,0,0,0,0),
+(480228,148544,1,0,0,0,0),
+(480228,148547,1,0,0,0,0),
+(480228,148073,0,1,0,0,0),
+(480228,17,0,0,0,0,1),
+(480228,990061,0,0,0,0,1),
+(480229,148384,1,0,0,0,0),
+(480229,148536,1,0,0,0,0),
+(480229,148545,1,0,0,0,0),
+(480229,148547,1,0,0,0,0),
+(480229,148074,0,1,0,0,0),
+(480229,20,0,0,0,0,1),
+(480229,990061,0,0,0,0,1),
+(480230,148385,1,0,0,0,0),
+(480230,148537,1,0,0,0,0),
+(480230,148545,1,0,0,0,0),
+(480230,148547,1,0,0,0,0),
+(480230,148075,0,1,0,0,0),
+(480230,20,0,0,0,0,1),
+(480230,990061,0,0,0,0,1),
+(480231,148386,1,0,0,0,0),
+(480231,148538,1,0,0,0,0),
+(480231,148545,1,0,0,0,0),
+(480231,148547,1,0,0,0,0),
+(480231,148076,0,1,0,0,0),
+(480231,20,0,0,0,0,1),
+(480231,990061,0,0,0,0,1),
+(480232,148387,1,0,0,0,0),
+(480232,148539,1,0,0,0,0),
+(480232,148545,1,0,0,0,0),
+(480232,148547,1,0,0,0,0),
+(480232,148077,0,1,0,0,0),
+(480232,20,0,0,0,0,1),
+(480232,990061,0,0,0,0,1),
+(480233,148388,1,0,0,0,0),
+(480233,148536,1,0,0,0,0),
+(480233,148545,1,0,0,0,0),
+(480233,148547,1,0,0,0,0),
+(480233,148078,0,1,0,0,0),
+(480233,20,0,0,0,0,1),
+(480233,990061,0,0,0,0,1),
+(480234,148389,1,0,0,0,0),
+(480234,148537,1,0,0,0,0),
+(480234,148545,1,0,0,0,0),
+(480234,148547,1,0,0,0,0),
+(480234,148079,0,1,0,0,0),
+(480234,20,0,0,0,0,1),
+(480234,990061,0,0,0,0,1),
+(480235,148390,1,0,0,0,0),
+(480235,148538,1,0,0,0,0),
+(480235,148545,1,0,0,0,0),
+(480235,148547,1,0,0,0,0),
+(480235,148080,0,1,0,0,0);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480235,20,0,0,0,0,1),
+(480235,990061,0,0,0,0,1),
+(480236,148391,1,0,0,0,0),
+(480236,148539,1,0,0,0,0),
+(480236,148545,1,0,0,0,0),
+(480236,148547,1,0,0,0,0),
+(480236,148081,0,1,0,0,0),
+(480236,20,0,0,0,0,1),
+(480236,990061,0,0,0,0,1),
+(480237,148392,1,0,0,0,0),
+(480237,148536,1,0,0,0,0),
+(480237,148545,1,0,0,0,0),
+(480237,148547,1,0,0,0,0),
+(480237,148082,0,1,0,0,0),
+(480237,20,0,0,0,0,1),
+(480237,990061,0,0,0,0,1),
+(480238,148393,1,0,0,0,0),
+(480238,148537,1,0,0,0,0),
+(480238,148545,1,0,0,0,0),
+(480238,148547,1,0,0,0,0),
+(480238,148083,0,1,0,0,0),
+(480238,20,0,0,0,0,1),
+(480238,990061,0,0,0,0,1),
+(480239,148394,1,0,0,0,0),
+(480239,148538,1,0,0,0,0),
+(480239,148545,1,0,0,0,0),
+(480239,148547,1,0,0,0,0),
+(480239,148084,0,1,0,0,0),
+(480239,20,0,0,0,0,1),
+(480239,990061,0,0,0,0,1),
+(480240,148395,1,0,0,0,0),
+(480240,148539,1,0,0,0,0),
+(480240,148545,1,0,0,0,0),
+(480240,148547,1,0,0,0,0),
+(480240,148085,0,1,0,0,0),
+(480240,20,0,0,0,0,1),
+(480240,990061,0,0,0,0,1),
+(480241,148396,1,0,0,0,0),
+(480241,148536,1,0,0,0,0),
+(480241,148545,1,0,0,0,0),
+(480241,148547,1,0,0,0,0),
+(480241,50553,0,1,0,0,0),
+(480241,20,0,0,0,0,1),
+(480241,990061,0,0,0,0,1),
+(480242,148397,1,0,0,0,0),
+(480242,148540,1,0,0,0,0),
+(480242,148546,1,0,0,0,0),
+(480242,148547,1,0,0,0,0),
+(480242,50550,0,1,0,0,0),
+(480242,17,0,0,0,0,1),
+(480242,990061,0,0,0,0,1),
+(480243,148398,1,0,0,0,0),
+(480243,148541,1,0,0,0,0),
+(480243,148546,1,0,0,0,0),
+(480243,148547,1,0,0,0,0),
+(480243,50551,0,1,0,0,0),
+(480243,17,0,0,0,0,1),
+(480243,990061,0,0,0,0,1),
+(480244,148399,1,0,0,0,0),
+(480244,148542,1,0,0,0,0),
+(480244,148546,1,0,0,0,0),
+(480244,148547,1,0,0,0,0),
+(480244,50549,0,1,0,0,0),
+(480244,17,0,0,0,0,1),
+(480244,990061,0,0,0,0,1),
+(480245,148400,1,0,0,0,0),
+(480245,148543,1,0,0,0,0),
+(480245,148546,1,0,0,0,0),
+(480245,148547,1,0,0,0,0),
+(480245,50540,0,1,0,0,0),
+(480245,17,0,0,0,0,1),
+(480245,990061,0,0,0,0,1),
+(480246,148401,1,0,0,0,0),
+(480246,148540,1,0,0,0,0),
+(480246,148546,1,0,0,0,0),
+(480246,148547,1,0,0,0,0),
+(480246,50546,0,1,0,0,0),
+(480246,17,0,0,0,0,1),
+(480246,990061,0,0,0,0,1),
+(480247,148402,1,0,0,0,0),
+(480247,148541,1,0,0,0,0),
+(480247,148546,1,0,0,0,0),
+(480247,148547,1,0,0,0,0),
+(480247,50543,0,1,0,0,0),
+(480247,17,0,0,0,0,1),
+(480247,990061,0,0,0,0,1),
+(480248,148403,1,0,0,0,0),
+(480248,148542,1,0,0,0,0),
+(480248,148546,1,0,0,0,0),
+(480248,148547,1,0,0,0,0),
+(480248,50552,0,1,0,0,0),
+(480248,17,0,0,0,0,1),
+(480248,990061,0,0,0,0,1),
+(480249,148404,1,0,0,0,0),
+(480249,148543,1,0,0,0,0),
+(480249,148546,1,0,0,0,0),
+(480249,148547,1,0,0,0,0),
+(480249,50541,0,1,0,0,0),
+(480249,17,0,0,0,0,1),
+(480249,990061,0,0,0,0,1),
+(480250,148405,1,0,0,0,0),
+(480250,148540,1,0,0,0,0),
+(480250,148546,1,0,0,0,0),
+(480250,148547,1,0,0,0,0),
+(480250,50545,0,1,0,0,0),
+(480250,17,0,0,0,0,1),
+(480250,990061,0,0,0,0,1),
+(480251,148406,1,0,0,0,0),
+(480251,148541,1,0,0,0,0),
+(480251,148546,1,0,0,0,0),
+(480251,148547,1,0,0,0,0),
+(480251,50542,0,1,0,0,0),
+(480251,17,0,0,0,0,1),
+(480251,990061,0,0,0,0,1),
+(480252,148407,1,0,0,0,0),
+(480252,148542,1,0,0,0,0),
+(480252,148546,1,0,0,0,0),
+(480252,148547,1,0,0,0,0),
+(480252,50547,0,1,0,0,0),
+(480252,17,0,0,0,0,1);
+INSERT INTO tradeskill_recipe_entries (recipe_id,item_id,componentcount,successcount,failcount,salvagecount,iscontainer) VALUES
+(480252,990061,0,0,0,0,1),
+(480253,148408,1,0,0,0,0),
+(480253,148543,1,0,0,0,0),
+(480253,148546,1,0,0,0,0),
+(480253,148547,1,0,0,0,0),
+(480253,50544,0,1,0,0,0),
+(480253,17,0,0,0,0,1),
+(480253,990061,0,0,0,0,1),
+(480254,148409,1,0,0,0,0),
+(480254,148540,1,0,0,0,0),
+(480254,148546,1,0,0,0,0),
+(480254,148547,1,0,0,0,0),
+(480254,50548,0,1,0,0,0),
+(480254,17,0,0,0,0,1),
+(480254,990061,0,0,0,0,1);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 156,
+		.description = "2026_08_30_titanwrought_vendor",
+		// Submitted by: AoTv4
+		// Stocks the hub crafting vendor with the three raw components every material sub-recipe needs (Silk Swatch, Raw Hide, Block of Ore -- all DROP ONLY in stock EQ, with 2 and 3 lootdrop rows and not a single merchant anywhere) plus the three tempers, whose price IS the per-tier cost ladder. Without this the entry point to the whole crafting system sits behind two loot tables.
+		.check       = "SELECT item FROM merchantlist WHERE merchantid = 202069 AND slot = 149",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM merchantlist WHERE merchantid=202069 AND slot BETWEEN 144 AND 149;
+INSERT INTO merchantlist (merchantid,slot,item,faction_required,level_required,alt_currency_cost,
+                          classes_required,probability)
+VALUES (202069,144,16482,-100,0,0,65535,100),   -- Silk Swatch  -> cloth bases
+       (202069,145,97860,-100,0,0,65535,100),   -- Raw Hide     -> leather bases
+       (202069,146,10503,-100,0,0,65535,100),   -- Block of Ore -> chain/plate/weapon bases
+       (202069,147,148515,-100,0,0,65535,100),  -- Crude Temper   100p
+       (202069,148,148531,-100,0,0,65535,100),  -- Simple Temper  300p
+       (202069,149,148547,-100,0,0,65535,100);  -- Rough Temper   500p
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 157,
+		.description = "2026_08_30_titanwrought_mold_drops",
+		// Submitted by: AoTv4
+		// Crude and Simple molds drop from open-world NAMED mobs via global_loot rare=1 (npc_types.rare_spawn, 139 NPCs across all six regions). Rough gets no row at all: raids place it. Also disables global_loot 1-4, which were dropping the Titanwrought gear itself on every mob in a level band and made the whole crafting system optional.
+		.check       = "SELECT id FROM global_loot WHERE id = 102",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM lootdrop_entries WHERE lootdrop_id IN (200040,200041);
+DELETE FROM loottable_entries WHERE loottable_id IN (200040,200041);
+DELETE FROM lootdrop  WHERE id IN (200040,200041);
+DELETE FROM loottable WHERE id IN (200040,200041);
+DELETE FROM global_loot WHERE id IN (101,102);
+
+INSERT INTO loottable (id,name) VALUES
+ (200040,'AoTv4 Crude Titanwrought Molds'),(200041,'AoTv4 Simple Titanwrought Molds');
+INSERT INTO lootdrop (id,name) VALUES
+ (200040,'AoTv4 Crude Titanwrought Molds'),(200041,'AoTv4 Simple Titanwrought Molds');
+INSERT INTO loottable_entries (loottable_id,lootdrop_id,multiplier,droplimit,mindrop,probability)
+ VALUES (200040,200040,1,1,1,25),(200041,200041,1,1,1,25);
+
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,multiplier)
+ SELECT 200040,id,1,0,1,1 FROM items WHERE id BETWEEN 148200 AND 148269;
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,multiplier)
+ SELECT 200041,id,1,0,1,1 FROM items WHERE id BETWEEN 148270 AND 148339;
+
+INSERT INTO global_loot (id,description,loottable_id,enabled,min_level,max_level,rare)
+ VALUES (101,'AoTv4 Crude Titanwrought Molds (named)', 200040,1, 1,15,1),
+        (102,'AoTv4 Simple Titanwrought Molds (named)',200041,1,14,30,1);
+
+-- ⚠️⚠️ TURN OFF THE GEAR DROPS. Rows 1-4 put Crude/Simple/Rough/Ornate Titanwrought on EVERY mob
+--    in a level band at 2 percent, which is how this line drops today. The crafting system makes
+--    the gear craft-only by design, and leaving these on means the molds, the materials and the
+--    coin cost are all optional. Ornate (35-47) is switched off with them: nothing above Rough is
+--    part of this system, and it was already unreachable at a level cap of 30.
+UPDATE global_loot SET enabled=0 WHERE id IN (1,2,3,4);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 158,
+		.description = "2026_08_31_raid_mold_loot",
+		// Submitted by: Claude
+		// Rough Titanwrought molds move from a bespoke Lua grant onto the bosses' own loot tables.
+		.check       = "SELECT loottable_id FROM loottable_entries WHERE lootdrop_id = 200050 AND loottable_id = 110043",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM lootdrop_entries WHERE lootdrop_id = 200050;
+DELETE FROM lootdrop WHERE id = 200050;
+INSERT INTO lootdrop (id, name) VALUES (200050, 'AoTv4 Rough Titanwrought Molds (raid)');
+
+INSERT INTO lootdrop_entries (lootdrop_id, item_id, item_charges, equip_item, chance, disabled_chance, multiplier, npc_min_level, npc_max_level)
+SELECT 200050, id, 1, 0, 1, 0, 1, 0, 0 FROM items WHERE id BETWEEN 148340 AND 148409;
+
+-- Attached to all three raid bosses' own tables: Phinigel 10831, Velketor 121, Mayong 110043.
+-- droplimit/mindrop 2 = exactly two molds, probability 100 = every kill, per eligible looter.
+DELETE FROM loottable_entries WHERE lootdrop_id = 200050;
+INSERT INTO loottable_entries (loottable_id, lootdrop_id, multiplier, droplimit, mindrop, probability)
+VALUES (10831, 200050, 1, 2, 2, 100),
+       (121,   200050, 1, 2, 2, 100),
+       (110043,200050, 1, 2, 2, 100);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 159,
+		.description = "2026_08_31_raid_spell_drops_and_mold_names",
+		// Submitted by: Claude
+		// Two reports from the first raid tests.
+		.check       = "SELECT id FROM items WHERE id = 148340 AND Name LIKE '%Titanwrought%'",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM loottable_entries WHERE loottable_id = 121 AND lootdrop_id = 281;
+
+-- (2) "Rough Cloth Cap Mold" -> "Rough Titanwrought Cloth Cap Mold".
+-- ⚠️ Keyed on NOT already containing the word so a re-run cannot double-insert it.
+UPDATE items
+   SET Name = CONCAT(
+        SUBSTRING_INDEX(Name, ' ', 1), ' Titanwrought ',
+        TRIM(SUBSTRING(Name, CHAR_LENGTH(SUBSTRING_INDEX(Name, ' ', 1)) + 2)))
+ WHERE id BETWEEN 148200 AND 148409
+   AND Name NOT LIKE '%Titanwrought%';
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 160,
+		.description = "2026_08_31_mayong_loot_pool",
+		// Submitted by: Claude
+		// Mayong dropped exactly ONE item -- 52543 Dark Master's Blade, reclevel 80 -- so once molds
+		.check       = "SELECT loottable_id FROM loottable_entries WHERE lootdrop_id = 200051 AND loottable_id = 110043",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM lootdrop_entries WHERE lootdrop_id = 200051;
+DELETE FROM lootdrop WHERE id = 200051;
+INSERT INTO lootdrop (id, name) VALUES (200051, 'AoTv4 Mayong Mistmoore gear');
+
+-- Equal weight across the pool; `chance` is a WEIGHT in the dominant weighted loot mode.
+INSERT INTO lootdrop_entries (lootdrop_id, item_id, item_charges, equip_item, chance, disabled_chance, multiplier, npc_min_level, npc_max_level)
+SELECT 200051, id, 1, 0, 1, 0, 1, 0, 0 FROM items WHERE id IN (
+    4404,   -- Chestplate of the Dark Flame   ac 35 hp 18
+    9310,   -- Crested Mistmoore Shield       ac 29
+    4300,   -- Crested Helm                   ac 27 hp 13
+    2319,   -- Black Silk Gloves              ac 23
+    10163,  -- Platinum Skull Ring            ac 17
+    1408,   -- Nightshade Wreath              ac 14
+    1407,   -- Cape of Midnight Mist          ac 12 hp 34
+    1410,   -- Bloodstone Eyepatch            ac 12 mana 32
+    10165,  -- Diamondine Earring             hp 40
+    1409,   -- Hooded Black Cloak             hp 37
+    7317,   -- Glowing Iron Pike              26/36
+    6402,   -- Gem-Encrusted Scepter          18/28 mana 8
+    7318    -- Sacrificial Dagger             13/21 mana 9
+);
+
+DELETE FROM loottable_entries WHERE loottable_id = 110043 AND lootdrop_id = 200051;
+INSERT INTO loottable_entries (loottable_id, lootdrop_id, multiplier, droplimit, mindrop, probability)
+VALUES (110043, 200051, 1, 2, 1, 100);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 161,
+		.description = "2026_08_31_raid_signature_loot",
+		// Submitted by: Claude
+		// Two things, both from play.
+		.check       = "SELECT loottable_id FROM loottable_entries WHERE lootdrop_id = 200054 AND loottable_id = 121",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE items SET reclevel = 30, damage = 100, delay = 45 WHERE id = 52543;
+
+-- (2) The nine. A temp table shaped exactly like `items` is the only safe way to clone a row.
+DROP TEMPORARY TABLE IF EXISTS tw_clone;
+CREATE TEMPORARY TABLE tw_clone LIKE items;
+DELETE FROM items WHERE id BETWEEN 148600 AND 148608;
+
+-- Phinigel head: cloned from 4300 so every one of the ~285 columns stays byte-identical to a real item.
+DELETE FROM tw_clone;
+INSERT INTO tw_clone SELECT * FROM items WHERE id = 4300;
+UPDATE tw_clone SET
+    id = 148600, Name = 'Tidecaller''s Circlet', slots = 4, reclevel = 30, reqlevel = 0,
+    classes = 65535, races = 65535, deity = 0, loregroup = 0, nodrop = 1, norent = 1,
+    ac = 30, hp = 45, mana = 60, endur = 0, damage = 0, delay = 0,
+    astr = 0, asta = 6, adex = 0, aagi = 0, aint = 9, awis = 9, acha = 0,
+    heroic_str = 0, heroic_sta = 0, heroic_dex = 0, heroic_agi = 0, heroic_int = 0, heroic_wis = 0,
+    attack = 0, strikethrough = 0, accuracy = 0, spelldmg = 0, healamt = 0,
+    augslot1type = 0, augslot2type = 0, augslot3type = 0,
+    augslot4type = 0, augslot5type = 0, augslot6type = 0,
+    augslot1visible = 0, augslot2visible = 0, augslot3visible = 0,
+    augslot4visible = 0, augslot5visible = 0, augslot6visible = 0,
+    clickeffect = 0, clicktype = 0, proceffect = 0, worneffect = 0, focuseffect = 0, scrolleffect = 0,
+    price = 0, sellrate = 0;
+INSERT INTO items SELECT * FROM tw_clone;
+
+-- Phinigel back: cloned from 1407 so every one of the ~285 columns stays byte-identical to a real item.
+DELETE FROM tw_clone;
+INSERT INTO tw_clone SELECT * FROM items WHERE id = 1407;
+UPDATE tw_clone SET
+    id = 148601, Name = 'Abyssal Scale Cloak', slots = 256, reclevel = 30, reqlevel = 0,
+    classes = 65535, races = 65535, deity = 0, loregroup = 0, nodrop = 1, norent = 1,
+    ac = 25, hp = 60, mana = 25, endur = 0, damage = 0, delay = 0,
+    astr = 5, asta = 7, adex = 0, aagi = 5, aint = 0, awis = 0, acha = 0,
+    heroic_str = 0, heroic_sta = 0, heroic_dex = 0, heroic_agi = 0, heroic_int = 0, heroic_wis = 0,
+    attack = 0, strikethrough = 0, accuracy = 0, spelldmg = 0, healamt = 0,
+    augslot1type = 0, augslot2type = 0, augslot3type = 0,
+    augslot4type = 0, augslot5type = 0, augslot6type = 0,
+    augslot1visible = 0, augslot2visible = 0, augslot3visible = 0,
+    augslot4visible = 0, augslot5visible = 0, augslot6visible = 0,
+    clickeffect = 0, clicktype = 0, proceffect = 0, worneffect = 0, focuseffect = 0, scrolleffect = 0,
+    price = 0, sellrate = 0;
+INSERT INTO items SELECT * FROM tw_clone;
+
+-- Phinigel primary: cloned from 7317 so every one of the ~285 columns stays byte-identical to a real item.
+DELETE FROM tw_clone;
+INSERT INTO tw_clone SELECT * FROM items WHERE id = 7317;
+UPDATE tw_clone SET
+    id = 148602, Name = 'Phinigel''s Coral Trident', slots = 8192, reclevel = 30, reqlevel = 0,
+    classes = 65535, races = 65535, deity = 0, loregroup = 0, nodrop = 1, norent = 1,
+    ac = 5, hp = 30, mana = 30, endur = 0, damage = 88, delay = 42,
+    astr = 10, asta = 5, adex = 8, aagi = 0, aint = 0, awis = 0, acha = 0,
+    heroic_str = 0, heroic_sta = 0, heroic_dex = 0, heroic_agi = 0, heroic_int = 0, heroic_wis = 0,
+    attack = 0, strikethrough = 0, accuracy = 0, spelldmg = 0, healamt = 0,
+    augslot1type = 0, augslot2type = 0, augslot3type = 0,
+    augslot4type = 0, augslot5type = 0, augslot6type = 0,
+    augslot1visible = 0, augslot2visible = 0, augslot3visible = 0,
+    augslot4visible = 0, augslot5visible = 0, augslot6visible = 0,
+    clickeffect = 0, clicktype = 0, proceffect = 0, worneffect = 0, focuseffect = 0, scrolleffect = 0,
+    price = 0, sellrate = 0;
+INSERT INTO items SELECT * FROM tw_clone;
+
+-- Mayong ring: cloned from 10163 so every one of the ~285 columns stays byte-identical to a real item.
+DELETE FROM tw_clone;
+INSERT INTO tw_clone SELECT * FROM items WHERE id = 10163;
+UPDATE tw_clone SET
+    id = 148603, Name = 'Signet of Mistmoore', slots = 98304, reclevel = 30, reqlevel = 0,
+    classes = 65535, races = 65535, deity = 0, loregroup = 0, nodrop = 1, norent = 1,
+    ac = 20, hp = 50, mana = 20, endur = 0, damage = 0, delay = 0,
+    astr = 9, asta = 8, adex = 6, aagi = 0, aint = 0, awis = 0, acha = 0,
+    heroic_str = 0, heroic_sta = 0, heroic_dex = 0, heroic_agi = 0, heroic_int = 0, heroic_wis = 0,
+    attack = 0, strikethrough = 0, accuracy = 0, spelldmg = 0, healamt = 0,
+    augslot1type = 0, augslot2type = 0, augslot3type = 0,
+    augslot4type = 0, augslot5type = 0, augslot6type = 0,
+    augslot1visible = 0, augslot2visible = 0, augslot3visible = 0,
+    augslot4visible = 0, augslot5visible = 0, augslot6visible = 0,
+    clickeffect = 0, clicktype = 0, proceffect = 0, worneffect = 0, focuseffect = 0, scrolleffect = 0,
+    price = 0, sellrate = 0;
+INSERT INTO items SELECT * FROM tw_clone;
+
+-- Mayong chest: cloned from 4404 so every one of the ~285 columns stays byte-identical to a real item.
+DELETE FROM tw_clone;
+INSERT INTO tw_clone SELECT * FROM items WHERE id = 4404;
+UPDATE tw_clone SET
+    id = 148604, Name = 'Shroud of the Dark Master', slots = 131072, reclevel = 30, reqlevel = 0,
+    classes = 65535, races = 65535, deity = 0, loregroup = 0, nodrop = 1, norent = 1,
+    ac = 45, hp = 70, mana = 30, endur = 0, damage = 0, delay = 0,
+    astr = 10, asta = 10, adex = 0, aagi = 6, aint = 0, awis = 0, acha = 0,
+    heroic_str = 0, heroic_sta = 0, heroic_dex = 0, heroic_agi = 0, heroic_int = 0, heroic_wis = 0,
+    attack = 0, strikethrough = 0, accuracy = 0, spelldmg = 0, healamt = 0,
+    augslot1type = 0, augslot2type = 0, augslot3type = 0,
+    augslot4type = 0, augslot5type = 0, augslot6type = 0,
+    augslot1visible = 0, augslot2visible = 0, augslot3visible = 0,
+    augslot4visible = 0, augslot5visible = 0, augslot6visible = 0,
+    clickeffect = 0, clicktype = 0, proceffect = 0, worneffect = 0, focuseffect = 0, scrolleffect = 0,
+    price = 0, sellrate = 0;
+INSERT INTO items SELECT * FROM tw_clone;
+
+-- Mayong primary: cloned from 7317 so every one of the ~285 columns stays byte-identical to a real item.
+DELETE FROM tw_clone;
+INSERT INTO tw_clone SELECT * FROM items WHERE id = 7317;
+UPDATE tw_clone SET
+    id = 148605, Name = 'Mayong''s Bloodfang', slots = 8192, reclevel = 30, reqlevel = 0,
+    classes = 65535, races = 65535, deity = 0, loregroup = 0, nodrop = 1, norent = 1,
+    ac = 5, hp = 35, mana = 0, endur = 0, damage = 92, delay = 43,
+    astr = 12, asta = 6, adex = 9, aagi = 0, aint = 0, awis = 0, acha = 0,
+    heroic_str = 0, heroic_sta = 0, heroic_dex = 0, heroic_agi = 0, heroic_int = 0, heroic_wis = 0,
+    attack = 0, strikethrough = 0, accuracy = 0, spelldmg = 0, healamt = 0,
+    augslot1type = 0, augslot2type = 0, augslot3type = 0,
+    augslot4type = 0, augslot5type = 0, augslot6type = 0,
+    augslot1visible = 0, augslot2visible = 0, augslot3visible = 0,
+    augslot4visible = 0, augslot5visible = 0, augslot6visible = 0,
+    clickeffect = 0, clicktype = 0, proceffect = 0, worneffect = 0, focuseffect = 0, scrolleffect = 0,
+    price = 0, sellrate = 0;
+INSERT INTO items SELECT * FROM tw_clone;
+
+-- Velketor face: cloned from 1410 so every one of the ~285 columns stays byte-identical to a real item.
+DELETE FROM tw_clone;
+INSERT INTO tw_clone SELECT * FROM items WHERE id = 1410;
+UPDATE tw_clone SET
+    id = 148606, Name = 'Glacial Focus', slots = 8, reclevel = 30, reqlevel = 0,
+    classes = 65535, races = 65535, deity = 0, loregroup = 0, nodrop = 1, norent = 1,
+    ac = 22, hp = 40, mana = 70, endur = 0, damage = 0, delay = 0,
+    astr = 0, asta = 5, adex = 0, aagi = 0, aint = 11, awis = 8, acha = 0,
+    heroic_str = 0, heroic_sta = 0, heroic_dex = 0, heroic_agi = 0, heroic_int = 0, heroic_wis = 0,
+    attack = 0, strikethrough = 0, accuracy = 0, spelldmg = 0, healamt = 0,
+    augslot1type = 0, augslot2type = 0, augslot3type = 0,
+    augslot4type = 0, augslot5type = 0, augslot6type = 0,
+    augslot1visible = 0, augslot2visible = 0, augslot3visible = 0,
+    augslot4visible = 0, augslot5visible = 0, augslot6visible = 0,
+    clickeffect = 0, clicktype = 0, proceffect = 0, worneffect = 0, focuseffect = 0, scrolleffect = 0,
+    price = 0, sellrate = 0;
+INSERT INTO items SELECT * FROM tw_clone;
+
+-- Velketor chest: cloned from 4404 so every one of the ~285 columns stays byte-identical to a real item.
+DELETE FROM tw_clone;
+INSERT INTO tw_clone SELECT * FROM items WHERE id = 4404;
+UPDATE tw_clone SET
+    id = 148607, Name = 'Labyrinth Warden''s Breastplate', slots = 131072, reclevel = 30, reqlevel = 0,
+    classes = 65535, races = 65535, deity = 0, loregroup = 0, nodrop = 1, norent = 1,
+    ac = 50, hp = 80, mana = 25, endur = 0, damage = 0, delay = 0,
+    astr = 11, asta = 11, adex = 0, aagi = 7, aint = 0, awis = 0, acha = 0,
+    heroic_str = 0, heroic_sta = 0, heroic_dex = 0, heroic_agi = 0, heroic_int = 0, heroic_wis = 0,
+    attack = 0, strikethrough = 0, accuracy = 0, spelldmg = 0, healamt = 0,
+    augslot1type = 0, augslot2type = 0, augslot3type = 0,
+    augslot4type = 0, augslot5type = 0, augslot6type = 0,
+    augslot1visible = 0, augslot2visible = 0, augslot3visible = 0,
+    augslot4visible = 0, augslot5visible = 0, augslot6visible = 0,
+    clickeffect = 0, clicktype = 0, proceffect = 0, worneffect = 0, focuseffect = 0, scrolleffect = 0,
+    price = 0, sellrate = 0;
+INSERT INTO items SELECT * FROM tw_clone;
+
+-- Velketor primary: cloned from 7317 so every one of the ~285 columns stays byte-identical to a real item.
+DELETE FROM tw_clone;
+INSERT INTO tw_clone SELECT * FROM items WHERE id = 7317;
+UPDATE tw_clone SET
+    id = 148608, Name = 'Velketor''s Frozen Scepter', slots = 8192, reclevel = 30, reqlevel = 0,
+    classes = 65535, races = 65535, deity = 0, loregroup = 0, nodrop = 1, norent = 1,
+    ac = 6, hp = 40, mana = 55, endur = 0, damage = 95, delay = 44,
+    astr = 8, asta = 6, adex = 7, aagi = 0, aint = 8, awis = 0, acha = 0,
+    heroic_str = 0, heroic_sta = 0, heroic_dex = 0, heroic_agi = 0, heroic_int = 0, heroic_wis = 0,
+    attack = 0, strikethrough = 0, accuracy = 0, spelldmg = 0, healamt = 0,
+    augslot1type = 0, augslot2type = 0, augslot3type = 0,
+    augslot4type = 0, augslot5type = 0, augslot6type = 0,
+    augslot1visible = 0, augslot2visible = 0, augslot3visible = 0,
+    augslot4visible = 0, augslot5visible = 0, augslot6visible = 0,
+    clickeffect = 0, clicktype = 0, proceffect = 0, worneffect = 0, focuseffect = 0, scrolleffect = 0,
+    price = 0, sellrate = 0;
+INSERT INTO items SELECT * FROM tw_clone;
+DROP TEMPORARY TABLE IF EXISTS tw_clone;
+
+-- One pool per boss so each drops only its own signature pieces.
+DELETE FROM loottable_entries WHERE lootdrop_id IN (200052,200053,200054);
+DELETE FROM lootdrop_entries  WHERE lootdrop_id IN (200052,200053,200054);
+DELETE FROM lootdrop          WHERE id         IN (200052,200053,200054);
+INSERT INTO lootdrop (id, name) VALUES
+  (200052,'AoTv4 Phinigel signature'), (200053,'AoTv4 Mayong signature'), (200054,'AoTv4 Velketor signature');
+
+INSERT INTO lootdrop_entries (lootdrop_id, item_id, item_charges, equip_item, chance, disabled_chance, multiplier, npc_min_level, npc_max_level)
+SELECT 200052, id, 1, 0, 1, 0, 1, 0, 0 FROM items WHERE id BETWEEN 148600 AND 148602
+UNION ALL SELECT 200053, id, 1, 0, 1, 0, 1, 0, 0 FROM items WHERE id BETWEEN 148603 AND 148605
+UNION ALL SELECT 200054, id, 1, 0, 1, 0, 1, 0, 0 FROM items WHERE id BETWEEN 148606 AND 148608;
+
+INSERT INTO loottable_entries (loottable_id, lootdrop_id, multiplier, droplimit, mindrop, probability)
+VALUES (10831, 200052, 1, 1, 1, 100),
+       (110043,200053, 1, 1, 1, 100),
+       (121,   200054, 1, 1, 1, 100);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 162,
+		.description = "2026_08_31_raid_weapon_ratio_cap",
+		// Submitted by: Claude
+		// "I dont want the weapon to have a better ratio than a mythic titanwrought."
+		.check       = "SELECT id FROM items WHERE id = 148608 AND damage = 74",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE items SET damage = 76 WHERE id = 52543;    -- Dark Master Blade       76/45 -> Mythic 3.378
+UPDATE items SET damage = 71 WHERE id = 148602;   -- Phinigel Coral Trident  71/42 -> Mythic 3.381
+UPDATE items SET damage = 73 WHERE id = 148605;   -- Mayong Bloodfang        73/43 -> Mythic 3.395
+UPDATE items SET damage = 74 WHERE id = 148608;   -- Velketor Frozen Scepter 74/44 -> Mythic 3.364
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 163,
+		.description = "2026_08_31_raid_tomes_and_augs",
+		// Submitted by: Claude
+		// Three extras on every raid boss, on top of the guaranteed molds and signature piece.
+		.check       = "SELECT loottable_id FROM loottable_entries WHERE lootdrop_id = 200057 AND loottable_id = 121",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM loottable_entries WHERE lootdrop_id IN (200055,200056,200057);
+DELETE FROM lootdrop_entries  WHERE lootdrop_id IN (200055,200056,200057);
+DELETE FROM lootdrop          WHERE id         IN (200055,200056,200057);
+INSERT INTO lootdrop (id, name) VALUES
+  (200055,'AoTv4 raid Tomes of Insight'),
+  (200056,'AoTv4 raid augments tier 3'),
+  (200057,'AoTv4 raid weapon augments');
+
+-- Tomes: Radiant and Etched only. Worn is a level 1-10 band reward and has no place on a raid boss.
+INSERT INTO lootdrop_entries (lootdrop_id, item_id, item_charges, equip_item, chance, disabled_chance, multiplier, npc_min_level, npc_max_level)
+SELECT 200055, id, 1, 0, 1, 0, 1, 0, 0 FROM items WHERE id IN (147967, 147968);
+
+-- Tier 3 delve augments, all 200, equal weight.
+INSERT INTO lootdrop_entries (lootdrop_id, item_id, item_charges, equip_item, chance, disabled_chance, multiplier, npc_min_level, npc_max_level)
+SELECT 200056, id, 1, 0, 1, 0, 1, 0, 0 FROM items WHERE id BETWEEN 147716 AND 147915;
+
+-- Weapon augments.
+INSERT INTO lootdrop_entries (lootdrop_id, item_id, item_charges, equip_item, chance, disabled_chance, multiplier, npc_min_level, npc_max_level)
+SELECT 200057, id, 1, 0, 1, 0, 1, 0, 0 FROM items WHERE id IN (
+    46312,  -- Hive Defender Orb of Stinging Fury   ac 30 str 14
+    46180,  -- Blackened Lava Rock                  hp 53 mana 43
+    51725,  -- Wulfenite Segment                    hp 29 str 6
+    51731,  -- Anatase Gem                          ac 16 sta 9
+    51714,  -- Dioptase Shard                       hp 21 mana 24
+    51726,  -- Wulfenite Gem                        mana 27 str 7
+    51724,  -- Wulfenite Shard                      ac 12 sta 5
+    51729   -- Anatase Shard                        hp 24
+);
+
+-- Attached to all three bosses. Phinigel 10831, Velketor 121, Mayong 110043.
+INSERT INTO loottable_entries (loottable_id, lootdrop_id, multiplier, droplimit, mindrop, probability) VALUES
+  (10831, 200055, 1, 1, 1, 40), (110043, 200055, 1, 1, 1, 40), (121, 200055, 1, 1, 1, 40),
+  (10831, 200056, 1, 1, 1, 60), (110043, 200056, 1, 1, 1, 60), (121, 200056, 1, 1, 1, 60),
+  (10831, 200057, 1, 1, 1, 30), (110043, 200057, 1, 1, 1, 30), (121, 200057, 1, 1, 1, 30);
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 164,
+		.description = "2026_08_31_raid_three_item_cap",
+		// Submitted by: Claude
+		// "None of the raid mobs should drop more than 3 things at a time."
+		.check       = "SELECT loottable_id FROM loottable_entries WHERE lootdrop_id = 200062 AND loottable_id = 121",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM loottable_entries WHERE loottable_id IN (10831,110043,121) AND lootdrop_id <> 200050;
+
+-- Phinigel: one pool holding everything that is not a mold.
+DELETE FROM lootdrop_entries WHERE lootdrop_id = 200060;
+DELETE FROM lootdrop WHERE id = 200060;
+INSERT INTO lootdrop (id, name) VALUES (200060, 'AoTv4 Phinigel spoils');
+-- signature pieces, the headline
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200060, id, 1, 0, 100, 0, 1, 0, 0 FROM items WHERE id BETWEEN 148600 AND 148602;
+-- the zone gear
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200060, id, 1, 0, 30, 0, 1, 0, 0 FROM items WHERE id IN (1253,2447,7510,10035,10036,10037,10048,10049,10050,10051,10053,10374,10375,11569,11730,11731,11732,11733,11734,11735,11736,11776,11779,11780,11781,11782,11783,11806,11807,11808,11809,11865,11866,11867,11868,11869,11870,14337,16976,33791,36282);
+-- Tomes of Insight
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200060, id, 1, 0, 50, 0, 1, 0, 0 FROM items WHERE id IN (147967,147968);
+-- weapon augments
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200060, id, 1, 0, 20, 0, 1, 0, 0 FROM items WHERE id IN (46312,46180,51725,51731,51714,51726,51724,51729);
+-- tier 3 delve augments, low weight EACH because there are 200 of them
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200060, id, 1, 0, 1, 0, 1, 0, 0 FROM items WHERE id BETWEEN 147716 AND 147915;
+INSERT INTO loottable_entries (loottable_id,lootdrop_id,multiplier,droplimit,mindrop,probability)
+VALUES (10831, 200060, 1, 1, 1, 100);
+
+-- Mayong: one pool holding everything that is not a mold.
+DELETE FROM lootdrop_entries WHERE lootdrop_id = 200061;
+DELETE FROM lootdrop WHERE id = 200061;
+INSERT INTO lootdrop (id, name) VALUES (200061, 'AoTv4 Mayong spoils');
+-- signature pieces, the headline
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200061, id, 1, 0, 100, 0, 1, 0, 0 FROM items WHERE id BETWEEN 148603 AND 148605;
+-- the zone gear
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200061, id, 1, 0, 30, 0, 1, 0, 0 FROM items WHERE id IN (1407,1408,1409,1410,2319,4300,4404,6402,7317,7318,9310,10163,10165,52543);
+-- Tomes of Insight
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200061, id, 1, 0, 50, 0, 1, 0, 0 FROM items WHERE id IN (147967,147968);
+-- weapon augments
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200061, id, 1, 0, 20, 0, 1, 0, 0 FROM items WHERE id IN (46312,46180,51725,51731,51714,51726,51724,51729);
+-- tier 3 delve augments, low weight EACH because there are 200 of them
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200061, id, 1, 0, 1, 0, 1, 0, 0 FROM items WHERE id BETWEEN 147716 AND 147915;
+INSERT INTO loottable_entries (loottable_id,lootdrop_id,multiplier,droplimit,mindrop,probability)
+VALUES (110043, 200061, 1, 1, 1, 100);
+
+-- Velketor: one pool holding everything that is not a mold.
+DELETE FROM lootdrop_entries WHERE lootdrop_id = 200062;
+DELETE FROM lootdrop WHERE id = 200062;
+INSERT INTO lootdrop (id, name) VALUES (200062, 'AoTv4 Velketor spoils');
+-- signature pieces, the headline
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200062, id, 1, 0, 100, 0, 1, 0, 0 FROM items WHERE id BETWEEN 148606 AND 148608;
+-- the zone gear
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200062, id, 1, 0, 30, 0, 1, 0, 0 FROM items WHERE id IN (1117,25094,25095,25096,25097,25296,25297,25298,25299,25570,25571,25572,25579);
+-- Tomes of Insight
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200062, id, 1, 0, 50, 0, 1, 0, 0 FROM items WHERE id IN (147967,147968);
+-- weapon augments
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200062, id, 1, 0, 20, 0, 1, 0, 0 FROM items WHERE id IN (46312,46180,51725,51731,51714,51726,51724,51729);
+-- tier 3 delve augments, low weight EACH because there are 200 of them
+INSERT INTO lootdrop_entries (lootdrop_id,item_id,item_charges,equip_item,chance,disabled_chance,multiplier,npc_min_level,npc_max_level)
+SELECT 200062, id, 1, 0, 1, 0, 1, 0, 0 FROM items WHERE id BETWEEN 147716 AND 147915;
+INSERT INTO loottable_entries (loottable_id,lootdrop_id,multiplier,droplimit,mindrop,probability)
+VALUES (121, 200062, 1, 1, 1, 100);
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does
