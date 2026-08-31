@@ -114,8 +114,37 @@ void NPC::AddLootTable(uint32 loottable_id, bool is_global)
 		m_loot_copper = cash;
 	}
 
+	// ⚠️⚠️ RAID REWARD POOLS ONLY PAY OUT FOR AN ACTUAL RAID BOSS, AND THIS IS NOT BELT-AND-BRACES --
+	// TWO OF THE THREE BOSSES ALSO SPAWN IN THE OPEN WORLD, ON THE SAME npc_types ID. Phinigel
+	// (64001) stands in Kedge Keep and Velketor (112025) in Velketor's Labyrinth, at version 0, on a
+	// six hour respawn -- and an npc id is what carries the loottable, so the open-world copy was
+	// dropping 2 Rough Titanwrought molds and a raid spoil to anyone who killed it. No instance, no
+	// group, no 24 hour lockout, and at the STOCK level 35 rather than the 120,000 hp raid version.
+	// Kedge Keep is Classic, region 1, with two ways in, so that was reachable today; Velketor is
+	// behind the Thurgadin region lock only until Velious opens.
+	// 📌 That is the whole point of Rough being raid-only (design §9) -- it is the one tier that beats
+	// what the world can give you, so a second route to it is a route around the raid.
+	// ⚠️ Keyed on the `raid_enc` entity variable aotv4_raid stamps on a boss it spawns INTO AN
+	// INSTANCE, so it is false for the open-world copy by construction. Giving the raid its own npc
+	// ids would also work and is a bigger change; this needs no new rows and cannot drift.
+	// ⚠️ Add any future raid reward pool here. A pool left off this list is farmable in the open world
+	// the moment its boss has a world spawn, and nothing will report it.
+	static const uint32 kAoTv4RaidLootdrops[] = { 200050, 200060, 200061, 200062 };
+	const bool aotv4_raid_boss_here = !GetEntityVariable("raid_enc").empty();
+	auto is_raid_pool = [](uint32 id) {
+		for (uint32 r : kAoTv4RaidLootdrops) { if (r == id) { return true; } }
+		return false;
+	};
+
 	const uint32 global_loot_multiplier = RuleI(Zone, GlobalLootMultiplier);
 	for (auto    &lte: zone->GetLootTableEntries(loottable_id)) {
+		if (!aotv4_raid_boss_here && is_raid_pool(lte.lootdrop_id)) {
+			LogLootDetail(
+				"AoTv4: skipping raid pool [{}] on [{}] -- not a raid instance boss",
+				lte.lootdrop_id, GetCleanName()
+			);
+			continue;
+		}
 		for (uint32 k = 1; k <= (lte.multiplier * global_loot_multiplier); k++) {
 			const uint8 drop_limit   = lte.droplimit;
 			const uint8 minimum_drop = lte.mindrop;
@@ -145,9 +174,7 @@ void NPC::AddLootTable(uint32 loottable_id, bool is_global)
 	// Reported from play as raids dropping far more than intended.
 	// 📌 Keyed on the `raid_enc` entity variable aotv4_raid stamps on every boss it spawns, so it
 	// costs nothing on ordinary mobs and needs no id list to keep in step.
-	const bool aotv4_is_raid_boss = !GetEntityVariable("raid_enc").empty();
-
-	if (!is_global && !aotv4_is_raid_boss) {
+	if (!is_global && !aotv4_raid_boss_here) {
 		const char *cn = GetCleanName();
 		if (cn && cn[0] >= 'A' && cn[0] <= 'Z') {
 			// ⚠️⚠️ SKIP AoTv4 REWARD POOLS. This picks the entry with the highest droplimit as a proxy
