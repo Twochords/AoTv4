@@ -510,8 +510,10 @@ zone rebuild** (§8).
 >     8/18/28/38/48/58, damage 27/90/120/225/360/525, return = **damage / 3**). The structural
 >     mirror of the Moonfire line, which splits the same way but returns health. **It exists because
 >     of §22**: specials now cost endurance in proportion to their damage, and this refills the bar.
->     ⚠️ **`AoT:SpecialEndurancePct` was retuned to 33 to match this return** — the two are one
->     calibration, so changing either damage value here means revisiting that rule.
+>     ⚠️⚠️ **THE RULE THIS WAS CALIBRATED AGAINST NO LONGER PRICES ANYTHING.** `damage / 3` was
+>     chosen to match a flat `AoT:SpecialEndurancePct` of 33; as of 2026-08-29 the cost is a level
+>     curve (§22) that only passes 33 percent at about level 14, so the pairing is no longer exact and
+>     changing a damage value here means revisiting **the curve**, not the rule.
 >     Damage sits just under the average native single-target nuke for the level (averages read out
 >     of the DB, not from memory) because the cast also returns a resource; every damage value is
 >     divisible by 3 so the return is a clean integer.
@@ -2957,17 +2959,26 @@ the specials are a resource to spend rather than a rotation to mash. Pure C++, n
 change. **Needs a zone rebuild** (and `ruletypes.h` is in `common/`, so expect a wide one).
 
 - **Files**: `common/ruletypes.h` (two rules) + `zone/special_attacks.cpp`
-  (`Mob::DoSpecialAttackDamage`, the gate at ~:235 and the charge at ~:333).
-- **Rules**: `AoT:SpecialEndurancePct` (**33** — a 200-damage Backstab costs 66 endurance; `0`
-  disables the whole mechanic, gate included) and `AoT:SpecialEnduranceMinToUse` (**1**).
-  ⚠️⚠️ **Retuned 50 → 33 (2026-08-04) to match the Sinew line, and the two are ONE calibration.**
-  `custom/sql/aotv4_sinew_line.sql` returns **damage / 3**, so at 33 percent a Sinew cast funds
-  roughly its own damage worth of specials — an endurance economy that closes. At 50 it funded two
-  thirds of one, so the bar drained no matter what the player did and the tap read as broken rather
-  than as a cost. **Move both together or neither.**
-  ⚠️ There is a `rule_values` row for this, so the header default is NOT what the server uses —
-  changing the default alone does nothing to a live DB. Check
-  `SELECT rule_value FROM rule_values WHERE rule_name='AoT:SpecialEndurancePct'`.
+  (`Mob::DoSpecialAttackDamage`, the gate at ~:275 and the charge at ~:437).
+- ⚠️⚠️ **THE COST IS A HARDCODED LEVEL CURVE AND READS NO RULE (2026-08-29).** It is
+  **`cost = damage * 100 / (100 + level²)`** — roughly **99 percent** of the damage dealt at level 1,
+  80 at 5, **50 at 10, 20 at 20, 10 at 30** — so specials get cheaper with level the way a caster's
+  mana pool outgrows a spell's cost. Everything below this that says "33 percent" describes the flat
+  scheme it replaced and is kept as history.
+- **Rules**: `AoT:SpecialEndurancePct` (**33**) and `AoT:SpecialEnduranceMinToUse` (**1**).
+  ⚠️⚠️ **`SpecialEndurancePct` NO LONGER PRICES ANYTHING — IT ONLY SWITCHES THE GATE.** The
+  charge does not read it, so every non-zero value behaves identically and **`0` does NOT disable the
+  cost**: it turns off the pre-swing "too winded" test and you still pay the curve. Kept as that
+  switch only — do not "restore" it into the arithmetic without first deciding what it should mean.
+  ⚠️ There is still a `rule_values` row for it, so the header default is not what the server uses
+  (§35) — but with the rule pricing nothing, the only thing that row can now change is whether the
+  gate exists at all.
+- ⚠️⚠️ **THE CURVE BROKE THE SINEW CALIBRATION AND NOTHING WAS RETUNED TO RESTORE IT.** The flat
+  value was moved 50 → 33 on 2026-08-04 precisely so the Sinew line (§5, returns **damage / 3**)
+  funded roughly its own damage worth of specials — an endurance economy that closed. The curve only
+  passes 33 percent at about **level 14**, so the tap now over-funds specials above that level and
+  under-funds them below. Revisit the two together if the refill starts feeling wrong — but the lever
+  is the curve or the tap's return, **never the rule**.
 - ⚠️⚠️ **`DoSpecialAttackDamage` IS THE ONLY PLACE THIS GOES.** Bash, Kick, Frenzy, Backstab and
   every monk strike (via `MonkSpecialAttack`) funnel through it, so one edit covers the
   player-pressed path **and** the autoskill auto-fire loop (§19). Per-ability copies would be five
@@ -2986,16 +2997,16 @@ change. **Needs a zone rebuild** (and `ruletypes.h` is in `common/`, so expect a
   `Mob::SetEndurance` a **no-op** (`:677`); only `Client` overrides them (`zone/client.h:751/756`).
   An NPC would silently "pay" nothing, so the `IsClient()` guard is there to stop a later reader
   believing NPCs are costed.
-- ⚠️ **A miss costs nothing by construction** — 33 percent of zero damage is zero. No special case.
-- ⚠️ Multiply before dividing (`damage * pct / 100`) or a small hit truncates to a free swing. Same
-  trap as the Shield Wall split (§17b).
-- 📌 33 percent is derived from the Sinew return rather than observed, so it is a *consistent* guess,
-  not a tested one. It interacts with the §19 autoskill cap — the cap limits how many specials may
-  fire, this limits how long they keep firing.
+- ⚠️ **A miss costs nothing by construction** — a share of zero damage is zero. No special case.
+- ⚠️ Multiply before dividing (`damage * 100 / (100 + level²)`) or a small hit truncates to a free
+  swing. Same trap as the Shield Wall split (§17b).
+- 📌 **The curve is authored, not observed**, exactly as the 33 percent before it was. It interacts
+  with the §19 autoskill cap — the cap limits how many specials may fire, this limits how long they
+  keep firing — and it makes the two interact *differently at each end of the level range*, which the
+  flat version did not.
 - **The refill is the Sinew line** (§5, `custom/sql/aotv4_sinew_line.sql`, ids 43318-43323): a damage
   tap returning endurance equal to a third of its damage. This cost is what gave endurance a sink
-  worth spending on in the first place, so tune the two together — at the default 50 percent, the
-  top tier's 175 endurance buys roughly 350 damage worth of specials.
+  worth spending on in the first place, so tune the two together.
 
 ## 25. ⚠️⚠️ THE STALE-DATABASE TRAP — "a session's work vanished" — 2026-07-24, 2026-07-30
 
@@ -6126,3 +6137,59 @@ every swing**. Fixed by dividing by 100; the curve's shape was left alone.
   same commit, so the sqrt branch is now the live one — the PPM branch above it is dead unless the
   rule is put back. ⚠️ And these are header defaults: a `rule_values` row overrides them, so live may
   not be running any of these numbers (§22, §45).
+
+## 59. ⚠️⚠️ AN AA THAT INDEXES A SPELL ID BY RANK DIES SILENTLY IF THE ROW IS MISSING — v144/v145 — 2026-08-30
+
+Reported from live as *"the Bloodletting AA is not procing at all. I have 3 aas into it right now"*,
+with a second player confirming *"it stopped working for me on the 20th at rank 3"* and a third
+posting a screenshot of it working fine. All three were right. **Rank 1 works and every rank above it
+does nothing**, because `spells_new` held **43400 and nothing else** — ranks 2-5 cast 43401-43404,
+which do not exist.
+
+```cpp
+const uint16 bleed = SPELL_BLEED_RANK1 + RankIndex(rank);   // 43400 + 0..4
+if (!defender->FindBuff(bleed, GetID())) { SpellOnTarget(bleed, defender); }
+```
+
+`SpellOnTarget` fails `IsValidSpell` and **returns**. No refusal, no message, no log line, no error
+anywhere — the ability simply produces nothing, which is exactly what a player describes as "not
+procing".
+
+- ⚠️⚠️ **A SECOND, UNREPORTED INSTANCE WAS FOUND WHILE CONFIRMING THE FIRST: Borrowed Breath
+  (§47) is holed the same way** — 43391 present, **43392-43395 missing**, so a healer who bought five
+  ranks has had the rank 1 per-hit reduction the whole time. It is *quieter* than the Bloodletting
+  one, because rank 5's death save is C++ (`Mob::AoTv4TryBorrowedBreath`) and still fires: the
+  ability keeps working, it just stops improving. **Nobody reported it in a month.**
+- ⚠️⚠️ **RANK 1 WORKING IS THE WORST POSSIBLE PRESENTATION.** It rules out every explanation anyone
+  would reach for — the AA is real, it is trained, the hook fires, the C++ is correct, and one player
+  can post a screenshot of it working. `GetAA()` was checked, the rank chain costs were checked
+  (all 1, so points spent == rank number), `RankIndex` was checked. All fine. The data was the bug.
+- ✅ **THE AUDIT IS ONE QUERY, AND IT SHOULD BE RUN AFTER ANY `spells_new` IMPORT.** Every AA tree
+  band is contiguous by construction, so a gap *is* the bug:
+  ```sql
+  SELECT id, name, `rank` FROM spells_new WHERE id BETWEEN 43380 AND 43460 ORDER BY id;
+  ```
+  Expected: 43380-43382 · 43390-43397 · 43400-43405 · 43406-43413 · 43420-43429 · 43430-43437 ·
+  43440-43444 · 43450-43454. Two of those eight bands were holed; the other six were complete.
+- ⚠️⚠️ **THE ROOT CAUSE IS THE DEPLOY PATH, NOT THE SQL.** Both scripts are **correct** — the exact
+  statements were replayed here and insert cleanly. They are **hand-run `custom/sql/*.sql` files in
+  no migration**, so nothing ever guaranteed they had been run, or run to completion, on any
+  database. §52 says this outright and §57 says a migration applies itself on live while a hand-run
+  script does not; this is what that costs when it is ignored. **A spell row that C++ resolves by id
+  belongs in a migration.** v144 (43400-43404) and v145 (43391-43395) are that guarantee, and both
+  rebuild their whole set from stock so they are self-sufficient on a database holding none of it.
+- ⚠️ Why the historical partial application happened is **not recoverable** and was not worth
+  chasing: two theories were tested and both died. It is not "clones from a row the script created
+  earlier" (tank_stun's 43407-43410 and aa_fill's 43451-43454 do exactly that and are present), and
+  it is not the `rank` column (43407-43410 carry ranks 2-5 and are present). The fix does not depend
+  on the answer.
+- 📌 **Do not read dev's gap as proof of live's** (§25) — live cannot be queried from the dev
+  container. It is not needed here: the migration no-ops where the rows already exist, so it is
+  correct against either database. What *does* confirm live is the report itself, which is the
+  symptom this data state produces and no other.
+- 📌 **A tuning question fell out of the screenshot and is NOT addressed here.** Rank 1 is
+  `effect_base_value1 = -4` and the player's log shows *"has taken 18 damage from your
+  Bloodletting"* — so DoT ticks are being inflated about 4.5×, presumably the DC Overpower / spell
+  damage scaling §5 already records. Rank 5 is **-22**. If that multiple holds, rank 5 lands near a
+  hundred a tick, unmitigated, on a server whose post-mitigation melee hits are single digits.
+  **Watch it once ranks 2-5 actually exist**, and retune the rows rather than the scaling.

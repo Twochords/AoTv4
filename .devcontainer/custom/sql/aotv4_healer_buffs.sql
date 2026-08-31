@@ -1,4 +1,11 @@
 -- aotv4_healer_buffs.sql -- the buff rows the Healer AA tree applies from code.
+-- ⚠️⚠️ THE PER-RANK ROWS 43392-43395 WERE MISSING FROM THE DATABASE UNTIL 2026-08-30, so BORROWED
+-- BREATH ranks 2-5 applied no mitigation buff at all and nobody reported it -- a healer who bought
+-- five ranks simply had rank 1. Same cause as the Bloodletting hole in aotv4_melee_buffs.sql: this
+-- is a HAND-RUN script in no migration, so nothing ever guaranteed it had been run to completion.
+-- ✅ 43391-43395 are now created by MIGRATION v145, which applies itself at world boot and is
+-- idempotent. 43390, 43396 and 43397 were present throughout and the migration does not touch them.
+--    See CLAUDE.md 59.
 -- =============================================================================================
 -- These are NOT inert markers. Every one of them does real work through a native SPA; the C++ only
 -- decides WHEN to apply them and, for the shield, how big it is. That distinction matters -- the

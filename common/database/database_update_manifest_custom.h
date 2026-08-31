@@ -10660,6 +10660,132 @@ WHERE `proceffect` > 0 AND `proclevel2` > 25 AND `id` < 900000
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 144,
+		.description = "2026_08_30_bloodletting_rank_rows",
+		// Submitted by: Twochords
+		// Reported from live -- Bloodletting does nothing above rank 1. The AA is fine and the C++
+		.check       = "SELECT id FROM spells_new WHERE id = 43404",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id BETWEEN 43400 AND 43404;
+
+-- Clone through a temp table so all ~236 columns stay byte-identical to a working stock row.
+-- Never hand-list the columns: a missed one is a silently malformed spell.
+DROP TEMPORARY TABLE IF EXISTS aotv4_bleed_tmpl;
+CREATE TEMPORARY TABLE aotv4_bleed_tmpl LIKE spells_new;
+
+-- Template 4088 Ward of Vie: single target, buff, sane duration handling. Overridden to a
+-- detrimental damage-over-time. goodEffect 0 and a NEGATIVE base is what makes SPA 0 damage.
+-- ⚠️ formula1 stays as cloned. A level-scaled formula would key off the CASTER level, which is what
+-- is wanted here, but the authored row leaves it alone and this migration changes no tuning.
+INSERT INTO aotv4_bleed_tmpl SELECT * FROM spells_new WHERE id = 4088;
+UPDATE aotv4_bleed_tmpl SET
+  id = 43400, name = 'Bloodletting', descnum = 43400, spellgroup = 43400, `rank` = 1, mana = 0,
+  effectid1 = 0, effect_base_value1 = -4, effect_limit_value1 = 0, max1 = 0,
+  effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, max2 = 0,
+  buffduration = 3, buffdurationformula = 10,
+  targettype = 5, goodEffect = 0, new_icon = 68, spell_category = -99,
+  classes1=255, classes2=255, classes3=255, classes4=255, classes5=255, classes6=255,
+  classes7=255, classes8=255, classes9=255, classes10=255, classes11=255, classes12=255,
+  classes13=255, classes14=255, classes15=255, classes16=255;
+INSERT INTO spells_new SELECT * FROM aotv4_bleed_tmpl;
+DELETE FROM aotv4_bleed_tmpl;
+
+-- ⚠️ ONE ROW PER RANK, not one row scaled by rank. EQ will not stack the same spell id from one
+-- caster, so the bleed refreshes rather than stacks and per-rank damage has to live in its own row.
+INSERT INTO aotv4_bleed_tmpl SELECT * FROM spells_new WHERE id = 43400;
+UPDATE aotv4_bleed_tmpl SET id = 43401, descnum = 43401, spellgroup = 43401, `rank` = 2,
+  effect_base_value1 = -7, buffduration = 3;
+INSERT INTO spells_new SELECT * FROM aotv4_bleed_tmpl;
+DELETE FROM aotv4_bleed_tmpl;
+
+INSERT INTO aotv4_bleed_tmpl SELECT * FROM spells_new WHERE id = 43400;
+UPDATE aotv4_bleed_tmpl SET id = 43402, descnum = 43402, spellgroup = 43402, `rank` = 3,
+  effect_base_value1 = -7, buffduration = 5;
+INSERT INTO spells_new SELECT * FROM aotv4_bleed_tmpl;
+DELETE FROM aotv4_bleed_tmpl;
+
+INSERT INTO aotv4_bleed_tmpl SELECT * FROM spells_new WHERE id = 43400;
+UPDATE aotv4_bleed_tmpl SET id = 43403, descnum = 43403, spellgroup = 43403, `rank` = 4,
+  effect_base_value1 = -11, buffduration = 5;
+INSERT INTO spells_new SELECT * FROM aotv4_bleed_tmpl;
+DELETE FROM aotv4_bleed_tmpl;
+
+-- ⚠️ Rank 5 was specified as "ticks twice as fast" and cannot be. Buff tics run on a fixed 6 second
+-- timer, so tick RATE is not something a spell row can express; twice the damage per tick is the
+-- same damage per second and is what ships.
+INSERT INTO aotv4_bleed_tmpl SELECT * FROM spells_new WHERE id = 43400;
+UPDATE aotv4_bleed_tmpl SET id = 43404, descnum = 43404, spellgroup = 43404, `rank` = 5,
+  effect_base_value1 = -22, buffduration = 5;
+INSERT INTO spells_new SELECT * FROM aotv4_bleed_tmpl;
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_bleed_tmpl;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 145,
+		.description = "2026_08_30_borrowed_breath_rank_rows",
+		// Submitted by: Twochords
+		// The same hole as the Bloodletting one, found while confirming it, and NOT reported by
+		.check       = "SELECT id FROM spells_new WHERE id = 43395",
+		.condition   = "empty",
+		.match       = "",
+		.sql         = R"(
+DELETE FROM spells_new WHERE id BETWEEN 43391 AND 43395;
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_breath_tmpl;
+CREATE TEMPORARY TABLE aotv4_breath_tmpl LIKE spells_new;
+
+-- Template 4088 Ward of Vie. SPA 162 with base 100 and limit N subtracts exactly N per hit -- a
+-- FLAT per-hit cap, not a percentage. Percentages are imperceptible against the small
+-- post-mitigation numbers this server produces, which is why the whole tree is flat.
+INSERT INTO aotv4_breath_tmpl SELECT * FROM spells_new WHERE id = 4088;
+UPDATE aotv4_breath_tmpl SET
+  id = 43391, name = 'Borrowed Breath', descnum = 43391, spellgroup = 43391, `rank` = 1, mana = 0,
+  effectid1 = 162, effect_base_value1 = 100, effect_limit_value1 = 3, max1 = 0,
+  effectid2 = 254, effect_base_value2 = 0, effect_limit_value2 = 0, max2 = 0,
+  buffduration = 1, buffdurationformula = 10,
+  targettype = 5, goodEffect = 1, new_icon = 128, spell_category = -99,
+  classes1=255, classes2=255, classes3=255, classes4=255, classes5=255, classes6=255,
+  classes7=255, classes8=255, classes9=255, classes10=255, classes11=255, classes12=255,
+  classes13=255, classes14=255, classes15=255, classes16=255;
+INSERT INTO spells_new SELECT * FROM aotv4_breath_tmpl;
+DELETE FROM aotv4_breath_tmpl;
+
+INSERT INTO aotv4_breath_tmpl SELECT * FROM spells_new WHERE id = 43391;
+UPDATE aotv4_breath_tmpl SET id = 43392, descnum = 43392, spellgroup = 43392, `rank` = 2,
+  effect_limit_value1 = 5, buffduration = 1;
+INSERT INTO spells_new SELECT * FROM aotv4_breath_tmpl;
+DELETE FROM aotv4_breath_tmpl;
+
+INSERT INTO aotv4_breath_tmpl SELECT * FROM spells_new WHERE id = 43391;
+UPDATE aotv4_breath_tmpl SET id = 43393, descnum = 43393, spellgroup = 43393, `rank` = 3,
+  effect_limit_value1 = 6, buffduration = 2;
+INSERT INTO spells_new SELECT * FROM aotv4_breath_tmpl;
+DELETE FROM aotv4_breath_tmpl;
+
+INSERT INTO aotv4_breath_tmpl SELECT * FROM spells_new WHERE id = 43391;
+UPDATE aotv4_breath_tmpl SET id = 43394, descnum = 43394, spellgroup = 43394, `rank` = 4,
+  effect_limit_value1 = 8, buffduration = 2;
+INSERT INTO spells_new SELECT * FROM aotv4_breath_tmpl;
+DELETE FROM aotv4_breath_tmpl;
+
+-- ⚠️ Rank 5 is mitigation only here. The death save that goes with it is NOT a spell effect: it is
+-- Mob::AoTv4TryBorrowedBreath. It briefly carried SPA 232 DivineSave, which was wrong -- TryDivineSave
+-- always casts 4789 Touch of the Divine on top of the save, and that blocks every incoming spell from
+-- every other caster as well as your own attacks. It keeps you alive by removing you from the fight.
+INSERT INTO aotv4_breath_tmpl SELECT * FROM spells_new WHERE id = 43391;
+UPDATE aotv4_breath_tmpl SET id = 43395, descnum = 43395, spellgroup = 43395, `rank` = 5,
+  effect_limit_value1 = 10, buffduration = 2;
+INSERT INTO spells_new SELECT * FROM aotv4_breath_tmpl;
+
+DROP TEMPORARY TABLE IF EXISTS aotv4_breath_tmpl;
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

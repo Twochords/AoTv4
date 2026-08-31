@@ -1,4 +1,12 @@
 -- aotv4_melee_buffs.sql -- the spell rows the Melee AA tree needs.
+-- ⚠️⚠️ THE PER-RANK BLEED ROWS 43401-43404 WERE MISSING FROM THE DATABASE UNTIL 2026-08-30, AND
+-- BLOODLETTING DID NOTHING ABOVE RANK 1 FOR AS LONG AS ANYONE HAD RANK 2. This script is the ONLY
+-- writer of them and it is a HAND-RUN script in no migration, so nothing ever guaranteed it had been
+-- run, or run to completion. 43400 and 43405 were present and 43401-43404 were not.
+-- ✅ 43400-43404 are now created by MIGRATION v144, which applies itself at world boot and is
+-- idempotent. Running this file by hand is still harmless and still correct -- but the migration is
+-- the guarantee, and any future row here needs one too.
+--    See CLAUDE.md 59.
 -- =============================================================================================
 -- ⚠️ HELPER BAND. 43400-43405 sit above 43350, so gen_stock_pool.pl never pulls them into the
 -- reward pool. Anything in 43300-43349 WOULD be offered as a level-up reward.
