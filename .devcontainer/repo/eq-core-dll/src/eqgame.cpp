@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include "MQ2Main.h"
+#include "core_floatingtext.h"
 #include <stdio.h>
 #include <map>
 #include "dinput8.h"
@@ -530,6 +531,28 @@ unsigned char __cdecl SendExe_Detour(DWORD con)
 unsigned char __fastcall HandleWorldMessage_Trampoline(DWORD *con, DWORD edx, unsigned __int32 unk, unsigned __int16 opcode, char* buf, size_t size);
 unsigned char __fastcall HandleWorldMessage_Detour(DWORD *con, DWORD edx, unsigned __int32 unk, unsigned __int16 opcode, char* buf, size_t size)
 {
+	// AoTv4 floating combat text. This detour already saw every packet and passed them all through
+	// untouched, so it is the natural feed and costs one integer compare on everything else.
+	// ⚠⚠ OBSERVE ONLY -- the packet is ALWAYS handed to the trampoline afterwards. Swallowing
+	// or rewriting a combat packet here would desync the client's own damage messages and its combat
+	// log from the server, to draw a number.
+	// ⚠️⚠️ DISABLED. The floating numbers no longer come from OP_Damage; the server sends them, because
+	// there is no single packet path that covers melee, spells and damage over time -- see
+	// Mob::AoTv4SendFctDamage. Leaving this on would DOUBLE every melee number.
+	// 📌 Kept rather than deleted: it is the only record of the opcode and struct, both of which cost
+	// real work to establish (0x6F15, identified by matching sizeof against RoF2's CombatDamage_Struct).
+	if (false && areFloatingTextEnabled && opcode == AOTV4_OP_COMBAT_ACTION) {
+		FloatingTextOnCombatAction(buf, size);
+	}
+	// ⚠️⚠️ OPCODE DISCOVERY. AOTV4_OP_COMBAT_ACTION is INHERITED FROM CODE THAT HAS NEVER COMPILED --
+	// upstream's only user of it (MQ2MMODPS.cpp) is absent from their project file and references a
+	// struct defined nowhere in their tree. So the value is a guess, and if no numbers appear it is
+	// suspect one. This records every distinct (opcode, size) pair the client receives, so ONE play
+	// session identifies the real one instead of a build-guess-build loop.
+	// 📌 Turn areFloatingTextOpcodeTrace off once the opcode is confirmed; it costs a table lookup per
+	// packet and the log grows for the life of the session.
+	if (areFloatingTextOpcodeTrace) { FloatingTextTraceOpcode(opcode, size); }
+	if (areFloatingTextOpcodeTrace) { FloatingTextDumpPayload(opcode, buf, size); }
 	return HandleWorldMessage_Trampoline(con, edx, unk, opcode, buf, size);
 }
 

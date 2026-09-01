@@ -51,6 +51,8 @@
 	<Button item="AMW_Difficulty"><ScreenID>AMW_Difficulty</ScreenID><RelativePosition>true</RelativePosition><AutoStretch>true</AutoStretch><LeftAnchorToLeft>true</LeftAnchorToLeft><LeftAnchorOffset>6</LeftAnchorOffset><RightAnchorToLeft>false</RightAnchorToLeft><RightAnchorOffset>6</RightAnchorOffset><TopAnchorToTop>true</TopAnchorToTop><TopAnchorOffset>246</TopAnchorOffset><BottomAnchorToTop>true</BottomAnchorToTop><BottomAnchorOffset>272</BottomAnchorOffset><Text>Difficulty</Text><TextColor><R>255</R><G>220</G><B>160</B></TextColor><Template>BDT_Normal</Template><TooltipReference>Normal, Nightmare, Hell or Inferno; harder worlds with their own rewards</TooltipReference></Button>
 	<Button item="AMW_Travel"><ScreenID>AMW_Travel</ScreenID><RelativePosition>true</RelativePosition><AutoStretch>true</AutoStretch><LeftAnchorToLeft>true</LeftAnchorToLeft><LeftAnchorOffset>6</LeftAnchorOffset><RightAnchorToLeft>false</RightAnchorToLeft><RightAnchorOffset>6</RightAnchorOffset><TopAnchorToTop>true</TopAnchorToTop><TopAnchorOffset>276</TopAnchorOffset><BottomAnchorToTop>true</BottomAnchorToTop><BottomAnchorOffset>302</BottomAnchorOffset><Text>Travel</Text><TextColor><R>160</R><G>230</G><B>255</B></TextColor><Template>BDT_Normal</Template><TooltipReference>Your discovered waypoints and books. Travelling requires clicking a Plane of Knowledge book first</TooltipReference></Button>
 	<Button item="AMW_Fellowship"><ScreenID>AMW_Fellowship</ScreenID><RelativePosition>true</RelativePosition><AutoStretch>true</AutoStretch><LeftAnchorToLeft>true</LeftAnchorToLeft><LeftAnchorOffset>6</LeftAnchorOffset><RightAnchorToLeft>false</RightAnchorToLeft><RightAnchorOffset>6</RightAnchorOffset><TopAnchorToTop>true</TopAnchorToTop><TopAnchorOffset>306</TopAnchorOffset><BottomAnchorToTop>true</BottomAnchorToTop><BottomAnchorOffset>332</BottomAnchorOffset><Text>Fellowship</Text><TextColor><R>255</R><G>200</G><B>255</B></TextColor><Template>BDT_Normal</Template><TooltipReference>Your fellowship: roster, chat and the campfire your members can travel to</TooltipReference></Button>
+	<Button item="AMW_CombatText"><ScreenID>AMW_CombatText</ScreenID><RelativePosition>true</RelativePosition><AutoStretch>true</AutoStretch><LeftAnchorToLeft>true</LeftAnchorToLeft><LeftAnchorOffset>6</LeftAnchorOffset><RightAnchorToLeft>false</RightAnchorToLeft><RightAnchorOffset>6</RightAnchorOffset><TopAnchorToTop>true</TopAnchorToTop><TopAnchorOffset>336</TopAnchorOffset><BottomAnchorToTop>true</BottomAnchorToTop><BottomAnchorOffset>362</BottomAnchorOffset><Text>Combat Text</Text><TextColor><R>255</R><G>170</G><B>170</B></TextColor><Template>BDT_Normal</Template><TooltipReference>Floating damage and healing numbers: font, where they appear and how they fade</TooltipReference></Button>
+	<Button item="AMW_Meter"><ScreenID>AMW_Meter</ScreenID><RelativePosition>true</RelativePosition><AutoStretch>true</AutoStretch><LeftAnchorToLeft>true</LeftAnchorToLeft><LeftAnchorOffset>6</LeftAnchorOffset><RightAnchorToLeft>false</RightAnchorToLeft><RightAnchorOffset>6</RightAnchorOffset><TopAnchorToTop>true</TopAnchorToTop><TopAnchorOffset>366</TopAnchorOffset><BottomAnchorToTop>true</BottomAnchorToTop><BottomAnchorOffset>392</BottomAnchorOffset><Text>Damage Meter</Text><TextColor><R>255</R><G>230</G><B>170</B></TextColor><Template>BDT_Normal</Template><TooltipReference>Who contributed what to the creature you are fighting</TooltipReference></Button>
 
 	<Screen item="AoTMenuWnd">
 		<RelativePosition>false</RelativePosition>
@@ -58,7 +60,7 @@
 		     and the client remembers wherever it is dragged to after that. Left edge, mid height, so it
 		     is clear of the chat window and the hotbars at any common resolution. -->
 		<Location><X>12</X><Y>240</Y></Location>
-		<Size><CX>132</CX><CY>352</CY></Size>
+		<Size><CX>132</CX><CY>412</CY></Size>
 		<Style_VScroll>false</Style_VScroll>
 		<Style_HScroll>false</Style_HScroll>
 		<Style_Transparent>false</Style_Transparent>
@@ -92,6 +94,8 @@
 		<Pieces>AMW_Difficulty</Pieces>
 		<Pieces>AMW_Travel</Pieces>
 		<Pieces>AMW_Fellowship</Pieces>
+		<Pieces>AMW_CombatText</Pieces>
+		<Pieces>AMW_Meter</Pieces>
 	</Screen>
 
 </XML>

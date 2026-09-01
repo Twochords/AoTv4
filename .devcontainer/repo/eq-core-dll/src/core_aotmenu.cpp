@@ -18,6 +18,8 @@
 #include "core_dungeon.h"             // DungeonShow
 #include "core_difficulty.h"
 #include "core_fellowship.h" // FellowshipShow() -- the Fellowship window
+#include "core_fctwindow.h" // FctWindowShow() -- floating combat text settings
+#include "core_meter.h"     // MeterWindowShow() -- the damage meter
 #include "core_travel.h"   // TravelShowBrowse() -- the Travel window, opened read only from the menu          // DifficultyShow
 #include "core_spellchoice_native.h"  // SpellChoiceOpen
 #include "core_lostwindow.h"          // LostWindowShow
@@ -82,6 +84,8 @@ public:
 	CButtonWnd* Lost     = nullptr;
 	CButtonWnd* Delve    = nullptr;
 	CButtonWnd* Difficulty = nullptr;
+	CButtonWnd* CombatText = nullptr;
+	CButtonWnd* Meter      = nullptr;
 	CButtonWnd* Travel     = nullptr;
 	CButtonWnd* Fellowship = nullptr;
 
@@ -100,6 +104,8 @@ public:
 		Lost      = (CButtonWnd*)GetChildItem((PCHAR)"AMW_Lost");
 		Delve     = (CButtonWnd*)GetChildItem((PCHAR)"AMW_Delve");
 		Difficulty = (CButtonWnd*)GetChildItem((PCHAR)"AMW_Difficulty");
+		CombatText = (CButtonWnd*)GetChildItem((PCHAR)"AMW_CombatText");
+		Meter      = (CButtonWnd*)GetChildItem((PCHAR)"AMW_Meter");
 		Travel    = (CButtonWnd*)GetChildItem((PCHAR)"AMW_Travel");
 		Fellowship = (CButtonWnd*)GetChildItem((PCHAR)"AMW_Fellowship");
 	}
@@ -137,6 +143,12 @@ public:
 			// Difficulty is in this group for the same reason as Delve: DifficultyShow() opens the
 			// window AND queues "/say diffwin" itself, so it is never shown empty.
 			if (pWnd == (CXWnd*)Difficulty) { AoTTrace("click: Difficulty"); DifficultyShow(); AoTTrace("click: Difficulty done"); return 1; }
+			// Combat Text belongs in the "open directly" group: every setting it shows is client side
+			// and already in memory, so there is nothing to ask the server for first.
+			if (pWnd == (CXWnd*)CombatText) { AoTTrace("click: CombatText"); FctWindowShow(); AoTTrace("click: CombatText done"); return 1; }
+			// Damage Meter is in the "open directly" group even though its rows come from the server:
+			// MeterWindowShow() opens the window AND asks for the data, so it is never shown empty.
+			if (pWnd == (CXWnd*)Meter) { AoTTrace("click: Meter"); MeterWindowShow(); AoTTrace("click: Meter done"); return 1; }
 			// ⚠️⚠️ BROWSE ONLY. The Travel window's whole design is that the PoK book is the terminal
 			// -- opening it from here would make the book irrelevant. TravelShowBrowse() opens it with
 			// the Travel button hidden, so it reads as a map of what you have found rather than a way

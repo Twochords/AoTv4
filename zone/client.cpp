@@ -1227,6 +1227,57 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 		return;
 	}
 
+	// AoTv4 floating combat text: the dll announces itself with "/say fctheal 1" once it has the
+	// feature enabled, and "/say fctheal 0" if the player turns it off. Swallowed like the rest.
+	// 📌 One line per session, not per heal -- this is the handshake, not the feed.
+	if (chan_num == ChatChannel_Say && !strncasecmp(message, "fctheal", 7)) {
+		const char *arg = message + 7;
+		while (*arg == ' ') { ++arg; }
+		AoTv4SetWantsFctHeals(*arg != '0');
+		return;
+	}
+
+	// AoTv4 damage meter. THREE commands, and the ORDER of these tests is load bearing.
+	//
+	// ⚠️⚠️ "meter" IS A PREFIX OF "meterfight" AND "meterdetail". Tested first, it matched them both,
+	// read "fight 0" as its own argument and returned -- so neither of the other two handlers had ever
+	// run. It presented as the window's buttons doing nothing at all: no fight switching, no history,
+	// and a breakdown that opened empty because the reply was never sent.
+	// 📌 Fixed BOTH ways on purpose. Longest first is what makes it work today; the boundary test on
+	// the short one is what stops the next command added here from silently shadowing it again, since
+	// nothing about that failure looks like a parsing problem from in game.
+	if (chan_num == ChatChannel_Say && !strncasecmp(message, "meterfight", 10)) {
+		const int n = atoi(message + 10);
+		// ⚠️ Clamped against the CURRENT history, not trusted. The client's list can be a moment stale --
+		// a fight archived between its click and this message shifts every index by one.
+		m_aotv4_meter_view = (n >= 0 && n < (int)m_aotv4_meter_hist.size()) ? n : -1;
+		AoTv4MeterSend();
+		return;
+	}
+
+	if (chan_num == ChatChannel_Say && !strncasecmp(message, "meterdetail", 11)) {
+		const char *who = message + 11;
+		while (*who == ' ') { ++who; }
+		AoTv4MeterSendDetail(who);
+		return;
+	}
+
+	// ⚠️ The boundary test: "meter", "meter 1", "meter 0" and nothing else. Without it this reclaims
+	// every future "meter<something>" command the moment one is added above it.
+	if (chan_num == ChatChannel_Say && !strncasecmp(message, "meter", 5) &&
+	    (message[5] == 0 || message[5] == ' ')) {
+		const char *arg = message + 5;
+		while (*arg == ' ') { ++arg; }
+		m_aotv4_meter_on = (*arg != '0');
+		if (m_aotv4_meter_on) {
+			// Answer at once rather than after a whole second, and send the picker so an opening window
+			// can show past fights even when nothing is being fought right now.
+			AoTv4MeterSend();
+			AoTv4MeterSendList();
+		}
+		return;
+	}
+
 	// AoTv4 autoskill window: the dll issues /say askset|askrefresh. Same treatment.
 	if (chan_num == ChatChannel_Say && HandleAutoSkillSay(message)) {
 		AoTv4TutorialMark(2000601);   // Titan Hall: "Muscle Memory"

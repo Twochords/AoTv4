@@ -23,6 +23,9 @@
 // ---------------------------------------------------------------------------
 
 #include "MQ2Main.h"
+#include "core_floatingtext.h"
+#include "core_fctwindow.h"
+#include "core_meter.h"
 #include "core_achievements_native.h"
 #include "core_advloot.h"
 #include "core_lostwindow.h"
@@ -611,7 +614,17 @@ void __fastcall SpellChat_Detour(void* thisptr, void* edx, const char* msg, int 
 		// ⚠️⚠️ `/shield` IS REWRITTEN TO `/say shieldwall` in core_bazaar.h, so it is a window command
 		// like any other and its echo has to be eaten here. It was the ONLY rewritten command with no
 		// entry in this list, so every use of /shield announced "shieldwall" to everyone in earshot.
-		strstr(msg, "shieldwall"))) return;  // shop/search/rank/shield echoes
+		strstr(msg, "shieldwall") ||
+		// ⚠️⚠️ FOUR COMMANDS ADDED THIS SESSION AND ALL FOUR WERE MISSED HERE. Reported from play with a
+		// screenshot showing `You say, 'fctheal 1'` sitting in Main Chat -- the floating-text feed asking
+		// the server to start sending, in the clear, to the player and everyone in earshot.
+		// 📌 The comment three lines up already says every command a window issues must be listed here.
+		// It is not enough: nothing CHECKS it, and a command works perfectly while leaking, so the miss
+		// only ever surfaces as chat noise somebody happens to notice. Worth a test that extracts every
+		// "/say " this dll issues and asserts each has an entry, which is exactly the sweep that found
+		// `shieldwall` earlier in this same session.
+		strstr(msg, "fctheal") ||
+		strstr(msg, "meter"))) return;  // shop/search/rank/shield/combat-text echoes
 	if (AdvLootIsOurEcho(msg)) return;  // "/say als*" echoes (core_advloot.cpp owns that command set)
 
 	// Death-AA rewards are granted with ignore_cost=true (the points live in a private bank, not
@@ -672,8 +685,33 @@ void __fastcall SpellChat_Detour(void* thisptr, void* edx, const char* msg, int 
 	if (AoTMenuParseTransport(msg)) return;               // swallow AOTMENUSHOW
 	if (NativeAchievementParseTransport(msg)) return;     // swallow ACH| native-achievement lines
 	if (msg && strstr(msg, "You say, '#ach")) return;     // swallow the #ach echo
+	// Floating combat text lives in its own TU (core_floatingtext.cpp) but cannot re-hook dsp_chat --
+	// we own it -- so the FCTHEAL transport is routed in from here. Healing has no packet anywhere in
+	// the protocol, so this line is the ONLY way heal numbers can exist.
+	if (FloatingTextParseHeal(msg))   { return; }
+	if (FloatingTextParseDamage(msg)) { return; }
+	// The damage meter lives in its own TU (core_meter.cpp) but cannot re-hook dsp_chat -- we own it.
+	if (MeterParseTransport(msg))     { return; }
+	if (MeterParseList(msg))          { return; }
+	if (MeterParseDetail(msg))        { return; }
+
 	SpellChat_Tramp(thisptr, edx, msg, color, eqlog, pct);
 }
+// Print one line into the player's own chat window.
+// \u26a0\u26a0 THIS IS THE ONLY SAFE WAY TO PRINT FROM THIS DLL. WriteChatColor is a guaranteed crash
+// (CLAUDE.md section 49: its MQ2 chat trampoline is never installed because isMQInjectsEnabled is false,
+// and DETOUR_TRAMPOLINE_EMPTY is a deliberate null dereference), and "/echo" is an MQ2 command the client
+// does not have.
+// \u26a0 It goes through the TRAMPOLINE, not through dsp_chat itself, so the line does not re-enter
+// SpellChat_Detour -- which would hand our own output back to every transport parser to inspect.
+// \ud83d\udccc Modules that own a window should still put feedback IN the window; this is for the ones that
+// have no window to put it in.
+void AoTv4ChatPrint(const char* line)
+{
+	if (!line || !ppEverQuest || !pEverQuest) { return; }
+	SpellChat_Tramp(pEverQuest, nullptr, line, USERCOLOR_DEFAULT, true, false);
+}
+
 
 // ----------------------------------------------------------------- art assets (TGA)
 // EQ's spell icons and spellbook background live in uifiles/default as TGA files. We
@@ -2321,6 +2359,13 @@ BOOL __cdecl ProcessGameEvents_Detour();
 DETOUR_TRAMPOLINE_EMPTY(BOOL __cdecl ProcessGameEvents_Tramp());
 BOOL __cdecl ProcessGameEvents_Detour()
 {
+	// AoTv4 floating combat text. DEFERRED HERE ON PURPOSE, never from InitOptions: that runs inside
+	// DllMain, and creating a D3D device under loader lock is the 0xc0000142 hard startup failure
+	// CLAUDE.md section 3 records. d3d9.dll also may not be loaded yet that early -- by the first
+	// frame it certainly is. FloatingTextInit installs at most once and retries on a later frame if
+	// d3d9 was not ready.
+	if (areFloatingTextEnabled) { FloatingTextInit(); }
+
 	// The level-up reward picker is the native SIDL window (core_spellchoice_native.cpp) and random
 	// AA is retired, so the tabbed Reward Journal that used to host both is gone. What survives is
 	// the standalone "You Lost" window: death losses are a read-only list, not a reward picker.
@@ -2368,6 +2413,8 @@ BOOL __cdecl ProcessGameEvents_Detour()
 	AllacloneTick();
 	LostWindowTick();
 	DungeonTick();
+	FctWindowTick();   // announces the combat-text feed; the server forgets it on every zone
+	MeterWindowTick(); // likewise for the damage meter, and only while its window is visible
 
 	if (g_vCmdTail != g_vCmdHead) {
 		RunGameCommand(g_vendorCmds[g_vCmdTail]);

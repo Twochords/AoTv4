@@ -545,8 +545,16 @@ function M.proximity_tick(client)
 	M.stamp(client)
 	local f = M.fire(fid)
 	if not f then
-		-- ⚠️ The MODEL needs no cleanup: it was created with a decay of FIRE_IDLE_SEC and removes
-		-- itself. Only the bucket is cleared, and only once -- the emptiness test is what stops this
+		-- ⚠️⚠️ THIS COMMENT USED TO CLAIM THE MODEL NEEDED NO CLEANUP BECAUSE IT "was created with a
+		-- decay of FIRE_IDLE_SEC and removes itself". IT NEVER DID. eq.spawn2 takes no lifetime argument
+		-- and M.spawn_fire sets none, so the fire burned until its zone unloaded -- reported from play as
+		-- campfires that never go out.
+		-- 📌 The despawn_fire call below is a BEST EFFORT and cannot be relied on: it is zone local (see
+		-- the note on M.despawn_fire), so it only bites when the member whose tick noticed the expiry
+		-- happens to be standing in the fire's own zone, which after forty minutes is the exception. The
+		-- model now kills itself from global_npc.lua's event_timer, which runs in the fire's zone whether
+		-- anybody is there or not; this call just makes it immediate when someone is.
+		-- ⚠️ Only the bucket is cleared, and only once -- the emptiness test is what stops this
 		-- announcing "burned out" to the fellowship on every 30-second tick thereafter.
 		if (eq.get_data(fire_key(fid)) or "") ~= "" then
 			eq.set_data(fire_key(fid), "")

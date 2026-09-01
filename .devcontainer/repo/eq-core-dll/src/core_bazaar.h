@@ -1,6 +1,9 @@
 #pragma once
 
 #include "MQ2Main.h"
+#include "core_floatingtext.h"  // FloatingTextCommand()/FloatingTextDumpOpcodes() -- "/fct", "/fttrace"
+#include "core_fctwindow.h"
+#include "core_meter.h"      // MeterWindowShow() -- the Damage Meter window     // FctWindowShow() -- the Combat Text window
 #include "core_achievements_native.h"
 
 char __fastcall DisableCBazaarSearchWnd_Trampoline(char* pThis);
@@ -129,6 +132,40 @@ void __fastcall InterpretCmd_TA_Detour(void* pThis, void* edx, void* pChar, cons
 		// AoTv4 Advanced Loot window: "/advl" (re)opens the native AdvLootWnd (it also auto-pops on drops).
 		if (_strnicmp(c, "advl", 4) == 0 && (c[4] == 0 || c[4] == ' ')) {
 			AdvLootShow();
+			return;
+		}
+		// AoTv4 floating combat text diagnostic: "/fttrace" writes the collected (opcode, size) table
+		// AND the ring of recently seen small payloads to <EQ>\aotv4_floatingtext.log.
+		// ⚠⚠ TYPE IT IMMEDIATELY AFTER A FIGHT. The ring holds only the last ~96 candidate packets, and
+		// it is only readable against damage numbers the player still has in their own chat log --
+		// counts alone were tried first and could not separate a hit from a hate or buff update.
+		// ⚠ Diagnostic only, and it goes away with areFloatingTextOpcodeTrace once the opcode is known.
+		if (_strnicmp(c, "fttrace", 7) == 0 && (c[7] == 0 || c[7] == ' ')) {
+			FloatingTextDumpOpcodes();
+			return;
+		}
+		// AoTv4 floating combat text controls: "/fct" on its own prints the current settings and the
+		// packet counters; "/fct on|off|mine|taken|others|size N|rise N|fade N|reset|trace" adjusts them.
+		// \u26a0 Tested AFTER "fttrace" -- "fct" is not a prefix of it, but the two read alike and a future
+		// edit that shortens either name would collide. Settings persist in <EQ>\aotv4_floatingtext.ini.
+		if (_strnicmp(c, "fct", 3) == 0 && (c[3] == 0 || c[3] == ' ')) {
+			const char* a = c + 3;
+			while (*a == ' ') { ++a; }
+			// Bare "/fct" opens the window; anything else is still the text command, so every setting
+			// stays reachable if the XML is missing or a player prefers typing.
+			if (*a == 0) { FctWindowShow(); } else { FloatingTextCommand(a); }
+			return;
+		}
+		// AoTv4 Damage Meter: "/meter" (alias "/dps") opens AoTMeterWnd and asks the server to start
+		// sending. Nothing is sent until it does, so a closed window costs no traffic at all.
+		if ((_strnicmp(c, "meter", 5) == 0 && (c[5] == 0 || c[5] == ' ')) ||
+		    (_strnicmp(c, "dps", 3) == 0   && (c[3] == 0 || c[3] == ' '))) {
+			MeterWindowShow();
+			return;
+		}
+		// "/combattext" spells it out for anyone who does not remember the abbreviation.
+		if (_strnicmp(c, "combattext", 10) == 0 && (c[10] == 0 || c[10] == ' ')) {
+			FctWindowShow();
 			return;
 		}
 		// AoTv4 Autoskill window: "/autoskill" opens the native AoTAutoSkillWnd. The server-side

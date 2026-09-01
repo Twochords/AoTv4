@@ -2662,6 +2662,26 @@ void NPC::Damage(Mob* other, int64 damage, uint16 spell_id, EQ::skills::SkillTyp
 
 bool NPC::Death(Mob* killer_mob, int64 damage, uint16 spell, EQ::skills::SkillType attack_skill, KilledByTypes killed_by, bool is_buff_tic)
 {
+	// AoTv4 damage meter: close and archive this encounter BEFORE anything depops the creature.
+	// ⚠️⚠️ THE FINAL PUSH HAS TO HAPPEN HERE OR THE KILLING BLOW IS NEVER SEEN. The per-second timer
+	// resolves the encounter through entity_list.GetMobID, and by the time it next fires this NPC is
+	// gone -- so the window kept whatever it had a fraction of a second BEFORE the kill. Reported from
+	// play as abilities that kill a mob not being tracked; the damage was always RECORDED (it is taken
+	// before SetHP), it was the last update that never arrived.
+	// 📌 Archived per contributor rather than shared, because the encounter dies with this NPC.
+	if (m_aotv4_meter.Active()) {
+		m_aotv4_meter.Close(GetCleanName());
+		for (const auto &row : m_aotv4_meter.Rows()) {
+			Client *c = entity_list.GetClientByCharID(row.char_id);
+			if (!c) { continue; }
+			c->AoTv4MeterArchive(m_aotv4_meter);
+			// ⚠️ Send the finished fight, THEN the updated picker. The other order leaves the list naming
+			// a fight the window has not been given the rows for yet.
+			c->AoTv4MeterSend();
+			c->AoTv4MeterSendList();
+		}
+	}
+
 	LogCombat(
 		"Fatal blow dealt by [{}] with [{}] damage, spell [{}], skill [{}]",
 		(killer_mob ? killer_mob->GetName() : "[nullptr]"),
@@ -4719,6 +4739,46 @@ void Mob::CommonDamage(Mob* attacker, int64 &damage, const uint16 spell_id, cons
 		// out how much of it was wasted on a corpse.
 		const int64 aotv4_hp_before = GetHP();
 
+		// AoTv4 floating combat text: EVERY damage event, from one place. The client stopped reading
+		// OP_Damage for this -- see Mob::AoTv4SendFctDamage for the three separate holes in the packet
+		// path that made reading it unworkable. No-ops unless a client in this hit asked for the feed.
+		//
+		// ⚠️⚠️ SENT BEFORE `if (HasDied())`, AND THAT POSITION IS THE WHOLE POINT. It used to sit with
+		// the OP_Damage block ~230 lines below, which is AFTER Death() has run and depopped the NPC --
+		// so on a KILLING BLOW the client had already replaced the spawn with a corpse (a different
+		// entity id) and could not resolve the target the line named. The number was dropped, silently.
+		// 📌 It presented as one ability being broken rather than as a general rule: reported from play
+		// as Reckless Cleave never showing while Frenzied Onslaught did. Both take the identical code
+		// path -- the difference is only that Cleave swings at 1.4x weapon damage and one-shots trash,
+		// while Onslaught's five 0.5x blows land four numbers before the fifth kills. Every killing blow
+		// in the game was being lost; only the ability that ALWAYS kills made it obvious.
+		// ⚠️ Damage is final by here: AoTv4LastStandFloor has already trimmed it and nothing between this
+		// point and the old call site alters it.
+		// ⚠️⚠️ COUNTED ON EVERY OUTCOME, NOT ONLY ON HITS. A miss is a data point -- accuracy is
+		// attempts against landed -- and every avoidance arrives here as a NEGATIVE SENTINEL from
+		// zone/common.h (blocked -1, parried -2, riposted -3, dodged -4, invulnerable -5, rune -6)
+		// rather than as zero. So this has to sit OUTSIDE the damage>0 guard, which is what the floating
+		// text and the damage total both live inside.
+		// 📌 This is the part a log parser can only estimate: it sees the message the client happens to
+		// print, we see the outcome the server actually decided.
+		if (damage <= 0 && attacker && attacker->IsClient() && IsNPC() && !HasOwner() && !iBuffTic) {
+			if (m_aotv4_meter.Active()) {
+				Client *pc = attacker->CastToClient();
+				if (auto *row = m_aotv4_meter.Row(pc->CharacterID(), pc->GetCleanName())) {
+					++row->attempts;
+					++row->avoided;
+				}
+			}
+		}
+
+		if (damage > 0) {
+			// ⚠️ kind is worked out INSIDE the send, after the opt-in test. One of its inputs is an
+			// entity variable lookup -- a string map probe on a path that runs for every damage event on
+			// the server -- so it must not happen for the overwhelming majority of hits, where nobody
+			// involved is running the feature at all.
+			AoTv4SendFctDamage(attacker, damage, spell_id, iBuffTic, skill_used);
+		}
+
 		SetHP(int64(GetHP() - damage));
 
 		if (HasDied()) {
@@ -5379,6 +5439,10 @@ void Mob::HealDamage(uint64 amount, Mob* caster, uint16 spell_id)
 	// having LANDED, so they run last -- after the health is actually applied. See
 	// zone/aotv4_healer_aa.cpp; `amount` is what the heal was worth, `acthealed` what it restored.
 	AoTv4HealerPostHeal(caster, amount, acthealed, spell_id, aotv4_pre_ratio);
+
+	// AoTv4 floating combat text: the healing half of the feed. Damage rides OP_Damage; healing has no
+	// packet at all, so it goes out from here. No-ops unless a client's dll has asked for it.
+	AoTv4SendFctHeal(caster, amount, acthealed, spell_id);
 }
 
 //proc chance includes proc bonus

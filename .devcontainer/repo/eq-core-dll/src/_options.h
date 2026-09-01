@@ -87,6 +87,15 @@ bool arePortalWindowEnabled = false;
 // plus "/say alslootall|alsrefresh|alsfilters|alsfilterdel". Shares the spell/AA/portal window hooks.
 bool areLootWindowEnabled = true;    // AoTv4: native SIDL Advanced Loot window (AdvLootWnd). Server drives it via LOOTDATA.
 
+// areFloatingTextEnabled draws damage numbers in the world over the thing you hit (core_floatingtext.cpp).
+// This is the ONE feature here that touches D3D, so it is the one that can take the client down if the
+// device hooks misbehave -- turn it off first when diagnosing a crash on startup or a black screen.
+bool areFloatingTextEnabled = true;   // AoTv4: floating combat text, ported from tunaria/NMS-Release (MIT)
+
+// areFloatingTextOpcodeTrace records every distinct (opcode, size) the client receives, to identify
+// the real combat-action opcode. Turn OFF once it is confirmed -- it is a diagnostic, not a feature.
+bool areFloatingTextOpcodeTrace = true;
+
 // areAutoSkillWindowEnabled if set to true shows the Autoskill window (AoTAutoSkillWnd): the combat
 // specials this character has, an on/off per skill, and their reuse timers counting down. The
 // autoskill SYSTEM is server side and predates the window -- this flag only controls the UI, and

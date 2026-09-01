@@ -22,6 +22,7 @@
 #include "common/light_source.h"
 #include "zone/aa_ability.h"
 #include "zone/aa.h"
+#include "zone/aotv4_meter.h"
 #include "zone/combat_record.h"
 #include "zone/common.h"
 #include "zone/entity.h"
@@ -1395,6 +1396,26 @@ public:
 	int  AoTv4HealBonus(Mob *target, uint16 spell_id, bool from_buff_tic, int &crit_chance_add);
 	void AoTv4HealCritReward(Mob *target, uint16 spell_id);
 	void AoTv4HealerPostHeal(Mob *caster, uint64 requested, uint64 acthealed, uint16 spell_id, float pre_ratio);
+
+	// AoTv4 floating combat text: push one heal to any client whose dll asked for them. `this` is the
+	// HEALED target, matching AoTv4HealerPostHeal directly above. See aotv4_healer_aa.cpp for why the
+	// heal feed has to be server-side at all.
+	// ⚠️ `requested` is what the heal wanted to do and `acthealed` what it managed. The difference is
+	// OVERHEAL, and it exists nowhere else -- the client is only ever told the second number.
+	void AoTv4SendFctHeal(Mob *caster, uint64 requested, uint64 acthealed, uint16 spell_id);
+
+	// AoTv4 damage meter: who contributed what to killing THIS creature. Lives on the target for the
+	// reason set out in aotv4_meter.h -- an encounter is bounded by one creature dying, so the target is
+	// the only place every contributor is naturally on the same fight.
+	// ⚠️ Held by value, so it dies with the NPC and needs no cleanup pass. NPCs are not persisted, and a
+	// player corpse has no use for it.
+	AoTv4Encounter m_aotv4_meter;
+
+	// AoTv4 floating combat text: the WHOLE damage feed. The client does not read OP_Damage for this
+	// at all -- there is no single packet path that covers DoTs, spell damage and melee. See
+	// aotv4_healer_aa.cpp for the three holes that forced it.
+	void AoTv4SendFctDamage(Mob *attacker, uint64 damage, uint16 spell_id, bool iBuffTic,
+	                        EQ::skills::SkillType skill_used);
 	void AoTv4CureRenewal(Mob *target);
 	void AoTv4GraceShieldSpent();
 	bool AoTv4TryBorrowedBreath();

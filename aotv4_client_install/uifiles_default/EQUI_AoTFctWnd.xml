@@ -1,0 +1,387 @@
+<?xml version="1.0" encoding="us-ascii"?>
+<XML ID="EverQuestData">
+	<Schema xmlns="EverQuestData" xmlns:dt="EverQuestDataTypes" />
+
+	<!-- AoTv4 Combat Text window (CCustomWnd "AoTFctWnd"), opened by "/fct" or the AoT menu.
+
+	     Controls the floating damage and healing numbers drawn in the world by core_floatingtext.
+	     Everything here is a CLIENT display preference and is written to aotv4_floatingtext.ini in
+	     the EQ folder, not to the server.  The one exception is the Healing toggle, which also tells
+	     the server whether to send the FCTHEAL transport at all, because healing has no packet.
+
+	     TWO ANCHORS, SPLIT BY DAMAGE vs HEALING.  Not by dealt vs taken, which is how every other
+	     combat text mod splits them.  The question you are answering mid fight is "am I taking
+	     damage" against "am I being healed", and the colour already tells you which way a number is
+	     going.
+
+	     Checkbox state is NOT read back off the widget.  CButtonWnd::SetCheck drives the visual, but
+	     this build exposes no readable checked member, so the dll owns the state and pushes it out.
+	     Same approach as the Zone Difficulty window's Port Group box.
+
+	     Comments must never contain a double hyphen, which is illegal in XML and makes the SIDL
+	     parser abort the WHOLE file, killing the client before character select.  Run
+	     aotv4_client_install/validate_ui_xml.sh before copying this anywhere. -->
+
+	<Label item="FCT_Hint">
+		<ScreenID>FCT_Hint</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>6</Y></Location>
+		<Size><CX>300</CX><CY>16</CY></Size>
+		<Text>Damage and healing numbers</Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>240</R><G>200</G><B>120</B></TextColor>
+	</Label>
+
+	<Button item="FCT_Enabled">
+		<ScreenID>FCT_Enabled</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>24</Y></Location>
+		<Size><CX>150</CX><CY>18</CY></Size>
+		<Text>Show combat text</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Style_Checkbox>true</Style_Checkbox>
+		<Template>BDT_CheckboxWithText</Template>
+	</Button>
+
+	<Label item="FCT_FontHdr">
+		<ScreenID>FCT_FontHdr</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>48</Y></Location>
+		<Size><CX>180</CX><CY>16</CY></Size>
+		<Text>Font</Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>240</R><G>200</G><B>120</B></TextColor>
+	</Label>
+
+	<Listbox item="FCT_FontList">
+		<ScreenID>FCT_FontList</ScreenID>
+		<DrawTemplate>WDT_Inner</DrawTemplate>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>64</Y></Location>
+		<Size><CX>180</CX><CY>92</CY></Size>
+		<TextColor><R>255</R><G>255</G><B>255</B></TextColor>
+		<Style_Border>true</Style_Border>
+		<Style_VScroll>true</Style_VScroll>
+		<Columns><Width>172</Width><Heading>Typeface</Heading></Columns>
+	</Listbox>
+
+	<Label item="FCT_CascadeHdr">
+		<ScreenID>FCT_CascadeHdr</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>162</Y></Location>
+		<Size><CX>180</CX><CY>16</CY></Size>
+		<Text>How numbers travel</Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>240</R><G>200</G><B>120</B></TextColor>
+	</Label>
+
+	<Listbox item="FCT_CascadeList">
+		<ScreenID>FCT_CascadeList</ScreenID>
+		<DrawTemplate>WDT_Inner</DrawTemplate>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>178</Y></Location>
+		<Size><CX>180</CX><CY>58</CY></Size>
+		<TextColor><R>255</R><G>255</G><B>255</B></TextColor>
+		<Style_Border>true</Style_Border>
+		<Style_VScroll>true</Style_VScroll>
+		<Columns><Width>172</Width><Heading>Cascade</Heading></Columns>
+	</Listbox>
+
+	<Label item="FCT_SizeLbl">
+		<ScreenID>FCT_SizeLbl</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>202</X><Y>48</Y></Location>
+		<Size><CX>150</CX><CY>16</CY></Size>
+		<Text>Font size</Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+	</Label>
+	<Button item="FCT_SizeDn">
+		<ScreenID>FCT_SizeDn</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>202</X><Y>64</Y></Location>
+		<Size><CX>26</CX><CY>20</CY></Size>
+		<Text>-</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+	<Button item="FCT_SizeUp">
+		<ScreenID>FCT_SizeUp</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>232</X><Y>64</Y></Location>
+		<Size><CX>26</CX><CY>20</CY></Size>
+		<Text>+</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+
+	<Label item="FCT_FadeLbl">
+		<ScreenID>FCT_FadeLbl</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>202</X><Y>92</Y></Location>
+		<Size><CX>150</CX><CY>16</CY></Size>
+		<Text>Fade</Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+	</Label>
+	<Button item="FCT_FadeDn">
+		<ScreenID>FCT_FadeDn</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>202</X><Y>108</Y></Location>
+		<Size><CX>26</CX><CY>20</CY></Size>
+		<Text>-</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+	<Button item="FCT_FadeUp">
+		<ScreenID>FCT_FadeUp</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>232</X><Y>108</Y></Location>
+		<Size><CX>26</CX><CY>20</CY></Size>
+		<Text>+</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+
+	<Label item="FCT_RiseLbl">
+		<ScreenID>FCT_RiseLbl</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>202</X><Y>136</Y></Location>
+		<Size><CX>150</CX><CY>16</CY></Size>
+		<Text>Travel</Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+	</Label>
+	<Button item="FCT_RiseDn">
+		<ScreenID>FCT_RiseDn</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>202</X><Y>152</Y></Location>
+		<Size><CX>26</CX><CY>20</CY></Size>
+		<Text>-</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+	<Button item="FCT_RiseUp">
+		<ScreenID>FCT_RiseUp</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>232</X><Y>152</Y></Location>
+		<Size><CX>26</CX><CY>20</CY></Size>
+		<Text>+</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+
+	<Label item="FCT_FanLbl">
+		<ScreenID>FCT_FanLbl</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>202</X><Y>180</Y></Location>
+		<Size><CX>150</CX><CY>16</CY></Size>
+		<Text>Spread</Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+	</Label>
+	<Button item="FCT_FanDn">
+		<ScreenID>FCT_FanDn</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>202</X><Y>196</Y></Location>
+		<Size><CX>26</CX><CY>20</CY></Size>
+		<Text>-</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+	<Button item="FCT_FanUp">
+		<ScreenID>FCT_FanUp</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>232</X><Y>196</Y></Location>
+		<Size><CX>26</CX><CY>20</CY></Size>
+		<Text>+</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+
+	<Button item="FCT_Anchored">
+		<ScreenID>FCT_Anchored</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>244</Y></Location>
+		<Size><CX>250</CX><CY>18</CY></Size>
+		<Text>Use two fixed spots on screen</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Style_Checkbox>true</Style_Checkbox>
+		<Template>BDT_CheckboxWithText</Template>
+		<TooltipReference>Off: numbers rise off whatever they happened to.  On: damage cascades from one spot and healing from another</TooltipReference>
+	</Button>
+
+	<!-- Drag the boxes, do not aim at them.  The first design was "press a button, then click the
+	     screen", and it was reported as difficult for the reason it always would be: nothing is on
+	     screen showing where the spot currently IS, so placing one is a guess followed by a test
+	     burst followed by another guess. -->
+	<Button item="FCT_EditSpots">
+		<ScreenID>FCT_EditSpots</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>266</Y></Location>
+		<Size><CX>240</CX><CY>22</CY></Size>
+		<Text>Move the spots</Text>
+		<TextColor><R>255</R><G>200</G><B>140</B></TextColor>
+		<Template>BDT_Normal</Template>
+		<TooltipReference>Shows both boxes on screen.  Drag them where you want, then press again</TooltipReference>
+	</Button>
+
+	<Button item="FCT_ColourNext">
+		<ScreenID>FCT_ColourNext</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>260</X><Y>266</Y></Location>
+		<Size><CX>148</CX><CY>22</CY></Size>
+		<Text>Colours</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Template>BDT_Normal</Template>
+		<TooltipReference>Cycle the colour of whichever kind of number is selected in the list below</TooltipReference>
+	</Button>
+
+	<Listbox item="FCT_ColourList">
+		<ScreenID>FCT_ColourList</ScreenID>
+		<DrawTemplate>WDT_Inner</DrawTemplate>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>260</X><Y>292</Y></Location>
+		<Size><CX>148</CX><CY>116</CY></Size>
+		<TextColor><R>255</R><G>255</G><B>255</B></TextColor>
+		<Style_Border>true</Style_Border>
+		<Style_VScroll>true</Style_VScroll>
+		<Columns><Width>122</Width><Heading>Colour of</Heading></Columns>
+	</Listbox>
+
+	<Label item="FCT_AnchorLbl">
+		<ScreenID>FCT_AnchorLbl</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>292</Y></Location>
+		<Size><CX>240</CX><CY>16</CY></Size>
+		<Text>Damage and healing spots</Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>200</R><G>200</G><B>200</B></TextColor>
+	</Label>
+
+	<Label item="FCT_ShowHdr">
+		<ScreenID>FCT_ShowHdr</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>312</Y></Location>
+		<Size><CX>240</CX><CY>16</CY></Size>
+		<Text>Show</Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>240</R><G>200</G><B>120</B></TextColor>
+	</Label>
+
+	<Button item="FCT_Mine">
+		<ScreenID>FCT_Mine</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>330</Y></Location>
+		<Size><CX>240</CX><CY>18</CY></Size>
+		<Text>Damage you deal</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Style_Checkbox>true</Style_Checkbox>
+		<Template>BDT_CheckboxWithText</Template>
+	</Button>
+	<Button item="FCT_Taken">
+		<ScreenID>FCT_Taken</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>350</Y></Location>
+		<Size><CX>240</CX><CY>18</CY></Size>
+		<Text>Damage done to you</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Style_Checkbox>true</Style_Checkbox>
+		<Template>BDT_CheckboxWithText</Template>
+	</Button>
+	<Button item="FCT_Others">
+		<ScreenID>FCT_Others</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>370</Y></Location>
+		<Size><CX>240</CX><CY>18</CY></Size>
+		<Text>Everyone else</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Style_Checkbox>true</Style_Checkbox>
+		<Template>BDT_CheckboxWithText</Template>
+	</Button>
+	<Button item="FCT_Heals">
+		<ScreenID>FCT_Heals</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>390</Y></Location>
+		<Size><CX>240</CX><CY>18</CY></Size>
+		<Text>Healing</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Style_Checkbox>true</Style_Checkbox>
+		<Template>BDT_CheckboxWithText</Template>
+		<TooltipReference>Healing has no packet of its own, so turning this on asks the server to start sending it</TooltipReference>
+	</Button>
+
+	<Button item="FCT_Test">
+		<ScreenID>FCT_Test</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>10</X><Y>418</Y></Location>
+		<Size><CX>120</CX><CY>22</CY></Size>
+		<Text>Test</Text>
+		<TextColor><R>255</R><G>200</G><B>140</B></TextColor>
+		<Template>BDT_Normal</Template>
+		<TooltipReference>Throw a few sample numbers so you can see the font, spread and fade without fighting</TooltipReference>
+	</Button>
+	<Button item="FCT_Defaults">
+		<ScreenID>FCT_Defaults</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>140</X><Y>418</Y></Location>
+		<Size><CX>120</CX><CY>22</CY></Size>
+		<Text>Defaults</Text>
+		<TextColor><R>230</R><G>230</G><B>230</B></TextColor>
+		<Template>BDT_Normal</Template>
+	</Button>
+	<Label item="FCT_Status">
+		<ScreenID>FCT_Status</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>268</X><Y>422</Y></Location>
+		<Size><CX>140</CX><CY>16</CY></Size>
+		<Text></Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>240</R><G>200</G><B>120</B></TextColor>
+	</Label>
+
+	<Screen item="AoTFctWnd">
+		<RelativePosition>false</RelativePosition>
+		<Location><X>240</X><Y>120</Y></Location>
+		<Size><CX>420</CX><CY>470</CY></Size>
+		<Text>Combat Text</Text>
+		<Style_Transparent>false</Style_Transparent>
+		<DrawTemplate>WDT_Def</DrawTemplate>
+		<Style_Titlebar>true</Style_Titlebar>
+		<Style_Closebox>true</Style_Closebox>
+		<Style_Border>true</Style_Border>
+		<Style_Sizable>false</Style_Sizable>
+		<Pieces>FCT_Hint</Pieces>
+		<Pieces>FCT_Enabled</Pieces>
+		<Pieces>FCT_FontHdr</Pieces>
+		<Pieces>FCT_FontList</Pieces>
+		<Pieces>FCT_CascadeHdr</Pieces>
+		<Pieces>FCT_CascadeList</Pieces>
+		<Pieces>FCT_SizeLbl</Pieces>
+		<Pieces>FCT_SizeDn</Pieces>
+		<Pieces>FCT_SizeUp</Pieces>
+		<Pieces>FCT_FadeLbl</Pieces>
+		<Pieces>FCT_FadeDn</Pieces>
+		<Pieces>FCT_FadeUp</Pieces>
+		<Pieces>FCT_RiseLbl</Pieces>
+		<Pieces>FCT_RiseDn</Pieces>
+		<Pieces>FCT_RiseUp</Pieces>
+		<Pieces>FCT_FanLbl</Pieces>
+		<Pieces>FCT_FanDn</Pieces>
+		<Pieces>FCT_FanUp</Pieces>
+		<Pieces>FCT_Anchored</Pieces>
+		<Pieces>FCT_EditSpots</Pieces>
+		<Pieces>FCT_ColourNext</Pieces>
+		<Pieces>FCT_ColourList</Pieces>
+		<Pieces>FCT_AnchorLbl</Pieces>
+		<Pieces>FCT_ShowHdr</Pieces>
+		<Pieces>FCT_Mine</Pieces>
+		<Pieces>FCT_Taken</Pieces>
+		<Pieces>FCT_Others</Pieces>
+		<Pieces>FCT_Heals</Pieces>
+		<Pieces>FCT_Test</Pieces>
+		<Pieces>FCT_Defaults</Pieces>
+		<Pieces>FCT_Status</Pieces>
+	</Screen>
+
+</XML>

@@ -551,6 +551,14 @@ bool Client::Process() {
 		if (consume_food_timer.Check())
 			DoStaminaHungerUpdate();
 
+		// AoTv4 damage meter: push the current encounter once a second while the window is open.
+		// ⚠️ Gated on m_aotv4_meter_on, so a client without the window costs one boolean test per pass and
+		// no traffic at all. The ACCUMULATION happens regardless of this flag -- see aotv4_healer_aa.cpp
+		// for why it must, or a group's totals would depend on who had which client build.
+		if (m_aotv4_meter_on && m_aotv4_meter_timer.Check()) {
+			AoTv4MeterSend();
+		}
+
 		if (tic_timer.Check() && !dead) {
 			CalcMaxHP();
 			CalcMaxMana();

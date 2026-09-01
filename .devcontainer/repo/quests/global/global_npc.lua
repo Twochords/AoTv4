@@ -1,7 +1,24 @@
 local aotv4_worldboss = require("aotv4_worldboss")  -- roaming world boss: loot rights on death
 local aotv4_dungeon = require("aotv4_dungeon")  -- scaling dungeon ("Delve")
+local aotv4_fellowship = require("aotv4_fellowship")  -- campfire model needs to put itself out
 
 function event_spawn(e)
+    -- Fellowship campfire: arm the model to remove ITSELF.
+    -- ⚠⚠ REPORTED FROM PLAY AS CAMPFIRES NEVER GOING OUT, AND THE CODE SAID THEY DID.
+    -- aotv4_fellowship.proximity_tick carried the comment "the MODEL needs no cleanup: it was created
+    -- with a decay of FIRE_IDLE_SEC and removes itself" -- and nothing ever set a decay. eq.spawn2 takes
+    -- no lifetime argument at all, so the fire burned until its zone unloaded.
+    -- 📌 The only despawn path was M.despawn_fire, which its own comment records as zone local
+    -- (Depop reaches the caller's zone and no further). So the first member to tick AFTER expiry cleared
+    -- the record and called it from wherever they happened to be standing -- usually not the fire's zone
+    -- after forty minutes. The record went, the Depop found nothing, and the model was orphaned with
+    -- nothing left pointing at it to try again.
+    -- ⚠ Armed here rather than swept by a player timer because that is the whole bug: this has to
+    -- work with nobody present. The fire's own zone runs it.
+    if e.self:GetNPCTypeID() == aotv4_fellowship.FIRE_NPC then
+        e.self:SetTimer("fshiplife", 30)
+    end
+
     -- Delve: scale this mob to the layer's level if it is spawning inside a delve instance.
     -- ⚠️ FIRST THING IN THE HOOK and before any of the seasonal string matching below: it
     -- early-outs on the instance id, so the normal world pays one integer compare for it.
@@ -104,4 +121,24 @@ function event_death_complete(e)
   if e.self and e.self.valid and e.self:GetNPCTypeID() == aotv4_dungeon.CHEST_NPC then
     aotv4_dungeon.on_chest_looted(aotv4_dungeon.as_client(e.other))
   end
+end
+
+-- The campfire checks whether it should still be burning, every 30 seconds, in its own zone.
+-- ⚠ aotv4_fellowship.fire() is the ONE place that decides a fire is over -- hard expiry, idle
+-- timeout and a doused or disbanded record all return nil from it. Re-implementing any of those tests
+-- here would be a second definition of "burning" for the two to drift apart on.
+function event_timer(e)
+    if e.timer ~= "fshiplife" then return end
+    if e.self:GetNPCTypeID() ~= aotv4_fellowship.FIRE_NPC then
+        e.self:StopTimer("fshiplife")
+        return
+    end
+
+    -- ⚠ A model with no fellowship stamped on it is an orphan from before this hook existed, or a
+    -- spawn that failed to take its entity variable. Either way nothing owns it, so it goes.
+    local fid = tonumber(e.self:GetEntityVariable("fship") or "")
+    if not fid or not aotv4_fellowship.fire(fid) then
+        e.self:StopTimer("fshiplife")
+        e.self:Depop()
+    end
 end

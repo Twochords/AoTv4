@@ -276,6 +276,18 @@ function M.weapon_blow(c, target, reuse_seconds, mult, skill_override)
 	local skill, base = M.weapon_profile(c)
 	base = math.max(1, math.floor(base * (mult or 1.0)))
 	local used = skill_override or skill
+
+	-- Tag the swing so floating combat text can colour it as an ABILITY rather than an autoattack.
+	-- ⚠⚠ THIS HAS TO BE DONE HERE BECAUSE NOTHING DOWNSTREAM CAN TELL. These abilities swing with
+	-- the WEAPON's own skill (weapon_profile above), not with Bash or Kick, so by the time the damage
+	-- reaches Mob::CommonDamage a Reckless Cleave is byte for byte an ordinary 2H Slashing hit -- same
+	-- skill, same path, same message. It was reported from play as the ability "not showing up" when in
+	-- fact it was showing, in the same white as every autoattack around it.
+	-- 📌 An entity variable rather than a new binding: SetEntityVariable is already bound and the
+	-- server clears this the moment it consumes it. WHICH ability it was comes from `aotv4_fct_ability`,
+	-- set once per press in M.fire -- this one is a per-SWING flag, because an ability like Frenzied
+	-- Onslaught lands five separate blows and each has to be tagged on its own.
+	c:SetEntityVariable("aotv4_fct_swing", "1")
 	c:DoSpecialAttackDamage(target, used, base, 1, -1, reuse_seconds or 0)
 	-- ⚠️⚠️ DoSpecialAttackDamage DOES NOT TRAIN THE SKILL -- it contains no CheckIncreaseSkill at all.
 	-- Every stock special calls it separately AFTER the damage (Bash at special_attacks.cpp:533,
@@ -1081,6 +1093,12 @@ function M.fire(spell_id, e)
 	local target = e.target
 	local caster = M.as_client(eq.get_entity_list():GetMobID(e.caster_id))
 	if not caster then return end
+
+	-- Name the ability for the damage meter's breakdown. Set once per press and deliberately NOT
+	-- cleared: M.weapon_blow's per-swing flag is what the server consumes, and this only says which
+	-- ability that swing belonged to.
+	-- ⚠ A stale value is harmless -- it is only ever read while the per-swing flag is set.
+	caster:SetEntityVariable("aotv4_fct_ability", tostring(spell_id))
 
 	local spec = M.SPEC[spell_id]
 	if spec and spec.cost then

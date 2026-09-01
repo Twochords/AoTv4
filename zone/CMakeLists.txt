@@ -37,6 +37,7 @@ set(zone_sources
     regions.cpp
     client_packet.cpp
     client_process.cpp
+    aotv4_meter.cpp
     combat_record.cpp
     corpse.cpp
     dialogue_window.cpp
@@ -142,6 +143,7 @@ set(zone_headers
     advloot.h
     regions.h
     client_packet.h
+    aotv4_meter.h
     combat_record.h
     command.h
     common.h

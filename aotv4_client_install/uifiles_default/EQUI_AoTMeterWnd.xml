@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="us-ascii"?>
+<XML ID="EverQuestData">
+	<Schema xmlns="EverQuestData" xmlns:dt="EverQuestDataTypes" />
+
+	<!-- AoTv4 Damage Meter (CCustomWnd "AoTMeterWnd"), opened by "/meter" or the AoT menu.
+
+	     Who contributed what to the creature you are fighting.  An encounter is bounded by ONE
+	     creature dying, so every row is by construction damage done to the same thing.  That is also
+	     why somebody outside your group can appear here: they hit the same mob, which is exactly what
+	     a meter is for.
+
+	     The server owns every number.  This window sorts and renders them and nothing else, so it
+	     cannot disagree with the floating damage text, which is fed from the same choke point.
+
+	     Sizable, because a raid row list and a solo row list want very different heights.  The client
+	     persists size and position per character, so an edited Size here only applies to a character
+	     that has never opened it.
+
+	     Comments must never contain a double hyphen, which is illegal in XML and makes the SIDL
+	     parser abort the WHOLE file, killing the client before character select.  Run
+	     aotv4_client_install/validate_ui_xml.sh before copying this anywhere. -->
+
+	<Label item="MTR_Title">
+		<ScreenID>MTR_Title</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<AutoStretch>true</AutoStretch>
+		<LeftAnchorToLeft>true</LeftAnchorToLeft><LeftAnchorOffset>8</LeftAnchorOffset>
+		<RightAnchorToLeft>false</RightAnchorToLeft><RightAnchorOffset>8</RightAnchorOffset>
+		<TopAnchorToTop>true</TopAnchorToTop><TopAnchorOffset>30</TopAnchorOffset>
+		<BottomAnchorToTop>true</BottomAnchorToTop><BottomAnchorOffset>46</BottomAnchorOffset>
+		<Text>No fight yet</Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>240</R><G>200</G><B>120</B></TextColor>
+	</Label>
+
+	<!-- AutoStretch plus all four anchors, or the list keeps its authored size forever and resizing the
+	     window just adds empty space around a small list. -->
+	<Listbox item="MTR_List">
+		<ScreenID>MTR_List</ScreenID>
+		<DrawTemplate>WDT_Inner</DrawTemplate>
+		<RelativePosition>true</RelativePosition>
+		<AutoStretch>true</AutoStretch>
+		<LeftAnchorToLeft>true</LeftAnchorToLeft><LeftAnchorOffset>8</LeftAnchorOffset>
+		<RightAnchorToLeft>false</RightAnchorToLeft><RightAnchorOffset>8</RightAnchorOffset>
+		<TopAnchorToTop>true</TopAnchorToTop><TopAnchorOffset>48</TopAnchorOffset>
+		<BottomAnchorToTop>false</BottomAnchorToTop><BottomAnchorOffset>32</BottomAnchorOffset>
+		<TextColor><R>255</R><G>255</G><B>255</B></TextColor>
+		<Style_Border>true</Style_Border>
+		<Style_VScroll>true</Style_VScroll>
+		<!-- ⚠ Headers are NEUTRAL because they serve three view modes AND the drill-down, and
+		     CListWnd::SetColumnLabel does not exist on this build (section 16) so they cannot be
+		     rewritten at runtime.  "Total" and "Per sec" are true of damage, damage taken and healing
+		     alike; the dropdown says which one you are reading. -->
+		<Columns><Width>104</Width><Heading>Name</Heading></Columns>
+		<Columns><Width>72</Width><Heading>Total</Heading></Columns>
+		<Columns><Width>58</Width><Heading>Per sec</Heading></Columns>
+		<Columns><Width>42</Width><Heading>Pct</Heading></Columns>
+		<Columns><Width>50</Width><Heading>Hits</Heading></Columns>
+		<Columns><Width>62</Width><Heading>Max</Heading></Columns>
+	</Listbox>
+
+	<!-- A view MODE, not a sort.  Damage done, damage taken and healing done are three different
+	     questions and each wants its own numbers; showing all of them at once put a healing column in
+	     the damage view where it meant nothing.
+	     Combobox rather than a cycling button: three named choices you can read before picking beat a
+	     button whose label only tells you where you already are.  BDT_Combo and this shape are the
+	     ones the Delve window's difficulty dropdown already proves on this build. -->
+	<!-- Which fight you are looking at.  Stepping blindly with arrows meant you could not tell what
+	     you were about to land on; the choices name the creature, how long it took and what it cost.
+	     ⚠ Populated ONLY when METERLIST arrives, never on the per second refresh: refilling a combobox
+	     calls DeleteAll, which drops the selection and shuts the list under the player. -->
+	<Combobox item="MTR_FightCombo">
+		<ScreenID>MTR_FightCombo</ScreenID>
+		<DrawTemplate>WDT_Inner</DrawTemplate>
+		<RelativePosition>true</RelativePosition>
+		<AutoStretch>true</AutoStretch>
+		<LeftAnchorToLeft>true</LeftAnchorToLeft><LeftAnchorOffset>8</LeftAnchorOffset>
+		<RightAnchorToLeft>false</RightAnchorToLeft><RightAnchorOffset>8</RightAnchorOffset>
+		<TopAnchorToTop>true</TopAnchorToTop><TopAnchorOffset>4</TopAnchorOffset>
+		<BottomAnchorToTop>true</BottomAnchorToTop><BottomAnchorOffset>26</BottomAnchorOffset>
+		<ListHeight>160</ListHeight>
+		<Button>BDT_Combo</Button>
+		<Style_Border>true</Style_Border>
+	</Combobox>
+
+	<Combobox item="MTR_Mode">
+		<ScreenID>MTR_Mode</ScreenID>
+		<DrawTemplate>WDT_Inner</DrawTemplate>
+		<RelativePosition>true</RelativePosition>
+		<AutoStretch>true</AutoStretch>
+		<LeftAnchorToLeft>true</LeftAnchorToLeft><LeftAnchorOffset>8</LeftAnchorOffset>
+		<RightAnchorToLeft>true</RightAnchorToLeft><RightAnchorOffset>140</RightAnchorOffset>
+		<TopAnchorToTop>false</TopAnchorToTop><TopAnchorOffset>30</TopAnchorOffset>
+		<BottomAnchorToTop>false</BottomAnchorToTop><BottomAnchorOffset>6</BottomAnchorOffset>
+		<ListHeight>80</ListHeight>
+		<Button>BDT_Combo</Button>
+		<Style_Border>true</Style_Border>
+	</Combobox>
+
+	<Label item="MTR_Total">
+		<ScreenID>MTR_Total</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<AutoStretch>true</AutoStretch>
+		<LeftAnchorToLeft>true</LeftAnchorToLeft><LeftAnchorOffset>224</LeftAnchorOffset>
+		<RightAnchorToLeft>false</RightAnchorToLeft><RightAnchorOffset>8</RightAnchorOffset>
+		<TopAnchorToTop>false</TopAnchorToTop><TopAnchorOffset>26</TopAnchorOffset>
+		<BottomAnchorToTop>false</BottomAnchorToTop><BottomAnchorOffset>8</BottomAnchorOffset>
+		<Text></Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>200</R><G>200</G><B>200</B></TextColor>
+	</Label>
+
+	<Button item="MTR_Back">
+		<ScreenID>MTR_Back</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<AutoStretch>true</AutoStretch>
+		<LeftAnchorToLeft>true</LeftAnchorToLeft><LeftAnchorOffset>136</LeftAnchorOffset>
+		<RightAnchorToLeft>true</RightAnchorToLeft><RightAnchorOffset>216</RightAnchorOffset>
+		<TopAnchorToTop>false</TopAnchorToTop><TopAnchorOffset>28</TopAnchorOffset>
+		<BottomAnchorToTop>false</BottomAnchorToTop><BottomAnchorOffset>6</BottomAnchorOffset>
+		<Text>Back</Text>
+		<TextColor><R>255</R><G>200</G><B>140</B></TextColor>
+		<Template>BDT_Normal</Template>
+		<TooltipReference>Return to the list of players</TooltipReference>
+	</Button>
+
+	<Screen item="AoTMeterWnd">
+		<RelativePosition>false</RelativePosition>
+		<Location><X>300</X><Y>200</Y></Location>
+		<Size><CX>430</CX><CY>280</CY></Size>
+		<Text>Damage Meter</Text>
+		<Style_Transparent>false</Style_Transparent>
+		<DrawTemplate>WDT_Def</DrawTemplate>
+		<Style_Titlebar>true</Style_Titlebar>
+		<Style_Closebox>true</Style_Closebox>
+		<Style_Border>true</Style_Border>
+		<Style_Sizable>true</Style_Sizable>
+		<Style_Minimized>false</Style_Minimized>
+		<Pieces>MTR_FightCombo</Pieces>
+		<Pieces>MTR_Title</Pieces>
+		<Pieces>MTR_List</Pieces>
+		<Pieces>MTR_Mode</Pieces>
+		<Pieces>MTR_Back</Pieces>
+		<Pieces>MTR_Total</Pieces>
+	</Screen>
+
+</XML>

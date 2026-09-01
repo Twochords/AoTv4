@@ -14267,6 +14267,32 @@ VALUES (121, 200062, 1, 1, 1, 100);
 )",
 		.content_schema_update = false,
 	},
+	ManifestEntry{
+		.version     = 165,
+		.description = "2026_08_31_titanwrought_drop_skillneeded",
+		.check       = "SELECT id FROM tradeskill_recipe WHERE id BETWEEN 480000 AND 480254 AND skillneeded > 0 LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE tradeskill_recipe
+SET skillneeded = 0
+WHERE id BETWEEN 480000 AND 480254 AND skillneeded > 0;
+)",
+		.content_schema_update = false,
+	},
+	ManifestEntry{
+		.version     = 166,
+		.description = "2026_08_31_titanwrought_temper_price",
+		.check       = "SELECT id FROM items WHERE id IN (148515,148531,148547) AND price NOT IN (100000,300000,500000) LIMIT 1",
+		.condition   = "not_empty",
+		.match       = "",
+		.sql         = R"(
+UPDATE items SET price = 100000 WHERE id = 148515;   -- Crude Temper   100pp
+UPDATE items SET price = 300000 WHERE id = 148531;   -- Simple Temper  300pp
+UPDATE items SET price = 500000 WHERE id = 148547;   -- Rough Temper   500pp
+)",
+		.content_schema_update = false,
+	},
 };
 
 // see struct definitions for what each field does

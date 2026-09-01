@@ -19,8 +19,11 @@
 #include "core_autoskill.h"  // AutoSkillOnUiReset() -- likewise
 #include "core_dungeon.h"    // DungeonOnUiReset() -- likewise
 #include "core_difficulty.h" // DifficultyOnUiReset() -- likewise
+#include "core_fctwindow.h"  // FctWindowOnUiReset() -- likewise
+#include "core_meter.h"      // MeterWindowOnUiReset() -- likewise
 #include "core_fellowship.h" // FellowshipOnUiReset() -- likewise
 #include "core_travel.h"     // TravelOnUiReset()     -- likewise
+#include "core_floatingtext.h" // FloatingTextOnUiReset() -- releases D3D fonts, keeps the device hooks
 #include "core_allaclone.h"  // AllacloneOnUiReset() -- likewise
 #include "core_aotmenu.h"       // AoTMenuOnUiReset() -- likewise
 #include "core_spellchoice_native.h"
@@ -962,8 +965,11 @@ public:
 		AutoSkillOnUiReset();
 		DungeonOnUiReset();
 		DifficultyOnUiReset();
+		FctWindowOnUiReset();
+		MeterWindowOnUiReset();
 		FellowshipOnUiReset();
 		TravelOnUiReset();
+		FloatingTextOnUiReset();
 		AllacloneOnUiReset();
 		AoTMenuOnUiReset();
 		CleanUI_Trampoline();
@@ -983,8 +989,11 @@ public:
 		AutoSkillOnUiReset();
 		DungeonOnUiReset();
 		DifficultyOnUiReset();
+		FctWindowOnUiReset();
+		MeterWindowOnUiReset();
 		FellowshipOnUiReset();
 		TravelOnUiReset();
+		FloatingTextOnUiReset();
 		AllacloneOnUiReset();
 		AoTMenuOnUiReset();
 		ReloadUI_Trampoline(use_ini);

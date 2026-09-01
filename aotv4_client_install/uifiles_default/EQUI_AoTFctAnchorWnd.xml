@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="us-ascii"?>
+<XML ID="EverQuestData">
+	<Schema xmlns="EverQuestData" xmlns:dt="EverQuestDataTypes" />
+
+	<!-- AoTv4 Combat Text anchors: two small windows you drag to say where the numbers appear.
+	     Shown by "Move the spots" in the Combat Text window.
+
+	     THESE ARE REAL EQ WINDOWS, DELIBERATELY.  The first version drew two boxes with Direct3D and
+	     dragged them by polling the mouse, and it was unusable: the client never stopped seeing the
+	     same click, so dragging a box turned the camera at the same time.  Nothing a render hook can
+	     do consumes an input the client has already been handed.  A window the UI engine owns is
+	     dragged BY the UI engine, so the click stops reaching the world, and a title bar and close
+	     box come with it.
+
+	     Titlebar on, Closebox OFF, Sizable off.  No close box on purpose: this build exposes no way to
+	     READ a window's visibility, so a marker dismissed by its own X would leave the Combat Text
+	     window still believing it is in edit mode, and its button would need pressing twice with
+	     nothing on screen to explain why.  One way out, and the button says what it is.
+	     Sizable would let a player resize a marker whose size means nothing, and the client persists
+	     window size per character, so a stretched one would stay stretched with no way to tell why.
+
+	     Comments must never contain a double hyphen, which is illegal in XML and makes the SIDL
+	     parser abort the WHOLE file, killing the client before character select.  Run
+	     aotv4_client_install/validate_ui_xml.sh before copying this anywhere. -->
+
+	<Label item="FCTA_DmgLbl">
+		<ScreenID>FCTA_DmgLbl</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>8</X><Y>4</Y></Location>
+		<Size><CX>150</CX><CY>16</CY></Size>
+		<Text>Damage appears here</Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>255</R><G>160</G><B>140</B></TextColor>
+	</Label>
+
+	<Label item="FCTA_HealLbl">
+		<ScreenID>FCTA_HealLbl</ScreenID>
+		<RelativePosition>true</RelativePosition>
+		<Location><X>8</X><Y>4</Y></Location>
+		<Size><CX>150</CX><CY>16</CY></Size>
+		<Text>Healing appears here</Text>
+		<NoWrap>true</NoWrap>
+		<TextColor><R>140</R><G>255</G><B>160</B></TextColor>
+	</Label>
+
+	<Screen item="AoTFctDmgAnchor">
+		<RelativePosition>false</RelativePosition>
+		<Location><X>620</X><Y>360</Y></Location>
+		<Size><CX>170</CX><CY>48</CY></Size>
+		<Text>Damage</Text>
+		<Style_Transparent>false</Style_Transparent>
+		<DrawTemplate>WDT_Def</DrawTemplate>
+		<Style_Titlebar>true</Style_Titlebar>
+		<Style_Closebox>false</Style_Closebox>
+		<Style_Border>true</Style_Border>
+		<Style_Sizable>false</Style_Sizable>
+		<Pieces>FCTA_DmgLbl</Pieces>
+	</Screen>
+
+	<Screen item="AoTFctHealAnchor">
+		<RelativePosition>false</RelativePosition>
+		<Location><X>320</X><Y>360</Y></Location>
+		<Size><CX>170</CX><CY>48</CY></Size>
+		<Text>Healing</Text>
+		<Style_Transparent>false</Style_Transparent>
+		<DrawTemplate>WDT_Def</DrawTemplate>
+		<Style_Titlebar>true</Style_Titlebar>
+		<Style_Closebox>false</Style_Closebox>
+		<Style_Border>true</Style_Border>
+		<Style_Sizable>false</Style_Sizable>
+		<Pieces>FCTA_HealLbl</Pieces>
+	</Screen>
+
+</XML>

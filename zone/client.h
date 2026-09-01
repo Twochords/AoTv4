@@ -1110,6 +1110,51 @@ public:
 	void AddAAPoints(uint32 points);
 	// AoTv4: route raw AA points to the picker's private bank and leave the native unspent pool at 0.
 	// Every writer of m_pp.aapoints must go through this -- see the note on the definition.
+	// AoTv4 floating combat text: does this client's dinput8.dll want FCTHEAL transport lines?
+	// ⚠️⚠️ OPT-IN, AND IT HAS TO BE. Healing reaches the client only as chat text -- there is no heal
+	// packet with an amount anywhere in the protocol -- so the floating-text healing anchor is fed by a
+	// transport line the dll swallows. A player WITHOUT the dll would instead see raw "FCTHEAL 123|45"
+	// spam on every tick of every heal in their group. Nothing is sent until the dll says it is there.
+	// ⚠ Deliberately NOT persisted: it describes the client currently connected, not the character, and
+	// a player who moves to a machine without the dll must not inherit the flag.
+	// AoTv4 damage meter: the creature this player is currently fighting, as an ENTITY id.
+	// ⚠️⚠️ HEALING NEEDS THIS AND DAMAGE DOES NOT. A damage event names its own target, so it attaches to
+	// an encounter by itself; a heal names the healer and the healed, neither of which is the creature.
+	// This is stamped whenever the player deals damage to or takes damage from an NPC, so a heal lands on
+	// whatever fight the healed player is actually in.
+	// ⚠️ Not persisted and not reset on zone: it is re-stamped by the first hit of the next fight, and a
+	// stale id simply resolves to nothing.
+	uint16 m_aotv4_meter_npc = 0;
+
+	// Everything this player is currently fighting, most recent first.
+	// ⚠️⚠️ A LIST, NOT ONE ID, BECAUSE OF AoE. Encounters are per creature, so a multi-mob pull has
+	// several live at once; showing whichever was hit most recently makes the window flip between them
+	// several times a second. The live view merges these instead. See AoTv4Encounter::MergeInto.
+	// ⚠️ Bounded and deduped on insert. It is walked once a second, and a swarm pull would otherwise
+	// grow it without limit.
+	std::vector<uint16> m_aotv4_meter_engaged;
+	bool   m_aotv4_meter_on  = false;   // does this client's dll want METERDATA pushes?
+	Timer  m_aotv4_meter_timer{1000};
+
+	// AoTv4 damage meter: the last few finished fights, newest first.
+	// ⚠️⚠️ COPIED PER CONTRIBUTOR AT DEATH, not shared. The encounter itself lives on the NPC and dies
+	// with it, so history cannot be a pointer to it -- and a player who leaves the group still keeps the
+	// fights they were actually in.
+	// ⚠️ Not persisted. It describes this session's fights; carrying it across a relog would mean
+	// serialising every row and every breakdown line for a display nobody is looking at.
+	std::vector<AoTv4Encounter> m_aotv4_meter_hist;
+	int m_aotv4_meter_view = -1;   // which stored fight is on screen; -1 means the live one
+
+	void AoTv4MeterSend();
+	void AoTv4MeterSendList();
+	void AoTv4MeterSendDetail(const char *who);
+	void AoTv4MeterArchive(const AoTv4Encounter &enc);
+	void AoTv4MeterNote(Mob *npc);
+
+	bool AoTv4WantsFctHeals() const { return m_aotv4_fct_heals; }
+	void AoTv4SetWantsFctHeals(bool v) { m_aotv4_fct_heals = v; }
+	bool m_aotv4_fct_heals = false;
+
 	void AoTv4DivertAAPoints(uint32 points);
 	bool RemoveAAPoints(uint32 points);
 	int GetAAPoints() { return m_pp.aapoints; }
