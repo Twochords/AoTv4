@@ -458,7 +458,7 @@ RULE_INT(Spells, DeathSaveCharismaMod, 3, "Determines how much charisma effects 
 RULE_INT(Spells, DivineInterventionHeal, 8000, "Divine intervention heal amount")
 RULE_INT(Spells, AdditiveBonusWornType, 0, "Calc worn bonuses to add together (instead of taking highest) if set to THIS worn type. (2=Will covert live items automatically)")
 RULE_BOOL(Spells, UseCHAScribeHack, false, "ScribeSpells and TrainDiscs quest functions will ignore entries where field 12 is CHA")
-RULE_BOOL(Spells, BuffLevelRestrictions, true, "Buffs will not land on low level toons like live")
+RULE_BOOL(Spells, BuffLevelRestrictions, false, "Buffs will not land on low level toons like live")
 RULE_INT(Spells, RootBreakCheckChance, 70, "Determines chance for a root break check to occur each buff tick")
 RULE_INT(Spells, FearBreakCheckChance, 70, "Determines chance for a fear break check to occur each buff tick")
 RULE_INT(Spells, SuccorFailChance, 2, "Determines chance for a succor spell not to teleport an invidual player")
